@@ -46,9 +46,15 @@ side fixes it.
 
 **Check this first.** It is dispositive. A dependency that fails it is rejected
 before "is there a better alternative" is worth asking, and before the three
-supply-chain gates in `~/.claude/rules/supply-chain-security.md` (channel,
-maturity, not-deprecated) are worth spending time on. Those three ask whether a
-version is *safe to adopt*. This one asks whether it can be adopted **at all**.
+supply-chain gates — **channel** (a stable release, not an RC or milestone),
+**maturity** (published longer ago than the cooldown), and **not deprecated or
+withdrawn** — are worth spending time on. Those three ask whether a version is
+*safe to adopt*. This one asks whether it can be adopted **at all**.
+
+The three gates are stated here rather than cited to a path because this file is
+tracked in a public repository, and the standard they come from is a
+machine-local operator rule that no clone can open. A reference a reader cannot
+follow trains readers to skip references.
 
 ## The scope correction, or the gate misfires on every plugin
 
@@ -107,27 +113,81 @@ coordinate in the build file is not the artifact name in the registry, and "does
 this library support our Scala version" is a question about **which artifacts
 were published**, not about a version range in a manifest.
 
-## The instrument
+## The instruments — and the gate's own question needs a different one
 
-**Scaladex, <https://index.scala-lang.org/>**, answers both questions this rule
-raises: what else exists for this job, and which Scala versions a library
-actually publishes for. Maven Central is the underlying registry.
+Two questions, and they do **not** share an instrument. Conflating them is how
+this section read until 2026-08-03, and it named the wrong tool for the one that
+matters.
 
-**Query them live. Never clone them.** A clone is not a registry: it captures
-what someone fetched once, and cloning an index's source gives you its code
-rather than its data. This is the corpus-versus-registry rule from the authority
-model, in the one place it bites hardest.
+**"What else exists for this job?"** — **Scaladex**, <https://index.scala-lang.org/>,
+the canonical Scala library index, over Maven Central underneath it. This is
+question 2 of the record format, and Scaladex answers it well.
 
-## The live instance
+**"Which Scala minor was this artifact built with?"** — **NOT Scaladex, and not
+any coordinate-keyed index.** All Scala 3 artifacts share the single `_3`
+suffix: `scala3-compiler_3` spans 3.8.0 through 3.9.0-RC4 under one coordinate,
+and a library built with 3.3.7 and one built with 3.9.0 are `foo_3` alike. **The
+compiling minor is not in the coordinate, so no index keyed on coordinates can
+report it.** An earlier version of this rule named Scaladex for this question,
+which cannot be answered from what Scaladex indexes.
 
-**Pekko's Scala output-compatibility has never been checked.** Pekko is a
-library on the project classpath, so this gate genuinely applies, and nobody has
-confirmed that 1.6.x publishes for Scala <= 3.3.x. That is roadmap row **R24**,
-open, `sentinel`'s.
+Two instruments that do answer it, in order of preference:
 
-It is open *because this rule previously existed only as prose inside a branch
-plan that no dispatched agent reads*. That is the same failure mode as every
-other rule in this directory, which is why it lives here now instead.
+1. **The library's own build file, read at an immutable tag.** This is what
+   actually settled the gate for Pekko: `project/Dependencies.scala` at tag
+   `v1.6.0` reads `val scala3Version = "3.3.7"`. Cite the tag, never a branch —
+   `.claude/rules/evidence-and-citation.md` §1.
+2. **The published POM.** A `_3` artifact declares its own
+   `org.scala-lang:scala3-library_3` dependency, and that version *is* the
+   compiling minor. Four Pekko POMs agreed with the build file at 3.3.7, which
+   is what made the answer two-instrument rather than one.
+
+A third exists and is heavier: the **TASTy version** embedded in the artifact,
+which is definitive but requires unpacking the jar. Reach for it only when the
+first two disagree.
+
+**Note the gate's wording is already right and should not be "corrected" to
+match a coordinate.** It says *built with Scala <= our LTS minor*. Phrased as
+"publishes for 3.3" it would be unanswerable as posed, because every Scala 3
+artifact publishes for `_3`.
+
+**Query registries live. Never clone them.** A clone is not a registry: it
+captures what someone fetched once, and cloning an index's source gives you its
+code rather than its data. This is the corpus-versus-registry rule from the
+authority model, in the one place it bites hardest. A caveat measured the same
+day, so a future reader does not mistake an outage for an answer: **Scaladex
+returned 503 repeatedly**, `repo1.maven.org` and `search.maven.org` are
+respectively 403 and stale from this environment, and `central.sonatype.com`
+returned correct version ordering with garbled dates. An instrument that cannot
+be reached has not told you the artifact is absent.
+
+## The worked instance — Pekko, checked 2026-08-03, PASSES
+
+Pekko is the one declared dependency that is a **library on the project
+classpath**, so it is the only one this gate binds. It was unchecked until
+2026-08-03, and it was unchecked *because this rule previously existed only as
+prose inside a branch plan that no dispatched agent reads* — the same failure
+mode as every other rule in this directory, and why they live here now.
+
+**Result: Pekko 1.6.0 is built with Scala 3.3.7 — inside our own LTS line, one
+patch behind 3.3.8. The gate passes, and would still pass on 3.3.0.**
+
+Two instruments agreeing, which is what makes it an answer rather than a reading:
+
+| Instrument | Reading |
+|---|---|
+| `project/Dependencies.scala` at tag `v1.6.0` | `val scala3Version = "3.3.7"` |
+| Four published `_3` POMs (`pekko-actor`, `-stream`, `-remote`, `-serialization-jackson`) | each declares `org.scala-lang:scala3-library_3:3.3.7` |
+
+Pekko states the policy directly too: *"Pekko is built with Scala 3.3 LTS
+version."*
+
+**Read the result the right way round.** It does not mean the gate is
+theoretical — it means Pekko was never this gate's risk. **The risk is whichever
+future library first publishes only for Scala Next**, and it will not announce
+itself, because its coordinate will look identical to every other `_3` artifact.
+That is exactly why the instrument question above is the load-bearing part of
+this rule.
 
 ## Where the reasoning lives
 
