@@ -52,6 +52,13 @@ MUST_BLOCK = [
     # under-guard well-formed input.
     ("truncated heredoc, no closing delimiter",
      "cat > f <<EOF\nfor i in 1 2; do echo $i; done"),
+    # The failure direction for the quoted-region skip: a quote that never
+    # closes is malformed input, not a region, so later lines stay GUARDED.
+    # Without this the multi-line fix would fail open on any unbalanced quote.
+    ("unclosed quote, then a real loop",
+     'echo "never closed\nfor i in 1 2; do rm $i; done'),
+    ("loop after a CLOSED multi-line quote",
+     'python3 -c "\nprint(1)\n"\nfor i in 1 2; do rm $i; done'),
 ]
 
 # (label, command) -- the guard MUST exit 0 for each. These are the negative
@@ -89,6 +96,17 @@ MUST_ALLOW = [
     # Multi-line with no control flow at all: the line-by-line scan must not
     # invent a finding from an ordinary multi-line command.
     ("multi-line, no control flow", "echo one\necho two\nls -la"),
+    # MULTI-LINE QUOTED STRINGS. The line-by-line scan introduced to catch a
+    # loop on line 2 also turned an embedded program's body into apparent shell
+    # commands, so `python3 -c` with a Python loop was falsely blocked. Found in
+    # review 2026-08-03 by an agent that hit it doing ordinary work. A line
+    # inside a quoted region is data, exactly as a heredoc body is.
+    ("multi-line python -c carrying a for",
+     'python3 -c "\nfor i in range(3):\n    print(i)\n"'),
+    ("multi-line python -c carrying an if",
+     'python3 -c "\nif True:\n    print(1)\n"'),
+    ("multi-line commit message with a keyword",
+     'git commit -m "line one\nfor the record\nline three"'),
 ]
 
 

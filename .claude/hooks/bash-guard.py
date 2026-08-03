@@ -85,6 +85,20 @@ def tokenize(command):
         return None
 
 
+def quoted_region_end(lines, start):
+    """Index of the line that closes a quote opened at `start`, or None.
+
+    `lines[start]` did not tokenize. If some later line makes the accumulated
+    text tokenize again, the run was one quoted string spanning lines -- an
+    embedded program, a multi-line message -- and its body is data. If nothing
+    closes it, the input is malformed and None keeps every later line guarded.
+    """
+    for j in range(start + 1, len(lines)):
+        if tokenize("\n".join(lines[start:j + 1])) is not None:
+            return j
+    return None
+
+
 def heredoc_delimiter(line):
     """The heredoc delimiter opened on this line, or None.
 
@@ -181,12 +195,33 @@ def find_inline_control_flow(command, depth=0):
     """
     lines = command.split("\n")
     pending_delimiter = None
+    skip_until = -1  # last line index belonging to a multi-line quoted string
 
     for i, line in enumerate(lines):
+        if i <= skip_until:
+            continue  # inside a quoted string that spans lines: data, not commands
+
         if pending_delimiter is not None:
             if line.strip() == pending_delimiter:
                 pending_delimiter = None
             continue  # inside a heredoc body: data, not commands
+
+        # A line that does not tokenize may be opening a quote that closes on a
+        # LATER line -- `python3 -c "` followed by a Python loop is the shape
+        # that matters, and splitting on newlines turns that program's body into
+        # apparent shell commands. Scanning it produced a false block on
+        # `python3 -c "\nfor i in range(3): ...\n"`, found by review 2026-08-03.
+        #
+        # The look-ahead is what keeps this from failing OPEN. Only skip lines
+        # when the quote demonstrably closes; an unparseable line whose quote
+        # never closes is malformed, and its following lines stay guarded. Same
+        # discipline as the heredoc delimiter below, and for the same reason: a
+        # region that never ends is not a region.
+        if tokenize(line) is None:
+            close = quoted_region_end(lines, i)
+            if close is not None:
+                skip_until = close
+                continue
 
         found = scan_line(line, depth)
         if found:
