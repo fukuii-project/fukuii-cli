@@ -1,0 +1,172 @@
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║  THIS IS A DELIBERATELY DEFECTIVE FIXTURE. NOT THE REPOSITORY'S GITIGNORE ║
+# ║  Do not copy it to /.gitignore. Do not "fix" it — its defect is the point.║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+#
+# It is the known-bad input for scripts/check-gitignore-proof.sh, which proves
+# that scripts/check-gitignore.sh can actually FAIL. A check that has only ever
+# returned PASS is indistinguishable from one that cannot fail, so the sweep is
+# worth nothing without a known-bad case to run it against.
+#
+# The defect, preserved on purpose: the node key-material patterns are
+# root-anchored (/keystore/, /wallet.json, /mnemonic.txt) and there is no
+# UTC--* pattern. A node run with any datadir other than the repository root --
+# `--datadir ./data` -- therefore leaves an encrypted keystore and a plaintext
+# BIP-39 mnemonic committable. That was the live state of /.gitignore until
+# 2026-08-02, when an adversarial review reproduced it end to end.
+#
+# If a future change to /.gitignore stops this fixture failing the sweep, the
+# sweep has lost the ability to detect that class and the fixture needs
+# updating -- not the other way round.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# (original header of the defective file follows)
+#
+# fukuii-cli — .gitignore
+#
+# This repository is PUBLIC. This file is the gate between what stays local and
+# what the world sees. Never weaken a SECURITY block below; add repo-specific
+# ignores under the marked section at the bottom.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# == SECURITY: secrets & credentials ==
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_ecdsa
+id_ed25519
+credentials.json
+service-account.json
+*.credentials
+secrets/
+.secrets/
+*.secret
+
+# == SECURITY: package-registry auth ==
+# These carry registry auth tokens (`_authToken`, `npmAuthIdent`). A committed
+# .npmrc can also silently weaken install-time supply-chain settings.
+.npmrc
+.yarnrc
+.yarnrc.yml
+
+# == SECURITY: node / chain key material ==
+# Root-anchored deliberately. These are node-DATADIR artifacts: a node run in the
+# repo root writes them at root level, so anchoring covers the whole threat while
+# leaving nested paths visible.
+#
+# Unanchored, `keystore/` swallows the `org.fukuii.…keystore` SOURCE PACKAGE — six
+# such files were tracked source in the pre-rebuild tree (KeyStore, Wallet,
+# EncryptedKey, EncryptedKeyJsonCodec + two specs). Verified by effect, both
+# directions, before this was changed. Do not un-anchor without re-checking.
+#
+# `*.nodekey` stays global: it is an extension glob, not a datadir path, and no
+# source file legitimately carries it.
+/keystore/
+/wallet.json
+/mnemonic.txt
+*.nodekey
+/node.key
+/jwt.hex
+/jwtsecret
+
+# == SECURITY: infra / cloud ==
+*.tfvars
+!*.tfvars.example
+*.tfstate
+*.tfstate.*
+.terraform/
+*.kubeconfig
+kubeconfig
+.pgpass
+docker-compose.override.yml
+
+# == Local working files — never travel ==
+.local/
+SESSION_NOTES.md
+PLANNING.md
+SCRATCH.md
+*.scratch.*
+*.draft.*
+
+# == Claude Code ==
+# This directory is TRACKED so repo-local agents, skills and rules travel with the
+# repo. Only machine-local and agent-written state is held back. Do not invert this
+# into a blanket ignore: an agent inside an ignored directory never reaches a clone.
+.claude/settings.local.json
+.claude/worktrees/
+.claude/agent-memory-local/
+.claude/launch.json
+.claude/scheduled_tasks.json
+CLAUDE.local.md
+.claude/**/*.local.*
+.claude/**/*-local/
+
+# == OS ==
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# == Editors / IDE ==
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.metals/
+.bloop/
+.bsp/
+metals.sbt
+
+# == Logs / temp ==
+*.log
+*.log.*
+/logs/
+/tmp/
+*.tmp
+*.pid
+
+# == JVM / Scala / sbt ==
+target/
+out/
+project/boot/
+project/plugins/project/
+project/project/
+project/metals.sbt
+*.class
+*.sc
+
+# == Node / JS / TS ==
+node_modules/
+/dist/
+/build/
+/coverage/
+*.tsbuildinfo
+.pnp.*
+.yarn/*
+!.yarn/patches
+
+# == Python ==
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# == Docs build ==
+/site/
+/_site/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Repo-specific ignores BELOW this line (safe to edit per repo):
+# ─────────────────────────────────────────────────────────────────────────────
