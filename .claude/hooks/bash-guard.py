@@ -88,19 +88,47 @@ def tokenize(command):
 def heredoc_delimiter(line):
     """The heredoc delimiter opened on this line, or None.
 
-    `<<<` is a herestring, not a heredoc: it has no body, so there is nothing to
-    skip and returning None keeps the following lines guarded.
+    Decided from TOKENS, never from a raw substring search, and that distinction
+    is the whole function. An earlier version ran `line.find("<<")`, so any `<<`
+    anywhere on the line opened a heredoc that never closed -- a shift operator
+    in `python3 -c "print(1 << 3)"`, a git format string, or the words of a
+    commit message. `pending_delimiter` was then set to a token that appears on
+    no later line, and every subsequent line was skipped as heredoc body.
+
+    Measured, three cases, all previously ALLOWED with a loop on the next line:
+        python3 -c "print(1 << 3)"
+        git log --format="%h << %s"
+        git commit -m "a << b"
+
+    That is exactly the hole this function's own comment claimed to have closed:
+    a FALSE heredoc has no delimiter line, so its effect was identical to the
+    `break` it replaced. The narrowing was real and the claim of closure was not.
+
+    `<<<` is a herestring, not a heredoc: no body, nothing to skip, so returning
+    None keeps the following lines guarded.
     """
-    idx = line.find("<<")
-    if idx == -1:
+    tokens = tokenize(line)
+    if not tokens:
+        # Unparseable or empty. Return None rather than guessing: scan_line
+        # already ALLOWS an unparseable line, and claiming a heredoc here would
+        # extend that allowance to every line after it.
         return None
-    rest = line[idx + 2:]
-    if rest.startswith("<"):
-        return None  # herestring
-    rest = rest.lstrip("-").strip()
-    if not rest:
-        return None
-    return rest.split()[0].strip("'\"")
+
+    for i, tok in enumerate(tokens):
+        if tok == "<<<" or not tok.startswith("<<"):
+            continue
+        # `<<EOF` / `<<-EOF` carry the delimiter; a bare `<<` takes the next
+        # token. The `-` can land on EITHER side of the token split -- shlex
+        # tokenizes `<<-'END'` as `['<<', "-'END'"]`, so stripping it only from
+        # the operator token yielded a delimiter of `-'END` and the real `END`
+        # line never matched. Normalize after choosing the source, not before.
+        rest = tok[2:]
+        if not rest.lstrip("-") and i + 1 < len(tokens):
+            rest = tokens[i + 1]
+        rest = rest.lstrip("-").strip("'\"")
+        return rest or None
+
+    return None
 
 
 def scan_line(line, depth):
@@ -151,9 +179,10 @@ def find_inline_control_flow(command, depth=0):
     than abandoning the scan is deliberate -- an earlier `break` here stopped the
     entire scan, leaving everything after the first `<<` unguarded.
     """
+    lines = command.split("\n")
     pending_delimiter = None
 
-    for line in command.split("\n"):
+    for i, line in enumerate(lines):
         if pending_delimiter is not None:
             if line.strip() == pending_delimiter:
                 pending_delimiter = None
@@ -163,7 +192,22 @@ def find_inline_control_flow(command, depth=0):
         if found:
             return found
 
-        pending_delimiter = heredoc_delimiter(line)
+        candidate = heredoc_delimiter(line)
+        # A heredoc whose delimiter never appears on a later line is not a
+        # heredoc. This is the test, rather than another guess at what `<<`
+        # meant, because token analysis alone cannot decide it: shlex genuinely
+        # emits `<<` as a standalone token in `git log --format="%h << %s"`,
+        # since the quote opens mid-word and never closes the token. Requiring
+        # the closing delimiter to actually exist rules that out by construction
+        # -- and rules out every other false opener, including ones nobody has
+        # thought of yet, which a per-shape heuristic cannot.
+        #
+        # Failure direction: a genuine heredoc whose delimiter is missing (a
+        # truncated command) gets its body SCANNED rather than skipped. That is
+        # the safe direction -- it can only over-block malformed input, never
+        # under-guard well-formed input.
+        if candidate and any(l.strip() == candidate for l in lines[i + 1:]):
+            pending_delimiter = candidate
 
     return None
 

@@ -32,6 +32,26 @@ MUST_BLOCK = [
     ("check-ignore -v && ",      "git check-ignore -v .env.example && echo IGNORED"),
     ("check-ignore -v ||",       "git check-ignore -v foo || echo 'not ignored'"),
     ("check-ignore --verbose &&","git check-ignore --verbose foo && echo IGNORED"),
+    # FALSE HEREDOC OPENERS. Each of these once disabled the guard for every
+    # LATER line: `heredoc_delimiter` searched the raw line for the substring
+    # `<<`, so a shift operator or a quoted `<<` opened a heredoc that never
+    # closed. A false heredoc has no delimiter line, so the effect was identical
+    # to the `break` the delimiter-skipping was introduced to replace -- while
+    # the docstring claimed the hole was closed. Found by adversarial review,
+    # 2026-08-03. The guard now requires the delimiter to actually appear later.
+    ("shift operator, then a loop",
+     'python3 -c "print(1 << 3)"\nfor f in a b; do rm $f; done'),
+    ("git format string, then a loop",
+     'git log --format="%h << %s"\nfor f in a b; do rm $f; done'),
+    ("<< in a commit message, then a loop",
+     'git commit -m "a << b"\nwhile true; do echo x; done'),
+    ("herestring, then a loop",
+     'grep x <<< "$d"; for i in 1 2; do echo $i; done'),
+    # A heredoc whose delimiter never arrives is not a heredoc. Scanning its
+    # body is the SAFE direction: it can only over-block malformed input, never
+    # under-guard well-formed input.
+    ("truncated heredoc, no closing delimiter",
+     "cat > f <<EOF\nfor i in 1 2; do echo $i; done"),
 ]
 
 # (label, command) -- the guard MUST exit 0 for each. These are the negative
@@ -57,6 +77,18 @@ MUST_ALLOW = [
     # Documented failure direction: unparseable -> allow, never a false block.
     ("unbalanced quote",         'echo "unterminated'),
     ("empty command",            "   "),
+    # REAL heredocs, all three spellings. These are the other half of the
+    # false-opener cases above: the fix must not buy its precision by breaking
+    # the remedy the guard itself prescribes.
+    ("heredoc, unquoted delimiter",
+     "cat > f <<EOF\nfor i in 1 2; do echo $i; done\nEOF"),
+    ("heredoc, dash form <<-",
+     "cat > f <<-'END'\nfor i in 1 2; do echo $i; done\nEND"),
+    ("heredoc opened after an unparseable line",
+     'echo "oops\ncat > f <<EOF\nfor i in 1 2; do echo; done\nEOF'),
+    # Multi-line with no control flow at all: the line-by-line scan must not
+    # invent a finding from an ordinary multi-line command.
+    ("multi-line, no control flow", "echo one\necho two\nls -la"),
 ]
 
 
