@@ -1,0 +1,184 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# fukuii-cli — .gitignore
+#
+# This repository is PUBLIC. This file is the gate between what stays local and
+# what the world sees. Never weaken a SECURITY block below; add repo-specific
+# ignores under the marked section at the bottom.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# == SECURITY: secrets & credentials ==
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_ecdsa
+id_ed25519
+credentials.json
+service-account.json
+*.credentials
+secrets/
+.secrets/
+*.secret
+
+# == SECURITY: package-registry auth ==
+# These carry registry auth tokens (`_authToken`, `npmAuthIdent`). A committed
+# .npmrc can also silently weaken install-time supply-chain settings.
+.npmrc
+.yarnrc
+.yarnrc.yml
+
+# == SECURITY: developer-environment credentials ==
+# `.envrc` is the trap here: direnv's file is routinely `export AWS_SECRET…`, and
+# `.env.*` above LOOKS like it covers it but does not — there is no dot before
+# `rc`. The rest are shell and SSH credential conventions with no extension of
+# their own, so no glob above reaches them.
+.envrc
+.netrc
+_netrc
+.git-credentials
+*.p8
+*.ppk
+*_rsa
+*_ecdsa
+*_ed25519
+deploy_key
+
+# == SECURITY: node / chain key material ==
+# Match the ARTIFACT, not the directory it happens to sit in. A node writes these
+# under whatever --datadir it is given, so any pattern anchored to the repo root
+# protects exactly one datadir choice out of many.
+#
+# This block was root-anchored throughout until an adversarial review reproduced
+# the gap: with `--datadir ./data`, a `git add -A` staged an encrypted v3 keystore
+# and a plaintext BIP-39 mnemonic. On a public repo that is unrecoverable — the
+# blob stays fetchable after `git rm --cached`, so the remedy would be key
+# rotation, not removal.
+#
+# The one anchoring that IS load-bearing is the keystore DIRECTORY. Unanchored,
+# `keystore/` swallows the `org.fukuii.…keystore` SOURCE PACKAGE (KeyStore, Wallet,
+# EncryptedKey, EncryptedKeyJsonCodec + two specs were tracked source in the
+# pre-rebuild tree). That collision is real for a directory name and CANNOT exist
+# for a filename: no Scala package is ever named `wallet.json`. Anchoring those
+# was pattern-copying, not a collision test.
+#
+# `UTC--*` is what makes the directory anchoring safe to keep: it is the geth and
+# mantis keystore filename convention, no source file has that shape, so it closes
+# every nested keystore at any depth with no collision. Verified by effect in both
+# directions — nested datadir artifacts ignored, keystore source package visible.
+# Do not re-anchor these without re-running that check.
+UTC--*
+/keystore/
+wallet.json
+mnemonic.txt
+jwt.hex
+jwtsecret
+*.nodekey
+# node.key is already covered globally by `*.key` above; kept for intent.
+node.key
+
+# == SECURITY: infra / cloud ==
+# No `!*.tfvars.example` carve-out: `*.tfvars` never matches a name ending
+# `.example`, so the negation was inert. Proven by differential — deleting it
+# changed nothing. A negation that cannot change an outcome is worse than absent,
+# because a test written against it passes regardless of this file's contents.
+*.tfvars
+*.tfstate
+*.tfstate.*
+.terraform/
+*.kubeconfig
+kubeconfig
+.pgpass
+docker-compose.override.yml
+
+# == Local working files — never travel ==
+.local/
+SESSION_NOTES.md
+PLANNING.md
+SCRATCH.md
+*.scratch.*
+*.draft.*
+
+# == Claude Code ==
+# This directory is TRACKED so repo-local agents, skills and rules travel with the
+# repo. Only machine-local and agent-written state is held back. Do not invert this
+# into a blanket ignore: an agent inside an ignored directory never reaches a clone.
+.claude/settings.local.json
+.claude/worktrees/
+.claude/agent-memory-local/
+.claude/launch.json
+.claude/scheduled_tasks.json
+CLAUDE.local.md
+.claude/**/*.local.*
+.claude/**/*-local/
+
+# == OS ==
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# == Editors / IDE ==
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.metals/
+.bloop/
+.bsp/
+metals.sbt
+
+# == Logs / temp ==
+*.log
+*.log.*
+/logs/
+/tmp/
+*.tmp
+*.pid
+
+# == JVM / Scala / sbt ==
+# `/out/` is root-anchored: unanchored it would hide any `src/main/resources/out/`
+# a module ships. sbt builds to `target/`; `out/` is Mill's convention and Mill was
+# assessed and rejected, so the root entry is a courtesy, not a live build path.
+target/
+/out/
+project/boot/
+project/plugins/project/
+project/project/
+project/metals.sbt
+*.class
+*.sc
+
+# == Node / JS / TS ==
+node_modules/
+/dist/
+/build/
+/coverage/
+*.tsbuildinfo
+.pnp.*
+.yarn/*
+!.yarn/patches
+
+# == Python ==
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# == Docs build ==
+/site/
+/_site/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Repo-specific ignores BELOW this line (safe to edit per repo):
+# ─────────────────────────────────────────────────────────────────────────────
