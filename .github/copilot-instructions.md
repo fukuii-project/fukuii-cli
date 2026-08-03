@@ -98,9 +98,16 @@ This repository is **public**.
    specific machine-local and agent-written paths are excluded (see
    `.gitignore`'s Claude Code block — `settings.local.json`, `worktrees/`,
    `agent-memory-local/`, and similar); `hooks/`, `rules/`, and `settings.json`
-   are ordinary tracked content. `.claude/settings.json` itself denies reads of
-   `.env`, `secrets/` and key material. Changing either is a security decision,
-   not a convenience fix.
+   are ordinary tracked content. `.claude/settings.json` denies reads of exactly
+   seven patterns — `.env`, `.env.*`, `secrets/**`, `*.pem`, `*.key`,
+   `*.keystore`, `*.p12` — and is **not** a general "key material is protected"
+   guarantee. It does not cover `UTC--*` keystore files, `wallet.json`,
+   `mnemonic.txt`, `*.jks`, `*.pfx`, `id_rsa`/`id_ecdsa`/`id_ed25519`, `.netrc`,
+   `.git-credentials`, `credentials.json`, `jwt.hex`, `jwtsecret` or
+   `*.nodekey`, all of which `.gitignore` treats as key material. The patterns
+   are also `./`-anchored, so they resolve against the current directory rather
+   than the project root, and they do not reach a subprocess that opens a file
+   itself. Changing either is a security decision, not a convenience fix.
 
 ## Response style
 

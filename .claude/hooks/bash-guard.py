@@ -229,8 +229,7 @@ def main():
     keyword = find_inline_control_flow(command)
     if keyword:
         sys.stderr.write(
-            "BLOCKED by .claude/hooks/bash-guard.py "
-            "(~/.claude/protocols/compound-command-scratch.md)\n"
+            "BLOCKED by .claude/hooks/bash-guard.py\n"
             f"Inline shell control flow: `{keyword}` in command position.\n\n"
             f"{SCRATCH_HINT}\n\n"
             "This is a permission-system constraint, not style: the Bash allow-list "
@@ -244,8 +243,7 @@ def main():
 
     if find_check_ignore_dash_v_as_decision(command):
         sys.stderr.write(
-            "BLOCKED by .claude/hooks/bash-guard.py "
-            "(~/.claude/protocols/shell-environment.md)\n"
+            "BLOCKED by .claude/hooks/bash-guard.py\n"
             "`git check-ignore -v` used as a decision.\n\n"
             "Use -q for the decision, -v only to DISPLAY which line matched:\n"
             "    git check-ignore --no-index -q -- <path>   # exit 0 = ignored\n\n"

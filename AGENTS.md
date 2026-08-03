@@ -73,15 +73,20 @@ one; check for a manifest before assuming any command is available.
 
 ### Test style is assigned by use case, not by author
 
+**No test source exists on this branch yet — every row below is the assignment
+tests will be written to, not a description of tests that exist.** The policy is
+settled; nothing has been built against it here. Anything in this section stated
+as a measurement was measured elsewhere and says so.
+
 ScalaTest ships eight styles so a *project* can fit a style to each use case —
 not so each contributor can pick a favourite. This project's assignment:
 
 | Use case | Style | Status |
 |---|---|---|
-| Unit tests | `AnyFlatSpec` | **in use** |
+| Unit tests | `AnyFlatSpec` | the default; applies from the first test written |
 | Integration tests — real database, real network peer | `AnyFlatSpec` | when L5+ lands |
-| Property checks | `AnyPropSpec` | **in use** |
-| Test matrices — one table of named vectors, one expected outcome | `AnyPropSpec` + `TableDrivenPropertyChecks` | **in use** |
+| Property checks | `AnyPropSpec` | when a property check is first written |
+| Test matrices — one table of named vectors, one expected outcome | `AnyPropSpec` + `TableDrivenPropertyChecks` | when a vector table is first written |
 | Acceptance tests — behavior stated in domain language | `AnyFeatureSpec` + `GivenWhenThen` | when a stakeholder-facing requirement needs one |
 
 Everything else — `FunSuite`, `FunSpec`, `WordSpec`, `FreeSpec`, `RefSpec` — is
@@ -137,18 +142,21 @@ and a second dialect for no gain.
 Recorded so each is settled once. A proposal to adopt one needs to answer the
 specific objection, not restate the style's general merits.
 
-- **`FunSuite`** — the whole L0 suite was converted *out* of it. It permits
-  `test("some prose")` with no subject, which is how test names drift into
-  restating the assertion. FlatSpec's grammar makes that a compile-time shape,
-  not a review comment.
+- **`FunSuite`** — the pre-rebuild tree's L0 suite was converted *out* of it.
+  (That tree is not this branch; the conversion is why the policy exists, not
+  something you will find here.) It permits `test("some prose")` with no
+  subject, which is how test names drift into restating the assertion.
+  FlatSpec's grammar makes that a compile-time shape, not a review comment.
 - **`FunSpec` / `WordSpec` / `FreeSpec`** — all three nest. Nesting earns its
   cost when shared setup is scoped to a context; a codec, a hash and a curve
   have no such context. FreeSpec additionally gives no guidance on structure,
   which is the wrong property for a codebase several agents write into.
 - **`RefSpec`** — its advantage is real (tests as methods, so fewer function
   literals and faster compiles on generated suites, which the L10 Ethereum
-  reference-test harness could want). It conflicts with this repo's warning
-  ratchet. Measured on Scala 3.3.8 / ScalaTest 3.2.20:
+  reference-test harness could want). It conflicts with the warning ratchet
+  planned for this repo — no ratchet is configured on this branch, because no
+  build is. Measured in the pre-rebuild tree on Scala 3.3.8 / ScalaTest 3.2.20,
+  neither of which is pinned here yet:
 
   | test-method body | result |
   |---|---|
@@ -164,8 +172,11 @@ specific objection, not restate the style's general merits.
 ### FeatureSpec, when it arrives
 
 Use the **capitalised** `Feature` / `Scenario`. The lowercase `feature` /
-`scenario` still compiles on 3.2.20 but is deprecated since 3.1.0 and slated for
-removal — much ScalaTest documentation still shows the old form.
+`scenario` was deprecated in ScalaTest 3.1.0 and is slated for removal, though
+much ScalaTest documentation still shows the old form. **Re-confirm against the
+version actually pinned when a build lands** — this branch pins no ScalaTest
+version, so the "still compiles on 3.2.20" half of this could not be checked
+here.
 
 ```scala
 class ThingSpec extends AnyFeatureSpec with GivenWhenThen:
@@ -229,9 +240,25 @@ This repository is **public**.
    default; check `.gitignore`'s current deny-list before assuming a path is
    held back, and never invert this into a blanket ignore — an agent, skill, or
    rule inside an ignored directory never reaches a clone.
-4. **`.claude/settings.json` denies reads of `.env`, `secrets/` and key
-   material.** Removing an entry is a security change, not a convenience fix.
-   Ask first.
+4. **`.claude/settings.json` denies reads of exactly seven patterns** — `.env`,
+   `.env.*`, `secrets/**`, `*.pem`, `*.key`, `*.keystore`, `*.p12`. **It is not a
+   general "key material is protected" guarantee**, and reading it as one is the
+   failure this wording exists to prevent. Classes `.gitignore` treats as key
+   material and this list does **not** cover include `UTC--*` (the geth/mantis
+   keystore filename convention), `wallet.json`, `mnemonic.txt`, `*.jks`,
+   `*.pfx`, `id_rsa`/`id_ecdsa`/`id_ed25519`, `.netrc`, `.git-credentials`,
+   `credentials.json`, `jwt.hex`, `jwtsecret` and `*.nodekey`. Treat those as
+   unprotected by this mechanism and handle them accordingly.
+
+   Two further limits, both documented rather than incidental. The patterns are
+   `./`-anchored, which resolves against the **current directory**, not the
+   project root — so the guarantee holds for a session started at the repository
+   root and narrows for one started in a subdirectory. And deny rules reach
+   Claude's own file tools and the Bash file commands it recognises (`cat`,
+   `head`, `tail`, `sed`); they do **not** reach an arbitrary subprocess that
+   opens a file itself, such as a Python or Node script.
+
+   Removing an entry is a security change, not a convenience fix. Ask first.
 
 <!-- Add boundaries as the repository grows. The highest-value entries are the
      ones whose breakage is invisible from inside this repo: generated
