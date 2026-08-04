@@ -77,8 +77,26 @@ while no manifest existed and is now a gap to close as the dependency set grows.
 <!-- What a contributor installs before anything works, and how they verify the
      toolchain is correct. -->
 
-Nothing to install yet — there is no build tool, dependency manager, or
-toolchain configuration on this branch.
+Two things: a JDK matching the one this repo declares, and sbt.
+
+```
+sdk env install    install the declared JDK if it is absent
+sdk env            apply it to this shell
+sbt compile        verify the toolchain resolves and builds
+```
+
+**The JDK is declared by version *and* distribution** in `.sdkmanrc`, because
+end-of-life dates differ between distributions by years — a version alone does
+not say what is supported. [SDKMAN](https://sdkman.io) reads that file; any
+other installation method works equally well provided it produces the same JDK.
+
+**`.sdkmanrc` is a declaration, not a mechanism.** It applies automatically on
+`cd` only where SDKMAN's `sdkman_auto_env` is enabled, and that setting is off
+by default. Without it, run `sdk env` per shell — otherwise the build silently
+uses whatever JDK the shell provides.
+
+sbt needs no separate pin: `project/build.properties` names the version, and the
+sbt launcher reads that file and fetches it.
 
 ## Commands
 
