@@ -1,0 +1,20 @@
+# The JDK this project builds against: version AND distribution, from one
+# declaration that both a developer shell and CI can read.
+#
+#   sdk env install     install this JDK if it is not present
+#   sdk env             apply it to the current shell
+#
+# The distribution is named, not just the version, because end-of-life dates
+# differ between distributions by years — a JDK version alone does not say what
+# is actually supported, or for how long.
+#
+# THIS FILE IS A DECLARATION, NOT A MECHANISM. It applies automatically on `cd`
+# only where SDKMAN's `sdkman_auto_env` is enabled, and that setting is off by
+# default:
+#
+#   sed -i 's/^sdkman_auto_env=false$/sdkman_auto_env=true/' ~/.sdkman/etc/config
+#
+# Without `sdk env` or that setting, your build runs under whatever JDK your
+# shell provides, which may be a different vendor or major version. In CI there
+# is no ambiguity: setup-java's `java-version-file` reads this file directly.
+java=25.0.4-tem

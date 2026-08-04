@@ -32,11 +32,45 @@
      the major series, not an exact patch: patch numbers go stale within days,
      and the lockfile is the place that carries them accurately. -->
 
-No manifest, lockfile, or build-tool configuration exists on this branch yet —
-nothing to record until one lands. The same absence is why this repository
-carries no dependency-update (Dependabot) configuration either: a control with
-nothing to secure reports a safeguard that is not actually operating, which is
-worse than stating the absence plainly.
+| | Version | Declared in |
+|---|---|---|
+| Scala | **3.3.x LTS** (3.3.8) | `build.sbt` |
+| JDK | **25 LTS**, Eclipse Temurin | `.sdkmanrc` |
+| sbt | **2.0.x** (2.0.4) | `project/build.properties` |
+| Pekko | **1.6.x** (1.6.0) — *decided, not yet declared* | — |
+
+**Scala is on the LTS line, and that is line membership rather than a version
+preference.** 3.8.x is *Scala Next*, a different line this project does not run —
+not a higher number that was skipped. Stated as a numeric comparison the
+reasoning needs re-arguing every time the numbers interleave.
+
+**The rule for every dependency: current LTS; where no LTS exists, latest
+stable; never exploratory releases, never head-of-branch.** An LTS designation
+means maintainers have committed funded support for a defined period, which
+keeps this project's dependencies supported over a meaningful horizon and holds
+churn down.
+
+**The JDK distribution is named deliberately.** End-of-life dates differ between
+distributions by years, so a JDK version without a distribution does not say
+what is actually supported. `.sdkmanrc` pins both; run `sdk env` to apply it, or
+`sdk env install` first if the JDK is absent.
+
+**No library dependencies are declared yet, and that is deliberate.** Each one
+is added when a real need for it arises, and adding one means answering: what
+problem does this solve, why this over the alternatives, why this version, and
+what would change the answer. **A dependency with no present need is not an
+entry** — do not add one because another project has it, or because an older
+build did.
+
+**One constraint binds every library added here.** Scala 3 guarantees that LTS
+output can be consumed by newer Scala Next, but **not the reverse** — so a
+library published only for Scala Next is unusable on this project's 3.3.x, not
+merely newer. Check that before anything else about a candidate; see
+`.claude/rules/scala-dependency-admissibility.md`, which also explains why the
+artifact coordinate alone cannot answer it.
+
+There is still no dependency-update (Dependabot) configuration. That was correct
+while no manifest existed and is now a gap to close as the dependency set grows.
 
 ## Setup
 
@@ -56,9 +90,24 @@ toolchain configuration on this branch.
      repo" is load-bearing: it tells an agent to match style by hand instead of
      trusting a gate that is not there. Silence reads as "look harder". -->
 
-There is no task runner or build definition on this branch — no `build`,
-`test`, `lint`, `typecheck`, or any other command exists to run. Do not invent
-one; check for a manifest before assuming any command is available.
+```
+sdk env            apply the JDK this repo declares (once, per shell)
+sbt compile        compile
+```
+
+**Run `sdk env` first, or you are not building against the declared toolchain.**
+`.sdkmanrc` names the JDK; without applying it, sbt runs under whatever JDK the
+shell happens to provide, which may be a different vendor or major version.
+`sdk env install` first if that JDK is not present.
+
+**`compile` is sbt's own task, not one this project defines.** The build adds no
+custom tasks. `test` will work once tests exist; it is not listed because there
+is nothing yet for it to run.
+
+**There is no `lint`, `format`, `typecheck` or coverage task, and no CI.** Match
+the style of surrounding code by hand rather than relying on a gate that does
+not exist. Do not invent a command — one that the build does not define will
+fail and read as a broken build.
 
 ## Structure
 
