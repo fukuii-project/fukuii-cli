@@ -6,10 +6,11 @@ the tool call, with the reason on stderr; exits 0 to allow.
 
 WHAT THIS IS. A speed bump, not a boundary. It pattern-matches command TEXT, so
 it stops an absent-minded inline loop and stops nothing that phrases itself
-differently. `~/.claude/protocols/shell-environment.md` states the general form:
-"Read/Edit denies are enforcement; Bash(...) denies are a speed bump." A hook
-inspecting a command string shares that weakness. Known gaps are listed at the
-foot of this file rather than papered over.
+differently. The general form: Read/Edit denies are enforcement, because they
+gate a tool that names its target; Bash(...) denies are a speed bump, because
+they pattern-match a string. A hook inspecting a command string shares that
+weakness. Known gaps are listed at the foot of this file rather than papered
+over.
 
 WHY shlex AND NOT A REGEX. A regex over raw command text cannot tell a loop from
 the word "for" inside a quoted argument, and `compound-command-scratch.md`'s own

@@ -105,8 +105,9 @@ did not want, and confirm you excluded it.
 ### An absence claim needs a corpus, not one instrument
 
 "Nothing implements X" and "no page says Y" are claims about **everything**. One
-instrument sees one member. This is the machine-wide rule from
-`~/.claude/CLAUDE.md`; what follows is the form it takes here.
+instrument sees one member — a filesystem search cannot see a hosted service, one
+doc page cannot see the page it links to, one summarized fetch cannot see what it
+omitted.
 
 Either enumerate the corpus, or **write the smaller true claim that names what
 you checked**:
