@@ -154,12 +154,19 @@ artifact publishes for `_3`.
 **Query registries live. Never clone them.** A clone is not a registry: it
 captures what someone fetched once, and cloning an index's source gives you its
 code rather than its data. This is the corpus-versus-registry rule from the
-authority model, in the one place it bites hardest. A caveat measured the same
-day, so a future reader does not mistake an outage for an answer: **Scaladex
-returned 503 repeatedly**, `repo1.maven.org` and `search.maven.org` are
-respectively 403 and stale from this environment, and `central.sonatype.com`
-returned correct version ordering with garbled dates. An instrument that cannot
-be reached has not told you the artifact is absent.
+authority model, in the one place it bites hardest.
+
+**An unreachable instrument has not told you the artifact is absent — and
+"unreachable" is a property of the instrument, not the host. Try a second one
+before believing it.** Measured 2026-08-03: `repo1.maven.org` and
+`repo.maven.apache.org` return **403 to WebFetch and 200 to `curl`**. Use
+`curl`; the canonical hosts serve `maven-metadata.xml`, which is the most direct
+answer available.
+
+Same date: `search.maven.org` failed to connect, Scaladex returned 503
+repeatedly, and `central.sonatype.com` returned correct version ordering with
+**garbled dates**. That last is the dangerous one — it answers instead of
+failing, so use its ordering and never its dates.
 
 ## The worked instance — Pekko
 
