@@ -67,10 +67,8 @@ difficulty. sbt's own 2.0 announcement says so parenthetically: *"(Both sbt 1.x
 and 2.x are capable of building Scala 2.x and 3.x)"*. Mill's metabuild is
 likewise 3.8.x.
 
-Stated too broadly, this rule would have disqualified **every candidate build
-tool** on a constraint that applies to none of them, and would keep mis-firing
-on every future plugin. That is not hypothetical: an earlier draft asserted the
-broad form and was corrected before it landed.
+Stated too broadly, this rule disqualifies **every candidate build tool** on a
+constraint that applies to none of them, and mis-fires on every future plugin.
 
 So: **build tools and their plugins are out of scope for this gate.** Judge them
 on the ordinary three.
@@ -123,13 +121,15 @@ matters.
 the canonical Scala library index, over Maven Central underneath it. This is
 question 2 of the record format, and Scaladex answers it well.
 
-**"Which Scala minor was this artifact built with?"** — **NOT Scaladex, and not
-any coordinate-keyed index.** All Scala 3 artifacts share the single `_3`
-suffix: `scala3-compiler_3` spans 3.8.0 through 3.9.0-RC4 under one coordinate,
-and a library built with 3.3.7 and one built with 3.9.0 are `foo_3` alike. **The
-compiling minor is not in the coordinate, so no index keyed on coordinates can
-report it.** An earlier version of this rule named Scaladex for this question,
-which cannot be answered from what Scaladex indexes.
+**"Which Scala minor was this artifact built with?"** — **the coordinate is the
+KEY, not the ANSWER.** Look the artifact up by coordinate; read the minor out of
+the artifact's own metadata.
+
+Two things do not carry it. The **coordinate string**: all Scala 3 artifacts
+share the single `_3` suffix, and `scala3-compiler_3` spans 3.8.0 through
+3.9.0-RC4 under one name, so a library built with 3.3.7 and one built with 3.9.0
+are `foo_3` alike. And **Scaladex**, whose project pages report only
+`3.x / 2.13 / 2.12` with no minor anywhere.
 
 Two instruments that do answer it, in order of preference:
 
@@ -161,16 +161,13 @@ respectively 403 and stale from this environment, and `central.sonatype.com`
 returned correct version ordering with garbled dates. An instrument that cannot
 be reached has not told you the artifact is absent.
 
-## The worked instance — Pekko, checked 2026-08-03, PASSES
+## The worked instance — Pekko
 
 Pekko is the one declared dependency that is a **library on the project
-classpath**, so it is the only one this gate binds. It was unchecked until
-2026-08-03, and it was unchecked *because this rule previously existed only as
-prose inside a branch plan that no dispatched agent reads* — the same failure
-mode as every other rule in this directory, and why they live here now.
+classpath**, so it is the only one this gate currently binds.
 
-**Result: Pekko 1.6.0 is built with Scala 3.3.7 — inside our own LTS line, one
-patch behind 3.3.8. The gate passes, and would still pass on 3.3.0.**
+**Pekko 1.6.0 is built with Scala 3.3.7 — inside our LTS line, one patch behind
+3.3.8. The gate PASSES, and would still pass on 3.3.0.** Checked 2026-08-03.
 
 Two instruments agreeing, which is what makes it an answer rather than a reading:
 
