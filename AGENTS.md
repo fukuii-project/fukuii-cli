@@ -37,6 +37,7 @@
 | Scala | **3.3.x LTS** (3.3.8) | `build.sbt` |
 | JDK | **25 LTS**, Eclipse Temurin | `.sdkmanrc` |
 | sbt | **2.0.x** (2.0.4) | `project/build.properties` |
+| ScalaTest | **3.2.20**, `Test` scope only | `build.sbt` |
 | Pekko | **1.6.x** (1.6.0) — *decided, not yet declared* | — |
 
 **Scala is on the LTS line, and that is line membership rather than a version
@@ -55,12 +56,13 @@ distributions by years, so a JDK version without a distribution does not say
 what is actually supported. `.sdkmanrc` pins both; run `sdk env` to apply it, or
 `sdk env install` first if the JDK is absent.
 
-**No library dependencies are declared yet, and that is deliberate.** Each one
-is added when a real need for it arises, and adding one means answering: what
-problem does this solve, why this over the alternatives, why this version, and
-what would change the answer. **A dependency with no present need is not an
-entry** — do not add one because another project has it, or because an older
-build did.
+**No compile-scope library dependency is declared, and that is deliberate.**
+Each one is added when a real need for it arises, and adding one means
+answering: what problem does this solve, why this over the alternatives, why
+this version, and what would change the answer. **A dependency with no present
+need is not an entry** — do not add one because another project has it, or
+because an older build did. ScalaTest, above and in `## Testing` below, is the
+first dependency to answer those four questions, and it is `Test`-scope only.
 
 **One constraint binds every library added here.** Scala 3 guarantees that LTS
 output can be consumed by newer Scala Next, but **not the reverse** — so a
@@ -111,6 +113,8 @@ sbt launcher reads that file and fetches it.
 ```
 sdk env            apply the JDK this repo declares (once, per shell)
 sbt compile        compile
+sbt test           run tests — may report success having run none, see below
+sbt testFull       run tests uncached; the one to trust for a pass/fail claim
 ```
 
 **Run `sdk env` first, or you are not building against the declared toolchain.**
@@ -118,9 +122,16 @@ sbt compile        compile
 shell happens to provide, which may be a different vendor or major version.
 `sdk env install` first if that JDK is not present.
 
-**`compile` is sbt's own task, not one this project defines.** The build adds no
-custom tasks. `test` will work once tests exist; it is not listed because there
-is nothing yet for it to run.
+**`compile`, `test` and `testFull` are sbt's own tasks; the build defines none
+of its own.**
+
+**Use `testFull` before treating a run as evidence anything passed.** sbt 2
+caches the test result machine-wide, and that cache survives both `clean` and
+copying the project to a new directory — so `test` alone can report success
+having executed zero tests. This is documented, intended behavior rather than a
+defect: sbt's own reference calls the result *"cached machine-wide"* and names
+`testFull` as the uncached equivalent of sbt 1's `test`. **Check the executed
+test count, not the exit code.**
 
 **There is no `lint`, `format`, `typecheck` or coverage task, and no CI.** Match
 the style of surrounding code by hand rather than relying on a gate that does
@@ -140,13 +151,16 @@ fail and read as a broken build.
 
 ### Test style is assigned by use case, not by author
 
-**No test source exists on this branch yet — every row below is the assignment
-tests will be written to, not a description of tests that exist.** The policy is
-settled; nothing has been built against it here. Anything in this section stated
-as a measurement was measured elsewhere and says so.
+**A toolchain-proof spec exists for each declared style artifact** — `AnyFlatSpec`,
+`AnyPropSpec`, `AnyFeatureSpec` — at `src/test/scala/org/fukuii/Toolchain*.scala`,
+each proving its artifact resolves and that the runner reports a real result.
+**They are not evidence the use cases below have been exercised:** there is no
+application code, so each tests the toolchain itself and carries its own
+retirement trigger in its Scaladoc. Anything in this section stated as a
+measurement was measured elsewhere and says so.
 
 ScalaTest ships eight styles so a *project* can fit a style to each use case —
-not so each contributor can pick a favourite. This project's assignment:
+not so each contributor can pick a favorite. This project's assignment:
 
 | Use case | Style | Status |
 |---|---|---|
@@ -164,21 +178,31 @@ writing integration tests in the same style as the unit tests, and reserving the
 gear-change for acceptance. The split that matters is unit/integration vs
 acceptance, not unit vs integration.
 
-**This is a build-level policy, not yet a build-level enforcement.** No
-`build.sbt` or `project/Dependencies.scala` exists on this branch — the stack is
-decided and pinned in a later phase of this repository's onboarding. Once a
-build exists, it must enforce this policy by naming the individual style
-artifacts, never the `scalatest` aggregate:
+**This is a build-level policy, and `build.sbt` enforces it** by naming the
+individual style artifacts, never the `scalatest` aggregate:
 
 ```scala
-"org.scalatest" %% "scalatest-flatspec" % scalatestVersion % Test
-"org.scalatest" %% "scalatest-propspec" % scalatestVersion % Test
+"org.scalatest" %% "scalatest-flatspec"    % scalatestVersion % Test
+"org.scalatest" %% "scalatest-propspec"    % scalatestVersion % Test
+"org.scalatest" %% "scalatest-featurespec" % scalatestVersion % Test
 ```
 
-An unlisted style should then not resolve, so using one becomes a compile error
-rather than a review comment. **Adding a style artifact is a policy change** —
-it belongs in the commit that introduces the first legitimate use of it, with
-the use case named. Do not add one to make a single file compile.
+An unlisted style does not resolve, so using one is a compile error rather than
+a review comment.
+
+**Declaring the assigned set is implementing this policy, not changing it.** All
+three belong in the commit that pins the framework, rather than arriving one at
+a time as each style's first use appears. A build declaring fewer than the
+assigned three would enforce a *narrower* policy than this document publishes —
+a silent divergence between the standard and the mechanism meant to enforce it.
+Pinning `scalatest-funsuite` alone once made `PropSpec` impossible to compile
+and foreclosed the exact use case ScalaTest designed it for; **before adding or
+removing a style artifact, check which use cases the change makes impossible.**
+
+**Adding a style BEYOND this set is the real policy change** this rule guards
+against. It belongs in the commit that introduces the first legitimate use of
+that style, with the use case named. Do not add one to make a single file
+compile.
 
 ### Writing each style
 
@@ -238,12 +262,12 @@ specific objection, not restate the style's general merits.
 
 ### FeatureSpec, when it arrives
 
-Use the **capitalised** `Feature` / `Scenario`. The lowercase `feature` /
+Use the **capitalized** `Feature` / `Scenario`. The lowercase `feature` /
 `scenario` was deprecated in ScalaTest 3.1.0 and is slated for removal, though
-much ScalaTest documentation still shows the old form. **Re-confirm against the
-version actually pinned when a build lands** — this branch pins no ScalaTest
-version, so the "still compiles on 3.2.20" half of this could not be checked
-here.
+much ScalaTest documentation still shows the old form. **Confirmed against the
+pinned ScalaTest 3.2.20** — `ToolchainFeatureSpec.scala` is written in exactly
+this form and compiles and runs, so a change in that syntax becomes a build
+failure rather than a stale instruction.
 
 ```scala
 class ThingSpec extends AnyFeatureSpec with GivenWhenThen:
@@ -262,14 +286,21 @@ class ThingSpec extends AnyFeatureSpec with GivenWhenThen:
 
 ## Branching
 
-**Branch first.** Work goes on a topic branch — a conventional prefix (`feat/`,
-`fix/`, `refactor/`, `test/`) plus a short kebab-case description — and reaches
-`main` by pull request. `main` must stay releasable.
+**This is a single-developer project, and the branch-and-pull-request policy is
+NOT in effect.** Work happens on a local branch merged into `main`, or directly
+on `main`. **`main` is the only published branch.** Do not open a pull request,
+and do not treat the absence of one as drift.
 
-No branch protection is configured on `main` yet — with a single developer,
-that safeguard is scheduled to land once a second primary builder joins and
-CI/testing begins. Until then this is a followed convention, not a
-GitHub-enforced gate.
+**The policy that activates later, and the signal that activates it.** Once the
+project is built publicly with multiple participants — expected when testing
+begins after the rebuild — work moves onto topic branches reaching `main` by
+pull request, `main` stays releasable, and branch protection is configured.
+**The operator states when that is in effect. Do not infer it** from the
+presence of contributors, of CI, or of a protected branch.
+
+**When a local branch is used, name it conventionally:** a prefix plus a short
+kebab-case description. Use the same set this repository uses for commit types —
+`feat/`, `fix/`, `refactor/`, `test/`, `build/`, `docs/`, `chore/`.
 
 Pushing is a separate decision from committing. Never push unasked.
 
@@ -290,8 +321,17 @@ This repository is **public**.
 ## Boundaries — ask before touching
 
 1. **`LICENSE` is Apache-2.0 by deliberate choice.** Never change, replace or
-   remove it, and never propose a different licence. The question is legal, not
+   remove it, and never propose a different license. The question is legal, not
    technical.
+
+   **`NOTICE` carries the attribution Apache-2.0 §4(d) requires, and it is
+   deliberately minimal. Never edit its legal language, and never expand it.**
+   It states non-derivation once and names Mantis only for history, etymology
+   and lore. That brevity is the decision, not an omission: **over-explaining in
+   a legal context is itself a signal**, and a longer NOTICE reads as a weaker
+   one. A more discursive version exists in this project's history and was
+   deliberately condensed — restoring material from it is a regression, not a
+   completion.
 2. **Community-health files are inherited, not missing.** The `fukuii-project`
    organization supplies `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`
    and the issue and pull-request templates to every repository that lacks its
@@ -321,7 +361,7 @@ This repository is **public**.
    `./`-anchored, which resolves against the **current directory**, not the
    project root — so the guarantee holds for a session started at the repository
    root and narrows for one started in a subdirectory. And deny rules reach
-   Claude's own file tools and the Bash file commands it recognises (`cat`,
+   Claude's own file tools and the Bash file commands it recognizes (`cat`,
    `head`, `tail`, `sed`); they do **not** reach an arbitrary subprocess that
    opens a file itself, such as a Python or Node script.
 

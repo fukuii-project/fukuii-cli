@@ -29,8 +29,20 @@ operator-gated.
 
 ## The gate
 
-**Every library on the project classpath must publish an artifact built with
-Scala <= our LTS minor (3.3.x).**
+**Every library the Scala compiler links against must be built with Scala <= our
+LTS minor (3.3.x) — at ANY scope, including `% Test`.**
+
+**Scope, stated explicitly because the natural reading gets it wrong.** Gate 0
+binds anything the compiler links against: compile scope, `% Test`, and
+transitive arrivals alike. TASTy incompatibility is a compile-time property, and
+test sources go through the same compiler as main sources, so a Next-only
+artifact breaks a test build exactly as it breaks a main one. **The metabuild is
+the one exception** — see "The scope correction" below.
+
+**The supply-chain gates below are the ones whose bar legitimately varies by
+scope.** A `% Test` dependency never enters the runtime classpath, cannot reach
+a user, and its exposure is bounded by the build machine. That is a real
+distinction and it applies to channel, maturity and withdrawal — never to Gate 0.
 
 Scala 3 guarantees **backward** output compatibility across all releases and
 **forward** compatibility only within a minor line. Formally: *"Scala 3.b.y can
@@ -44,12 +56,27 @@ A library published **only** for Scala Next is not merely newer. It is
 **unusable here**: the build will not resolve it, and no version bump from our
 side fixes it.
 
+**Walk the transitives.** "Every library the compiler links against" includes the
+ones nobody declared. A dependency's own dependencies arrive on the classpath and
+are compiled against, so each needs the same check. This is not hypothetical:
+ScalaTest 3.2.20 pulls `scala-xml_3:2.1.0`, built with Scala 3.0.2, which no
+reading of the declared coordinates would have surfaced.
+
 **Check this first.** It is dispositive. A dependency that fails it is rejected
 before "is there a better alternative" is worth asking, and before the three
 supply-chain gates — **channel** (a stable release, not an RC or milestone),
 **maturity** (published longer ago than the cooldown), and **not deprecated or
 withdrawn** — are worth spending time on. Those three ask whether a version is
 *safe to adopt*. This one asks whether it can be adopted **at all**.
+
+**Gate 3 has no direct instrument in Maven, and this is a real gap rather than an
+oversight.** There is no `deprecated` field in the POM schema — npm's
+`pnpm view <pkg> deprecated` has no equivalent. What exists is
+`<distributionManagement><relocation>` and `<status>` in the POM, plus upstream
+repository health (archived, last push, whether the tag exists). Check those,
+and know the gate is **weaker here than in npm**: a broken JVM release can sit
+unmarked. The same coordinate-blindness that hides shaded advisories applies —
+sbt's own vendored CVEs were findable only in the successor release's notes.
 
 The three gates are stated here rather than cited to a path because this file is
 tracked in a public repository, and the standard they come from is a
@@ -131,20 +158,43 @@ share the single `_3` suffix, and `scala3-compiler_3` spans 3.8.0 through
 are `foo_3` alike. And **Scaladex**, whose project pages report only
 `3.x / 2.13 / 2.12` with no minor anywhere.
 
-Two instruments that do answer it, in order of preference:
+Three instruments answer it, in order of strength:
 
-1. **The library's own build file, read at an immutable tag.** This is what
-   actually settled the gate for Pekko: `project/Dependencies.scala` at tag
-   `v1.6.0` reads `val scala3Version = "3.3.7"`. Cite the tag, never a branch —
-   `.claude/rules/evidence-and-citation.md` §1.
-2. **The published POM.** A `_3` artifact declares its own
-   `org.scala-lang:scala3-library_3` dependency, and that version *is* the
-   compiling minor. Four Pekko POMs agreed with the build file at 3.3.7, which
-   is what made the answer two-instrument rather than one.
+1. **The TASTy header inside the shipped bytecode. Definitive, and cheaper than
+   its reputation.** Unzip one `.tasty` from the jar and read the first 64 bytes:
+   `unzip -o -q artifact.jar 'path/To/Class.tasty' -d /tmp/x` then
+   `head -c 64 /tmp/x/path/To/Class.tasty | strings` prints `Scala 3.1.3`. It sits
+   inside the compiler's own output, so **neither a build-time override nor
+   version eviction can defeat it.** Note TASTy `minorVersion` equals the Scala
+   minor — 3.3.x → 28.3, 3.8.x → 28.8 — which is what the mismatch error reports.
+2. **The published POM's declared `org.scala-lang:scala3-library_3`.** A record of
+   the actual publish. Strong, and the practical default when checking several
+   artifacts at once.
+3. **The library's own build file, read at an immutable tag.** Weakest of the
+   three, and it looks strongest, which is the trap. ScalaTest's
+   `project/DottyBuild.scala` at tag `release-3.2.20` reads
+   `System.getProperty("scalatest.dottyVersion", "3.1.3")` — **a default the
+   release process can override**, so it cannot alone establish what shipped. It
+   happened to be right. Cite the tag, never a branch
+   (`.claude/rules/evidence-and-citation.md` §1).
 
-A third exists and is heavier: the **TASTy version** embedded in the artifact,
-which is definitive but requires unpacking the jar. Reach for it only when the
-first two disagree.
+**Prefer two agreeing instruments** over any one alone.
+
+### The one place where "read the resolved value" gives the wrong answer
+
+Everywhere else, the discipline is *read the resolved value, never grep a file* —
+a file says what it claims, only resolution says what the tool will do. **For this
+gate that discipline inverts, and following it silently produces a wrong answer.**
+
+The resolved `scala3-library_3` on the classpath is **our own version**, evicted
+upward by the build. Measured: with ScalaTest 3.2.20 declared, the resolved
+`scala3-library_3` is **3.3.8** — ours — while every ScalaTest POM declares
+**3.1.3**. Reading the resolved value tells you nothing about what compiled
+ScalaTest; it tells you what you are compiling with.
+
+**The value that answers this gate is the DECLARED one**, because it is a *record
+of what built the artifact*, not an input to resolution. Eviction is correct
+behavior and the gate is what permits it — LTS consuming older LTS output.
 
 **Note the gate's wording is already right and should not be "corrected" to
 match a coordinate.** It says *built with Scala <= our LTS minor*. Phrased as
@@ -170,8 +220,11 @@ failing, so use its ordering and never its dates.
 
 ## The worked instance — Pekko
 
-Pekko is the one declared dependency that is a **library on the project
-classpath**, so it is the only one this gate currently binds.
+**ScalaTest is the first library actually declared in `build.sbt`** — three style
+artifacts at `% Test` scope. Pekko is **decided but not yet declared**, so the
+gate has been run against it in advance of a build entry. Both are worked below;
+ScalaTest is the more instructive of the two, because its instruments disagreed
+in strength.
 
 **Pekko 1.6.0 is built with Scala 3.3.7 — inside our LTS line, one patch behind
 3.3.8. The gate PASSES, and would still pass on 3.3.0.** Checked 2026-08-03.
@@ -192,6 +245,35 @@ future library first publishes only for Scala Next**, and it will not announce
 itself, because its coordinate will look identical to every other `_3` artifact.
 That is exactly why the instrument question above is the load-bearing part of
 this rule.
+
+## The second worked instance — ScalaTest, where the instruments disagreed
+
+**ScalaTest 3.2.20 is built with Scala 3.1.3. The gate PASSES.** Checked
+2026-08-04, at `% Test` scope — which the gate binds exactly as it binds compile
+scope.
+
+| Instrument | Reading | Strength |
+|---|---|---|
+| TASTy header in `AnyFlatSpec.tasty`, `AnyPropSpec.tasty`, `AnyFeatureSpec.tasty` | `Scala 3.1.3` | **definitive** |
+| Four published POMs, declared `scala3-library_3` | `3.1.3` | strong |
+| `project/DottyBuild.scala` at tag `release-3.2.20` | `System.getProperty("scalatest.dottyVersion", "3.1.3")` | **weak — an overridable default** |
+
+**Transitives, which the declared coordinates never surface:** `scalactic_3:3.2.20`
+→ 3.1.3 (pass); **`scala-xml_3:2.1.0` → 3.0.2** (pass, and nobody declared it);
+`scalatest-compatible` → a Java artifact with no `_3` suffix, so the gate does not
+apply.
+
+**The gate's premise is measured, not assumed.** A library built with Scala 3.8.4
+(Next) and consumed from 3.3.8 fails:
+
+```
+TASTy signature has wrong version.
+ expected: {majorVersion: 28, minorVersion: 3}
+ found   : {majorVersion: 28, minorVersion: 8}
+This TASTy file was produced by a more recent, forwards incompatible release.
+```
+
+The gate bites exactly as claimed, and the error names the producing compiler.
 
 ## Where the reasoning lives
 
