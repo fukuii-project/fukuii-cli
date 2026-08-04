@@ -1,4 +1,4 @@
-# GitHub Copilot — repository instructions: fukuii-cli
+# GitHub Copilot — repository instructions: Fukuii
 
 <!--
   SELF-CONTAINED BY CHOICE. Do not thin this into a pointer at AGENTS.md.

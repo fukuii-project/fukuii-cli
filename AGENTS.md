@@ -1,4 +1,4 @@
-# fukuii-cli — agent instructions
+# Fukuii — agent instructions
 
 <!--
   DEFAULT WIRING. The content sections below are deliberately unfilled.
