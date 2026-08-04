@@ -1,0 +1,28 @@
+Fukuii
+Copyright 2025–present The Fukuii Authors
+Copyright 2025–present Chippr Robotics LLC
+Copyright 2026–present White B0x Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Fukuii is a Scala execution client for the EVM ecosystem: several networks at once in one JVM
+process, and a further network is configuration, not a new client. It is Ethereum Classic's first
+native client. https://fukuii.org
+
+Fukuii acknowledges two projects it owes for vision and for tech stack, and takes no code from
+either: ETCDEV's Orbita (2018), an early multi-network client vision for Ethereum Classic; and
+IOHK's Mantis, which chose Scala and the JVM for the task.
+
+Fukuii is an independent, ground-up client. It contains no Mantis source code and is not a
+derivative work of Mantis. "Mantis" is a trademark of IOHK, referenced only for lineage and the
+project's name story.

@@ -1,0 +1,5 @@
+-Xms1g
+-Xmx4g
+-XX:ReservedCodeCacheSize=1024m
+-XX:MaxMetaspaceSize=1g
+-Xss4M
