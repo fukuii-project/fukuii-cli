@@ -91,7 +91,9 @@ read as a broken build.
 **Use `sbt testFull`, not `sbt test`, before treating a run as evidence anything
 passed.** sbt 2 caches the test result machine-wide, and that cache survives
 both `clean` and copying the project to a new directory. This is documented,
-intended behavior rather than a defect; `testFull` is the uncached equivalent.
+intended behavior rather than a defect: sbt's own reference calls the result
+*"cached machine-wide"* and names `testFull` as the uncached equivalent of sbt
+1's `test`.
 
 **The cache is per-suite and keyed on inputs, and that is what makes `test`
 misleading rather than merely useless.** With nothing changed it executes
@@ -100,9 +102,26 @@ that file belongs to**, then reports *"All tests passed"* over a partial run.
 The loud failure is the zero; the quiet one is the partial, and the partial is
 the one that gets believed.
 
-**So check the executed test count against the EXPECTED TOTAL** — not the exit
-code, and not merely against zero. Count tests, not files: a suite is a class, a
-test is one assertion block inside it, and one class commonly carries several.
+**So check the executed test count against the expected total** — not the exit
+code, and not merely against zero. **A non-zero count is not evidence of a full
+run.**
+
+**Read the expected total from a `testFull` run's own `Total number of tests
+run` line, not by counting from source.** `testFull` bypasses the cache, so its
+count is the one figure that cannot itself be a partial. Counting by hand is
+where this goes wrong.
+
+**Count registered test blocks — not files, and not assertions.** A suite is a
+class. A test is one registered block: `"subject" should "..." in { }`,
+`property("...") { }`, `Scenario("...") { }` — however many assertions execute
+inside it. **A table-driven `property` is ONE test however many vectors it
+drives**, which matters because this project assigns exactly that shape to
+vector tables. One class commonly carries several tests, so the expected total
+is larger than the number of spec files.
+
+**A suite that failed is never skipped.** `test` re-runs whatever failed on the
+previous run, so it cannot report a green over a prior failure. The trap is
+confined to the passing direction.
 
 **Test style is assigned by use case, not by author** — `AnyFlatSpec` for unit
 and integration, `AnyPropSpec` for property checks and vector tables,
@@ -118,14 +137,20 @@ never matchers.** A bare `assert` failure prints nothing actionable.
 
 ## Branching
 
-**Branch first.** Work goes on a topic branch — a conventional prefix (`feat/`,
-`fix/`, `refactor/`, `test/`) plus a short kebab-case description — and reaches
-`main` by pull request. `main` must stay releasable.
+**This is a single-developer project, and the branch-and-pull-request policy is
+NOT in effect.** Work happens on a local branch merged into `main`, or directly
+on `main`. **`main` is the only published branch. Do not open a pull request,
+and do not treat the absence of one as drift.**
 
-No branch protection is configured on `main` yet — with a single developer,
-that safeguard is scheduled to land once a second primary builder joins and
-CI/testing begins. Until then this is a followed convention, not a
-GitHub-enforced gate.
+**When a local branch is used, name it conventionally:** a prefix plus a short
+kebab-case description, from the same set this repository uses for commit types
+— `feat/`, `fix/`, `refactor/`, `test/`, `build/`, `docs/`, `chore/`.
+
+**The policy that activates later, and the signal that activates it.** Once the
+project is built publicly with multiple participants, work moves onto topic
+branches reaching `main` by pull request, `main` stays releasable, and branch
+protection is configured. **The operator states when that is in effect. Do not
+infer it** from the presence of contributors, of CI, or of a protected branch.
 
 Pushing is a separate decision from committing. Never push unasked.
 
@@ -154,16 +179,20 @@ This repository is **public**.
    specific machine-local and agent-written paths are excluded (see
    `.gitignore`'s Claude Code block — `settings.local.json`, `worktrees/`,
    `agent-memory-local/`, and similar); `hooks/`, `rules/`, and `settings.json`
-   are ordinary tracked content. `.claude/settings.json` denies reads of exactly
-   seven patterns — `.env`, `.env.*`, `secrets/**`, `*.pem`, `*.key`,
-   `*.keystore`, `*.p12` — and is **not** a general "key material is protected"
-   guarantee. It does not cover `UTC--*` keystore files, `wallet.json`,
-   `mnemonic.txt`, `*.jks`, `*.pfx`, `id_rsa`/`id_ecdsa`/`id_ed25519`, `.netrc`,
-   `.git-credentials`, `credentials.json`, `jwt.hex`, `jwtsecret` or
-   `*.nodekey`, all of which `.gitignore` treats as key material. The patterns
-   are also `./`-anchored, so they resolve against the current directory rather
-   than the project root, and they do not reach a subprocess that opens a file
-   itself. Changing either is a security decision, not a convenience fix.
+   are ordinary tracked content. **`.claude/settings.json`'s read-deny list is
+   short and specific, and is NOT a general "key material is protected"
+   guarantee.** Read the list from `.claude/settings.json`; that file is the
+   authority. **The invariant is the asymmetry: `.gitignore` covers materially
+   more key-material classes than the deny list does.** `.gitignore` stops a file
+   being **committed**; the deny list stops it being **read** — so a file can be
+   safely un-committable and still readable into model context, from where it
+   reaches reports, commit messages and prompts. Node-operator material is the
+   live case: keystore files, wallet and mnemonic exports, SSH and JWT secrets,
+   node keys. **Assume a path is readable unless you have checked
+   `.claude/settings.json` and found it covered.** The patterns are also
+   `./`-anchored, so they resolve against the current directory rather than the
+   project root, and they do not reach a subprocess that opens a file itself.
+   Changing either is a security decision, not a convenience fix.
 
 ## Response style
 

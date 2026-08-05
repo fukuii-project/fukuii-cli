@@ -26,14 +26,14 @@ The design separates execution from consensus. An execution engine — bytecode,
 
 Each configured network is meant to run as its own actor supervision tree — its own state, its own metrics, its own failure domain — so one process can host several networks without a fault in one taking the others down. Scala 3's algebraic data types and exhaustive pattern matching are there to turn a missed case in consensus-critical code into a compile failure instead of a shipped bug. The JVM is the target runtime because a node is a long-lived process, and JFR, async-profiler, JMX and heap dumps come for free rather than needing to be built.
 
-`modules/` mirrors this layering as a directory scaffold today — see **Status** below for what actually has code in it.
+`modules/` is the layering's intended home in the source tree — see **Status** below for what exists today.
 
 ## Status
 
 No application code exists in this repository yet. What's here is a pinned toolchain and the scaffolding it will build on:
 
 - A minimal `build.sbt` declaring only what's settled — the Scala and JDK versions, and the ScalaTest style artifacts the testing policy commits to. [`AGENTS.md`](AGENTS.md) has the full stack table, the setup commands, and the reasoning behind each pin.
-- `modules/`, an empty directory scaffold mirroring the layering above. Nothing in it holds code yet.
+- No `modules/` tree yet. It is where the layering above will live, and a clone does not receive it — git does not track empty directories, so it arrives with the first module that has a file in it.
 - `src/test/`, one toolchain-proof spec per declared ScalaTest style artifact, proving the pinned test toolchain resolves and actually reports a result. They're retired the day a real spec exists to replace them.
 
 Apache Pekko is decided as the actor-system dependency and isn't declared in the build yet — nothing gets added before something needs it.

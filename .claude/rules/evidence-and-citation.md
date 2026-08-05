@@ -33,15 +33,21 @@ citation. `main`, `master`, `HEAD`, and "the clone" are not citations, because
 every one of them describes a different tree next week.
 
 The corpus cannot always satisfy the strongest form, so this is a decision
-procedure rather than a single rule. Measured against
-`.local/reference-material/` on 2026-08-03: **33 clones, 8 shallow, 8 carrying
-zero tags, 4 both.**
+procedure rather than a single rule. **A meaningful minority of the reference
+clones are shallow, untagged, or both**, and which ones changes as the corpus
+grows — so establish it per clone at the moment you cite, rather than trusting a
+number written here.
 
-An earlier draft of this line said 21, which is what `find -maxdepth 4` returns
-— it misses the 12 clients under `clients/eth/{el,cl}/`, one level deeper. The
-sub-counts are unchanged over the true 33, so only the denominator moved. Kept
-as a note rather than silently corrected, because it is this rule's own subject
-matter: the instrument's reach produced the number, not the tree.
+```bash
+git -C <clone> rev-parse --is-shallow-repository   # true => history truncated
+git -C <clone> tag | head -1                       # empty => untagged
+```
+
+**Enumerate the corpus with an instrument that reaches all of it.** A depth-bounded
+`find` silently misses clones nested deeper than the bound, and returns a smaller
+number that looks like an answer. **The instrument's reach produced the number,
+not the tree** — which is this rule's own subject matter, and the reason no count
+is recorded here to be maintained.
 
 | The clone has | Cite | Example |
 |---|---|---|
@@ -154,7 +160,8 @@ worked reasoning and the dated measurements, not the rule.
 
 **One rule from that model is short enough to inline, and load-bearing enough
 that it must not depend on an ignored file:** fukuii's own prior implementation
-code, including `.local/attempt_1/`, is **never a correctness oracle**. It is a
+code — including the earlier attempt kept at `[local-only]`
+`.local/init-config/` — is **never a correctness oracle**. It is a
 structural guide, telling you where something lived and what shape it was, never
 whether a value is right. Fukuii-authored *test vectors* are a different
 artifact and are exempt: where fukuii leads, a reviewed vector is a deliverable

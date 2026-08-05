@@ -140,11 +140,26 @@ that file belongs to**, then reports *"All tests passed"* over a partial run.
 The loud failure is the zero; the quiet one is the partial, and the partial is
 the one that gets believed.
 
-**So check the executed test count against the EXPECTED TOTAL** — not the exit
-code, and not merely against zero. A non-zero count is not evidence of a full
-run. Count tests, not files: a suite is a class, a test is one assertion block
-inside it, and one class commonly carries several, so the expected total is
-larger than the number of spec files.
+**So check the executed test count against the expected total** — not the exit
+code, and not merely against zero. **A non-zero count is not evidence of a full
+run.**
+
+**Read the expected total from a `testFull` run's own `Total number of tests
+run` line, not by counting from source.** `testFull` bypasses the cache, so its
+count is the one figure that cannot itself be a partial. Counting by hand is
+where this goes wrong.
+
+**Count registered test blocks — not files, and not assertions.** A suite is a
+class. A test is one registered block: `"subject" should "..." in { }`,
+`property("...") { }`, `Scenario("...") { }` — however many assertions execute
+inside it. **A table-driven `property` is ONE test however many vectors it
+drives**, which matters because `## Testing` assigns exactly that shape to
+vector tables. One class commonly carries several tests, so the expected total
+is larger than the number of spec files.
+
+**A suite that failed is never skipped.** `test` re-runs whatever failed on the
+previous run, so it cannot report a green over a prior failure. The trap is
+confined to the passing direction.
 
 **There is no `lint`, `format`, `typecheck` or coverage task, and no CI.** Match
 the style of surrounding code by hand rather than relying on a gate that does
@@ -360,15 +375,20 @@ This repository is **public**.
    default; check `.gitignore`'s current deny-list before assuming a path is
    held back, and never invert this into a blanket ignore — an agent, skill, or
    rule inside an ignored directory never reaches a clone.
-4. **`.claude/settings.json` denies reads of exactly seven patterns** — `.env`,
-   `.env.*`, `secrets/**`, `*.pem`, `*.key`, `*.keystore`, `*.p12`. **It is not a
+4. **`.claude/settings.json`'s read-deny list is short and specific. It is NOT a
    general "key material is protected" guarantee**, and reading it as one is the
-   failure this wording exists to prevent. Classes `.gitignore` treats as key
-   material and this list does **not** cover include `UTC--*` (the geth/mantis
-   keystore filename convention), `wallet.json`, `mnemonic.txt`, `*.jks`,
-   `*.pfx`, `id_rsa`/`id_ecdsa`/`id_ed25519`, `.netrc`, `.git-credentials`,
-   `credentials.json`, `jwt.hex`, `jwtsecret` and `*.nodekey`. Treat those as
-   unprotected by this mechanism and handle them accordingly.
+   failure this wording exists to prevent. **Read the list from
+   `.claude/settings.json` — that file is the authority**, and any list written
+   here would be a second copy going stale the moment the first one changes.
+
+   **The invariant that matters is the asymmetry, not the contents:
+   `.gitignore` covers materially more key-material classes than the deny list
+   does.** `.gitignore` stops a file being **committed**; the deny list stops it
+   being **read**. So a file can be safely un-committable and still readable into
+   agent context — from where it reaches reports, commit messages and subagent
+   prompts. Node-operator material is the live case: keystore files, wallet and
+   mnemonic exports, SSH and JWT secrets, node keys. **Assume a path is readable
+   unless you have checked `.claude/settings.json` and found it covered.**
 
    Two further limits, both documented rather than incidental. The patterns are
    `./`-anchored, which resolves against the **current directory**, not the
