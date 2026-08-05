@@ -113,7 +113,8 @@ sbt launcher reads that file and fetches it.
 ```
 sdk env            apply the JDK this repo declares (once, per shell)
 sbt compile        compile
-sbt test           run tests — may report success having run none, see below
+sbt test           run tests — may report success having run none or only
+                   some of them, see below
 sbt testFull       run tests uncached; the one to trust for a pass/fail claim
 ```
 
@@ -127,11 +128,23 @@ of its own.**
 
 **Use `testFull` before treating a run as evidence anything passed.** sbt 2
 caches the test result machine-wide, and that cache survives both `clean` and
-copying the project to a new directory — so `test` alone can report success
-having executed zero tests. This is documented, intended behavior rather than a
-defect: sbt's own reference calls the result *"cached machine-wide"* and names
-`testFull` as the uncached equivalent of sbt 1's `test`. **Check the executed
-test count, not the exit code.**
+copying the project to a new directory. This is documented, intended behavior
+rather than a defect: sbt's own reference calls the result *"cached
+machine-wide"* and names `testFull` as the uncached equivalent of sbt 1's
+`test`.
+
+**The cache is per-suite and keyed on inputs, and that is what makes `test`
+misleading rather than merely useless.** With nothing changed it executes
+nothing and reports success. Change one file and it executes **only the suite
+that file belongs to**, then reports *"All tests passed"* over a partial run.
+The loud failure is the zero; the quiet one is the partial, and the partial is
+the one that gets believed.
+
+**So check the executed test count against the EXPECTED TOTAL** — not the exit
+code, and not merely against zero. A non-zero count is not evidence of a full
+run. Count tests, not files: a suite is a class, a test is one assertion block
+inside it, and one class commonly carries several, so the expected total is
+larger than the number of spec files.
 
 **There is no `lint`, `format`, `typecheck` or coverage task, and no CI.** Match
 the style of surrounding code by hand rather than relying on a gate that does

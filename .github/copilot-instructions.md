@@ -34,8 +34,25 @@
 <!-- Language, runtime and build-tool versions, read from this repo's own
      manifest and lockfile. Record the major series, not an exact patch. -->
 
-No manifest or build-tool configuration exists on this branch yet — nothing to
-record, including no dependency-update configuration, until one lands.
+| | Version | Declared in |
+|---|---|---|
+| Scala | **3.3.x LTS** | `build.sbt` |
+| JDK | **25 LTS**, Eclipse Temurin | `.sdkmanrc` |
+| sbt | **2.0.x** | `project/build.properties` |
+| ScalaTest | **3.2.x**, `Test` scope only | `build.sbt` |
+
+**Scala is on the LTS line, and that is line membership rather than a version
+preference.** Scala Next is a different line this project does not run, not a
+higher number that was skipped.
+
+**The JDK distribution is named deliberately.** End-of-life dates differ between
+distributions by years, so a JDK version without a distribution does not say
+what is actually supported.
+
+**No compile-scope library dependency is declared, and that is deliberate.**
+Each one is added when a real need for it arises. A dependency with no present
+need is not an entry — do not add one because another project has it. There is
+no dependency-update configuration yet.
 
 ## Commands
 
@@ -44,8 +61,24 @@ record, including no dependency-update configuration, until one lands.
      lint or test task here" tells the model to match style by hand rather than
      trust a gate that does not exist. -->
 
-No task runner or build definition exists on this branch — there is no
-`build`, `test`, `lint`, or any other command to run yet. Do not invent one.
+```
+sdk env            apply the JDK this repo declares (once, per shell)
+sbt compile        compile
+sbt test           run tests — may report success having run none or only
+                   some of them, see "Testing"
+sbt testFull       run tests uncached; the one to trust for a pass/fail claim
+```
+
+**Run `sdk env` first, or you are not building against the declared toolchain.**
+`.sdkmanrc` names the JDK and its distribution; without applying it, sbt runs
+under whatever JDK the shell happens to provide.
+
+**These are sbt's own tasks; the build defines none of its own.**
+
+**There is no `lint`, `format`, `typecheck` or coverage task, and no CI.** Match
+the style of surrounding code by hand rather than relying on a gate that does
+not exist. Do not invent a command — one the build does not define will fail and
+read as a broken build.
 
 ## Structure
 
@@ -54,6 +87,29 @@ No task runner or build definition exists on this branch — there is no
 ## Testing
 
 <!-- How tests are run and what must pass before a change lands. -->
+
+**Use `sbt testFull`, not `sbt test`, before treating a run as evidence anything
+passed.** sbt 2 caches the test result machine-wide, and that cache survives
+both `clean` and copying the project to a new directory. This is documented,
+intended behavior rather than a defect; `testFull` is the uncached equivalent.
+
+**The cache is per-suite and keyed on inputs, and that is what makes `test`
+misleading rather than merely useless.** With nothing changed it executes
+nothing and reports success. Change one file and it executes **only the suite
+that file belongs to**, then reports *"All tests passed"* over a partial run.
+The loud failure is the zero; the quiet one is the partial, and the partial is
+the one that gets believed.
+
+**So check the executed test count against the EXPECTED TOTAL** — not the exit
+code, and not merely against zero. Count tests, not files: a suite is a class, a
+test is one assertion block inside it, and one class commonly carries several.
+
+**Test style is assigned by use case, not by author** — `AnyFlatSpec` for unit
+and integration, `AnyPropSpec` for property checks and vector tables,
+`AnyFeatureSpec` for acceptance. `build.sbt` names those three style artifacts
+individually and never the `scalatest` aggregate, so an unlisted style does not
+resolve and using one is a compile error. **Assertions are `assert(cond, clue)`,
+never matchers.** A bare `assert` failure prints nothing actionable.
 
 ## Code style
 
