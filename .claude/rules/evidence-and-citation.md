@@ -136,33 +136,34 @@ Looking for a gas-cost rule, search the number. Looking for a fork activation,
 search the block height. A search for the fork's *name* finds the comments and
 misses the implementation.
 
-## 4. Local-only references, and how they are marked
+## 4. Tracked text cites nothing a reader cannot reach
 
-**The convention, because this repository's tracked tree points at material that
-does not travel.** `.local/` is gitignored. A rule in the tracked tree that
-depends on a `.local/` path would be a dangling reference in every clone, and
-dangling references train readers to ignore references.
+**This repository is public. A tracked file never cites a private path.** Not as
+a dependency, and not as an elaboration behind a tag — a path under a gitignored
+tree resolves for nobody who clones this repo, so in tracked text it is cost
+without benefit, and it publishes the name and shape of material that was kept
+back on purpose.
 
-So: **every rule here states its substance inline and stands on its own. A
-`.local/` path is an elaboration, never a dependency.** Any such path is tagged
-`[local-only]`. If it is absent, nothing above stops working; you lose the
-worked reasoning and the dated measurements, not the rule.
+**So every rule here states its substance inline and stands on its own.** That
+is not a mitigation for the missing path; it is the reason no path is needed.
 
-- `[local-only]` `.local/research/reference-authority/2026-08-02-authority-model.md`
-  is the durable authority model: which reference is authoritative for which
-  question, on two axes (concern and era). It owns the ETC/ETH authority table,
-  the oracle rule and its boundary, and the corpus-versus-registry distinction
-  summarized above. **It outranks any branch plan**, and where it and a plan
-  disagree, it wins.
-- `[local-only]` `.local/research/stack/STACK_DEPENDENCY_GRAPH.md` owns why each
-  declared version is what it is. **Version rationale is not restated in this
-  rules directory**, so that there is exactly one source of truth for it.
+**The failure this prevents is not a broken link — it is a public document
+coupled to a private layout.** Rename a directory that no clone has, and a
+tracked rule needs editing. That has happened here, repeatedly, to a tree that
+changed names more than once; each time, public text moved because private
+storage did. A rule that cites nothing private cannot be dragged that way.
 
-**One rule from that model is short enough to inline, and load-bearing enough
-that it must not depend on an ignored file:** fukuii's own prior implementation
-code — including the earlier attempt kept at `[local-only]`
-`.local/init-config/` — is **never a correctness oracle**. It is a
-structural guide, telling you where something lived and what shape it was, never
-whether a value is right. Fukuii-authored *test vectors* are a different
-artifact and are exempt: where fukuii leads, a reviewed vector is a deliverable
-that becomes authority.
+**Where fuller reasoning genuinely exists and cannot be inlined, name it by
+what it is rather than by where it lives** — "the durable authority model", "the
+record of why each version is what it is". A reader with access will find it; a
+reader without one loses nothing they could have used. Machine-local pointers
+belong in `CLAUDE.local.md`, which `.gitignore` covers.
+
+**One rule from that authority model is short enough to inline, and load-bearing
+enough that it must not depend on anything external:** fukuii's own prior
+implementation code — every earlier attempt, whatever it is called and wherever
+it is kept — is **never a correctness oracle**. It is a structural guide,
+telling you where something lived and what shape it was, never whether a value
+is right. Fukuii-authored *test vectors* are a different artifact and are
+exempt: where fukuii leads, a reviewed vector is a deliverable that becomes
+authority.

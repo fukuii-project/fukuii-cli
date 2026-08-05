@@ -109,7 +109,10 @@ for p in data/keystore/UTC--2026-08-02T00-00-00.0Z--aabbcc \
 done
 
 echo "=== MUST BE IGNORED — local working files ==="
-for p in .local/ .local/research/stack/INDEX.md .local/reference-material/x \
+# Probe paths are deliberately generic. `--no-index` does not require the file to
+# exist, so naming real private documents would publish the shape of material the
+# ignore rule exists to hold back — and would couple this test to a private layout.
+for p in .local/ .local/nested/dir/file.md .local/another/x \
          SESSION_NOTES.md PLANNING.md SCRATCH.md notes.scratch.md plan.draft.md; do
   check IGNORED "$p"
 done

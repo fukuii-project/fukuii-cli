@@ -277,13 +277,15 @@ The gate bites exactly as claimed, and the error names the producing compiler.
 
 ## Where the reasoning lives
 
-- `[local-only]` `.local/research/reference-authority/2026-08-02-authority-model.md`
-  section 8 states this as an admissibility gate, with the sourcing.
-- `[local-only]` `.local/research/stack/STACK_DEPENDENCY_GRAPH.md` owns **why
-  each declared version is what it is**, including LTS lifetimes and the 3.9
-  transition. **Version rationale is not restated here**, deliberately: two
-  sources of truth for a version is how a stale pin survives a correction.
+**Everything this gate needs is stated above.** Two bodies of reasoning sit
+behind it and are deliberately not restated here:
 
-`[local-only]` marks a path under the gitignored `.local/` tree, absent in a
-clone. Everything above stands without it; see
-`.claude/rules/evidence-and-citation.md` section 4 for the convention.
+- **The durable authority model** states this as an admissibility gate, with the
+  full sourcing.
+- **The record of why each declared version is what it is** — LTS lifetimes, the
+  3.9 transition — owns version rationale. **It is not restated here**, because
+  two sources of truth for a version is how a stale pin survives a correction.
+
+Both are internal and do not travel with a clone, so they are named by what they
+are rather than by path — see `.claude/rules/evidence-and-citation.md` section 4
+for why tracked text cites nothing a reader cannot reach.
