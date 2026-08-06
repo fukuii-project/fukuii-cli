@@ -134,11 +134,27 @@ machine-wide"* and names `testFull` as the uncached equivalent of sbt 1's
 `test`.
 
 **The cache is per-suite and keyed on inputs, and that is what makes `test`
-misleading rather than merely useless.** With nothing changed it executes
-nothing and reports success. Change one file and it executes **only the suite
-that file belongs to**, then reports *"All tests passed"* over a partial run.
-The loud failure is the zero; the quiet one is the partial, and the partial is
-the one that gets believed.
+misleading rather than merely useless.** `test` resolves to `testQuick`
+semantics, so it re-runs only what it believes changed. Change one file and it
+executes **only the suite that file belongs to**, then reports *"All tests
+passed"* over a partial run.
+
+**Measured in this repository, three real runs.** The two failures are not
+equally visible, and the difference is the whole point:
+
+| Run | What sbt prints | Danger |
+|---|---|---|
+| `testFull` | `Total number of tests run: N` · `All tests passed` | none — the reference figure |
+| `test`, one spec touched | a **summary block with a smaller count**, and `All tests passed` | **this is the trap** |
+| `test`, nothing changed | **no ScalaTest summary block at all** — `No tests to run for Test / testQuick`, `Passed: Total 0` | announces itself |
+
+**The empty run is the loud one: it never prints `All tests passed`.** The
+partial run does, over a subset, and that is the one that gets believed. So the
+danger is not a green over zero — it is a green over a number that looks
+plausible.
+
+`scripts/check-test-run.sh` enforces this; `scripts/test-expected-total.txt`
+holds the reference figure and is regenerated from a `testFull` run.
 
 **So check the executed test count against the expected total** — not the exit
 code, and not merely against zero. **A non-zero count is not evidence of a full

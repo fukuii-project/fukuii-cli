@@ -1,0 +1,31 @@
+# Real sbt output captured from this repository on 2026-08-06.
+# The absolute repository path has been replaced with /repo -- this
+# repository is public and a tracked file carries no machine-local
+# path. Nothing the checker parses (the count lines) was touched.
+
+[info] entering thin client - BEEP WHIRR
+[info] starting sbt server in the background
+[info] use 'sbt shutdown' to shutdown the server
+[info]  
+[info] welcome to sbt 2.0.4 (Eclipse Adoptium Java 25.0.4)
+[info] loading project definition from /repo/project
+[info] set current project to fukuii (in build file:/repo/)
+[info] ToolchainPropSpec:
+[info] - the propspec artifact drives a table of named vectors
+[info] ToolchainFeatureSpec:
+[info] Feature: the featurespec artifact resolves and runs
+[info]   Scenario: a scenario states its steps in domain language
+[info] ToolchainFlatSpec:
+[info]     Given three style artifacts declared in build.sbt 
+[info] the flatspec artifact
+[info]     When the acceptance style is exercised 
+[info] - should resolve and evaluate an assertion
+[info]     Then the declared set and the rejected set are disjoint 
+[info] - should continue a subject with `it`, which is the reason for choosing FlatSpec
+[info] Run completed in 175 milliseconds.
+[info] Total number of tests run: 4
+[info] Suites: completed 3, aborted 0
+[info] Tests: succeeded 4, failed 0, canceled 0, ignored 0, pending 0
+[info] All tests passed.
+[success] elapsed time: 1 s
+[0J

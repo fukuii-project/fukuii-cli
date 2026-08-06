@@ -1,0 +1,19 @@
+# Real sbt output captured from this repository on 2026-08-06.
+# The absolute repository path has been replaced with /repo -- this
+# repository is public and a tracked file carries no machine-local
+# path. Nothing the checker parses (the count lines) was touched.
+
+[info] compiling 1 Scala source to /repo/target/out/jvm/scala-3.3.8/fukuii/test-classes ...
+[info] done compiling
+[info] ToolchainFlatSpec:
+[info] the flatspec artifact
+[info] - should resolve and evaluate an assertion
+[info] - should continue a subject with `it`, which is the reason for choosing FlatSpec
+[info] Run completed in 68 milliseconds.
+[info] Total number of tests run: 2
+[info] Suites: completed 1, aborted 0
+[info] Tests: succeeded 2, failed 0, canceled 0, ignored 0, pending 0
+[info] All tests passed.
+[success] elapsed time: 3 s
+[0J
+EXIT CODE: 0

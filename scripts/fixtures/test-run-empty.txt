@@ -1,0 +1,10 @@
+# Real sbt output captured from this repository on 2026-08-06.
+# The absolute repository path has been replaced with /repo -- this
+# repository is public and a tracked file carries no machine-local
+# path. Nothing the checker parses (the count lines) was touched.
+
+[info] Passed: Total 0, Failed 0, Errors 0, Passed 0
+[info] No tests to run for Test / testQuick
+[success] elapsed time: 0 s
+[0J
+EXIT CODE: 0

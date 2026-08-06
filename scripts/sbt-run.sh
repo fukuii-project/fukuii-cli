@@ -38,14 +38,24 @@
 #   the registered server started before the newest build-definition file, kill
 #   it so the invocation that follows reloads.
 #
-# GUARD 2 -- DEFERRED, and the trigger is precise.
-#   The prior implementation rejected `"project <id>" "clean" "compile"`, which
-#   silently runs only the project switch and still exits 0. VERIFIED HERE
-#   2026-08-06 rather than assumed: build.sbt declares exactly one project,
-#   `lazy val root = (project in file("."))`. With one project there is no
-#   `project <id>` switch to misuse, so the guard would have no reachable
-#   trigger and would be dead config from the day it landed.
-#   TRIGGER TO ADD IT: the build declares a second project.
+# GUARD 2 -- reject `project <id>` outright, rather than detect its misuse.
+#   The failure is an sbt `project <id>` selector swallowing the tasks chained
+#   after it: `"project foo" "clean" "compile"` runs only the switch and still
+#   exits 0. The ported version DETECTED that shape, which meant it could only
+#   fire once a second project existed to switch between -- dead config in a
+#   single-project build, and a guard that reports the mistake after it has
+#   already been made.
+#
+#   Refusing the form instead binds today, with one project, and keeps binding
+#   at twenty. Module-scoped `<mod>/<task>` syntax reaches every project, needs
+#   no switch, and does not exhibit the failure at all, so nothing legitimate
+#   is lost -- AGENTS.md § Commands already tells readers to use it.
+#
+#   ALL occurrences are refused, including a trailing bare `project foo`, which
+#   the ported version allowed. Through a batch wrapper that switch is a no-op:
+#   the process exits and the selection is gone, so the run does nothing and
+#   exits 0 -- a hollow success in its own right, which is the thing this
+#   wrapper exists to stop reporting.
 #
 # GUARD 3 -- hollow success.
 #   `clean` always invalidates cached compile state, so a `clean` followed by a
@@ -99,6 +109,32 @@ fi
   printf '## sbt-run.sh started %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf '## tasks: %s\n\n' "$*"
 } >"$LOG_FILE"
+
+# ─────────────────────────── Guard 2 ───────────────────────────
+# Checked before sbt is invoked at all, so the unsafe form never runs.
+REJECT=0
+IFS=';' read -ra TOKENS <<<"$*"
+for tok in "${TOKENS[@]}"; do
+  trimmed=$(printf '%s' "$tok" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+  if printf '%s' "$trimmed" | grep -qE '^project[[:space:]]+[^[:space:]]+'; then
+    REJECT=1
+  fi
+done
+
+if [ "$REJECT" -eq 1 ]; then
+  {
+    printf '## REJECTED before sbt ran: the task list contains an sbt\n'
+    printf '## project-id selector. Tasks chained after one are silently\n'
+    printf '## discarded while sbt still exits 0, and a bare selector through a\n'
+    printf '## batch invocation does nothing at all -- either way the run\n'
+    printf '## reports success having built nothing.\n'
+    printf '## Use module-scoped syntax instead: <mod>/<task>, e.g. foo/clean,\n'
+    printf '## foo/compile, foo/Test/compile. It reaches every project, needs no\n'
+    printf '## switch, and does not exhibit this failure.\n'
+  } >>"$LOG_FILE"
+  printf 'REJECTED log=%s exit=3 — project-id selector in the task list; use <mod>/<task>\n' "$LOG_FILE" >&2
+  exit 3
+fi
 
 # ─────────────────────────── Guard 1 ───────────────────────────
 ACTIVE_JSON="$REPO_ROOT/project/target/active.json"

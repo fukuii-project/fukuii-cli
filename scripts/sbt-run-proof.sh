@@ -98,6 +98,31 @@ echo "    *-build/ as project output, so a metabuild touch read as a real build.
 arm "metabuild-only advance" metabuild 97 clean compile; g3d=$?
 
 echo
+echo "###### GUARD 2 ######"
+echo "    Rejection, not detection: the unsafe form must be refused BEFORE sbt"
+echo "    is invoked, so it cannot run at all. Exit 3 is its own code."
+echo
+echo "--- ARM 7: a project-id selector with tasks chained after it. MUST be 3."
+arm "project foo; clean; compile" honest 3 "project foo" clean compile; g2a=$?
+
+echo
+echo "--- ARM 8: a BARE trailing project-id selector. MUST also be 3."
+echo "    The ported guard allowed this. Through a batch wrapper the switch is"
+echo "    lost when the process exits, so the run does nothing and exits 0."
+arm "clean; project foo" honest 3 clean "project foo"; g2b=$?
+
+echo
+echo "--- ARM 9: module-scoped syntax. MUST NOT be rejected."
+echo "    The remedy the rejection message names has to actually work, or the"
+echo "    guard refuses every route to the same outcome."
+arm "foo/clean; foo/compile" honest 0 foo/clean foo/compile; g2c=$?
+
+echo
+echo "--- ARM 10: a task merely CONTAINING the word project. MUST NOT reject."
+echo "    Near-miss control: a rejection keyed on a substring would fire here."
+arm "projectInfo" honest 0 projectInfo; g2d=$?
+
+echo
 echo "###### GUARD 1 ######"
 echo "    A disposable process this proof starts itself stands in for the sbt"
 echo "    server. lsof is stubbed to report THAT pid and no other, so the only"
@@ -147,11 +172,14 @@ echo "--- ARM 6: build definition OLDER than the server. MUST leave it alone."
 guard1_arm "fresh server" "2020-01-01 00:00:00" yes; g1b=$?
 
 echo
-if [ "$g3a" = 0 ] && [ "$g3b" = 0 ] && [ "$g3c" = 0 ] && [ "$g3d" = 0 ] && [ "$g1a" = 0 ] && [ "$g1b" = 0 ]; then
+if [ "$g3a" = 0 ] && [ "$g3b" = 0 ] && [ "$g3c" = 0 ] && [ "$g3d" = 0 ] \
+  && [ "$g2a" = 0 ] && [ "$g2b" = 0 ] && [ "$g2c" = 0 ] && [ "$g2d" = 0 ] \
+  && [ "$g1a" = 0 ] && [ "$g1b" = 0 ]; then
   echo "PROOF HOLDS: guard 3 reports 97 on a hollow run and on a metabuild-only"
-  echo "advance, stays silent on an honest build and on a clean-less task list;"
+  echo "advance and stays silent otherwise; guard 2 refuses both project-id"
+  echo "forms and passes module-scoped syntax and a near-miss task name;"
   echo "guard 1 kills a stale server and spares a fresh one."
   exit 0
 fi
-echo "PROOF DOES NOT HOLD (g3: $g3a $g3b $g3c $g3d / g1: $g1a $g1b)"
+echo "PROOF DOES NOT HOLD (g3: $g3a $g3b $g3c $g3d / g2: $g2a $g2b $g2c $g2d / g1: $g1a $g1b)"
 exit 1
