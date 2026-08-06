@@ -1,5 +1,8 @@
 {
   "permissions": {
+    "allow": [
+      "Bash(bash .local/scratch/*)"
+    ],
     "deny": [
       "Read(./.env)",
       "Read(./.env.*)",
@@ -19,6 +22,28 @@
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/bash-guard.py\"",
             "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/rules-on-create.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/comment-policy.py\"",
+            "timeout": 5
           }
         ]
       }
