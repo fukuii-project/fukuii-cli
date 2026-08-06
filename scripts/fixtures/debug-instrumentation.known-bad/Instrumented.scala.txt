@@ -1,0 +1,49 @@
+// Known-BAD fixture for scripts/check-debug-instrumentation.sh.
+//
+// Stored as .scala.txt, NOT .scala, on purpose: the collector discovers its
+// inputs with `git ls-files '*.scala'`, so a fixture carrying the real
+// extension would be found by a run against THIS repository and the repo would
+// fail its own gate. The proof copies these files into a throwaway repo under
+// their real extension, which is the same discovery path with a different tree.
+//
+// Every line below is one pattern the check must catch. They are separate
+// cases, not decoration: each one is what survives a specific plausible
+// weakening of the check, so dropping any single alternative from the pattern
+// list leaves a case here uncaught and the proof reports which.
+package org.fukuii
+
+object Instrumented:
+
+  // CASE 1 -- indented println. Survives a regression that anchors the pattern
+  // at line start (^println), which is the most tempting "tighten it" edit.
+  def compute(n: Int): Int =
+    println("entering compute")
+    n * 2
+
+  // CASE 2 -- System.out.print, without the ln. Survives a regression that
+  // matches only the exact token `System.out.println`.
+  def report(): Unit =
+    System.out.print("progress")
+
+  // CASE 3 -- System.err.print. A separate alternative from the one above; a
+  // regression dropping stderr keeps stdout working and looks fine.
+  def warn(): Unit =
+    System.err.print("something looked wrong")
+
+  // CASE 4 -- printStackTrace on a caught exception. This is the one that
+  // reads most like real error handling, so it is the likeliest to be
+  // deliberately excused by a future edit.
+  def risky(): Unit =
+    try compute(1)
+    catch case e: Exception => e.printStackTrace()
+
+  // CASE 5 -- an agent trace marker. The recorded incident used exactly this
+  // shape: an agent added <AGENT>-DEBUG traces to production files while
+  // chasing a failing test and left them uncommitted.
+  def trace(): Unit =
+    System.err.println("MITHRIL-DEBUG state=" + compute(2))
+
+  // CASE 6 -- a temporary-debug marker in a comment. Textual by design: the
+  // check reports it, and the remedy is to remove the marker.
+  // TEMP DEBUG remove before commit
+  def placeholder(): Unit = ()

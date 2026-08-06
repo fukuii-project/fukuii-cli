@@ -1,0 +1,42 @@
+// Known-GOOD fixture for scripts/check-debug-instrumentation.sh.
+//
+// A control proven only against bad input cannot be told apart from one that
+// always fails. This file is what the check must NOT fire on, and it is written
+// to sit close to the boundary rather than far from it -- a clean file with no
+// resemblance to the bad one would pass under almost any broken pattern.
+//
+// Stored as .scala.txt for the same reason as its known-bad sibling.
+//
+// THIS FILE DELIBERATELY CONTAINS NO BANNED TOKEN, NOT EVEN IN PROSE, AND THAT
+// IS THE CHECK'S DOCUMENTED BEHAVIOR RATHER THAN AN OVERSIGHT. The check is
+// textual, so a comment naming a banned call is reported exactly like the call
+// itself. Two successive drafts of this file named one in a comment and the
+// proof failed on both -- the fixture was wrong each time, not the check.
+// The failure directions are not symmetric: a false positive costs one reworded
+// comment, a false negative certifies instrumented code as clean.
+package org.fukuii
+
+/** Formats a value for a log line.
+  *
+  * Near-miss cases live here deliberately. Each one contains a substring of a
+  * banned pattern without being an instance of it, so a check widened until it
+  * matches "anything print-shaped" starts failing this arm and the proof says so.
+  */
+object Clean:
+
+  // NEAR MISS 1 -- an identifier CONTAINING "print" but not a print call.
+  def printable(n: Int): String = s"value=$n"
+
+  // NEAR MISS 2 -- a method whose name ends in Line, adjacent to nothing banned.
+  def formatLine(key: String, value: String): String = s"$key=$value"
+
+  // NEAR MISS 3 -- the word "trace" as a log LEVEL, which is sanctioned by
+  // .claude/rules/scala3-style.md's level table and must never be a hit.
+  val defaultLevel: String = "trace"
+
+  // NEAR MISS 4 -- reading a stack trace without printing one. getStackTrace
+  // is not the banned call, and must not be reported.
+  def stackTraceDepth(e: Throwable): Int = e.getStackTrace.length
+
+  def describe(n: Int): String =
+    formatLine("computed", printable(n))
