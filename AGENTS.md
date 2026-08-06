@@ -416,6 +416,13 @@ lived and what shape it was; it is not an authority for what a thing is
 harder to catch than a wrong value. `.claude/rules/evidence-and-citation.md` §4
 owns the rule; `.claude/rules/nomenclature.md` says what to draw from instead.
 
+**Fix what is in the file you already opened; do not chase.** A cheap, obvious
+fix in a file you are editing is worth making. Following it into callers or
+related files is how a scoped change becomes an unreviewable sweep — record what
+you saw elsewhere instead. Cleanup commits separately from the work that opened
+the file; the risk split that governs how is house commit convention, and it is
+not restated here.
+
 **Comments explain why, never what.** Code says what it does. A comment that
 narrates the code restates it and then rots independently of it. Never record
 migration provenance, a rebuild's history, or an agent's working notes in
