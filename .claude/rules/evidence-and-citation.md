@@ -167,3 +167,16 @@ telling you where something lived and what shape it was, never whether a value
 is right. Fukuii-authored *test vectors* are a different artifact and are
 exempt: where fukuii leads, a reviewed vector is a deliverable that becomes
 authority.
+
+**The same non-authority applies to NAMES, and this has to be said rather than
+inferred** — because the paragraph above blesses a prior implementation as *"a
+structural guide, telling you where something lived and what shape it was"*, and
+a name reads far more like *shape* than like a value. A reader reasoning from
+that sentence alone could conclude that inheriting a name is exactly what it
+licenses. It is not. **Do not carry a prior type or symbol name forward merely
+because the shape matches** — that imports an un-reviewed naming choice on the
+"it is already there" basis this rule forbids for values, and it is harder to
+catch, because a name that fits reads as a name that was chosen.
+
+`.claude/rules/nomenclature.md` states which vocabulary a name may be drawn from
+instead. This rule is what stops the prior tree being used as a shortcut past it.

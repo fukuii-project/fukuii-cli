@@ -308,9 +308,38 @@ class ThingSpec extends AnyFeatureSpec with GivenWhenThen:
 
 ## Code style
 
-<!-- Indentation, line endings, naming conventions, import ordering — and for
-     each, whether a formatter or linter enforces it or it is convention only.
-     An agent needs to know which rules are checked and which are trusted. -->
+**Nothing here is enforced by a tool.** There is no formatter, no linter, no
+static-analysis config and no CI in this repository — `## Commands` is the
+authority for what exists. Every rule below is checked by review, so it binds
+by being read.
+
+**Three rules carry the detail. They are the authority; this section is the
+map.**
+
+| Rule | Governs |
+|---|---|
+| `.claude/rules/scala3-style.md` | Scala 3 idiom, design rules, `given`/`using` semantics, logging conventions, and the lint prohibitions to switch on when a linter first lands |
+| `.claude/rules/nomenclature.md` | The vocabulary a name is drawn from — identifiers, types, and prose |
+| `.claude/rules/comment-content.md` | What a comment is for, and what must never appear in one |
+
+Each is scoped to `**/*.scala`, so it loads when Scala is opened and **not**
+during design discussion. The two rules below are the part that must reach you
+before a file exists, so they are stated here, where they load every session.
+
+**A name is chosen once and read forever, so choose it from the registry, never
+from a prior implementation.** An earlier attempt tells you where something
+lived and what shape it was; it is not an authority for what a thing is
+*called*. A name that fits reads as a name that was chosen, which is why this is
+harder to catch than a wrong value. `.claude/rules/evidence-and-citation.md` §4
+owns the rule; `.claude/rules/nomenclature.md` says what to draw from instead.
+
+**Comments explain why, never what.** Code says what it does. A comment that
+narrates the code restates it and then rots independently of it. Never record
+migration provenance, a rebuild's history, or an agent's working notes in
+source — that material belongs to this project's records, not to a file that
+ships. **Build definitions are a different register**: in `build.sbt` and
+`project/`, rationale *is* the content, and it must not be stripped as narration
+nor carried into `src/`.
 
 ## Branching
 
@@ -325,6 +354,11 @@ begins after the rebuild — work moves onto topic branches reaching `main` by
 pull request, `main` stays releasable, and branch protection is configured.
 **The operator states when that is in effect. Do not infer it** from the
 presence of contributors, of CI, or of a protected branch.
+
+**One repo-local rule is held pending this same signal.**
+`.claude/rules/comment-content.md` defers its inline `#NNNN` issue-and-pull-request
+citation form until the pull-request workflow is in effect; the operator's
+declaration above is the only thing that activates it.
 
 **When a local branch is used, name it conventionally:** a prefix plus a short
 kebab-case description. Use the same set this repository uses for commit types —
