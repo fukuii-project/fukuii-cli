@@ -20,7 +20,7 @@ hook is for.
 
 THE SEAM, STATED. ROADMAP.md lives under .local/, which is gitignored, so it
 does NOT travel to a clone. This hook therefore degrades to silence outside this
-machine. That is correct behaviour, not a defect: a clone has no roadmap to
+machine. That is correct behavior, not a defect: a clone has no roadmap to
 inject.
 
 HOW A DEFECT IS MADE VISIBLE, AND WHY NOT ON EXIT 0. An earlier version of this

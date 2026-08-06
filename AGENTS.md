@@ -157,6 +157,42 @@ drives**, which matters because `## Testing` assigns exactly that shape to
 vector tables. One class commonly carries several tests, so the expected total
 is larger than the number of spec files.
 
+**Two more shapes in which sbt reports success having done nothing. All three
+are the same family, and the other two are not about the test cache.**
+
+**A stale detached sbt server answers without rebuilding.** sbt's persistent
+server does not reload `build.sbt`, `project/*.scala` or
+`project/build.properties` on its own. A server left running from before a
+build-definition edit is serving a stale settings graph, and will answer
+`clean`, `compile` and `Test/compile` with a fast `[success]` having recompiled
+nothing. If a build-definition change appears to have had no effect, suspect the
+server before the change. **Do not use `show <mod>/Compile/compile`'s
+`Analysis: N Scala sources` line to judge staleness** — it does not reliably
+report the target module's own scope, even against a fresh server.
+
+**A `project <id>` selector followed by chained tasks runs only the switch.**
+`"project foo" "clean" "compile"` performs the project switch, never runs the
+tasks, and still exits 0. **Use module-scoped `<mod>/<task>` syntax** —
+`foo/clean`, `foo/compile` — which has no such failure mode and needs no switch.
+
+**Checking whether `target/` changed does not detect either one.** Any sbt
+invocation, including a bare project switch, touches `target/global-logging` and
+each project's `streams`, `update` and `meta` directories. Only the real
+compile-output paths are evidence of a real build.
+
+**And the residual, because the guard above is narrower than it looks.** A
+hollow run with no `clean` and no project-lead selector is **indistinguishable
+from a legitimate incremental no-op** — both do nothing and both exit 0. Nothing
+detects that case, so a green from an incremental run is weaker evidence than a
+green from a clean one. When a result has to be trusted, make it a clean run.
+
+> **Inherited and unverified.** Both were observed in this project's prior
+> implementation on 2026-07-16, against a multi-module layout this repository
+> does not yet have, and neither has been reproduced here — this repo has one
+> module and no `src/main`. They are recorded because both are properties of sbt
+> rather than of that codebase, and because the cost of rediscovering them is a
+> debugging session spent trusting a green.
+
 **A suite that failed is never skipped.** `test` re-runs whatever failed on the
 previous run, so it cannot report a green over a prior failure. The trap is
 confined to the passing direction.
@@ -273,9 +309,12 @@ specific objection, not restate the style's general merits.
 - **`RefSpec`** — its advantage is real (tests as methods, so fewer function
   literals and faster compiles on generated suites, which the L10 Ethereum
   reference-test harness could want). It conflicts with the warning ratchet
-  planned for this repo — no ratchet is configured on this branch, because no
-  build is. Measured in the pre-rebuild tree on Scala 3.3.8 / ScalaTest 3.2.20,
-  neither of which is pinned here yet:
+  this repository intends — **the ratchet is not configured yet**, and
+  `.claude/protocols/warning-ratchet.md` is why that matters: a category gated
+  before the code exists is free, and gated afterwards is a migration.
+  Measured in the pre-rebuild tree on **the same Scala 3.3.8 and ScalaTest
+  3.2.20 this repository now pins**, so the measurement applies directly rather
+  than by analogy:
 
   | test-method body | result |
   |---|---|
@@ -287,6 +326,50 @@ specific objection, not restate the style's general merits.
   exemption. If the reference-test harness later shows a real compile-time
   problem, revisit with that measurement in hand — the ratchet is the thing to
   weigh it against, and generated code can emit the ascription for free.
+
+### Writing a test — three standing rules
+
+**No `Thread.sleep`.** Wait on the condition, not on the clock — an
+`eventually`-style retry or a probe expectation. A sleep is either too short and
+flaky or too long and slow, and it is usually both on different machines.
+
+**No skipped test without a stated gate condition.** A one-line reason naming
+what would re-enable it. A test skipped with no condition is a deleted test that
+still shows up in the count.
+
+**One behavior per test, not a scenario script.** A test that walks through six
+steps fails at step four and tells you almost nothing; six tests tell you which
+one broke.
+
+**Deterministic across machines.** No dependence on wall-clock time, filesystem
+ordering, locale, or an available port.
+
+### Before adding a spec, check whether an existing one extends
+
+Tests that differ only by input and expected output belong in **one table-driven
+test**, not N near-identical blocks — which is what `AnyPropSpec` plus
+`TableDrivenPropertyChecks` is assigned to above. Shared setup or assertion
+logic goes in a helper; the test body keeps whatever makes that case unique, so
+a reader is not chasing behavior into a fixture.
+
+**The tell:** several `should` blocks in one file whose bodies differ only in
+literals.
+
+### The test count only goes up without a recorded reason
+
+Record the executed test count before a change and compare after. **A negative
+delta — even by one — means a test was silently dropped**, most often when a
+spec is deleted during a rewrite and its replacement is never written. Do not
+accept a lower count as the new baseline without stating why it is correct.
+
+**This is a ratchet, not a reading method.** `## Commands` owns how to obtain a
+trustworthy count and what to compare it against — including why a `testFull`
+run is the only figure that cannot itself be partial. This rule adds one thing
+to that: the number it produces must not fall between runs.
+
+The two catch different failures with the same instrument. There, a count below
+the expected total means **this run** was partial. Here, a count below the
+**previous run** means the suite is.
 
 ### FeatureSpec, when it arrives
 
@@ -340,6 +423,28 @@ source — that material belongs to this project's records, not to a file that
 ships. **Build definitions are a different register**: in `build.sbt` and
 `project/`, rationale *is* the content, and it must not be stripped as narration
 nor carried into `src/`.
+
+## Protocols
+
+`.claude/protocols/` holds this repository's own operating discipline — each one
+a moment, an actor, and a trigger. **The directory listing is authoritative, not
+this table.**
+
+**These do NOT load automatically. `.claude/rules/` does; this directory does
+not**, so nothing puts a protocol in front of you at the moment it applies. Read
+the one that matches before you act, not the ones you happen to remember.
+
+| Protocol | The moment it governs |
+|---|---|
+| `dead-code-review.md` | Before deleting code that looks unused |
+| `warning-ratchet.md` | Configuring a lint or warning category — the window closes once code exists |
+| `scope-boundary.md` | A scoped task that appears to need work outside its scope |
+
+**Where a protocol carries a fact you cannot afford to miss, that fact is also
+in a rule that loads on its own** — so the protocol holds the procedure and the
+rule holds the trap. `dead-code-review.md` is the worked case: its hazard, that a
+`given` can have zero textual references and still be live, is stated in
+`.claude/rules/evidence-and-citation.md` §3, which loads every session.
 
 ## Branching
 

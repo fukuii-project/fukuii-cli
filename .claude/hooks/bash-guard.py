@@ -30,7 +30,7 @@ MECHANISM, stated precisely because the obvious guess is wrong. With
 assumed. It is why a quoted keyword is safe: the token never compares equal to
 the bare keyword. The first draft of this file claimed shlex stripped quotes and
 happened to pass its tests anyway, which is the more dangerous kind of wrong --
-right behaviour resting on a false explanation, so the next person to edit it
+right behavior resting on a false explanation, so the next person to edit it
 reasons from the false one. The consequence is real and is handled below:
 unwrapping `bash -c "..."` requires stripping the quotes by hand.
 

@@ -136,6 +136,46 @@ Looking for a gas-cost rule, search the number. Looking for a fork activation,
 search the block height. A search for the fork's *name* finds the comments and
 misses the implementation.
 
+### A second pass, differently patterned, before "clean"
+
+One pass is not evidence of completeness. Before declaring a pattern family
+clean, run the sweep again with a **differently worded** pattern set — synonyms,
+partial matches, adjacent field and method names. If the two passes disagree,
+the broader count wins, and **the disagreement is itself the finding**: it means
+the family is more slippery than one pattern can capture.
+
+### The Scala blind spot: a symbol consumed through `using`
+
+The absence rule above has a specific, structural instance in this codebase, and
+it is invisible rather than merely missed.
+
+**A `given` instance summoned by the compiler's implicit search is named
+nowhere.** It has zero textual references and is not dead. No grep, however
+broadly patterned, can see the consumer — this is not a weak search, it is a
+search looking for something that was never written down.
+
+So a "no callers" claim about anything reachable by implicit resolution is
+closed **by removal and compile**, never by searching. Until that has been done,
+the honest phrasing is *"a search shows no references — confirm by removal and
+compile"*, never *"confirmed dead."*
+
+`.claude/protocols/dead-code-review.md` owns what to do with such a candidate;
+this section owns why a search cannot close the question.
+
+### A fix applied to the known sites is a partial rollout
+
+When you fix a known-bad pattern across the files already flagged, **sweep for
+the same pattern shape across every structurally similar file** — not just the
+list you were handed. A partial rollout is a live defect waiting for an unlucky
+trigger, and it looks exactly like a completed one.
+
+**The same applies to a wrong claim in prose, and it is the more common case
+here.** When a statement turns out to be wrong in one document, grep the *exact
+phrase* across the whole tree before treating the fix as scoped to that file.
+Copy-paste drift is the documentation form of a partial rollout: a claim
+repeated in eleven files, corrected in the two that a reviewer happened to cite,
+reads as fixed.
+
 ## 4. Tracked text cites nothing a reader cannot reach
 
 **This repository is public. A tracked file never cites a private path.** Not as
@@ -180,3 +220,11 @@ catch, because a name that fits reads as a name that was chosen.
 
 `.claude/rules/nomenclature.md` states which vocabulary a name may be drawn from
 instead. This rule is what stops the prior tree being used as a shortcut past it.
+
+**And name the source, never a label that hides it.** A shorthand like "AS-IS"
+for a validation source reads as a neutral methodology step when what it
+actually means is "this project's own prior implementation" — which is the
+circularity this section exists to prevent, made invisible by the abbreviation.
+Name the thing being cited, so the circularity is visible on the surface of the
+citation rather than recoverable only by someone who already knows what the
+shorthand stands for.
