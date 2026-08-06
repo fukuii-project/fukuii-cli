@@ -1,0 +1,98 @@
+package org.fukuii.fixture
+
+// Known-good fixture for scripts/warning-ratchet-proof.sh.
+//
+// It exercises the SAME constructs as the known-bad fixture, written correctly.
+// That is the whole point: a control proven only against bad input cannot be
+// told apart from one that always fails. An empty file would compile under any
+// flag set, including none, and would calibrate nothing.
+//
+// Every case below is the remedy the corresponding category asks for, so this
+// file also documents what satisfying the ratchet actually looks like.
+
+import scala.collection.mutable.ListBuffer
+import scala.language.implicitConversions
+
+object Current:
+  def live(): Int = 1
+
+object Clean:
+
+  // unused-import: the import is used.
+  def usesImport(): Int =
+    val buf = ListBuffer(1, 2)
+    buf.size
+
+  // unused-private: the private member is called.
+  private def helper(): Int = 2
+  def usesHelper(): Int = helper()
+
+  // unused-local: the local is read.
+  def usesLocal(): Int =
+    val kept = 3
+    kept
+
+  // unused-patvar: the bound variable is read.
+  def usesPatvar(o: Option[Int]): Int = o match
+    case Some(bound) => bound
+    case None        => 0
+
+  // unused-explicit: the parameter is used.
+  val usedExplicit: Int => Int = n => n + 1
+
+  // value-discard: the Unit method's body is Unit. `: Unit` is the documented
+  // ascription for discarding deliberately.
+  def noValueDiscard(): Unit =
+    Current.hashCode(): Unit
+
+  // nonunit-statement: nothing is discarded mid-block.
+  def noNonUnitStatement(): Int =
+    val xs = List(1, 2)
+    xs.head
+
+  // tostring-interpolated: the conversion is explicit, so it is a decision
+  // rather than an accident.
+  def explicitToString(): String =
+    val xs = List(1, 2)
+    s"values: ${xs.toString}"
+
+  // deprecation: the live method is called.
+  def usesCurrent(): Int = Current.live()
+
+  // feature: the language import above is present.
+  implicit def intToStr(n: Int): String = n.toString
+
+  // unchecked: the type test is on a type whose arguments are not erased away.
+  def checkedTypeTest(a: Any): Int = a match
+    case _: String => 11
+    case _         => 0
+
+  // infer-union: the element type is stated, so nothing is inferred.
+  def noInferUnion(): List[Any] = List[Any](1, "one")
+
+  // recurse-with-default: the recursive call passes the parameter.
+  def recurses(n: Int): Int = if n <= 0 then 0 else recurses(n - 1)
+
+// enum-comment-discard: one comment per case, so none is dropped.
+enum Colour:
+  /** The red case. */
+  case Red
+
+  /** The green case. */
+  case Green
+
+// private-shadow: the subclass does not redeclare the inherited name.
+class Base:
+  protected val shared: Int = 0
+class Derived extends Base:
+  def read(): Int = shared
+
+// type-parameter-shadow: the method's type parameter has its own name.
+class Shadower[A]:
+  def shadowing[B](b: B): B = b
+
+// safe-init: fields are assigned before they are read.
+class Initialized:
+  val second: Int = 5
+  val first: Int = compute()
+  def compute(): Int = second

@@ -29,5 +29,5 @@ class ToolchainFeatureSpec extends AnyFeatureSpec with GivenWhenThen:
       Then("the declared set and the rejected set are disjoint")
       assert(
         declared.intersect(rejected).isEmpty,
-        s"declared and rejected styles overlap: ${declared.intersect(rejected)}"
+        s"declared and rejected styles overlap: ${declared.intersect(rejected).toString}"
       )

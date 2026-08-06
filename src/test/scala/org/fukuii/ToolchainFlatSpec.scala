@@ -32,7 +32,7 @@ class ToolchainFlatSpec extends AnyFlatSpec:
 
   "the flatspec artifact" should "resolve and evaluate an assertion" in {
     val squares = (1 to 4).map(n => n * n)
-    assert(squares == Seq(1, 4, 9, 16), s"squares of 1..4, got $squares")
+    assert(squares == Seq(1, 4, 9, 16), s"squares of 1..4, got ${squares.toString}")
   }
 
   it should "continue a subject with `it`, which is the reason for choosing FlatSpec" in {

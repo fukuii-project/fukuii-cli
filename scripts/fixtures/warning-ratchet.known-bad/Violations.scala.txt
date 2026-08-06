@@ -1,0 +1,100 @@
+package org.fukuii.fixture
+
+// Known-bad fixture for scripts/warning-ratchet-proof.sh. ONE violation per
+// warning category build.sbt promotes to an error, so the proof can report
+// WHICH cases fired rather than only that something did.
+//
+// STORED AS .scala.txt ON PURPOSE. A real .scala file here would be found by
+// `git ls-files '*.scala'` -- the discovery this repository's own gates use --
+// and sbt would compile it as part of the build. The proof renames it on copy,
+// so discovery still runs against a realistic name.
+//
+// EVERY CASE BELOW WAS OBSERVED FIRING. Several obvious constructions do not
+// fire at this compiler version and were replaced: an unused explicit parameter
+// on an ordinary method is silent (the anonymous-function form below is not),
+// an if/else over two types does not infer a union (a type argument does), and
+// a discarded literal method call is not a non-Unit statement (a discarded
+// value reference is). Re-derive with the proof rather than editing a case to
+// something that reads more naturally; "reads naturally" is how a case stops
+// discriminating.
+
+// CASE unused-import
+import scala.collection.mutable.ListBuffer
+
+object Retired:
+  @deprecated("fixture", "0.1") def gone(): Int = 1
+
+object Violations:
+
+  // CASE unused-private
+  private def neverCalled(): Int = 2
+
+  // CASE unused-local
+  def unusedLocal(): Int =
+    val dead = 3
+    4
+
+  // CASE unused-patvar
+  def unusedPatvar(o: Option[Int]): Int = o match
+    case Some(bound) => 5
+    case None        => 0
+
+  // CASE unused-explicit -- the anonymous-function form. An unused parameter on
+  // a named method is NOT reported at this compiler version.
+  val unusedExplicit: Int => Int = spare => 6
+
+  // CASE value-discard -- a non-Unit expression in Unit position.
+  def valueDiscard(): Unit =
+    Retired.hashCode()
+
+  // CASE nonunit-statement -- a value reference discarded mid-block. Distinct
+  // from value-discard above, and neither implies the other.
+  def nonUnitStatement(): Int =
+    val xs = List(1, 2)
+    xs.head
+    7
+
+  // CASE tostring-interpolated
+  def tostringInterpolated(): String =
+    val xs = List(1, 2)
+    s"values: $xs"
+
+  // CASE deprecation
+  def usesDeprecated(): Int = Retired.gone()
+
+  // CASE feature -- an implicit conversion without the language import.
+  implicit def intToStr(n: Int): String = n.toString
+
+  // CASE unchecked -- an erased generic in a type test.
+  def uncheckedTypeTest(a: Any): Int = a match
+    case _: List[Int] => 11
+    case _            => 0
+
+  // CASE infer-union -- an inferred union TYPE ARGUMENT.
+  def inferUnion() = List(1, "one")
+
+  // CASE recurse-with-default
+  def recurseWithDefault(n: Int = 13): Int = recurseWithDefault()
+
+// CASE enum-comment-discard -- one scaladoc comment over several cases.
+enum Colour:
+  /** One comment, two cases. */
+  case Red, Green
+
+// CASE private-shadow. `shared` is READ below so this cannot also fire as an
+// unused private member, which would make the case pass for the wrong reason.
+class Base:
+  protected val shared: Int = 0
+class Derived extends Base:
+  private val shared: Int = 1
+  def read(): Int = shared
+
+// CASE type-parameter-shadow
+class Shadower[A]:
+  def shadowing[A](a: A): A = a
+
+// CASE safe-init -- a field read through a method before it is assigned.
+class Uninitialized:
+  val first: Int = compute()
+  def compute(): Int = second
+  val second: Int = 5

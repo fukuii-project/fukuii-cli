@@ -35,6 +35,109 @@ ThisBuild / organization := "org.fukuii"
 ThisBuild / scalacOptions ++= Seq("-release", "25")
 ThisBuild / javacOptions ++= Seq("--release", "25")
 
+// The warning ratchet: every category below is an ERROR, from this commit.
+//
+// WHY NOW, AND WHY NOT LATER. A warning category costs nothing to gate before
+// the code it would flag exists, and is a migration afterwards. There is one
+// moment at which that cost is zero, it does not recur, and writing ungated
+// code destroys it. This repository is at that moment: no src/main, and a
+// handful of test sources. `.claude/protocols/warning-ratchet.md` holds the
+// full warrant; this is its application.
+//
+// WHY AS ERRORS RATHER THAN WARNINGS TO BE WORKED DOWN. A warning nobody must
+// fix is a warning nobody fixes. Enabling a category and leaving it advisory
+// recreates, deliberately, the gap the ratchet exists to close.
+//
+// SCOPE IS ThisBuild, SO THIS BINDS `Test` TOO, DELIBERATELY. Test sources go
+// through the same compiler as main sources, and test code is code: a category
+// left ungated in Test accumulates exactly as it would anywhere else. Two clue
+// strings were adjusted for -Wtostring-interpolated when this landed, which is
+// what the ratchet costs while the tree is this small.
+//
+// ─────────────────── Do NOT collapse this list to -Wall ───────────────────
+//
+// -Wall exists at this compiler version and reads like the obvious shorthand.
+// It is not: measured against a fixture carrying one violation per category,
+// -Wall is a strict SUBSET. It misses -deprecation, -feature and -Xlint, and
+// the first two are the most widely recommended flags in the language. A build
+// saying -Wall would report a control that is not operating.
+//
+// -Wall plus those three was measured EQUIVALENT to the enumeration below, so
+// the list is not stricter than -Wall+3 — it is legible, which -Wall is not.
+// A reader can see what is enforced without running the compiler.
+//
+// Re-derive rather than trusting this paragraph, with
+// `scripts/warning-ratchet-proof.sh`, whose fixture carries the cases.
+//
+// ───────────────── A vanished flag cannot fail silently ─────────────────
+//
+// An option the compiler does not recognize is reported as
+// `bad option '-Xnope' was ignored` — a WARNING, which -Werror turns into an
+// error. Measured on this compiler. So a flag renamed or withdrawn by a future
+// Scala release breaks the build loudly at the bump, rather than being dropped
+// while the build still reports success. -Werror is what closes that hole, and
+// it is the reason a private -Y option is admissible below.
+ThisBuild / scalacOptions ++= Seq(
+  // Warn on deprecated API use, and on features requiring an explicit import
+  // (implicit conversions, postfix operators, reflective calls). Neither is
+  // covered by -Wall. `-unchecked` reports where an erased generic makes a
+  // type test weaker than it appears.
+  "-deprecation",
+  "-feature",
+  "-unchecked",
+
+  // Unused imports, private members, locals, pattern variables and parameters.
+  // `:all` rather than `:linted`, which omits locals and patvars.
+  "-Wunused:all",
+
+  // The two halves of "a non-Unit value was thrown away". They are distinct
+  // categories with distinct diagnostics and one does not imply the other:
+  // -Wvalue-discard is a non-Unit expression in Unit position, -Wnonunit-
+  // statement is a non-Unit statement discarded mid-block.
+  "-Wvalue-discard",
+  "-Wnonunit-statement",
+
+  // Interpolating a reference type relies on its toString. For a client whose
+  // domain is hashes and byte arrays that is a live defect rather than a
+  // stylistic one — an interpolated Array[Byte] renders as `[B@1a2b3c`. It
+  // does NOT fire for Strings or primitives, so ordinary `s"n=$count"` clues
+  // are unaffected; an explicit `.toString` records the decision where the
+  // implicit conversion really is wanted.
+  "-Wtostring-interpolated",
+
+  // An inferred union type argument is almost always an unintended widening
+  // rather than a design choice.
+  "-Winfer-union",
+
+  // Two narrow categories with no cost and a real failure behind each: a
+  // scaladoc comment silently dropped because it sits above several enum
+  // cases, and a recursive call that re-supplies a default argument, which is
+  // the shape that fails to terminate.
+  "-Wenum-comment-discard",
+  "-Wrecurse-with-default",
+
+  // A plain function literal where a context function was wanted. Enabled for
+  // completeness; no case that triggers it as a WARNING could be constructed
+  // at this compiler version — the shapes tried were type errors instead — so
+  // unlike every other entry here it is unexercised by the proof's fixture.
+  "-Wwrong-arrow",
+
+  // A private field shadowing a superclass field, and a type parameter
+  // shadowing one already in scope. Both silently change which binding is
+  // read; neither is covered by -Wall.
+  "-Xlint:all",
+
+  // Initialization-order safety: a field read before it is assigned. Spelled
+  // in the compiler's PRIVATE namespace at this version and promoted to
+  // -Wsafe-init on later lines, so the name is transitional — which is
+  // admissible only because of the -Werror property above, and is the trigger
+  // to rename this entry when the compiler line moves.
+  "-Ysafe-init",
+
+  // The promotion itself. Everything above is advisory without it.
+  "-Werror"
+)
+
 // ScalaTest, named one style artifact at a time.
 //
 // The framework is not selected here. AGENTS.md "## Testing" already commits, in
