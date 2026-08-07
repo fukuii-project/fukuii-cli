@@ -16,12 +16,29 @@ Five requirements, from scripts/README.md, and where each lands:
   1. fail on known-bad, naming which case fired   -> arms 4, 9
   2. pass on known-good                           -> arm 5
   3. "could not run" distinct from "clean"        -> arms 6, 7, 12 (exit 2, not 0)
-  4. catch a plausible seeded regression          -> arms 10, 11, 13
+  4. catch a plausible seeded regression          -> arms 10, 11, 13, 17, 19
   5. touch nothing in this repository             -> every arm builds a throwaway
                                                      tree and passes it as ROOT
 
 Arm 8 is the discriminator between the two rule classes, and arm 12 is the one
 that keeps the instrument from blaming the rules for its own blind spot.
+
+ARMS 14-18 EXIST BECAUSE THIS SUITE ONCE PASSED OVER A DEAD CHECK. The report's
+subagent section keyed on an `agent_id` field, and no payload this vendor build
+sends has ever carried one -- so that section had no reachable positive state
+and could only print its own negative branch. The suite was green throughout,
+because its only subagent coverage (arms 3-4) fed a hand-written payload
+containing the field. A fixture can be committed, immovable and driven through
+the real dispatch path, and still certify nothing if the shape it feeds does not
+occur. Arms 14-18 are built from the shape the event actually produces.
+
+Both directions are required and neither is sufficient. Arm 14 fires on a repeat
+load; arm 15 stays silent on a log that carries a glob load which did NOT
+repeat. Arm 15 is the discriminating one -- a detector keyed on the presence of
+a glob record rather than on a repeat passes arm 14 and fails only there.
+Verified by grade-1 ablation, both directions, 2026-08-07: killing the detector
+fails arms 14 and 18 and no other; forcing it to fire always fails arms 15 and
+16 and no other.
 
 WHERE THE KNOWN-BAD REFERENCE RESOLVES FROM. The fixtures are literals in this
 tracked file at a stable path. They are not read from the repository's own
@@ -107,6 +124,19 @@ def read_log(root):
         return [json.loads(x) for x in fh if x.strip()]
 
 
+def subagent_section(out):
+    """Just the report's subagent section.
+
+    Sliced out rather than searched whole, so an arm cannot pass on a word that
+    appears somewhere else in the report. The markers to test it with are
+    distinct strings, never the word OBSERVED -- which is a substring of NOT
+    OBSERVED, so an arm keyed on it would pass in both directions and prove
+    nothing. Use "repeat load(s) across" for the fired branch, "NOT OBSERVED"
+    for the silent one, "SEPARATELY —" for a non-glob repeat.
+    """
+    return out.split("## Subagent dispatches", 1)[-1].split("## Result", 1)[0]
+
+
 def mutate(substitution):
     """Copy the hook with one edit applied. Returns (path, applied)."""
     with open(HOOK) as fh:
@@ -158,10 +188,14 @@ def main():
           f"exit={proc.returncode}")
     shutil.rmtree(root)
 
-    # ---- ARM 3: a subagent payload is recorded AS a subagent --------------
-    # This is the arm that makes the log able to answer whether the event fires
-    # for subagent dispatches. Without it the report's subagent section could
-    # only ever say "no records", which is not the same claim as "does not fire".
+    # ---- ARM 3: FORWARD COVER for an agent_id no build has ever sent -------
+    # Read these two for exactly what they are. They feed a payload shape this
+    # vendor build does not produce -- measured 2026-08-07, 86 records over four
+    # sessions, neither agent_id nor agent_type on any of them -- so they prove
+    # the code would handle such a build and prove NOTHING about whether the
+    # live path fires. They were once the section's only subagent coverage, and
+    # stayed green for exactly that reason while the detection was dead. Arms
+    # 14-17 are the ones that exercise the real payload.
     root = build_tree()
     run_record(root, {"hook_event_name": "InstructionsLoaded", "session_id": SESSION,
                       "cwd": root, "file_path": "CLAUDE.md",
@@ -170,10 +204,11 @@ def main():
     log = read_log(root)
     ok = len(log) == 1 and log[0].get("agent_id") == "agt-1" and \
         log[0].get("agent_type") == "general-purpose"
-    check("RECORD: subagent payload -> agent_id/agent_type captured", ok)
-    out = run_report(root).stdout
-    check("REPORT: names the subagent dispatch when agent_id is present",
-          "OBSERVED:" in out and "general-purpose" in out)
+    check("FORWARD COVER: a payload carrying agent_id -> captured", ok)
+    sec = subagent_section(run_report(root).stdout)
+    check("FORWARD COVER: report names the agent when a payload supplies one "
+          "(hypothetical build; not evidence about this one)",
+          "record(s) carried `agent_id`" in sec and "general-purpose" in sec)
     shutil.rmtree(root)
 
     # ---- ARM 4: KNOWN-BAD -- an unscoped rule never loaded ----------------
@@ -302,6 +337,130 @@ def main():
         os.unlink(mutant)
     shutil.rmtree(root)
 
+    # ---- ARM 14: subagent detection FIRES on a repeat load ----------------
+    # The payload carries no agent identifier on this build, so the report keys
+    # on arithmetic instead: a path-scoped rule injects once per rule per
+    # session, and a second glob match under one session id is a second context.
+    # Shaped after the real 2026-08-07 measurement -- one rule, two loads, one
+    # session, same trigger file.
+    scoped = os.path.join(".claude", "rules", "scoped.md")
+    root = build_tree()
+    write_log(root, FULL + [
+        rec(scoped, "path_glob_match", trigger="src/Main.scala",
+            ts="2026-01-01T10:00:00Z"),
+        rec(scoped, "path_glob_match", trigger="src/Main.scala",
+            ts="2026-01-01T10:30:00Z"),
+    ])
+    proc = run_report(root)
+    sec = subagent_section(proc.stdout)
+    ok = (proc.returncode == 0 and "repeat load(s) across" in sec
+          and "scoped.md" in sec and "NOT OBSERVED" not in sec
+          and "point away from a re-injection" in sec)
+    check("SUBAGENT FIRES: one rule loaded twice in one session -> OBSERVED, "
+          "and no `compact` record, so it reads as a dispatch", ok,
+          f"exit={proc.returncode}")
+    shutil.rmtree(root)
+
+    # ---- ARM 14b: the SAME repeat, with a compaction in the window --------
+    # A whole-context re-injection produces repeats too, and the vendor labels
+    # it: `compact` is a load reason of its own. Where one is present the
+    # dispatch reading is no longer the only one, and the report must say so
+    # rather than assert a dispatch. Same fixture as arm 14 plus one record --
+    # the single varied factor is the compaction.
+    root = build_tree()
+    write_log(root, FULL + [
+        rec(scoped, "path_glob_match", trigger="src/Main.scala",
+            ts="2026-01-01T10:00:00Z"),
+        rec(scoped, "path_glob_match", trigger="src/Main.scala",
+            ts="2026-01-01T10:30:00Z"),
+        rec("CLAUDE.md", "compact", ts="2026-01-01T10:29:00Z"),
+    ])
+    proc = run_report(root)
+    sec = subagent_section(proc.stdout)
+    ok = (proc.returncode == 0 and "repeat load(s) across" in sec
+          and "re-injection" in sec and "DID happen" in sec
+          and "point away from a re-injection" not in sec)
+    check("COMPACT PRESENT: same repeat is NOT asserted as a dispatch", ok,
+          f"exit={proc.returncode}")
+    shutil.rmtree(root)
+
+    # ---- ARM 15: and STAYS SILENT when nothing repeated -------------------
+    # The other half of the calibration, and the discriminating one: this log
+    # DOES carry a path_glob_match record. A detector that fired on the mere
+    # presence of a glob load, rather than on a repeat, would pass arm 14 and
+    # fail here -- which is the only thing separating the two.
+    root = build_tree()
+    write_log(root, FULL + [rec(scoped, "path_glob_match",
+                                trigger="src/Main.scala")])
+    proc = run_report(root)
+    sec = subagent_section(proc.stdout)
+    ok = (proc.returncode == 0 and "NOT OBSERVED" in sec
+          and "repeat load(s) across" not in sec)
+    check("SUBAGENT SILENT: a glob load that did NOT repeat -> NOT OBSERVED", ok,
+          f"exit={proc.returncode}")
+    shutil.rmtree(root)
+
+    # ---- ARM 16: a repeat SPANNING two sessions is not a repeat -----------
+    root = build_tree()
+    write_log(root, [rec(scoped, "path_glob_match", session=OLD_SESSION)]
+              + FULL + [rec(scoped, "path_glob_match", trigger="src/Main.scala")])
+    proc = run_report(root)
+    sec = subagent_section(proc.stdout)
+    ok = (proc.returncode == 0 and "NOT OBSERVED" in sec
+          and "repeat load(s) across" not in sec)
+    check("SUBAGENT SILENT: same rule in two sessions is not one repeat", ok,
+          f"exit={proc.returncode}")
+
+    # ---- ARM 17: MUTANT -- session scoping dropped, subagent section ------
+    # Arm 10 seeds this same edit and watches the ROSTER verdict. The subagent
+    # count is a second consequence of it that the exit code cannot show: every
+    # session's loads pool into one window, so any rule two sessions both loaded
+    # reads as a dispatch. One mutant, two blast radii, one control each.
+    mutant, applied = mutate((
+        'window = [r for r in records if r.get("session_id") == target]',
+        'window = records'))
+    if not applied:
+        check("MUTANT 4 applied (session filter, subagent path)", False,
+              "anchor moved")
+    else:
+        msec = subagent_section(run_report(root, hook=mutant).stdout)
+        check("MUTANT 4 (session filter dropped) is CAUGHT -> cross-session "
+              "load now reads as a dispatch",
+              "repeat load(s) across" in msec)
+        os.unlink(mutant)
+    shutil.rmtree(root)
+
+    # ---- ARM 18: an always-on repeat is reported APART from dispatches -----
+    # unscoped.md arrives twice at session_start: the whole hierarchy landing
+    # again, which is a context reset rather than a dispatch. It must be
+    # reported and must NOT be counted as subagent evidence.
+    unscoped = os.path.join(".claude", "rules", "unscoped.md")
+    root = build_tree()
+    write_log(root, FULL + [rec(unscoped, ts="2026-01-01T11:00:00Z")])
+    proc = run_report(root)
+    sec = subagent_section(proc.stdout)
+    ok = (proc.returncode == 0 and "SEPARATELY —" in sec
+          and "repeat load(s) across" not in sec and "NOT OBSERVED" in sec)
+    check("ALWAYS-ON repeat -> reported SEPARATELY, not as a dispatch", ok,
+          f"exit={proc.returncode}")
+
+    # ---- ARM 19: MUTANT -- the two repeat buckets collapsed into one -------
+    # The plausible edit: "two buckets for one count, simplify." It makes a
+    # context reset indistinguishable from a dispatch, which is the single
+    # inference this whole section exists to support.
+    mutant, applied = mutate((
+        'bucket = glob_repeats if reason == "path_glob_match" else other_repeats',
+        'bucket = glob_repeats'))
+    if not applied:
+        check("MUTANT 5 applied (glob/other split)", False, "anchor moved")
+    else:
+        msec = subagent_section(run_report(root, hook=mutant).stdout)
+        check("MUTANT 5 (repeat buckets collapsed) is CAUGHT -> an always-on "
+              "repeat now reads as a dispatch",
+              "repeat load(s) across" in msec)
+        os.unlink(mutant)
+    shutil.rmtree(root)
+
     print()
     if failures:
         print(f"RESULT: FAIL ({len(failures)})")
@@ -311,8 +470,10 @@ def main():
     print("RESULT: PASS — records through the real stdin path, stays silent in a")
     print("clone, reports a rule that DID load and one that did NOT, refuses to")
     print("call an empty, absent, or mid-session log clean, keeps scoped and")
-    print("unscoped absence distinct, and catches every seeded regression.")
-    print("No arm touched this repository.")
+    print("unscoped absence distinct, reports a subagent dispatch from the shape")
+    print("the event actually produces and stays silent without one, tells a")
+    print("context reset apart from a dispatch, and catches every seeded")
+    print("regression. No arm touched this repository.")
     return 0
 
 

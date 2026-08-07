@@ -61,6 +61,39 @@ The log holds absolute paths for instruction files outside this repository
 (user-level rules, ancestor CLAUDE.md files). Paths inside the repository are
 recorded repo-relative. That is one more reason the log is gitignored.
 
+HOW THE SUBAGENT QUESTION IS ANSWERED, AND WHY NOT BY A FIELD.
+No payload carries an agent identifier on this build. That is measured, not
+assumed: build_record() writes agent_id and agent_type whenever the event
+supplies them, and across the whole log on 2026-08-07 -- 86 records, four
+sessions -- neither key appears on any record. A subagent's loads are recorded
+under the PARENT session id, so no single record says which context produced it.
+
+The event DOES fire inside a subagent, and the discriminator is arithmetic
+rather than a field. A path-scoped rule injects ONCE PER RULE PER SESSION, so a
+second `path_glob_match` record for one file under one session id cannot have
+landed in the context that produced the first -- it landed in a context that did
+not hold that rule yet. repeat_loads() counts those, and the report's subagent
+section keys on the count.
+
+The field NAMES are right and the event is the outlier. Anthropic documents
+agent_id ("present only when the hook fires inside a subagent call") and
+agent_type as arriving on hook events that fire in a subagent context; this one
+does not deliver them. So the two are kept, and a build that starts sending them
+lights up immediately -- but nothing depends on them.
+
+The competing reading of a repeat is a whole-context re-injection rather than a
+dispatch, and the vendor labels that case instead of leaving it to inference:
+`compact` is a load reason of its own, alongside session_start,
+nested_traversal, path_glob_match and include. report_subagents() checks for it
+directly and says which way the window points.
+(https://code.claude.com/docs/en/hooks, read 2026-08-07; the matcher table calls
+those "example" values, so treat the list as documented rather than exhaustive.)
+
+Stated at this length because that section previously keyed on `agent_id` alone.
+No payload has ever supplied it, so the check had no reachable positive state:
+it could only ever print its own negative branch, and did so in a session whose
+own log already held the repeat records of a dispatch.
+
 CONCURRENCY. Records are appended with a single O_APPEND write of one line,
 which POSIX makes atomic below PIPE_BUF (4096 bytes). Fields are capped and the
 assembled line is truncated to stay under that bound, because this event fires
@@ -159,9 +192,10 @@ def build_record(payload, root):
     parent = payload.get("parent_file_path")
     if parent:
         rec["parent"] = cap(relativize(parent, root))
-    # agent_id is present ONLY inside a subagent. Recording it is what makes this
-    # log able to answer whether the event fires for subagent dispatches -- a
-    # question the vendor docs state for tool events and leave open for this one.
+    # Recorded when present, depended on never: no payload has carried either
+    # field on this build, so a report that keyed on one could not fire. See the
+    # docstring -- repeat_loads() is what answers the subagent question, and
+    # these two exist so a later build that does supply them is picked up.
     if payload.get("agent_id"):
         rec["agent_id"] = cap(payload.get("agent_id"))
     if payload.get("agent_type"):
@@ -290,6 +324,131 @@ def read_log(log_path):
     return records, malformed
 
 
+def repeat_loads(window):
+    """Instruction files this session loaded more than once.
+
+    A path-scoped rule injects once per rule per session, so a SECOND
+    `path_glob_match` record for one file under one session id cannot have
+    landed in the context that produced the first: it landed in a context that
+    did not hold the rule yet. A subagent dispatch is what creates one, and its
+    loads are recorded under the parent session id.
+
+    Returns (glob_repeats, other_repeats), each mapping file -> the records
+    after the first. The two are kept apart because they mean different things.
+    A repeated glob match is an additional context reading a matching file. A
+    repeated session_start or include is the always-on hierarchy arriving twice,
+    which is a context reset rather than a dispatch -- pooling them would let
+    one inflate the count that answers for the other.
+    """
+    seen = set()
+    glob_repeats, other_repeats = {}, {}
+    for rec in window:
+        name = rec.get("file")
+        if not name:
+            continue
+        reason = rec.get("load_reason")
+        key = (name, reason)
+        if key in seen:
+            bucket = glob_repeats if reason == "path_glob_match" else other_repeats
+            bucket.setdefault(name, []).append(rec)
+        else:
+            seen.add(key)
+    return glob_repeats, other_repeats
+
+
+def report_subagents(window):
+    """Print the subagent section. Observational: it sets no exit code.
+
+    Whether a dispatch happened is a fact about what the session did, not a
+    defect in the roster, so this reports and never votes on the result.
+    """
+    tagged = [r for r in window if r.get("agent_id")]
+    glob_repeats, other_repeats = repeat_loads(window)
+    extra = sum(len(v) for v in glob_repeats.values())
+
+    print("## Subagent dispatches")
+    print()
+
+    if tagged:
+        types = sorted({r.get("agent_type") or "?" for r in tagged})
+        print(f"OBSERVED — {len(tagged)} record(s) carried `agent_id`, "
+              f"agent_type(s): {', '.join(types)}.")
+        print("This build names the agent in the payload, which is the direct")
+        print("answer. Every build measured so far did not; see the docstring.")
+        print()
+
+    if glob_repeats:
+        print(f"OBSERVED — {extra} repeat load(s) across "
+              f"{len(glob_repeats)} rule(s).")
+        print()
+        print("A path-scoped rule injects once per rule per session, so a second")
+        print("`path_glob_match` for one file under one session id landed in a")
+        print("context that did not already hold that rule. A subagent dispatch")
+        print("is what creates one; its loads are recorded under the PARENT")
+        print("session id, which is why no new session appears in the log.")
+        print()
+        for name in sorted(glob_repeats):
+            hits = glob_repeats[name]
+            when = ", ".join(h.get("ts") or "?" for h in hits)
+            trig = sorted({h.get("trigger") for h in hits if h.get("trigger")})
+            line = f"  - `{name}` — {len(hits)} repeat(s) at {when}"
+            if trig:
+                line += f", triggered by {', '.join(trig)}"
+            print(line)
+        print()
+        print(f"  {extra} is a LOWER bound on the additional contexts. One")
+        print("  context reading two matching files still injects each rule")
+        print("  once, and a context whose rules had not yet loaded this")
+        print("  session leaves no repeat at all.")
+        print()
+        always_on = len({r.get("file") for r in window
+                         if r.get("load_reason") != "path_glob_match"})
+        compacted = [r for r in window if r.get("load_reason") == "compact"]
+        print("  The competing reading is a whole-context re-injection rather")
+        print("  than a dispatch. The vendor labels that case rather than")
+        print("  leaving it to be inferred: `compact` is a load reason of its")
+        print("  own, alongside session_start, nested_traversal,")
+        print("  path_glob_match and include.")
+        if compacted:
+            print(f"  {len(compacted)} record(s) here carry it, so a re-injection")
+            print("  DID happen in this session and the repeats above cannot be")
+            print("  read as a dispatch on this evidence alone.")
+        elif always_on:
+            print("  No record here carries it, and none of the")
+            print(f"  {always_on} always-on instruction file(s) that loaded")
+            print("  repeated -- a re-injected context would carry those too.")
+            print("  Both point away from a re-injection.")
+        else:
+            print("  No record here carries it. But no always-on instruction")
+            print("  file loaded in this window either, so the corroborating")
+            print("  half is absent; read the finding as an additional context.")
+        print()
+
+    if other_repeats:
+        n = sum(len(v) for v in other_repeats.values())
+        print(f"SEPARATELY — {n} repeat load(s) that were NOT glob matches, "
+              f"across {len(other_repeats)} file(s):")
+        for name in sorted(other_repeats):
+            reasons = sorted({r.get("load_reason") or "?"
+                              for r in other_repeats[name]})
+            print(f"  - `{name}` — {len(other_repeats[name])} repeat(s), "
+                  f"{', '.join(reasons)}")
+        print("The always-on hierarchy arriving more than once is a context")
+        print("reset, not a dispatch. Counted apart so it cannot inflate the")
+        print("figure above.")
+        print()
+
+    if not tagged and not glob_repeats:
+        print("NOT OBSERVED — no repeat load in this session, and no record")
+        print("carried `agent_id`.")
+        print()
+        print("That is NOT evidence the event skips subagents. It is equally")
+        print("consistent with no subagent having been dispatched, or with one")
+        print("that read no file matching a rule this session had not already")
+        print("loaded. Dispatch one that reads a matching file, then re-run.")
+        print()
+
+
 def report_mode(argv):
     root = None
     session = None
@@ -387,20 +546,7 @@ def report_mode(argv):
             print(f"- `{f}` — {len(observed[f])} load(s), {', '.join(reasons)}")
         print()
 
-    sub = [r for r in window if r.get("agent_id")]
-    print("## Subagent dispatches")
-    print()
-    if sub:
-        types = sorted({r.get("agent_type") or "?" for r in sub})
-        print(f"OBSERVED: {len(sub)} record(s) carried `agent_id`, "
-              f"agent_type(s): {', '.join(types)}.")
-        print("The event fires inside subagents on this build.")
-    else:
-        print("No record in this session carried `agent_id`.")
-        print("That is NOT evidence the event skips subagents — it is equally")
-        print("consistent with no subagent having been dispatched. Dispatch one")
-        print("that reads a matching file, then re-run this report.")
-    print()
+    report_subagents(window)
 
     print("## Result")
     print()
