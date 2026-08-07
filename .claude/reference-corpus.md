@@ -154,7 +154,7 @@ them to `main`.
 
 | Path under the corpus root | Upstream | Ref | Authoritative for |
 |---|---|---|---|
-| `IPs/ECIPs` | [chris-mercer/ECIPs](https://github.com/chris-mercer/ECIPs) | `local-edits` — **a fork ahead of upstream, see below** | **The specification for ETC consensus**, and for the Olympia proposals in particular |
+| `IPs/ECIPs` | [ethereumclassic/ECIPs](https://github.com/ethereumclassic/ECIPs) | `master` | **The specification for ETC consensus.** Authoritative and complete for every ECIP **except the Olympia set**, which is still being drafted by this project's maintainer and reaches the published repository after implementation and testing — **see below before citing anything Olympia** |
 | `IPs/EIPs` | [ethereum/EIPs](https://github.com/ethereum/EIPs) | `master` | **The specification for ETH-family consensus.** Many EIPs apply to ETC identically and ETH leads on those; where ETC carries a different parameter for an otherwise-identical EIP, the ECIP governs the parameter |
 
 **Neither repository carries a single tag, so a tag citation is structurally
@@ -268,23 +268,38 @@ reason. **A tag blocks nothing, so it cannot be miscalibrated** — its whole jo
 is that someone who has already moved the branch finds the way back where they
 are standing, instead of needing to know this document exists.
 
-### `IPs/ECIPs` @ branch `local-edits`, remote `chris-mercer/ECIPs`
+### `IPs/ECIPs` — cite the published specification, and know what it does not yet contain
 
-**This fork is AHEAD of the public upstream, because this project authors the
-Olympia proposals.** `git pull` from
-[ethereumclassic/ECIPs](https://github.com/ethereumclassic/ECIPs) to "get the
-real one" replaces newer material with older.
+**Clone [ethereumclassic/ECIPs](https://github.com/ethereumclassic/ECIPs) at
+`master`.** That is the published Ethereum Classic specification, it is what a
+reader of this repository can reach and verify, and it is what every citation in
+tracked text names.
 
-**The shape of the evidence points the wrong way, which is why this is written
-down.** A personal-looking fork on a branch named `local-edits` reads as scratch
-work, and a reader who reaches past it to upstream silently substitutes a stale
-copy of the specifications fukuii is implementing. The branch name is not a
-quality signal.
+**For Olympia specifically, the published specification is not yet complete, and
+that is a property of the work rather than a gap in this corpus.** The Olympia
+proposals are authored by this project's maintainer, who is a core developer on
+Ethereum Classic. They are **active drafting work, and they reach
+`ethereumclassic/ECIPs` once implementation is done and testing confirms them
+accurate.** Until then the published repository does not carry their current
+text.
 
-A divergent parallel branch also exists carrying rebased variants of the same
-work under different SHAs, so "the ECIPs clone" resolves to more than one text.
-Until this project names one citable branch, an ECIP citation names the branch
-and the commit, and `local-edits` is what is checked out.
+**Two consequences, and the second is the one to hold on to:**
+
+1. **An Olympia claim cannot yet be checked against a published specification.**
+   This is the same fact as core-geth being silent on Olympia — no external
+   authority exists for it yet, in either the specification or any client. A
+   review that wants an independent Olympia source will not find one, and
+   **that absence is the condition, not a search to run harder.**
+2. **So do not treat a fukuii implementation, a fukuii overlay, or a fukuii draft
+   as the specification it is meant to satisfy.** Validating our Olympia work
+   against our own Olympia material is circular whichever artifact is used. Where
+   an Olympia detail is load-bearing, it is settled by the maintainer as the
+   proposals' author, and recorded as a decision — never inferred from our own
+   code.
+
+**For every non-Olympia ECIP, the published repository is authoritative and
+complete**, and citations are by document number plus commit SHA, because the
+repository carries no tags.
 
 ---
 
