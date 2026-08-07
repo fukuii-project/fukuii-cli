@@ -26,8 +26,14 @@
 
 ## Project
 
-<!-- What this project is, in two or three sentences. Leave unwritten until
-     there is a settled answer; a description invented here is a public claim. -->
+**Fukuii is a from-scratch Scala execution client for the EVM ecosystem, built
+to run more than one network family from a single binary rather than adapt one
+client per chain.** A shared execution engine sits underneath, with consensus
+handled by a pluggable module per family, and it targets proof-of-work
+networks (Ethereum Classic mainnet, Mordor) and proof-of-stake networks
+(Ethereum mainnet, Sepolia) today. It carries no code from any earlier
+implementation, and there is no `src/main` yet — only the pinned toolchain
+below.
 
 ## Stack
 
@@ -90,7 +96,20 @@ command — one the build does not define will fail and read as a broken build.
 
 ## Structure
 
-<!-- The actual directory tree, one line of purpose per entry. -->
+| Path | Holds |
+|---|---|
+| `AGENTS.md`, `CLAUDE.md`, `README.md` | Project instructions and the public description |
+| `LICENSE`, `NOTICE` | Apache-2.0 and its required attribution |
+| `build.sbt`, `project/build.properties` | The build definition and the sbt launcher pin |
+| `.sdkmanrc`, `.jvmopts`, `.gitattributes`, `.gitignore` | JDK, JVM, line-ending and private/public-gate pins |
+| `.claude/` | This environment's own framework layer — agents, path-scoped rules, protocols, hooks, and the settings that register and gate them; tracked by default |
+| `.github/assets/` | The logo this file and `README.md` render |
+| `scripts/` | Repository test infrastructure — checkers and a wrapper, most paired with a proof script, plus the fixtures they run against |
+| `src/test/scala/org/fukuii/` | Three toolchain-proof specs, one per declared ScalaTest style artifact — see `## Testing` |
+
+**`modules/` does not appear above.** It is the intended home for a future
+layered module tree; git does not track empty directories, so nothing under it
+reaches a clone until a module holds a real file.
 
 ## Testing
 
@@ -140,8 +159,25 @@ never matchers.** A bare `assert` failure prints nothing actionable.
 
 ## Code style
 
-<!-- Indentation, line endings, naming and import conventions — and for each,
-     whether a formatter or linter enforces it or it is convention only. -->
+**The compiler is the enforcement mechanism, and it is stricter than a reader
+expects.** `build.sbt` promotes a set of warning categories to hard errors, so
+a violation in that set fails `compile` outright — see `## Commands` for how
+that reaches `test` and `testFull` too, in main sources and test sources
+alike. Read the enforced categories from `build.sbt` itself, not from a count
+stated here: the set changes only when that file changes.
+
+**That set is narrower than it looks.** The repo-local rule
+`.claude/rules/scala3-style.md` § "Build configuration" names further
+prohibitions no compiler flag reaches — those need a dedicated lint plugin
+this repository does not have. **There is still no formatter, no separate
+`lint` or `typecheck` task, and no CI.** Everything the compiler does not
+catch is checked by review; match the style of surrounding code by hand where
+no rule covers it.
+
+**Comments explain why, never what.** Code already says what it does; a
+comment that narrates it restates it and then rots independently. **Build
+definitions are the exception**: in `build.sbt` and `project/`, rationale *is*
+the content, and it stays there rather than moving into `src/`.
 
 ## Branching
 

@@ -21,9 +21,14 @@
 
 ## Overview
 
-<!-- What this project is, in two or three sentences: what it does and who runs
-     it. Leave this unwritten until there is a settled answer — a description
-     invented here becomes a public claim the moment the branch merges. -->
+**Fukuii is an independent, ground-up Scala execution client for the EVM
+ecosystem** — one binary meant to run more than one network family, each
+behind a shared execution engine and a pluggable consensus module, rather than
+a client forked and adapted per chain. Today that spans proof-of-work networks
+(Ethereum Classic mainnet, Mordor) and proof-of-stake networks (Ethereum
+mainnet, Sepolia). This is a from-scratch rebuild carrying no code from any
+prior implementation, and it starts from a pinned toolchain: there is no
+`src/main` yet.
 
 ## Stack
 
@@ -226,8 +231,25 @@ build does not define will fail and read as a broken build.
 
 ## Structure
 
-<!-- The actual directory tree, one line of purpose per entry. Prune it to what
-     an agent needs to navigate; a full listing ages badly. -->
+| Path | Holds |
+|---|---|
+| `AGENTS.md`, `CLAUDE.md`, `README.md` | Project instructions (this file, and the one-line `@AGENTS.md` import) and the public description — different registers, not different lengths of the same thing |
+| `LICENSE`, `NOTICE` | Apache-2.0 and its required attribution — see `## Boundaries` item 1 |
+| `build.sbt`, `project/build.properties` | The build definition and the sbt launcher pin — see `## Stack` |
+| `.sdkmanrc`, `.jvmopts`, `.gitattributes`, `.gitignore` | The JDK, JVM, line-ending and private/public-gate pins — see `## Setup` and `## Security` |
+| `.claude/agents/` | This repository's own domain specialists — the directory listing is authoritative, not this row |
+| `.claude/rules/` | Path-scoped standards, loaded when a matching file is opened — see `## Code style` |
+| `.claude/protocols/` | Operating discipline that does not auto-load — see `## Protocols` |
+| `.claude/hooks/` | The hook scripts and their own tests; `settings.json` states which are actually registered |
+| `.claude/settings.json` | Hook registrations and the read-deny list — see `## Boundaries` item 4 |
+| `.github/copilot-instructions.md`, `.github/assets/` | Copilot's self-contained instructions, and the logo `README.md` renders |
+| `scripts/` | Repository test infrastructure — checkers and a wrapper, most paired with a `*-proof.sh`, plus the fixtures and reference figures they run against; see `scripts/README.md` |
+| `src/test/scala/org/fukuii/` | Three toolchain-proof specs, one per declared ScalaTest style artifact — see `## Testing` |
+
+**`modules/` does not appear above.** It is the intended home for the layered
+module tree `README.md` § Status describes; git does not track empty
+directories, so nothing under it reaches a clone until a module holds a real
+file.
 
 ## Testing
 
@@ -565,7 +587,9 @@ This repository is **public**.
    agent context — from where it reaches reports, commit messages and subagent
    prompts. Node-operator material is the live case: keystore files, wallet and
    mnemonic exports, SSH and JWT secrets, node keys. **Assume a path is readable
-   unless you have checked `.claude/settings.json` and found it covered.**
+   unless you have checked `.claude/settings.json` and found it covered.** When
+   key material is generated or read, report **what** it is and **where** it was
+   stored — path and permissions — never the value itself.
 
    Two further limits, both documented rather than incidental. The patterns are
    `./`-anchored, which resolves against the **current directory**, not the
