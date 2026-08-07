@@ -76,6 +76,13 @@ merely newer. Check that before anything else about a candidate; see
 `.claude/rules/scala-dependency-admissibility.md`, which also explains why the
 artifact coordinate alone cannot answer it.
 
+**The reference repositories this project cites are listed in
+`.claude/reference-corpus.md`** — a manifest of public URLs and refs, so the
+reference corpus can be rebuilt and a protocol claim checked against the same
+sources independently. A repository listed there is evidence about how something
+behaves, never an adopted dependency; this table remains the authority for what
+is declared.
+
 There is still no dependency-update (Dependabot) configuration. That was correct
 while no manifest existed and is now a gap to close as the dependency set grows.
 
