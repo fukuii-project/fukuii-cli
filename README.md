@@ -1,6 +1,10 @@
-# 🧠🪱 Fukuii
+<div align="center">
+  <img src="./.github/assets/fukuii-hex-logo.png" alt="Fukuii" width="240" />
+  <h1>🧠🪱 Fukuii</h1>
+  <strong>An independent, ground-up Scala execution client for the EVM ecosystem — designed to be Ethereum Classic's first native client.</strong>
+</div>
 
-**An independent, ground-up Scala execution client for the EVM ecosystem — designed to be Ethereum Classic's first native client.**
+---
 
 ## Origin
 
@@ -42,7 +46,7 @@ Apache Pekko is decided as the actor-system dependency and isn't declared in the
 
 fukuii-cli is one repository in the [Fukuii project](https://github.com/fukuii-project). [`fukuii-tests`](https://github.com/fukuii-project/fukuii-tests) holds the consensus and conformance corpus this client will be checked against, [`fukuii-gui`](https://github.com/fukuii-project/fukuii-gui) is a graphical interface for it, and [`fukuii-org`](https://github.com/fukuii-project/fukuii-org) builds [fukuii.org](https://fukuii.org), where the fuller story lives.
 
-This is currently a single-developer project: work happens on local branches merged into `main`, or directly on `main`. The fork-and-pull-request workflow the organization's [contributing guidelines](https://github.com/fukuii-project/.github/blob/main/CONTRIBUTING.md) describe applies once the project opens to outside contributors.
+Contributions go through fork-and-PR — the same workflow for maintainers and outside contributors alike: fork the repo, branch off `main`, commit with [Conventional Commits](https://www.conventionalcommits.org/), and open a pull request. The org-wide [`CONTRIBUTING.md`](https://github.com/fukuii-project/.github/blob/main/CONTRIBUTING.md) has the full workflow, the required pre-commit hooks, and the dependency policy that governs every PR.
 
 Report a suspected security vulnerability through [this repository's private advisory form](https://github.com/fukuii-project/fukuii-cli/security/advisories/new), not the public issue tracker.
 
