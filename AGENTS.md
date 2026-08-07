@@ -546,8 +546,8 @@ This repository is **public**.
    agent-written paths (`settings.local.json`, `worktrees/`,
    `agent-memory-local/`, `launch.json`, `scheduled_tasks.json`,
    `CLAUDE.local.md`, and anything matching `*.local.*` or `*-local/`).
-   Everything else under `.claude/` — `hooks/`, `rules/`, `settings.json`, and
-   any future subdirectory such as `agents/`, `skills/` or `commands/` — is
+   Everything else under `.claude/` — every file and subdirectory the deny-list
+   does not name, whatever it is called and whenever it is added — is
    tracked and reaches a clone. Adding a file under `.claude/` is public by
    default; check `.gitignore`'s current deny-list before assuming a path is
    held back, and never invert this into a blanket ignore — an agent, skill, or
