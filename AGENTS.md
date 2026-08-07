@@ -213,10 +213,16 @@ green from a clean one. When a result has to be trusted, make it a clean run.
 previous run, so it cannot report a green over a prior failure. The trap is
 confined to the passing direction.
 
-**There is no `lint`, `format`, `typecheck` or coverage task, and no CI.** Match
-the style of surrounding code by hand rather than relying on a gate that does
-not exist. Do not invent a command — one that the build does not define will
-fail and read as a broken build.
+**`compile` is not a bare pass-through: `build.sbt` promotes a set of compiler
+warning categories to hard errors**, scoped `ThisBuild`, so `compile`, `test`
+and `testFull` all fail on a violation in that set, in main sources and test
+sources alike. That enforcement lives in the compiler step itself; read the
+enforced categories and the reasoning for each from `build.sbt` directly
+rather than from a count here. **There is still no separate `lint`, `format`,
+`typecheck` or coverage task, and no CI** — `## Code style` below says what
+the compiler's enforced set does and does not reach. Outside it, match the
+style of surrounding code by hand. Do not invent a command — one that the
+build does not define will fail and read as a broken build.
 
 ## Structure
 
@@ -324,10 +330,12 @@ specific objection, not restate the style's general merits.
   which is the wrong property for a codebase several agents write into.
 - **`RefSpec`** — its advantage is real (tests as methods, so fewer function
   literals and faster compiles on generated suites, which the L10 Ethereum
-  reference-test harness could want). It conflicts with the warning ratchet
-  this repository intends — **the ratchet is not configured yet**, and
-  `.claude/protocols/warning-ratchet.md` is why that matters: a category gated
-  before the code exists is free, and gated afterwards is a migration.
+  reference-test harness could want). **It conflicts with the warning ratchet,
+  and that conflict is live rather than anticipated:** `build.sbt` promotes both
+  categories the table below names to hard errors, scoped so they bind test
+  sources too. `.claude/protocols/warning-ratchet.md` is why the ratchet was
+  configured before the code existed — a category gated first is free, and
+  gated afterwards is a migration.
   Measured in the pre-rebuild tree on **the same Scala 3.3.8 and ScalaTest
   3.2.20 this repository now pins**, so the measurement applies directly rather
   than by analogy:
@@ -339,7 +347,8 @@ specific objection, not restate the style's general merits.
   | `def x(): Unit = assert(...): Unit` | compiles and runs |
 
   So RefSpec costs a `: Unit` ascription on every test method, or a ratchet
-  exemption. If the reference-test harness later shows a real compile-time
+  exemption — **a present cost of adopting the style, not a future one to plan
+  around.** If the reference-test harness later shows a real compile-time
   problem, revisit with that measurement in hand — the ratchet is the thing to
   weigh it against, and generated code can emit the ascription for free.
 
@@ -407,10 +416,16 @@ class ThingSpec extends AnyFeatureSpec with GivenWhenThen:
 
 ## Code style
 
-**Nothing here is enforced by a tool.** There is no formatter, no linter, no
-static-analysis config and no CI in this repository — `## Commands` is the
-authority for what exists. Every rule below is checked by review, so it binds
-by being read.
+**Some of this is enforced by the compiler; most of it is not.** `build.sbt`
+promotes a set of warning categories to hard errors, so a violation in that
+set fails `compile` outright rather than waiting on review — see `## Commands`
+for how that reaches `test` and `testFull` too, and `build.sbt` itself for
+which categories and why. That set is narrower than it looks:
+`.claude/rules/scala3-style.md` § "Build configuration" names further
+prohibitions that no compiler flag in `build.sbt` reaches — those still need a
+dedicated lint plugin this repository does not have. There is still no
+formatter and no CI. Everything the compiler does not catch is checked by
+review, so it binds by being read.
 
 **Three rules carry the detail. They are the authority; this section is the
 map.**

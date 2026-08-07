@@ -1,11 +1,22 @@
 # Warning ratchet — gate the category before the code exists
 
 **currency:** the incident is inherited from this project's prior implementation
-and unverified beyond the record describing it. **Measured in this repository
-2026-08-06:** `build.sbt` exists and pins Scala and ScalaTest; **no `.scalafix.conf`
-or `.scalafmt.conf` exists**, and no warning category is promoted to an error.
-Re-check when linting is first configured — that is the change this protocol is
-written to be applied *at*.
+and unverified beyond the record describing it. **This protocol has been applied
+once, to the compiler: `build.sbt` promotes a set of warning categories to hard
+errors under `-Werror`, scoped so they bind test sources too — read the set and
+the reasoning for each from `build.sbt`, which is the only place either is
+stated.** The gate was calibrated in both directions at the time it landed, per
+"Verifying the gate actually gates" below.
+
+**It has NOT been applied to the linter, and that window is still open.** No
+`.scalafix.conf` or `.scalafmt.conf` exists, and the prohibitions
+`.claude/rules/scala3-style.md` § "Build configuration" names — `return`,
+`null`, `asInstanceOf`, `isInstanceOf` outside a match, and the `println` family
+— are reachable by **no compiler flag**, measured against the compiler's own
+option dumps. They need a lint plugin, which is a dependency decision and is
+operator-gated. **The zero-cost argument below applies to them with full force
+and is not discharged by the compiler half.** Re-read this file at that moment;
+it is the change it was written to be applied *at*.
 
 **No frontmatter, and none is possible.** A file under `.claude/protocols/` does
 not auto-load — Claude Code discovers `.claude/rules/`, not this directory — so

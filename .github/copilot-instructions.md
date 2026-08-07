@@ -75,10 +75,18 @@ under whatever JDK the shell happens to provide.
 
 **These are sbt's own tasks; the build defines none of its own.**
 
-**There is no `lint`, `format`, `typecheck` or coverage task, and no CI.** Match
-the style of surrounding code by hand rather than relying on a gate that does
-not exist. Do not invent a command — one the build does not define will fail and
-read as a broken build.
+**`compile` is not a bare pass-through: `build.sbt` promotes a set of compiler
+warning categories to hard errors**, scoped so `compile`, `test` and `testFull`
+all fail on a violation in that set, in main and test sources alike. Read the
+enforced categories and the reasoning for each from `build.sbt` itself, which is
+where both are stated. **There is still no separate `lint`, `format`,
+`typecheck` or coverage task, and no CI.** The compiler's set is also narrower
+than it looks: it does not reach prohibitions on `return`, `null`,
+`asInstanceOf`, `isInstanceOf` outside a match, or the `println` family, none of
+which any compiler flag can enforce — those need a lint plugin this repository
+does not have, and until it does they are checked by review. Outside what the
+compiler catches, match the style of surrounding code by hand. Do not invent a
+command — one the build does not define will fail and read as a broken build.
 
 ## Structure
 
@@ -170,7 +178,7 @@ This repository is **public**.
 ## Do not touch without asking
 
 1. **`LICENSE` is Apache-2.0 by deliberate choice.** Never change, replace or
-   remove it, and never propose a different licence.
+   remove it, and never propose a different license.
 2. **Community-health files are inherited, not missing.** The `fukuii-project`
    organization supplies `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`
    and the issue and pull-request templates to every repository lacking its own.
