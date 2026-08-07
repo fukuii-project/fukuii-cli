@@ -82,6 +82,21 @@ jwtsecret
 *.nodekey
 # node.key is already covered globally by `*.key` above; kept for intent.
 node.key
+# The bare, extensionless `nodekey` is the geth-family filename — go-ethereum and
+# core-geth write the node's secp256k1 private key to `<datadir>/geth/nodekey`.
+# It matches NONE of the three patterns above: `*.nodekey` and `*.key` both
+# require a dot, and `node.key` is a different name. So the actual filename this
+# repository's own reference clients produce was the one uncovered.
+#
+# Found the way the rest of this block was found — by adversarial review, and
+# settled by effect after two agents disagreed about whether it was already
+# covered. One reported it covered; it was not. That is the dangerous direction,
+# and it is why this block verifies rather than reads its own patterns.
+#
+# Unanchored deliberately, per the datadir reasoning above: `--datadir ./data`
+# puts it at `data/geth/nodekey`, not at the root. No collision is possible with
+# tracked source — a Scala file always carries an extension.
+nodekey
 
 # == SECURITY: infra / cloud ==
 # No `!*.tfvars.example` carve-out: `*.tfvars` never matches a name ending
