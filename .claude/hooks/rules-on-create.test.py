@@ -141,7 +141,7 @@ def mutate(substitution, target="hook"):
     alone to a bare temp path breaks the sibling import, so every mutant dies of
     ModuleNotFoundError rather than of the seeded regression -- and an arm whose
     assertion is satisfied by ANY failure then reads as CAUGHT while proving
-    nothing about the behaviour it names. Returns (hook path in the temp dir,
+    nothing about the behavior it names. Returns (hook path in the temp dir,
     applied).
     """
     names = {"hook": os.path.basename(HOOK), "lib": LIB}

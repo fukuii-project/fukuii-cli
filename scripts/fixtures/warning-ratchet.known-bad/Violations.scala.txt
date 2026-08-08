@@ -77,7 +77,7 @@ object Violations:
   def recurseWithDefault(n: Int = 13): Int = recurseWithDefault()
 
 // CASE enum-comment-discard -- one scaladoc comment over several cases.
-enum Colour:
+enum Color:
   /** One comment, two cases. */
   case Red, Green
 

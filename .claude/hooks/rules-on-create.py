@@ -49,7 +49,7 @@ non-blocking failure channel exists, and why silence is never used for it:
 silence is this hook's ordinary result, and a payload it could not read must not
 be indistinguishable from a path nothing governs.
 
-WHY THIS EVENT AND NOT ITS NEIGHBOUR. PostToolUse is the wrong event for a
+WHY THIS EVENT AND NOT ITS NEIGHBOR. PostToolUse is the wrong event for a
 reason that is structural rather than stylistic: by the time it fires the file
 EXISTS, so the one fact that discriminates a creation from an ordinary
 overwrite is no longer observable. PreToolUse is the only tool event that can
@@ -63,7 +63,7 @@ the event; the code checks the property.
 
 WHAT THE GLOB MATCHER IS, AND WHERE IT IS APPROXIMATE. `**/`, `**`, `*` and `?`
 are translated to a regex anchored at the repository root, matching Claude
-Code's documented behaviour that an unprefixed pattern anchors at the project
+Code's documented behavior that an unprefixed pattern anchors at the project
 root and `**/` matches a directory at any depth within it. Character classes and
 brace groups are treated as literal text rather than as metacharacters. That is
 a deliberate simplification with a stated direction: such a glob under-matches,

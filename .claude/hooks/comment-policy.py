@@ -15,7 +15,7 @@ posture here would conclude a clean exit means the text was checked and
 approved; it means nothing of the sort. The rule is enforced by review, and this
 hook only reduces how often review has to be the first thing that notices.
 
-WHY THIS EVENT AND NOT ITS NEIGHBOUR. PreToolUse carries the same tool_input and
+WHY THIS EVENT AND NOT ITS NEIGHBOR. PreToolUse carries the same tool_input and
 could match the same text, and it fires BEFORE the permission flow -- so it
 would advise on writes that are then denied and never happen, which is comment
 on text that does not exist. PostToolUse fires after the tool call succeeds, so

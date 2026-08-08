@@ -105,7 +105,7 @@ def mutate(substitution, target="hook"):
     copied the hook alone to a bare temp path, where the sibling import failed
     -- so every mutant died of ModuleNotFoundError instead of the seeded
     regression, and one arm read as CAUGHT while proving nothing about the
-    behaviour it named. That is the placebo this file exists to rule out,
+    behavior it named. That is the placebo this file exists to rule out,
     reached through the harness rather than through the fixture.
 
     Copying the library pristine beside the target is also what makes
