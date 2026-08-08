@@ -382,7 +382,11 @@ specific objection, not restate the style's general merits.
   problem, revisit with that measurement in hand — the ratchet is the thing to
   weigh it against, and generated code can emit the ascription for free.
 
-### Writing a test — three standing rules
+### Writing a test — the standing rules
+
+**The count is deliberately not in this heading.** It read "three" while listing
+four, because a rule was added and the number was not. A heading that counts its
+own contents rots on the next edit.
 
 **No `Thread.sleep`.** Wait on the condition, not on the clock — an
 `eventually`-style retry or a probe expectation. A sleep is either too short and
@@ -395,6 +399,26 @@ still shows up in the count.
 **One behavior per test, not a scenario script.** A test that walks through six
 steps fails at step four and tells you almost nothing; six tests tell you which
 one broke.
+
+**And the compiler enforces it, in every style — this is not only advice.**
+ScalaTest's `assert` returns `Assertion`, so under the warning ratchet's
+`-Wnonunit-statement` every assert that is *not* the last expression in its
+block is a discarded non-Unit value: **E176, a hard error.** Measured in this
+repository, 2026-08-08, writing the first `bytes` specs — a two-assert
+`AnyFlatSpec` body does not compile. So a multi-assert test body is a build
+failure here, not a review comment, and the remedy is the rule above rather than
+an ascription.
+
+**This is distinct from the RefSpec cost recorded below, and the two are easy to
+conflate.** RefSpec's cost lands on *every* test method including a
+single-assertion one, because the method's declared `Unit` return discards the
+`Assertion` (E175). The rule here is narrower and applies to the styles this
+project does use: only the non-final asserts in a block. **Both come from the
+same ratchet category; neither implies the other.**
+
+Where several facts genuinely belong to one subject, they are separate tests
+sharing a helper, or a table-driven `AnyPropSpec` — which is what the
+vector-table row of the assignment above is for.
 
 **Deterministic across machines.** No dependence on wall-clock time, filesystem
 ordering, locale, or an available port.
