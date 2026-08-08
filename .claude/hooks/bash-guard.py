@@ -106,6 +106,40 @@ shell expansion); and the command line itself, where the permission system
 already sees the command and prompts -- double-gating there would fire on every
 `curl` the operator legitimately approves.
 
+COMMAND POSITION IS NOT "FIRST WORD, OR AFTER A SEPARATOR"
+=========================================================
+Both scanners ask the same question -- which token OPENS a command -- and the
+first answer was too narrow in four ways, every one of which failed OPEN and
+every one of which was invisible because the guard collected nothing rather
+than reporting that it could not look.
+
+  * A TRANSPARENT WRAPPER. `time bash .local/scratch/x.sh` still matches the
+    pre-approved `Bash(bash .local/scratch/*)` rule, because Claude Code
+    strips the wrapper before matching -- so no prompt fires, while `bash` sat
+    out of command position and the contents scan collected no target. The one
+    control compensating for that pre-approved rule saw nothing, and said
+    nothing. Measured exit 0 for each of `timeout`, `time`, `nice`, `nohup`,
+    `stdbuf`, `command`, `builtin`, `noglob` and bare `xargs`, against exit 2
+    for the unwrapped form.
+  * A LEADING ASSIGNMENT. `NODE_ENV=test bash x.sh` is stripped the same way,
+    by a separate documented rule, with the same effect.
+  * A GROUP OPENER. `{ for i in 1 2 3; do printf X; done; }` runs the loop and
+    put `for` after `{`, which was not a separator.
+  * A RESERVED-WORD PREFIX. `time for ...` and `! for ...` likewise.
+
+THE FIX IS ONE FUNCTION, `command_start_map`, BECAUSE THE DEFECT WAS ONE RULE.
+Both gates share it, so both close together -- and a future widening of the
+notion of a command position cannot land in one scanner and miss the other,
+which is how these diverged in the first place.
+
+IT CARRIES A FLAG, NOT JUST A SET, AND THAT IS THE PART WORTH READING. A
+position after `{`, `!` or `time` admits a RESERVED WORD, so a `for` there is a
+loop. A position after `timeout 30` or `FOO=1` admits only a simple command
+NAME, so a `for` there is a bash SYNTAX ERROR -- text that cannot run, and
+blocking it would be a false positive on a non-command. Reporting the same
+position identically in both scanners is what would have produced that error,
+and the flag is what prevents it.
+
 BLOCK, NOT ADVISE, AND THE VENDOR FACT THAT DECIDED IT. A PreToolUse hook has
 more than two options: `hookSpecificOutput.permissionDecision` accepts
 "allow"/"deny"/"ask"/"defer", and the reference says of "ask" that it "prompts
@@ -148,6 +182,7 @@ import json
 import os
 import re
 import shlex
+import stat
 import sys
 
 # Control-flow words that mean a compound command when they open one.
@@ -162,11 +197,85 @@ CONTROL_KEYWORDS = frozenset({"for", "while", "until", "if", "case", "select"})
 SEPARATORS = frozenset({";", "&&", "||", "|", "&", "|&", ";;", "(", ")"})
 KEYWORD_SEPARATORS = frozenset({"do", "then", "else", "elif"})
 
+# Group and negation openers. shlex emits each of these as its own token
+# (measured 2026-08-07), and bash grammar puts a fresh command position after
+# every one: `{ list; }`, `! pipeline`. Without them, `{ for i in 1 2 3; do
+# printf X; done; }` and `! for i in 1 2 3; do ...; done` both put the keyword
+# out of command position -- measured ALLOWED through the real hook, and
+# measured to EXECUTE under real bash, so the gate was silent on a working loop.
+GROUP_OPENERS = frozenset({"{", "}", "!"})
+
 # Wrappers whose -c argument is itself a command and must be scanned. Also the
 # set whose FILE operand is a script this guard reads and scans; see
 # collect_shell_targets. Deliberately shells only -- the scanner below is a shell
 # tokenizer, so pointing it at a .py or .js file would apply the wrong grammar.
 SHELL_WRAPPERS = frozenset({"bash", "sh", "zsh", "dash", "ksh"})
+
+# ---------------------------------------------------------------------------
+# TRANSPARENT PREFIXES -- what Claude Code STRIPS before matching a Bash rule.
+#
+# Verbatim from the permissions reference, raw fetch 2026-08-07: "Before
+# matching Bash rules, Claude Code strips a fixed set of wrappers, so a rule
+# like `Bash(npm test *)` also matches `timeout 30 npm test`. The stripped
+# wrappers are `timeout`, `time`, `nice`, `nohup`, and `stdbuf`, plus the shell
+# builtins `command` and `builtin`, and zsh's `noglob`. Each runs its argument
+# as the actual command." A separate sentence on the same page adds bare
+# `xargs`, and says "Stripping applies only when `xargs` has no flags".
+#
+# WHY STRIPPING IS WHAT MAKES THEM DANGEROUS HERE. `time bash
+# .local/scratch/x.sh` still matches the pre-approved `Bash(bash
+# .local/scratch/*)` rule, so no prompt fires -- while `time` puts `bash` out
+# of command position, so the contents scan, the SOLE compensating control for
+# that rule, collected no target at all. Not blocked, and not even reported as
+# unreadable. `.local/` is gitignored, so that body reached no prompt, no diff
+# and no reviewer. Measured through the real hook, 2026-08-07: every wrapper
+# here returned exit 0 where the unwrapped form returned exit 2.
+#
+# WHAT IS DELIBERATELY ABSENT, from the same fetch. `command -v` and zsh's
+# `nocorrect` "aren't stripped"; `xargs` with any flag is "matched as an
+# `xargs` command"; and the exec wrappers `watch`, `setsid`, `ionice` and
+# `flock` "always prompt and can't be auto-approved by a prefix rule". `sudo`
+# and `env` are in none of the lists. Each of those still earns its own
+# prompt, so none of them is this hole -- see KNOWN GAPS.
+TRANSPARENT_WRAPPERS = frozenset({
+    "timeout", "time", "nice", "nohup", "stdbuf", "command", "builtin",
+    "noglob", "xargs",
+})
+
+# Flags that consume the NEXT token as their value, so what follows them is not
+# the wrapped command. Anything else starting with `-` is skipped one token at
+# a time, which is what covers `--preserve-status`, `stdbuf -o0`, and nice's
+# legacy `nice -10 cmd`.
+WRAPPER_VALUE_FLAGS = {
+    "timeout": frozenset({"-s", "--signal", "-k", "--kill-after"}),
+    "nice": frozenset({"-n", "--adjustment"}),
+    "stdbuf": frozenset({"-i", "-o", "-e", "--input", "--output", "--error"}),
+}
+
+# `timeout DURATION COMMAND` -- one bare operand stands between the wrapper and
+# the command it runs. No other wrapper here takes one.
+WRAPPER_POSITIONALS = {"timeout": 1}
+
+# `time` is a shell RESERVED WORD taking a pipeline, so `time for i in ...` is a
+# real compound command. Every other wrapper execs its argument as a command
+# NAME, where a reserved word is a syntax error -- `timeout 30 for ...` does not
+# run at all. That distinction is why command position carries a flag rather
+# than being a plain set; see command_start_map.
+RESERVED_WORD_WRAPPERS = frozenset({"time"})
+
+# A leading variable assignment, which the same page documents as stripped too:
+# "Claude Code also strips a leading assignment of certain known-safe
+# environment variables, so `Bash(npm test *)` matches `NODE_ENV=test npm
+# test`." So `FOO=1 bash .local/scratch/x.sh` is the same hole as a wrapper for
+# the CONTENTS scan.
+#
+# It is NOT the same hole for the control-flow scan, and that asymmetry is the
+# whole reason the two are distinguished: an assignment prefixes a SIMPLE
+# command, so `FOO=1 for i in 1 2; do :; done` is a bash SYNTAX ERROR. Treating
+# it as a reserved-word position would make the gate fire on text that cannot
+# run, which is the false-positive direction this file's docstring calls the
+# expensive one.
+ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
 SCRATCH_HINT = (
     "Write it once to .local/scratch/<slug>.sh and run `bash .local/scratch/<slug>.sh`."
@@ -239,7 +348,26 @@ WHOLE_SUBST_FETCH = re.compile(
 )
 
 # A token carrying any of these cannot be resolved to a path by reading it.
-NON_LITERAL = ("$", "`", "*", "?")
+#
+# `[` `]` `{` `}` were added 2026-08-07. bash expands them, so `bash x[1].sh`
+# and `bash x{a,b}.sh` name a file only after globbing and brace expansion --
+# resolving the token literally produced a path that does not exist, and the
+# not-found branch then ALLOWED, commenting that nothing would execute while
+# bash executed something. Both measured ALLOW against a BLOCKing literal.
+#
+# Quote characters are deliberately NOT here, and the reason is that they are a
+# different defect wearing the same clothes. `bash "x".sh` is ONE bash word
+# that shlex splits into three tokens, so after unquote() the operand is `x`
+# and no character test can see the `.sh` that follows; and adding a quote here
+# would instead block `bash "my script.sh"`, which is an ordinary literal path.
+# The posix re-tokenization in collect_shell_targets is what resolves that one.
+NON_LITERAL = ("$", "`", "*", "?", "[", "]", "{", "}")
+
+# Operands that ARE standard input. A shell handed one of these reads its
+# program from the pipe exactly as a bare `bash` does, so reading them as a
+# script FILE meant a fetched payload was scanned as a file that does not
+# exist -- and `bash /dev/stdin` additionally pointed the reader at a device.
+STDIN_OPERANDS = frozenset({"/dev/stdin", "/dev/fd/0", "/proc/self/fd/0"})
 
 # ~70x the largest script in this repository (14,597 bytes, measured 2026-08-07).
 MAX_SCRIPT_BYTES = 1024 * 1024
@@ -257,14 +385,50 @@ def unquote(token):
     return token
 
 
-def tokenize(command):
-    """Shell-aware tokens, or None if the string cannot be parsed."""
+def tokenize(command, posix=False):
+    """Shell-aware tokens, or None if the string cannot be parsed.
+
+    COMMENTS ARE HANDLED HERE RATHER THAN BY shlex, AND THE DIFFERENCE WAS A
+    BYPASS OF ALL THREE GATES. shlex's `commenters` strips from ANY `#`; bash
+    strips only from a WORD-INITIAL one. Measured 2026-08-07:
+
+        curl http://host/p#frag | bash   ->  ['curl', 'http://host/p']
+
+    The pipe and the interpreter vanished, so FETCH-EXEC could not fire on a
+    line bash runs as a fetch piped into a shell. Every gate calls this
+    function, so the same truncation silently shortened the keyword scan and
+    the check-ignore scan too.
+
+    `commenters = ""` ALONE IS NOT THE FIX and breaks the other direction: a
+    genuine word-initial comment then tokenizes as commands, and this guard's
+    own calibration carries a real comment containing the blocked shape, which
+    would start being read as a command. Both directions need bash's actual
+    rule, which is what truncating at the first token that STARTS with `#`
+    implements -- `a#b` and `http://x/p#frag` keep theirs, a bare `#` and a
+    trailing `# note` end the line, and a quoted `"#x"` never starts with `#`
+    at all because non-posix shlex leaves the quote attached.
+
+    `posix=True` is a SECOND reading, used by collect_shell_targets only. It
+    joins adjacent quoted and unquoted runs the way bash does, so `bash "x".sh`
+    resolves to `x.sh` rather than to `x`. It is deliberately not used by the
+    keyword scan: non-posix quote PRESERVATION is what keeps a quoted keyword
+    from comparing equal to a bare one, which the module docstring records as
+    load-bearing. Its one cost is that a quoted string opening with `#` loses
+    its quotes before the truncation above and reads as a comment; that can
+    only drop a supplementary target, never invent one, and the primary
+    non-posix reading still sees it.
+    """
     try:
-        lexer = shlex.shlex(command, punctuation_chars=True)
+        lexer = shlex.shlex(command, posix=posix, punctuation_chars=True)
         lexer.whitespace_split = True
-        return list(lexer)
+        lexer.commenters = ""
+        tokens = list(lexer)
     except ValueError:
         return None
+    for i, tok in enumerate(tokens):
+        if tok.startswith("#"):
+            return tokens[:i]
+    return tokens
 
 
 def quoted_region_end(lines, start):
@@ -327,25 +491,121 @@ def heredoc_delimiter(line):
     return None
 
 
+def wrapper_target_index(tokens, idx):
+    """Index of the command a transparent wrapper at `idx` runs, or None.
+
+    Each wrapper's own options are skipped, because they stand between it and
+    the command and are not it: `nice -n 10 bash x.sh` puts two tokens in the
+    way, `timeout 30 bash x.sh` puts a bare DURATION operand there. A rule that
+    only looked at the very next token would have closed `time` and `nohup` and
+    left the other seven open, which is the shape of a fix that reads as done.
+
+    None where the vendor documents the form as NOT stripped, because those
+    still earn their own permission prompt and are therefore not this gap:
+    `command -v` looks a command up rather than running one, and `xargs` is
+    stripped "only when `xargs` has no flags".
+    """
+    name = tokens[idx]
+    value_flags = WRAPPER_VALUE_FLAGS.get(name, frozenset())
+    positionals = WRAPPER_POSITIONALS.get(name, 0)
+    i = idx + 1
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok in SEPARATORS or tok in KEYWORD_SEPARATORS:
+            return None             # the wrapper ran nothing on this command
+        if tok.startswith("-") and len(tok) > 1:
+            if name == "xargs":
+                return None         # any flag, and stripping does not apply
+            if (name == "command" and not tok.startswith("--")
+                    and ("v" in tok[1:] or "V" in tok[1:])):
+                return None         # the query form, which runs nothing
+            i += 2 if tok in value_flags else 1
+            continue
+        if positionals > 0:
+            positionals -= 1
+            i += 1
+            continue
+        return i
+    return None
+
+
+def command_start_map(tokens):
+    """{index: reserved_word_ok} for every token that OPENS a command.
+
+    ONE implementation for both scanners, because the bypasses below were a
+    property of the shared rule rather than of either gate -- and because the
+    two need the same answer to a different question, which a plain set could
+    not carry. `reserved_word_ok` is True where bash grammar permits a RESERVED
+    WORD, so `for` there is a loop; False where only a simple command NAME can
+    appear, so `for` there is a syntax error and must not be reported.
+
+    Three sources of a command position, the last two added 2026-08-07:
+
+      * a separator, a keyword separator, or a group opener before it -- the
+        original rule, plus `{` `}` `!`;
+      * a TRANSPARENT WRAPPER earlier on the line, whose argument it is. The
+        wrapper execs that argument, so it is a command in its own right;
+      * a leading variable ASSIGNMENT, which prefixes a simple command.
+
+    The last two propagate, so `nohup timeout 30 bash x.sh` and `FOO=1 nice -n
+    10 bash x.sh` both resolve. Termination is structural rather than bounded
+    by a counter: every target index is strictly greater than the index that
+    produced it, and each is enqueued only on first insertion.
+    """
+    starts = {}
+    prev = None
+    for i, tok in enumerate(tokens):
+        if (prev is None or prev in SEPARATORS or prev in KEYWORD_SEPARATORS
+                or prev in GROUP_OPENERS):
+            starts[i] = True
+        prev = tok
+
+    frontier = sorted(starts)
+    while frontier:
+        i = frontier.pop()
+        tok = tokens[i]
+        if tok in TRANSPARENT_WRAPPERS:
+            target = wrapper_target_index(tokens, i)
+            reserved_ok = tok in RESERVED_WORD_WRAPPERS
+        elif ASSIGNMENT.match(tok):
+            j = i
+            while j < len(tokens) and ASSIGNMENT.match(tokens[j]):
+                j += 1
+            target = j if j < len(tokens) else None
+            if target is not None and (tokens[target] in SEPARATORS
+                                       or tokens[target] in KEYWORD_SEPARATORS):
+                target = None       # a bare assignment, running nothing
+            reserved_ok = False     # a simple command only; see ASSIGNMENT
+        else:
+            continue
+        if target is not None and target not in starts:
+            starts[target] = reserved_ok
+            frontier.append(target)
+    return starts
+
+
 def scan_line(line, depth):
     """Return the offending keyword on ONE line, or None."""
     tokens = tokenize(line)
     if tokens is None:
         return None  # unparseable -> allow, per the failure direction above
 
-    prev = None
+    starts = command_start_map(tokens)
     for i, tok in enumerate(tokens):
-        command_position = (
-            prev is None or prev in SEPARATORS or prev in KEYWORD_SEPARATORS
-        )
+        if i not in starts:
+            continue
 
-        if command_position and tok in CONTROL_KEYWORDS:
+        # `reserved_word_ok` is what keeps this off `timeout 30 for ...` and
+        # `FOO=1 for ...`, both of which bash refuses to parse.
+        if starts[i] and tok in CONTROL_KEYWORDS:
             return tok
 
         # `bash -c "for i in ...; do ...; done"` hides the loop one level down.
+        # No reserved-word test here: a shell is a command NAME, so every
+        # command position reaches it, including one opened by a wrapper or an
+        # assignment.
         if (
-            command_position
-            and tok in SHELL_WRAPPERS
+            tok in SHELL_WRAPPERS
             and depth < 2
             and i + 2 < len(tokens)
             and tokens[i + 1] == "-c"
@@ -353,8 +613,6 @@ def scan_line(line, depth):
             nested = find_inline_control_flow(unquote(tokens[i + 2]), depth + 1)
             if nested:
                 return nested
-
-        prev = tok
     return None
 
 
@@ -379,19 +637,45 @@ def walk_command_lines(text, visit):
     not be blocked by the guard that demands it. Skipping to the delimiter rather
     than abandoning the scan is deliberate -- an earlier `break` here stopped the
     entire scan, leaving everything after the first `<<` unguarded.
+
+    BACKSLASH-NEWLINE CONTINUATIONS ARE FOLDED FIRST, and that is not a nicety.
+    A physical line is not a command: bash removes `\\` + newline entirely, so a
+    wrapped pipeline is ONE command spread over several lines. Unfolded, a
+    fetch on line 1 and the `| bash` on line 2 were never in the same token
+    stream and FETCH-EXEC could not fire on either half. This is the corpus's
+    dominant idiom rather than a contrived shape -- 194 of 393 real scratch
+    scripts here carry a continuation and 100 already wrap a pipeline
+    (measured 2026-08-07), so the differential covered most of the population
+    the scan exists for.
+
+    Folding happens INSIDE the heredoc check rather than as a preprocessing
+    pass, because a heredoc body is data and its trailing backslashes are not
+    continuations. Folding first would let a body line ending in `\\` swallow
+    the delimiter line, leaving `pending_delimiter` unclosed and every later
+    line skipped -- a fail-OPEN introduced by a fix aimed at closing one.
     """
     lines = text.split("\n")
     pending_delimiter = None
-    skip_until = -1  # last line index belonging to a multi-line quoted string
+    i = 0
 
-    for i, line in enumerate(lines):
-        if i <= skip_until:
-            continue  # inside a quoted string that spans lines: data, not commands
+    while i < len(lines):
+        line = lines[i]
 
         if pending_delimiter is not None:
             if line.strip() == pending_delimiter:
                 pending_delimiter = None
+            i += 1
             continue  # inside a heredoc body: data, not commands
+
+        # Fold this physical line and its continuations into ONE logical line.
+        # An EVEN run of trailing backslashes is an escaped backslash, not a
+        # continuation, which is why the count decides rather than the last
+        # character. `start` keeps the reported line number on the line a reader
+        # would look at first.
+        start = i
+        while continues_on_next_line(line) and i + 1 < len(lines):
+            line = line[:-1] + lines[i + 1]
+            i += 1
 
         # A line that does not tokenize may be opening a quote that closes on a
         # LATER line -- `python3 -c "` followed by a Python loop is the shape
@@ -405,12 +689,12 @@ def walk_command_lines(text, visit):
         # discipline as the heredoc delimiter below, and for the same reason: a
         # region that never ends is not a region.
         if tokenize(line) is None:
-            close = quoted_region_end(lines, i)
+            close = quoted_region_end(lines, start)
             if close is not None:
-                skip_until = close
+                i = close + 1
                 continue
 
-        found = visit(line, i + 1)
+        found = visit(line, start + 1)
         if found:
             return found
 
@@ -430,8 +714,19 @@ def walk_command_lines(text, visit):
         # under-guard well-formed input.
         if candidate and any(later.strip() == candidate for later in lines[i + 1:]):
             pending_delimiter = candidate
+        i += 1
 
     return None
+
+
+def continues_on_next_line(line):
+    """True when a trailing backslash continues this line onto the next.
+
+    An ODD number of trailing backslashes is a continuation; an even number is
+    one or more escaped backslashes and the line ends there. Counting is what
+    makes `printf 'a\\\\'` stay one line while `curl x \\` joins the next.
+    """
+    return (len(line) - len(line.rstrip("\\"))) % 2 == 1
 
 
 def find_inline_control_flow(command, depth=0):
@@ -450,17 +745,14 @@ def find_inline_control_flow(command, depth=0):
 def command_positions(tokens):
     """[(index, token)] for every token that OPENS a command.
 
-    Same rule the control-flow scanner uses: a token is in command position when
-    it is first or follows a separator. Sharing the rule is what keeps a keyword
-    in a quoted argument from being read as a command in either scanner.
+    Literally the same rule the control-flow scanner uses, because it is the
+    same function -- sharing it is what keeps a keyword in a quoted argument
+    from being read as a command in either scanner, and it is why closing the
+    wrapper bypass closed it for both gates at once. The reserved-word flag is
+    dropped here: this scanner asks which token is a command NAME, and every
+    command position has one.
     """
-    out = []
-    prev = None
-    for i, tok in enumerate(tokens):
-        if prev is None or prev in SEPARATORS or prev in KEYWORD_SEPARATORS:
-            out.append((i, tok))
-        prev = tok
-    return out
+    return [(i, tokens[i]) for i in sorted(command_start_map(tokens))]
 
 
 def args_until_separator(tokens, start):
@@ -482,16 +774,38 @@ def reads_program_from_stdin(tokens, idx):
     is the -c string and the fetched bytes are merely its input. Without this
     distinction the check fires on routine JSON parsing, which is how it was
     found -- one real scratch script in this repository does exactly that.
+
+    TWO OPERAND CORRECTIONS, 2026-08-07, both of which read a stdin program as
+    a file and allowed it:
+
+      * `-s` SETTLES stdin for the rest of the command. `bash -s HELLO` reads
+        its program from stdin and passes HELLO as $1, so returning False at
+        the first non-flag operand was wrong. Scoped to shells, where that is
+        what `-s` means -- for `python3 -s` it selects a site-packages
+        behavior and the operand after it really is the program.
+      * `/dev/stdin`, `/dev/fd/0` and `/proc/self/fd/0` ARE stdin wearing a
+        file operand's shape. `curl ... | bash /dev/stdin` executes fetched
+        bytes exactly as `curl ... | bash` does.
+
+    `-` and `--` are NOT stdin markers and must keep falling through. `bash -
+    real.sh` genuinely reads real.sh; both spellings are end-of-options, and
+    only `-s` settles the question.
     """
-    flags = PROGRAM_FLAGS.get(tokens[idx], ())
+    name = tokens[idx]
+    flags = PROGRAM_FLAGS.get(name, ())
+    is_shell = name in SHELL_WRAPPERS
     for arg in args_until_separator(tokens, idx + 1):
         if arg in flags or (arg.startswith("--") and arg.split("=", 1)[0] in flags):
             return False            # the program is supplied inline
-        if arg in ("-", "-s", "--"):
-            continue                # explicit stdin markers, and end-of-options
+        if (is_shell and arg.startswith("-") and not arg.startswith("--")
+                and "s" in arg[1:]):
+            return True             # -s, bundled or bare: stdin, permanently
+        if arg in ("-", "--"):
+            continue                # END-OF-OPTIONS, not a stdin marker
         if arg.startswith("-"):
             continue                # an ordinary option
-        return False                # a script FILE operand supplies the program
+        # A file operand supplies the program -- unless the "file" is stdin.
+        return unquote(arg) in STDIN_OPERANDS
     return True
 
 
@@ -619,40 +933,70 @@ def shell_file_operand(tokens, idx):
 
     None where the shell's program comes from somewhere this guard cannot read:
     `-c` supplies it inline (already handled by the control-flow scanner's own
-    unwrap), `-s` and a bare `-` name stdin, and a shell with no operand at all
-    is reading stdin too. None means "no file to check", never "checked".
+    unwrap), `-s` names stdin, and a shell with no operand at all is reading
+    stdin too. None means "no file to check", never "checked".
+
+    A BARE `-` IS END-OF-OPTIONS, NOT STDIN, and pairing it with `-s` here was
+    the mirror of the defect in reads_program_from_stdin: `bash - real.sh`
+    reads real.sh, and returning None skipped the contents scan on a script
+    that genuinely runs. Corrected 2026-08-07 -- `-` now behaves as `--` does
+    and yields the operand after it.
     """
     args = args_until_separator(tokens, idx + 1)
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "-c" or arg in ("-s", "-"):
-            return None
-        if arg == "--":
+        if arg == "-c":
+            return None             # the program is supplied inline
+        if arg in ("-o", "+o", "-O", "+O"):
+            i += 2                  # these take a value of their own
+            continue
+        if (arg.startswith("-") and not arg.startswith("--") and len(arg) > 1
+                and "s" in arg[1:]):
+            return None             # -s, bundled or bare: the program is stdin
+        if arg in ("-", "--"):
             return args[i + 1] if i + 1 < len(args) else None
         if arg.startswith("-") or arg.startswith("+"):
-            if arg in ("-o", "+o", "-O", "+O"):
-                i += 2              # these take a value of their own
-                continue
             i += 1
             continue
-        return arg
+        # `bash /dev/stdin` names stdin, not a file. Returning it would point
+        # the reader below at a device rather than at the program.
+        return None if unquote(arg) in STDIN_OPERANDS else arg
     return None
 
 
 def collect_shell_targets(command):
-    """Every script file this command line would hand to a shell."""
+    """Every script file this command line would hand to a shell.
+
+    TOKENIZED TWICE, AND THE SECOND READING IS NOT REDUNDANT. The non-posix
+    mode the keyword scanner needs splits `bash "x".sh` into
+    ['bash', '"x"', '.sh'] -- one bash word read as two -- so the operand
+    resolved to `x`, which does not exist, and the not-found branch allowed a
+    command bash runs as `x.sh`. posix mode joins adjacent quoted and unquoted
+    runs the way bash does and yields `x.sh`; it also resolves `bash x\\ y.sh`
+    to the single name bash builds, which no character test could.
+
+    THE UNION IS WHAT MAKES THIS SAFE TO ADD. Switching modes outright would
+    strip the quotes the keyword scan depends on. Taking both keeps every
+    target the primary reading finds and adds the ones quoting hid, and since a
+    target that does not exist is already a no-op, the extra reading can only
+    widen coverage -- it cannot invent a block on a line the primary reading
+    called clean.
+    """
     targets = []
 
-    def visit(line, _lineno):
-        tokens = tokenize(line)
+    def collect(tokens):
         if tokens is None:
-            return None
+            return
         for i, tok in command_positions(tokens):
             if tok in SHELL_WRAPPERS:
                 operand = shell_file_operand(tokens, i)
-                if operand is not None:
+                if operand is not None and operand not in targets:
                     targets.append(operand)
+
+    def visit(line, _lineno):
+        collect(tokenize(line))
+        collect(tokenize(line, posix=True))
         return None                 # never truthy: visit every line
 
     walk_command_lines(command, visit)
@@ -682,15 +1026,25 @@ def read_script(path):
     cannot be read is different in kind: something will run that this guard could
     not inspect. Collapsing the two would either block every `bash` of a
     not-yet-written file or pass an unreadable one as clean.
+
+    ONLY A REGULAR FILE IS READ. A directory was already refused; the test is
+    now positive rather than a list of things to exclude, so a FIFO, a socket
+    or a device is refused too. Reading one can block forever or return
+    something other than the program bash will run -- and a device operand was
+    reachable here until reads_program_from_stdin learned about `/dev/stdin`.
     """
     try:
-        if os.path.isdir(path):
-            return None, "the target is a directory, not a script"
-        size = os.path.getsize(path)
+        st = os.stat(path)
     except FileNotFoundError:
         return None, None
     except OSError as exc:
         return None, "the target could not be examined (%s)" % type(exc).__name__
+
+    if stat.S_ISDIR(st.st_mode):
+        return None, "the target is a directory, not a script"
+    if not stat.S_ISREG(st.st_mode):
+        return None, "the target is not a regular file"
+    size = st.st_size
 
     if size > MAX_SCRIPT_BYTES:
         return None, "the target is larger than %d bytes" % MAX_SCRIPT_BYTES
@@ -889,9 +1243,30 @@ if __name__ == "__main__":
 #   * ONLY SHELLS. `python3 x.py` and `node x.js` are not scanned; the scanner is
 #     a shell tokenizer and the wrong grammar would misread them. Neither shape
 #     is pre-approved here, so neither currently launders a prompt.
-#   * A TRANSPARENT PREFIX. `sudo bash x.sh`, `env bash x.sh`, `nohup bash x.sh`
-#     put the shell out of command position, so no target is collected. None of
-#     them matches the pre-approved prefix either, so all three prompt today.
+#   * A TRANSPARENT PREFIX THE VENDOR DOES NOT STRIP. `sudo bash x.sh` and
+#     `env bash x.sh` put the shell out of command position, so no target is
+#     collected -- but neither matches the pre-approved prefix either, so both
+#     still prompt. Same for the exec wrappers `watch`, `setsid`, `ionice` and
+#     `flock`, which the permissions reference says "always prompt and can't be
+#     auto-approved by a prefix rule", and for `command -v`, zsh's `nocorrect`,
+#     and `xargs` carrying any flag. Raw fetch of
+#     code.claude.com/docs/en/permissions.md, 2026-08-07.
+#
+#     `nohup` WAS NAMED HERE AND THE CLAIM WAS FALSE. It is in the vendor's
+#     stripped set, so `nohup bash .local/scratch/x.sh` matched the
+#     pre-approved rule and did NOT prompt, while this list asserted it did.
+#     A disclosed gap whose stated mitigation is untrue is worse than an
+#     undisclosed one, because it has already been triaged on the strength of a
+#     mitigation that was not there. Corrected 2026-08-07: every wrapper in the
+#     stripped set is now resolved by wrapper_target_index rather than
+#     disclosed, and what remains disclosed is the set the same page says
+#     prompts -- anchored to a dated fetch, as every other vendor claim in this
+#     file is, rather than to an unanchored "today".
+#   * A CONTROL KEYWORD BEHIND A LEADING ASSIGNMENT is not reachable and is
+#     therefore not a gap: `FOO=1 for i in 1 2; do :; done` is a bash SYNTAX
+#     ERROR, as is a leading redirection before a compound command. The
+#     calibration carries both as MUST-ALLOW arms so a later widening cannot
+#     start blocking text that cannot run.
 #   * TOCTOU. The file is read before the tool runs; nothing stops it changing
 #     in between.
 #   * INBOUND FETCH IS ALLOWED BY DESIGN, not by oversight -- see the module
