@@ -32,12 +32,15 @@ JSON) and an OSV CVE query. They are here so a future widening has to break a
 named, real case rather than an invented one.
 """
 
+import importlib.util
+import itertools
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 HOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bash-guard.py")
 
@@ -653,6 +656,55 @@ MUTANTS = [
      '    if False:\n'
      '        return None, "the target is not a regular file"',
      ["FIFO"]),
+
+    # -----------------------------------------------------------------------
+    # THE QUOTED-REGION SCAN. Two properties, and until this pass the registry
+    # covered neither: that the scan gets the same ANSWER as the implementation
+    # it replaced, and that it does so in one forward pass. The first three
+    # mutate correctness and are caught by the equivalence arm; the last two
+    # mutate only cost and are caught by nothing else in this file, which is the
+    # gap that let a superlinear scan pass 144/144 and 35/35.
+    # -----------------------------------------------------------------------
+
+    # Every expectation below names text that appears ONLY in a failure record,
+    # never on the arm's own line -- an arm prints its label whether it passed
+    # or failed, so expecting the bare label would match a clean run and report
+    # a survivor as killed.
+    ("a quote character opens a region wherever it appears, boundary or not",
+     '            opens = (at_boundary if i == pos\n'
+     '                     else line[i - 1] in TOKEN_BOUNDARY_CHARS)',
+     '            opens = True',
+     ["EQUIVALENCE text="]),
+    ("the carried boundary flag dropped, so a quote at a line's own start "
+     "always opens",
+     '            opens = (at_boundary if i == pos\n'
+     '                     else line[i - 1] in TOKEN_BOUNDARY_CHARS)',
+     '            opens = (i == pos or line[i - 1] in TOKEN_BOUNDARY_CHARS)',
+     ["EQUIVALENCE text="]),
+    ("punctuation dropped from the boundary set, so `echo|\"x` reads as mid-word",
+     'TOKEN_BOUNDARY_CHARS = frozenset(" \\t\\r\\n();<>|&")',
+     'TOKEN_BOUNDARY_CHARS = frozenset(" \\t\\r\\n")',
+     ["EQUIVALENCE text="]),
+
+    # Cost-only mutants. Each returns every answer the current scan returns --
+    # the equivalence arm passes for both -- and only the wall-clock bounds
+    # separate them. The first is the defect this pass fixed, restored verbatim.
+    ("the scan re-tokenizes the whole accumulated text per candidate line",
+     '    at_boundary = True\n    quote = None\n    for j in range(start, len(lines)):',
+     '    for j in range(start + 1, len(lines)):\n'
+     '        if tokenize("\\n".join(lines[start:j + 1])) is not None:\n'
+     '            return j\n'
+     '    return None\n'
+     '    at_boundary = True\n    quote = None\n    for j in range(start, len(lines)):',
+     ["COST 'unclosed quote, 1200 following lines'",
+      "COST 'closing multi-line -c body, 1200 lines'"]),
+    ("the scan re-materializes the remaining text once per call",
+     '    at_boundary = True\n    quote = None\n    for j in range(start, len(lines)):',
+     '    at_boundary = True\n    quote = None\n'
+     '    joined = "\\n".join(lines[start:])\n'
+     '    for j in range(start, len(lines)):\n'
+     '        _ = len(joined)',
+     ["COST '16000 reopening quoted regions'"]),
 ]
 
 
@@ -782,6 +834,174 @@ def bash_payload(command, cwd=None):
         "tool_input": {"command": command, "description": "test"},
         "tool_use_id": "toolu_test",
     }
+
+
+# ---------------------------------------------------------------------------
+# COST ARMS. Every other arm in this file asserts WHAT the guard decided; these
+# assert WHAT IT COST TO DECIDE, and nothing here did that before. The registry
+# above holds mutants for detector correctness only, so a rewrite that kept
+# every verdict and made the scan superlinear passed 144/144 and 35/35 -- which
+# is what happened: `quoted_region_end` re-tokenized the whole accumulated text
+# at every candidate closing line, and at 4,800 lines one command took 129s
+# against the 10-second timeout `settings.json` declares for this hook.
+#
+# A hook that outruns its own timeout is a defect whichever way the harness
+# resolves the timeout. If it fails open, the sole compensating control for the
+# pre-approved `Bash(bash .local/scratch/*)` rule is defeated by making the
+# command large enough. If it fails closed, ordinary work stalls. The vendor
+# documents a command hook on UserPromptSubmit as failing OPEN at its timeout
+# and an Agent SDK callback on PreToolUse as failing CLOSED; a COMMAND hook on
+# PreToolUse -- this one -- is the combination documented in neither place, and
+# nothing here should be read as having settled it.
+#
+# THE COST FELL ON LEGITIMATE INPUT TOO, which is why the arms come in both
+# directions. A multi-line `python3 -c` body is the shape the quoted-region skip
+# exists FOR (see MUST_ALLOW), and it paid the identical price: 5.43s at 1,200
+# lines. So these are not adversarial-only arms.
+# ---------------------------------------------------------------------------
+
+
+def unclosed_then_lines(n):
+    """An unbalanced quote nothing later closes -- MUST_ALLOW's shape, extended.
+
+    The worst case for the old scan: every later line re-joined and re-lexed,
+    and nothing ever satisfies the predicate.
+    """
+    return 'echo "unterminated\n' + "\n".join("echo line%d" % i for i in range(n))
+
+
+def closing_c_body(n):
+    """A multi-line `python3 -c` body that closes correctly -- the legitimate case."""
+    return 'python3 -c "\n' + "\n".join("    x = %d" % i for i in range(n)) + '\n"'
+
+
+def reopening_regions(triples):
+    """Many short quoted regions, each opening and closing three lines later.
+
+    A DIFFERENT COST SHAPE from the two above, and it is here because the first
+    attempt at the fix passed both of those and left this one quadratic. The old
+    scan is fine here -- it re-lexes only as far as the close, three lines away
+    -- so this arm is not a regression test for the original defect. It pins the
+    near miss: a scan that stops re-lexing but still re-materializes the
+    remaining text once per region. Lines 2 and 3 of each triple sit inside the
+    region and are never visited, so only a per-call copy touches them.
+    """
+    return "\n".join('echo "open%d\nfiller\nstill"' % i for i in range(triples))
+
+
+# (label, command, seconds, expected exit). Bounds are set from measurement on
+# this repository's own machine, at roughly 4x the observed cost of a correct
+# run and well under the failing cost, so neither a loaded machine nor a slower
+# one flips an arm. Measured 2026-08-08, through the real hook subprocess:
+#
+#     arm                     before     after    bound
+#     unclosed quote          5.702s    0.162s     2.5s
+#     multi-line -c body      5.431s    0.045s     2.5s
+#     reopening regions      (0.078s)   0.636s     3.0s   <- see the docstring
+#
+# The third row's "before" is the OLD code, which was never slow on this shape;
+# the join-per-call near miss took 10.901s against the same 3.0s bound.
+COST_ARMS = [
+    ("unclosed quote, 1200 following lines", unclosed_then_lines(1200), 2.5, 0),
+    ("closing multi-line -c body, 1200 lines", closing_c_body(1200), 2.5, 0),
+    ("16000 reopening quoted regions", reopening_regions(16000), 3.0, 0),
+]
+
+
+def run_cost_arms(failures):
+    """Assert a wall-clock bound per arm, not only the exit code."""
+    print("\n--- COST (expect the exit code AND the time bound) ---")
+    for label, command, bound, want_exit in COST_ARMS:
+        start = time.perf_counter()
+        code, _ = run(bash_payload(command))
+        elapsed = time.perf_counter() - start
+        ok = code == want_exit and elapsed < bound
+        if not ok:
+            failures.append("COST %r: exit=%d (want %d) %.3fs (bound %.1fs)"
+                            % (label, code, want_exit, elapsed, bound))
+        print("  %s exit=%d %6.3fs / %.1fs  %s"
+              % ("ok  " if ok else "FAIL", code, elapsed, bound, label))
+    return len(COST_ARMS)
+
+
+# ---------------------------------------------------------------------------
+# EQUIVALENCE ARM. The cost arms above would pass for a scan that got the answer
+# WRONG quickly, so they are only half of what the rewrite needs. This is the
+# other half: the previous implementation, kept here verbatim as the reference
+# oracle, differentially tested against the current one over every short string
+# an interesting alphabet can produce.
+#
+# IT IS ALSO THE VENDOR PROBE, WHICH IS THE PART WORTH READING. The rewrite
+# rests on a property of shlex in NON-POSIX mode -- a quote character opens a
+# region only at a token boundary, and is an ordinary character mid-word. That
+# is an external fact about CPython, so recording it in a comment would be
+# provenance rather than verification: nothing would fail if a future CPython
+# changed it. The reference below calls the REAL `tokenize`, so it tracks the
+# installed shlex; any divergence between the two implementations is reported
+# here loudly rather than becoming a silent behavior change in the guard.
+#
+# This arm calls the function directly, unlike every other arm in this file, and
+# the split is deliberate: equivalence of one pure function is a claim about
+# that function, while the cost arms above drive the same code through the real
+# hook and a real payload. Neither substitutes for the other. The module is
+# loaded from HOOK, so the mutation battery's mutated copy is what gets tested.
+# ---------------------------------------------------------------------------
+
+EQUIVALENCE_ALPHABET = ('"', "'", "a", " ", "|", "\n", "\\")
+EQUIVALENCE_MAX_LEN = 6
+
+
+def load_guard():
+    spec = importlib.util.spec_from_file_location("bash_guard_under_test", HOOK)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def reference_quoted_region_end(guard, lines, start):
+    """The implementation this replaced, verbatim, as the oracle.
+
+    Quadratic, which is why it is no longer in the guard and why it is perfectly
+    fine here: the corpus is short strings.
+    """
+    for j in range(start + 1, len(lines)):
+        if guard.tokenize("\n".join(lines[start:j + 1])) is not None:
+            return j
+    return None
+
+
+def run_equivalence_arm(failures):
+    print("\n--- EQUIVALENCE (current scan vs the implementation it replaced) ---")
+    guard = load_guard()
+    corpus = []
+    for length in range(1, EQUIVALENCE_MAX_LEN + 1):
+        for combo in itertools.product(EQUIVALENCE_ALPHABET, repeat=length):
+            corpus.append("".join(combo))
+    # Real shapes as well as generated ones: a fixture that only ever sees a
+    # five-character alphabet cannot report that the two agree on a heredoc.
+    corpus.extend(command for _label, command in MUST_BLOCK)
+    corpus.extend(command for _label, command in MUST_ALLOW)
+
+    pairs = 0
+    mismatch = None
+    for text in corpus:
+        lines = text.split("\n")
+        for start in range(len(lines)):
+            pairs += 1
+            got = guard.quoted_region_end(lines, start)
+            want = reference_quoted_region_end(guard, lines, start)
+            if got != want and mismatch is None:
+                mismatch = (text, start, got, want)
+    ok = mismatch is None
+    if not ok:
+        failures.append("EQUIVALENCE text=%r start=%d got=%r want=%r" % mismatch)
+    print("  %s %d (text, start) pairs over %d generated strings + %d real commands"
+          % ("ok  " if ok else "FAIL", pairs,
+             len(corpus) - len(MUST_BLOCK) - len(MUST_ALLOW),
+             len(MUST_BLOCK) + len(MUST_ALLOW)))
+    if mismatch:
+        print("       first mismatch: text=%r start=%d got=%r want=%r" % mismatch)
+    return 1
 
 
 def run_contents_arms(workdir, failures):
@@ -1021,6 +1241,9 @@ def main():
         failures.append(f"OTHER 'malformed json': exit={proc.returncode}")
     print(f"  {'ok  ' if ok else 'FAIL'} exit={proc.returncode}  malformed json on stdin")
 
+    n_cost = run_cost_arms(failures)
+    n_equiv = run_equivalence_arm(failures)
+
     workdir = tempfile.mkdtemp(prefix="bash-guard-calib-")
     try:
         (c_block, c_unchecked, c_allow, c_resolution,
@@ -1046,14 +1269,20 @@ def main():
     contents = c_block + c_unchecked + c_allow + c_resolution
     blocking = len(MUST_BLOCK) + c_block + c_unchecked + len(WRAPPER_BLOCK)
     allowing = (command_line - len(MUST_BLOCK) + c_allow + len(WRAPPER_ALLOW))
-    print(f"RESULT: PASS - {command_line + contents + c_wrapped} cases, "
-          f"discriminated in both directions")
+    print(f"RESULT: PASS - {command_line + contents + c_wrapped + n_cost + n_equiv} "
+          f"cases, discriminated in both directions")
     print(f"  command line : {command_line} ({len(MUST_BLOCK)} block / "
           f"{command_line - len(MUST_BLOCK)} allow)")
     print(f"  contents     : {contents} ({c_block} block / {c_unchecked} "
           f"could-not-check / {c_allow} allow / {c_resolution} resolution)")
     print(f"  wrappers     : {c_wrapped} ({len(WRAPPER_BLOCK)} block / "
           f"{len(WRAPPER_ALLOW)} documented-gap allow)")
+    # Counted apart from the verdict arms above, because they assert a different
+    # kind of claim: what the scan COST, and whether it still agrees with the
+    # implementation it replaced. Folding them into the block/allow totals would
+    # read as more detector coverage than exists.
+    print(f"  cost         : {n_cost} wall-clock bounds")
+    print(f"  equivalence  : {n_equiv} differential arm vs the previous scan")
     print(f"  totals       : {blocking} block-or-unchecked / {allowing} allow "
           f"+ {c_resolution} mixed resolution arms")
     return 0

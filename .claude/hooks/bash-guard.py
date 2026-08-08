@@ -431,6 +431,17 @@ def tokenize(command, posix=False):
     return tokens
 
 
+# The characters after which shlex is back at a token boundary, which is the
+# only position where a quote character OPENS a region -- see quoted_region_end.
+# Both halves are shlex's own configuration as `tokenize` builds it: whitespace
+# is shlex's default `' \t\r\n'`, and the rest is what `punctuation_chars=True`
+# expands to. Neither is guessed; `quoted_region_end`'s equivalence arm in
+# bash-guard.test.py is what fails if either stops being true.
+TOKEN_BOUNDARY_CHARS = frozenset(" \t\r\n();<>|&")
+
+QUOTE_CHAR = re.compile(r"['\"]")
+
+
 def quoted_region_end(lines, start):
     """Index of the line that closes a quote opened at `start`, or None.
 
@@ -438,10 +449,96 @@ def quoted_region_end(lines, start):
     text tokenize again, the run was one quoted string spanning lines -- an
     embedded program, a multi-line message -- and its body is data. If nothing
     closes it, the input is malformed and None keeps every later line guarded.
+
+    ONE FORWARD PASS, BECAUSE RE-ASKING THE QUESTION PER LINE WAS SUPERLINEAR.
+    This rebuilt the whole joined string and re-tokenized it from scratch at
+    every candidate closing line. Measured on the shape that hits it -- an
+    unclosed quote followed by ordinary lines -- through the real scan:
+
+        lines      100     400    1600    3200     4800
+        before   0.018s  0.263s  6.031s  38.34s  129.14s
+
+    Cubic across the top of that range, and `settings.json` declares a 10-second
+    timeout for this hook, so a large enough command outran the only compensating
+    control the pre-approved `Bash(bash .local/scratch/*)` rule has. The
+    legitimate case paid the same price: a multi-line `python3 -c` body, which
+    the module docstring names as the reason this function exists, cost 1.07s at
+    800 lines. So this was a live cost on real work, not only an adversarial one.
+
+    A CAP WAS THE OBVIOUS FIX AND IS NOT THIS ONE. Bounding the scan leaves the
+    complexity class in place and buys a boundary at which the guard silently
+    changes behavior on legitimate input. Tracking the quote state forward
+    removes both: nothing is recomputed, so no length needs guarding.
+    `MAX_SCRIPT_BYTES` bounds the contents path only -- the command line has no
+    length bound at all, which is why a cap here would have had to be the
+    load-bearing defense rather than a backstop.
+
+    NOTHING IS JOINED, AND THAT IS LOAD-BEARING RATHER THAN TIDY. The first
+    attempt at this fix kept `"\\n".join(lines[start:])` and scanned the result.
+    It fixed the shape above and left three others quadratic, because a caller
+    that skips to a close calls again on the next region and re-materializes the
+    whole remaining text each time. Measured at 25,600 lines: an
+    opens-closes-reopens shape still took 15.4s, over the hook's own budget. The
+    join was the cost, not the tokenizing. Carrying the state across lines
+    instead touches each character once.
+
+    THE ONE NON-OBVIOUS RULE, AND IT IS shlex'S, NOT BASH'S. In NON-POSIX mode a
+    quote character opens a region only at a TOKEN BOUNDARY; mid-word it is an
+    ordinary character. Measured against the pinned interpreter, and the pairs
+    are what make the rule visible rather than plausible:
+
+        echo "abc     -> ValueError      abc"def   -> ['abc"def']
+        "a"'b         -> ValueError      ab"'c     -> ['ab"\\'c']
+
+    So a region opens only at the start of a line, after whitespace or
+    punctuation, or immediately after a closing quote -- shlex emits the token at
+    the closing quote and returns to the boundary state. `at_boundary` carries
+    that last case, which the preceding character cannot express: after a LITERAL
+    mid-word quote the next character is not at a boundary, and after a CLOSING
+    one it is, yet both are preceded by a quote character.
+
+    WHY IT IS STILL LINEAR WHEN THE QUOTE NEVER CLOSES, which is the case that
+    was worst before. Returning a close makes the caller skip to it, so that work
+    is charged once to the lines it skipped. Returning None does not, but the
+    scan only reaches the end when the opening quote character appears nowhere
+    later -- and then no later line can open an unclosed region of that same
+    character either. There are two quote characters, so at most two scans can
+    run the full length.
+
+    The equivalence is against `tokenize`, not against bash: this decides where
+    the OLD predicate would have flipped. bash-guard.test.py holds the previous
+    implementation as the reference oracle and differentially tests the two, so
+    a shlex change that moves the predicate fails there loudly rather than
+    silently diverging here.
     """
-    for j in range(start + 1, len(lines)):
-        if tokenize("\n".join(lines[start:j + 1])) is not None:
-            return j
+    at_boundary = True
+    quote = None
+    for j in range(start, len(lines)):
+        line = lines[j]
+        pos = 0
+        while True:
+            if quote is not None:
+                close = line.find(quote, pos)
+                if close < 0:
+                    break                   # the region runs past this line
+                quote, pos, at_boundary = None, close + 1, True
+                continue
+            match = QUOTE_CHAR.search(line, pos)
+            if match is None:
+                break
+            i = match.start()
+            opens = (at_boundary if i == pos
+                     else line[i - 1] in TOKEN_BOUNDARY_CHARS)
+            if opens:
+                quote = line[i]
+            pos, at_boundary = i + 1, False
+        if quote is None:
+            # The newline joining this line to the next is whitespace, so a scan
+            # not inside a region is back at a boundary -- and the accumulated
+            # text tokenizes, which is exactly what the caller is asking for.
+            at_boundary = True
+            if j > start:
+                return j
     return None
 
 
