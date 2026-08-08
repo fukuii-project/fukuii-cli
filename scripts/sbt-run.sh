@@ -195,6 +195,16 @@ if [ -f "$ACTIVE_JSON" ] && command -v lsof >/dev/null 2>&1; then
     # WHOLE-FIELD EQUALITY, never a regex and never a substring. lsof prints the
     # socket path as its own whitespace-delimited NAME field, and the validation
     # above guarantees the value has no whitespace, so field equality is exact.
+    #
+    # TWO gates above make it exact, not one, and the second is easy to remove by
+    # accident. awk's `==` compares NUMERICALLY when both sides look like numbers,
+    # so a value that is a bare number would match a numerically equal field
+    # rather than an identical one. The `case $SOCK_PATH in /*)` test is what
+    # structurally prevents that: a leading `/` cannot be a numeric string.
+    # Measured on this machine's mawk 1.3.4 -- with s="42" the field `042`
+    # MATCHES, and with s="/42" the field `42` does not. So loosening the
+    # absolute-path requirement silently reopens a comparison this comment
+    # otherwise credits entirely to the character-class check.
     SERVER_PID=$(lsof -U 2>/dev/null | awk -v s="$SOCK_PATH" \
       '$0 ~ /LISTEN/ { for (i = 1; i <= NF; i++) if ($i == s) { print $2; exit } }')
 
