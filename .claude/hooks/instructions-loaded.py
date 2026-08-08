@@ -106,6 +106,8 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
+from lib_harness_text import sanitize
+
 LOG_REL = os.path.join(".local", "instructions-loaded.jsonl")
 RULES_REL = os.path.join(".claude", "rules")
 
@@ -151,6 +153,33 @@ def relativize(path, root):
     if real_path.startswith(prefix):
         return real_path[len(prefix):]
     return path
+
+
+def safe(value):
+    """Escape and bound one untrusted value before it is PRINTED.
+
+    `--report` renders a markdown document out of values this hook did not
+    author: a `file`, a `trigger` and a `load_reason` come from the event
+    payload by way of the log, and a roster entry comes from a filename on
+    disk. json.dumps escapes a newline on the way INTO the log, and json.load
+    hands the real newline back on the way out -- so the log line stayed
+    intact while the report did not.
+
+    A newline is legal in a Linux filename and this repository is public, so a
+    pull request can add one; one crafted line appended to the gitignored log
+    does it too. Either lets a forged `## Result` block render ABOVE the
+    genuine one, and a report is read as an audit answer. Demonstrated
+    2026-08-07: a fake `RESULT: CLEAN` plus an instruction to disable another
+    hook, rendered by the real --report path, exit 0.
+
+    `cap` below is a length bound and nothing more; it never escaped anything.
+    The two are separate concerns and this one delegates to the single
+    implementation every other hook on this channel imports, rather than
+    hand-rolling a second escaper -- the failure the house standard records is
+    exactly a correct escaper copied twice and losing the Bidi range both
+    times.
+    """
+    return sanitize(value, MAX_FIELD)
 
 
 def cap(value):
@@ -370,7 +399,7 @@ def report_subagents(window):
     print()
 
     if tagged:
-        types = sorted({r.get("agent_type") or "?" for r in tagged})
+        types = sorted({safe(r.get("agent_type")) or "?" for r in tagged})
         print(f"OBSERVED — {len(tagged)} record(s) carried `agent_id`, "
               f"agent_type(s): {', '.join(types)}.")
         print("This build names the agent in the payload, which is the direct")
@@ -389,9 +418,10 @@ def report_subagents(window):
         print()
         for name in sorted(glob_repeats):
             hits = glob_repeats[name]
-            when = ", ".join(h.get("ts") or "?" for h in hits)
-            trig = sorted({h.get("trigger") for h in hits if h.get("trigger")})
-            line = f"  - `{name}` — {len(hits)} repeat(s) at {when}"
+            when = ", ".join(safe(h.get("ts")) or "?" for h in hits)
+            trig = sorted({safe(h.get("trigger")) for h in hits
+                           if h.get("trigger")})
+            line = f"  - `{safe(name)}` — {len(hits)} repeat(s) at {when}"
             if trig:
                 line += f", triggered by {', '.join(trig)}"
             print(line)
@@ -429,9 +459,9 @@ def report_subagents(window):
         print(f"SEPARATELY — {n} repeat load(s) that were NOT glob matches, "
               f"across {len(other_repeats)} file(s):")
         for name in sorted(other_repeats):
-            reasons = sorted({r.get("load_reason") or "?"
+            reasons = sorted({safe(r.get("load_reason")) or "?"
                               for r in other_repeats[name]})
-            print(f"  - `{name}` — {len(other_repeats[name])} repeat(s), "
+            print(f"  - `{safe(name)}` — {len(other_repeats[name])} repeat(s), "
                   f"{', '.join(reasons)}")
         print("The always-on hierarchy arriving more than once is a context")
         print("reset, not a dispatch. Counted apart so it cannot inflate the")
@@ -464,7 +494,7 @@ def report_mode(argv):
 
     print("# InstructionsLoaded — roster reconciliation")
     print()
-    print(f"Root: {os.path.basename(os.path.realpath(root))}")
+    print(f"Root: {safe(os.path.basename(os.path.realpath(root)))}")
     print(f"Log:  {LOG_REL}")
     print()
 
@@ -496,7 +526,7 @@ def report_mode(argv):
         print(f"Sessions present in the log: {len(sessions)}")
         return 2
 
-    print(f"Session: {target}   (of {len(sessions)} in the log)")
+    print(f"Session: {safe(target)}   (of {len(sessions)} in the log)")
     print(f"Records in this session: {len(window)}   <- recorder liveness witness")
     if malformed:
         print(f"Malformed lines skipped: {malformed}")
@@ -517,16 +547,17 @@ def report_mode(argv):
         hits = observed.get(member["file"], [])
         scope = "path-scoped" if member["globs"] else "always"
         if hits:
-            reasons = sorted({h.get("load_reason") or "?" for h in hits})
-            triggers = sorted({h.get("trigger") for h in hits if h.get("trigger")})
+            reasons = sorted({safe(h.get("load_reason")) or "?" for h in hits})
+            triggers = sorted({safe(h.get("trigger")) for h in hits
+                               if h.get("trigger")})
             trig = triggers[0] if triggers else "—"
             if len(triggers) > 1:
                 trig += f" (+{len(triggers) - 1})"
             mark = f"yes ({len(hits)})"
-            print(f"| `{member['file']}` | {scope} | {mark} | "
+            print(f"| `{safe(member['file'])}` | {scope} | {mark} | "
                   f"{', '.join(reasons)} | {trig} |")
         else:
-            print(f"| `{member['file']}` | {scope} | **NO** | — | — |")
+            print(f"| `{safe(member['file'])}` | {scope} | **NO** | — | — |")
             if member["globs"]:
                 scoped_missing.append(member)
             else:
@@ -542,8 +573,10 @@ def report_mode(argv):
         print("repository alone.")
         print()
         for f in sorted(extra):
-            reasons = sorted({r.get("load_reason") or "?" for r in observed[f]})
-            print(f"- `{f}` — {len(observed[f])} load(s), {', '.join(reasons)}")
+            reasons = sorted({safe(r.get("load_reason")) or "?"
+                              for r in observed[f]})
+            print(f"- `{safe(f)}` — {len(observed[f])} load(s), "
+                  f"{', '.join(reasons)}")
         print()
 
     report_subagents(window)
@@ -553,7 +586,8 @@ def report_mode(argv):
     if scoped_missing:
         print("Path-scoped rules with no observed load:")
         for member in scoped_missing:
-            print(f"  - `{member['file']}`  globs: {member['globs']}")
+            globs = ", ".join(safe(g) for g in member["globs"])
+            print(f"  - `{safe(member['file'])}`  globs: [{globs}]")
         print()
         print("  Not counted as a failure on its own: a path-scoped rule is")
         print("  SUPPOSED to stay absent until a matching file is read. It is a")
@@ -576,7 +610,7 @@ def report_mode(argv):
             print()
             print("Unscoped members cannot be adjudicated from this window:")
             for member in unscoped_missing:
-                print(f"  - `{member['file']}`")
+                print(f"  - `{safe(member['file'])}`")
             print()
             print("Lazy loads recorded after registration ARE valid — read the")
             print("table above for those. For the eager half, start a fresh")
@@ -585,7 +619,8 @@ def report_mode(argv):
 
         print("RESULT: FINDINGS — an unscoped instruction file did not load.")
         for member in unscoped_missing:
-            print(f"  - `{member['file']}` has no `paths:` frontmatter, so it")
+            print(f"  - `{safe(member['file'])}` has no `paths:` frontmatter, "
+                  f"so it")
             print("    must load at session start. It did not.")
         return 1
 
