@@ -383,6 +383,22 @@ authoring machine, and the gaps are decisions.
 - **Pekko.** `AGENTS.md` § Stack records its status — decided, not yet declared —
   and is the authority for it. A row here would be a second place stating the
   same thing, and the two would drift.
+- **The Keccak team's reference code (XKCP).** Cloned, evaluated, and removed.
+  Recorded here rather than silently omitted, because the reason it looked
+  necessary is a trap worth marking: **it carries no Keccak-256 known-answer
+  file.** `tests/TestVectors/ShortMsgKAT.txt` is a template whose digests are all
+  `??`, and the `ShortMsgKAT_Keccak*` files that do hold real digests are other
+  rate/capacity pairs — none of them Keccak-256's r=1088/c=512. Its genuine
+  content is the reference implementation and the sponge intermediate values,
+  which would matter to a project **implementing** the permutation. This one does
+  not: the digest comes from a cryptography provider that ships its own
+  Keccak tests, so the only thing needing certification is our selection of and
+  wiring to that provider.
+
+  **A related name trap, since it cost a second wrong turn.** go-ethereum's
+  `crypto/keccak/testdata/keccakKats.json.deflate` is not a Keccak KAT set
+  either — the package is named for Keccak, and the file holds SHA3-224/256/384/512
+  and SHAKE vectors. **Open the payload; neither filename tells you what is in it.**
 
 ---
 
