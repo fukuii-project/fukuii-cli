@@ -32,8 +32,10 @@ ThisBuild / organization := "org.fukuii"
 // will catch a JDK older than the target; it cannot distinguish patch releases,
 // and it reaches neither CI nor deployment. The other half is .sdkmanrc, which
 // names the JDK and its distribution.
-ThisBuild / scalacOptions ++= Seq("-release", "25")
-ThisBuild / javacOptions ++= Seq("--release", "25")
+//
+// The -release pair is set inside the single scalacOptions assignment below
+// rather than in its own statement, for the reason that assignment documents.
+ThisBuild / javacOptions := Seq("--release", "25")
 
 // The warning ratchet: every category below is an ERROR, from this commit.
 //
@@ -77,7 +79,24 @@ ThisBuild / javacOptions ++= Seq("--release", "25")
 // Scala release breaks the build loudly at the bump, rather than being dropped
 // while the build still reports success. -Werror is what closes that hole, and
 // it is the reason a private -Y option is admissible below.
-ThisBuild / scalacOptions ++= Seq(
+// ─────────── ASSIGNED with :=, never appended with ++=, and why ───────────
+//
+// `ThisBuild / scalacOptions ++= …` accumulates ONCE PER PROJECT. With a single
+// project that is invisible; the moment a second one exists the list is applied
+// twice, and every flag in it becomes a `set repeatedly` error under -Werror.
+//
+// Measured here at the commit that introduced the module tree: four projects
+// produced 64 entries — this 16-entry list, four times over — and the build
+// failed on flag duplication rather than on anything in the code.
+//
+// So this is ONE assignment holding everything, including the -release pair.
+// A second `ThisBuild / scalacOptions` statement of any kind reintroduces the
+// defect; add a flag to this list instead.
+ThisBuild / scalacOptions := Seq(
+  // The bytecode contract. See the -release note above.
+  "-release",
+  "25",
+
   // Warn on deprecated API use, and on features requiring an explicit import
   // (implicit conversions, postfix operators, reflective calls). Neither is
   // covered by -Wall. `-unchecked` reports where an erased generic makes a
@@ -181,16 +200,118 @@ ThisBuild / scalacOptions ++= Seq(
 // `alpha`, and 3.3.0 > 3.2.20 numerically. Read the full `<versions>` list.
 lazy val scalatestVersion = "3.2.20"
 
-lazy val root = (project in file("."))
+// ScalaCheck and the ScalaTest bridge, Test scope.
+//
+// AGENTS.md "## Testing" assigns AnyPropSpec to property checks and forbids
+// fixed examples there — but generator-driven `forAll` comes from ScalaCheck
+// through the bridge, and neither was declared, so the assigned use case could
+// not actually be written. `TableDrivenPropertyChecks` arrives in
+// scalatest-core and supplies only the TABLE form, which is the other half of
+// that assignment, not this one.
+//
+// The bridge's artifact name encodes the paired library's major.minor
+// (`scalacheck-1-19`), so a ScalaCheck major bump re-pairs it — that is the
+// reopen trigger, not a version bump on either side alone.
+//
+// Gate 0 binds these at Test scope exactly as at compile scope, and was
+// re-confirmed at these versions on two agreeing instruments each (the shipped
+// TASTy header and the published POM's declared scala3-library_3): ScalaCheck
+// 1.19.0 built with Scala 3.3.6, the bridge 3.2.20.0 with 3.3.7. Both inside
+// our LTS line.
+//
+// The bridge's transitive closure is already present by way of the three style
+// artifacts above — it resolves scalatest-core_3, which scalatest-flatspec_3
+// already pulls — so this adds no admissibility surface beyond what the build
+// already carried.
+lazy val scalacheckVersion       = "1.19.0"
+lazy val scalacheckBridgeVersion = "3.2.20.0"
+
+// BouncyCastle: L0's cryptography provider, and the build's FIRST compile-scope
+// dependency.
+//
+// Need-first, and the need is specific: the EVM digest (Keccak with the legacy
+// 0x01 padding, which is NOT the JDK's SHA-3 — different padding, different
+// output for the same input), secp256k1 ECDSA with RFC-6979 deterministic
+// nonces and low-S canonicalization, secp256r1, BLAKE2F, and a constant-time
+// comparison primitive. The JDK supplies none of the first four.
+//
+// 1.85 is separately a security release; that selects the VERSION, not the
+// dependency. Its published POM declares NO dependencies at all, so it arrives
+// alone. Gate 0 does not bind it — it is a Java artifact, confirmed by the
+// absence of any TASTy entry in the shipped jar rather than inferred from the
+// coordinate's missing _3 suffix.
+//
+// 1.85.2 exists and is deliberately not taken: it is inside the release-age
+// cooldown, and a commit-by-commit read of the interval found nothing touching
+// keccak, secp256k1, secp256r1 or BLAKE2F. Revisit on ordinary currency.
+lazy val bouncyCastleVersion = "1.85"
+
+// Test dependencies are identical in every module, so they are defined once.
+// A per-module copy is how one module silently ends up on a different test
+// stack than its siblings.
+lazy val testDeps = Seq(
+  "org.scalatest"     %% "scalatest-flatspec"    % scalatestVersion       % Test,
+  "org.scalatest"     %% "scalatest-propspec"    % scalatestVersion       % Test,
+  "org.scalatest"     %% "scalatest-featurespec" % scalatestVersion       % Test,
+  "org.scalacheck"    %% "scalacheck"            % scalacheckVersion      % Test,
+  "org.scalatestplus" %% "scalacheck-1-19"       % scalacheckBridgeVersion % Test
+)
+
+// ───────────────────────────── The module tree ─────────────────────────────
+//
+// L0 is the foundation layer: byte-shaped value types, the RLP codec, and the
+// cryptographic primitives. The dependency edges below are the real ones —
+// `rlp` and `crypto` each build on `bytes` and neither depends on the other,
+// so they are siblings rather than a chain. Encoding that in the build is what
+// makes a cycle between them a build error instead of a review comment.
+
+// bytes — the value types every layer above L0 uses as its currency.
+//
+// No compile-scope dependency, and that is a decision rather than an accident.
+// The value types are a final class over IArray[Byte] with explicit equals and
+// hashCode: IArray gives compile-time immutability while erasing to
+// Array[Byte], so a value is still one object, and the class supplies the
+// equality an opaque type cannot. An opaque type over an array was measured
+// failing equality, Map lookup and Set dedup — it erases, so it inherits the
+// array's identity semantics. That is why no general-purpose byte-container
+// library is declared here: the shape that works needs no library.
+lazy val bytes = (project in file("modules/bytes"))
   .settings(
-    // The PROJECT is fukuii. `fukuii-cli` is the repository's name, not the
-    // project's, and this setting is the artifact coordinate — it publishes as
-    // org.fukuii:fukuii_3, so the repo name must not leak into it. Lowercase
-    // because this is a Maven artifactId, not a display name.
+    name := "fukuii-bytes",
+    libraryDependencies ++= testDeps
+  )
+
+// rlp — the Recursive Length Prefix codec.
+lazy val rlp = (project in file("modules/rlp"))
+  .dependsOn(bytes)
+  .settings(
+    name := "fukuii-rlp",
+    libraryDependencies ++= testDeps
+  )
+
+// crypto — the digest, curve and constant-time primitives.
+//
+// Declared here with no sources yet: the project and its dependency edge are
+// part of the build shape, which lands once, while the module is populated in
+// its own phase. sbt compiles zero sources without complaint.
+lazy val crypto = (project in file("modules/crypto"))
+  .dependsOn(bytes)
+  .settings(
+    name := "fukuii-crypto",
+    libraryDependencies ++= testDeps,
+    libraryDependencies += "org.bouncycastle" % "bcprov-jdk18on" % bouncyCastleVersion
+  )
+
+// The aggregate. `aggregate` makes a task at the root fan out to every module;
+// it is NOT a dependency edge, so the root gains nothing on its classpath.
+//
+// The PROJECT is fukuii. `fukuii-cli` is the repository's name, not the
+// project's, and this setting is the artifact coordinate — it publishes as
+// org.fukuii:fukuii_3, so the repo name must not leak into it. Lowercase
+// because this is a Maven artifactId, not a display name.
+lazy val root = (project in file("."))
+  .aggregate(bytes, rlp, crypto)
+  .settings(
     name := "fukuii",
-    libraryDependencies ++= Seq(
-      "org.scalatest" %% "scalatest-flatspec"    % scalatestVersion % Test,
-      "org.scalatest" %% "scalatest-propspec"    % scalatestVersion % Test,
-      "org.scalatest" %% "scalatest-featurespec" % scalatestVersion % Test
-    )
+    libraryDependencies ++= testDeps
   )
