@@ -3,7 +3,7 @@
 **No `paths:` frontmatter, deliberately.** A `paths:` list would scope this to
 sessions that happen to read a matching file, and the failures below are not
 file-shaped: they are claim-shaped. An absence claim gets made while reading
-nothing. So this loads at launch with the same priority as `.claude/CLAUDE.md`,
+nothing. So this loads at launch with the same priority as the root `CLAUDE.md`,
 and it reaches dispatched subagents — the only delivery mechanism that works for
 a discipline every agent must apply.
 

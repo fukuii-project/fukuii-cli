@@ -260,9 +260,10 @@ file.
 
 ## Testing
 
-<!-- How tests are run, what must pass before a change lands, and which failures
-     are known and expected. Not yet written — the style policy below is
-     settled and the rest of this section is not. -->
+**How tests are run is `## Commands` above** — including why `testFull` is the
+only figure that can be trusted for a pass/fail claim. This section owns what a
+test must look like: which style each use case takes, how to write it, and the
+count ratchet that governs what may land.
 
 ### Test style is assigned by use case, not by author
 
