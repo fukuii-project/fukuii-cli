@@ -22,8 +22,10 @@ CHECK="$REPO/scripts/check-test-run.sh"
 FULL="$REPO/scripts/fixtures/test-run-full.txt"
 PARTIAL="$REPO/scripts/fixtures/test-run-partial.txt"
 EMPTY="$REPO/scripts/fixtures/test-run-empty.txt"
+MM_FULL="$REPO/scripts/fixtures/test-run-multimodule-full.txt"
+MM_PARTIAL="$REPO/scripts/fixtures/test-run-multimodule-partial.txt"
 
-for p in "$CHECK" "$FULL" "$PARTIAL" "$EMPTY"; do
+for p in "$CHECK" "$FULL" "$PARTIAL" "$EMPTY" "$MM_FULL" "$MM_PARTIAL"; do
   [ -f "$p" ] || { echo "missing: $p"; exit 1; }
 done
 
@@ -105,11 +107,48 @@ fi
 rm -f "$MUTANT"
 
 echo
-if [ "$a1" = 0 ] && [ "$a2" = 0 ] && [ "$a3" = 0 ] && [ "$a4" = 0 ] && [ "$a5" = 0 ] && [ "$a6" = 0 ] && [ "$a7" = 0 ] && [ "$a8" = 0 ]; then
+echo "###### ARM 9 — MULTI-MODULE: one testFull, one summary block PER project."
+echo "       sbt prints a block per project, so the repository total is the SUM."
+arm "two project blocks, 4 + 32, expected 36" "$MM_FULL" 36 0; a9=$?
+
+echo
+echo "###### ARM 10 — MULTI-MODULE with one project's block absent. MUST fail."
+echo "       This is what a module silently not running looks like."
+arm "one project block only, expected 36" "$MM_PARTIAL" 36 1; a10=$?
+
+echo
+echo "###### ARM 11 — seed the ORIGINAL single-project shape as the mutant. ##"
+echo "       Reading only the LAST block was this script's own prior behavior."
+echo "       It is the regression these two fixtures exist to pin, so it is the"
+echo "       mutant worth seeding: a fixture that cannot tell the old shape from"
+echo "       the new one would be drawn from cases the code already handles."
+MUTANT2=$(mktemp) || exit 1
+# shellcheck disable=SC2016  # literal sed pattern text, not expansions
+sed "s|^ACTUAL=\$(sum_field 'Total number of tests run: \[0-9\]+')|ACTUAL=\$(printf '%s' \"\$RUN\" \| grep -oE 'Total number of tests run: [0-9]+' \| tail -1 \| grep -oE '[0-9]+\$')|" "$CHECK" >"$MUTANT2"
+if cmp -s "$CHECK" "$MUTANT2"; then
+  echo "    *** the mutation did not apply — the summing line moved. ***"
+  a11=1
+else
+  bash "$MUTANT2" "$MM_FULL" 36 >/dev/null 2>&1
+  mrc2=$?
+  if [ "$mrc2" = 0 ]; then
+    echo "    *** MUTANT SURVIVED — the multi-module fixture does not discriminate ***"
+    a11=1
+  else
+    echo "    mutant exit: $mrc2 — reading only the last block sees 32 of 36 and"
+    echo "    rejects a correct full run, so the fixture pins the summing."
+    a11=0
+  fi
+fi
+rm -f "$MUTANT2"
+
+echo
+if [ "$a1" = 0 ] && [ "$a2" = 0 ] && [ "$a3" = 0 ] && [ "$a4" = 0 ] && [ "$a5" = 0 ] && [ "$a6" = 0 ] && [ "$a7" = 0 ] && [ "$a8" = 0 ] && [ "$a9" = 0 ] && [ "$a10" = 0 ] && [ "$a11" = 0 ]; then
   echo "PROOF HOLDS: passes a full run, fails a partial one over a log that says"
   echo "'All tests passed', reports exit 2 for an empty run and an unusable"
-  echo "reference, and a plausible regression is caught."
+  echo "reference, sums a multi-project run and catches a module that did not"
+  echo "run, and two plausible regressions are caught."
   exit 0
 fi
-echo "PROOF DOES NOT HOLD (a1=$a1 a2=$a2 a3=$a3 a4=$a4 a5=$a5 a6=$a6 a7=$a7 a8=$a8)"
+echo "PROOF DOES NOT HOLD (a1=$a1 a2=$a2 a3=$a3 a4=$a4 a5=$a5 a6=$a6 a7=$a7 a8=$a8 a9=$a9 a10=$a10 a11=$a11)"
 exit 1

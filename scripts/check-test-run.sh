@@ -69,10 +69,37 @@ case "$EXPECTED" in
     ;;
 esac
 
-# ScalaTest prints one summary block per run. Take the LAST, so a log holding
-# several runs is judged on its final one rather than on whichever came first.
-ACTUAL=$(grep -oE 'Total number of tests run: [0-9]+' "$LOG" | tail -1 | grep -oE '[0-9]+$')
-SUITES=$(grep -oE 'Suites: completed [0-9]+' "$LOG" | tail -1 | grep -oE '[0-9]+$')
+# ScalaTest prints one summary block PER PROJECT, not per run, so a multi-module
+# build emits several blocks from a single `testFull`. Measured here the day the
+# module tree landed: one `testFull` printed 4 (root) and 32 (bytes).
+#
+# WHY SUMMING, AND WHY THE OLD `tail -1` WAS THE DANGEROUS SHAPE. Reading only
+# the last block reports one project's count as if it were the repository's. The
+# resulting mismatch looks like "tests were added", and this script's own advice
+# is then to raise the expected total -- to the LAST PROJECT'S count. Do that and
+# the check silently stops covering every other project, while still printing
+# PASS. That is a check that cannot fail, arrived at by following its own
+# guidance.
+#
+# TWO BLOCKS CAN ALSO MEAN TWO RUNS, which is what `tail -1` was really for. So
+# scope to the last run first -- the wrapper writes a `## sbt-run.sh started`
+# header per invocation -- and sum within it. A log with no such header (a paste,
+# or CI output) has every block summed, which is correct for a single run and is
+# the only safe reading when nothing marks the boundaries.
+RUN=$(awk '/^## sbt-run\.sh started/ { buf = "" } { buf = buf $0 "\n" } END { printf "%s", buf }' "$LOG")
+
+# Takes the COMPLETE pattern. An earlier form appended ": [0-9]+" to a field
+# name, which silently failed for `Suites: completed 4` -- that line separates
+# its number with a space, not a colon -- and the `${SUITES:-?}` fallback below
+# rendered the miss as a harmless "?" rather than as an error.
+sum_field() {
+  printf '%s' "$RUN" | grep -oE "$1" | grep -oE '[0-9]+$' |
+    awk '{ s += $1 } END { if (NR > 0) print s }'
+}
+
+ACTUAL=$(sum_field 'Total number of tests run: [0-9]+')
+SUITES=$(sum_field 'Suites: completed [0-9]+')
+BLOCKS=$(printf '%s' "$RUN" | grep -cE 'Total number of tests run: [0-9]+')
 
 echo "log      : $LOG"
 echo "expected : $EXPECTED test(s)"
@@ -98,7 +125,7 @@ if [ -z "$ACTUAL" ]; then
   exit 2
 fi
 
-echo "executed : $ACTUAL test(s) in ${SUITES:-?} suite(s)"
+echo "executed : $ACTUAL test(s) in ${SUITES:-?} suite(s), summed over ${BLOCKS} project block(s)"
 
 # Zero expected is not a bar anything can clear. Treat it as an unusable
 # reference rather than a pass, or a stale 0 would certify every run.

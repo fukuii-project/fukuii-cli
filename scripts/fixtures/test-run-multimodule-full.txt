@@ -1,0 +1,76 @@
+## sbt-run.sh started 2026-08-08T17:23:57Z
+## tasks: testFull
+
+[info] compiling 4 Scala sources to /media/dev/2tb/work/repos/fukuii-project/fukuii-cli/target/out/jvm/scala-3.3.8/fukuii-bytes/test-classes ...
+[info] ToolchainFeatureSpec:
+[info] Feature: the featurespec artifact resolves and runs
+[info]   Scenario: a scenario states its steps in domain language
+[info]     Given three style artifacts declared in build.sbt 
+[info]     When the acceptance style is exercised 
+[info]     Then the declared set and the rejected set are disjoint 
+[info] ToolchainFlatSpec:
+[info] the flatspec artifact
+[info] - should resolve and evaluate an assertion
+[info] - should continue a subject with `it`, which is the reason for choosing FlatSpec
+[info] ToolchainPropSpec:
+[info] - the propspec artifact drives a table of named vectors
+[info] Run completed in 99 milliseconds.
+[info] Total number of tests run: 4
+[info] Suites: completed 3, aborted 0
+[info] Tests: succeeded 4, failed 0, canceled 0, ignored 0, pending 0
+[info] All tests passed.
+[info] done compiling
+[info] AddressSpec:
+[info] Address.fromBytes
+[info] - should reject an input shorter than twenty bytes
+[info] - should reject an input longer than twenty bytes
+[info] - should accept exactly twenty bytes
+[info] Address.fromBytesTruncating
+[info] - should keep the rightmost bytes when the input is too long
+[info] - should left-pad with zero when the input is too short
+[info] an Address
+[info] - should equal another built from the same bytes
+[info] - should agree with an equal Address on hashCode
+[info] - should find its entry when used as a Map key
+[info] - should deduplicate in a Set
+[info] - should not equal a Hash carrying the same bytes
+[info] AddressPropSpec:
+[info] - Address.fromHex agrees with the reference client's strict parse
+[info] - Address.fromHex round-trips every published address
+[info] - a 0x prefix does not change the parsed address
+[info] HexSpec:
+[info] encode
+[info] - should produce lowercase with no prefix
+[info] - should produce two characters per byte
+[info] - should render the empty input as the empty string
+[info] decode
+[info] - should produce one byte per two characters
+[info] - should ignore a 0x prefix
+[info] - should accept uppercase
+[info] - should reject an odd-length string
+[info] - should name the offending character and its position
+[info] - should round-trip every byte value
+[info] HashSpec:
+[info] Hash.fromHex
+[info] - should round-trip a published 32-byte value
+[info] - should distinguish two different published values
+[info] Hash.fromBytes
+[info] - should reject an address-width input
+[info] - should reject an input longer than thirty-two bytes
+[info] Hash.fromBytesTruncating
+[info] - should keep the rightmost bytes when the input is too long
+[info] - should left-pad with zero when the input is too short
+[info] a Hash
+[info] - should find its entry when used as a Map key
+[info] - should deduplicate in a Set
+[info] - should render with a 0x prefix in toString
+[info] - should render without a prefix in toHex
+[info] Run completed in 101 milliseconds.
+[info] Total number of tests run: 32
+[info] Suites: completed 4, aborted 0
+[info] Tests: succeeded 32, failed 0, canceled 0, ignored 0, pending 0
+[info] All tests passed.
+[success] elapsed time: 2 s
+[0J
+## sbt-run.sh finished 2026-08-08T17:23:59Z
+EXIT CODE: 0
