@@ -137,11 +137,87 @@ if [ "$REJECT" -eq 1 ]; then
 fi
 
 # ─────────────────────────── Guard 1 ───────────────────────────
+# THE VALUE READ OUT OF active.json SELECTS A `kill -9` TARGET, so it is treated
+# as untrusted input rather than as a path. active.json is machine-generated and
+# gitignored: nothing reviews it, and no diff shows it changing.
+#
+# Three defects, all measured 2026-08-07 against real `lsof -U` output on this
+# machine, and the first is a plain bug with no attacker at all:
+#
+#   * `awk '$0 ~ s'` compiles the value as a DYNAMIC REGEX over the whole line.
+#     A real socket path contains `.`, a regex metacharacter, so the match was
+#     already looser than intended for every user. Given `"."` it matched
+#     pipewire; `"dbus"` matched dbus-daemon; `"^"` matched pipewire. A bystander
+#     kill was reproduced end to end through the unmodified script.
+#   * The age comparison does not save it. systemd, pipewire and dbus-daemon all
+#     started before the newest build-definition file and so all PASS the staleness
+#     test -- the genuine java server was the one process the age gate exempted.
+#   * A SUBSTRING match is not the fix either: `index($0, s)` still matches a
+#     line whose NAME field merely CONTAINS the socket path, so a decoy at
+#     `<sock>.bak` selects the wrong process. Measured, not reasoned.
+#
+# So the value is validated before use, matched as a whole FIELD rather than as
+# a pattern, and the selected pid is confirmed to be a JVM before anything is
+# signalled. Every rejection SKIPS the guard, which is the safe direction: the
+# cost of not killing a stale server is one confusing rebuild, and the cost of
+# killing the wrong process is unbounded.
 ACTIVE_JSON="$REPO_ROOT/project/target/active.json"
 if [ -f "$ACTIVE_JSON" ] && command -v lsof >/dev/null 2>&1; then
-  SOCK_PATH=$(sed -n 's#.*"uri":"local://\(.*\)"}.*#\1#p' "$ACTIVE_JSON" 2>/dev/null)
+  # `[^"]*` bounds the capture to one JSON string value. The former `\(.*\)"}`
+  # was greedy, so a second `"uri":` entry later in the file was swallowed whole
+  # into the captured "path".
+  SOCK_PATH=$(sed -n 's#.*"uri":"local://\([^"]*\)".*#\1#p' "$ACTIVE_JSON" 2>/dev/null | head -1)
+
+  # Absolute, no whitespace, and no shell or regex metacharacter. A real sbt
+  # server socket path satisfies this; a regex, a relative path, or anything
+  # carrying an expansion character does not, and is refused rather than
+  # sanitized. A path this rejects means the guard skips -- never that the
+  # value is used anyway in some reduced form.
+  case $SOCK_PATH in
+    /*) ;;
+    *) SOCK_PATH="" ;;
+  esac
+  if [ -n "$SOCK_PATH" ] && printf '%s' "$SOCK_PATH" | grep -qE '[^A-Za-z0-9._/@+:=-]'; then
+    {
+      printf '## stale-server guard SKIPPED: the socket path in active.json\n'
+      printf '## carries a character outside the permitted set, so it is not\n'
+      printf '## being used to select a process to kill.\n\n'
+    } >>"$LOG_FILE"
+    SOCK_PATH=""
+  fi
+  # It must be an actual socket. A regular file, a directory or a dangling path
+  # is not a listening sbt server, and `-S` costs nothing to ask.
+  if [ -n "$SOCK_PATH" ] && [ ! -S "$SOCK_PATH" ]; then
+    SOCK_PATH=""
+  fi
+
   if [ -n "$SOCK_PATH" ]; then
-    SERVER_PID=$(lsof -U 2>/dev/null | awk -v s="$SOCK_PATH" '$0 ~ s && $0 ~ /LISTEN/ {print $2; exit}')
+    # WHOLE-FIELD EQUALITY, never a regex and never a substring. lsof prints the
+    # socket path as its own whitespace-delimited NAME field, and the validation
+    # above guarantees the value has no whitespace, so field equality is exact.
+    SERVER_PID=$(lsof -U 2>/dev/null | awk -v s="$SOCK_PATH" \
+      '$0 ~ /LISTEN/ { for (i = 1; i <= NF; i++) if ($i == s) { print $2; exit } }')
+
+    # The pid must be a JVM. This is the check that makes a mis-selected target
+    # harmless rather than fatal: every bystander reproduced above -- systemd,
+    # pipewire, dbus-daemon -- fails it, and the sbt server is the process it
+    # was written to admit.
+    if [ -n "$SERVER_PID" ]; then
+      SERVER_COMM=$(ps -o comm= -p "$SERVER_PID" 2>/dev/null | tr -d '[:space:]')
+      case $SERVER_COMM in
+        java | sbt | sbtn) ;;
+        *)
+          {
+            printf '## stale-server guard SKIPPED: pid %s is `%s`, not a JVM.\n' \
+              "$SERVER_PID" "${SERVER_COMM:-unknown}"
+            printf '## Refusing to signal a process this guard did not identify\n'
+            printf '## as an sbt server.\n\n'
+          } >>"$LOG_FILE"
+          SERVER_PID=""
+          ;;
+      esac
+    fi
+
     if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
       SERVER_START=$(date -d "$(ps -o lstart= -p "$SERVER_PID" 2>/dev/null)" +%s 2>/dev/null || true)
       NEWEST_DEF=$(find "$REPO_ROOT/build.sbt" "$REPO_ROOT/project" -maxdepth 1 \
@@ -159,6 +235,10 @@ if [ -f "$ACTIVE_JSON" ] && command -v lsof >/dev/null 2>&1; then
           WAITED=$((WAITED + 1))
         done
         kill -9 "$SERVER_PID" 2>/dev/null
+        # Reachable only past every check above, so `$SOCK_PATH` here is an
+        # absolute, metacharacter-free path that WAS a socket held by the JVM
+        # just killed. Unvalidated, this was an arbitrary-path unlink driven by
+        # a gitignored file.
         rm -f "$SOCK_PATH" "$ACTIVE_JSON"
       fi
     fi
