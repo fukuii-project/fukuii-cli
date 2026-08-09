@@ -38,6 +38,43 @@ class RlpSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     }
   }
 
+  /** Nesting deeper than the bound is rejected, not followed.
+    *
+    * One level costs a single byte to encode and several JVM stack frames to
+    * decode, so an unbounded decoder is a denial of service on a payload a peer
+    * can send in a few kilobytes — and a `StackOverflowError` is not catchable
+    * as a decode failure. `0xc1` is a one-item sequence, so repeating it nests.
+    */
+  private def nested(depth: Int): IArray[Byte] =
+    // Each level wraps the one inside it, so the payload grows as you go out
+    // and the prefix widens with it. A fixed `0xc1` per level is NOT valid
+    // nesting -- it declares a one-byte payload at every level, which is true
+    // only of the innermost, and the decoder rejects it as malformed long
+    // before any depth bound is reached.
+    def prefixFor(len: Int): Array[Byte] =
+      if len < 56 then Array((0xc0 + len).toByte)
+      else
+        val be = BigInt(len).toByteArray.dropWhile(_ == 0.toByte)
+        Array((0xf7 + be.length).toByte) ++ be
+
+    @annotation.tailrec
+    def build(remaining: Int, len: Int, acc: List[Array[Byte]]): List[Array[Byte]] =
+      if remaining == 0 then acc
+      else
+        val p = prefixFor(len)
+        build(remaining - 1, len + p.length, p :: acc)
+
+    IArray.unsafeFromArray(build(depth, 1, Nil).toArray.flatten :+ 0x00.toByte)
+
+  property("decode rejects nesting past the bound instead of overflowing the stack") {
+    val tooDeep = nested(Rlp.MaxNestingDepth + 50)
+    assert(Rlp.decode(tooDeep) == Left(RlpError.NestingTooDeep(Rlp.MaxNestingDepth)), "must reject, not recurse")
+  }
+
+  property("decode still accepts nesting just inside the bound") {
+    assert(Rlp.decode(nested(Rlp.MaxNestingDepth - 2)).isRight, "the bound must not reject legitimate nesting")
+  }
+
   property("decode rejects trailing bytes after a complete item") {
     forAll(RlpVectors.valid) { (name: String, _: RlpItem, encodedHex: String) =>
       assert(Rlp.decode(hex(encodedHex + "00")).isLeft, name + " with a trailing byte must not decode")

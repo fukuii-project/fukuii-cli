@@ -35,7 +35,7 @@ object Secp256r1:
     else
       try
         val point = domain.getCurve.createPoint(x.bigInteger, y.bigInteger)
-        // Defence in depth, and REDUNDANT against this provider version:
+        // Defense in depth, and REDUNDANT against this provider version:
         // deleting this line changes no outcome across the whole corpus,
         // including its 46 point-at-infinity and off-curve cases, so the
         // provider is already rejecting them somewhere below. Kept because

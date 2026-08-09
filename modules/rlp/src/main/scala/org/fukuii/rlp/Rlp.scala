@@ -73,6 +73,7 @@ enum RlpError:
   case LeadingZeroInLength
   case LengthTooLarge
   case TrailingBytes(count: Int)
+  case NestingTooDeep(limit: Int)
 
 object Rlp:
 
@@ -81,6 +82,21 @@ object Rlp:
   private val LongBytesMax     = 0xbf
   private val ShortSeqMax      = 0xf7
   private val ShortFormLimit   = 56
+
+  /** The deepest nesting `decode` will follow before rejecting the input.
+    *
+    * Decoding recurses through the JVM stack, and one nesting level costs a
+    * single byte to encode — so without a bound, a payload of a few kilobytes
+    * reaches a `StackOverflowError`, which is not catchable as a decode failure
+    * and takes the thread with it. That is a denial of service on any input a
+    * peer can send, and this codec's whole purpose is parsing bytes that
+    * arrive from one.
+    *
+    * The value is far above anything the protocol's own structures need — the
+    * deepest is single digits — and far below where the stack gives out. A
+    * legitimate payload never approaches it.
+    */
+  val MaxNestingDepth = 1024
 
   def encode(item: RlpItem): IArray[Byte] = item match
     case RlpItem.Bytes(value)    => encodeBytes(value)
@@ -96,7 +112,7 @@ object Rlp:
   def decode(bytes: IArray[Byte]): Either[RlpError, RlpItem] =
     if bytes.isEmpty then Left(RlpError.EmptyInput)
     else
-      decodeItem(bytes, 0).flatMap { (item, next) =>
+      decodeItem(bytes, 0, 0).flatMap { (item, next) =>
         if next == bytes.length then Right(item)
         else Left(RlpError.TrailingBytes(bytes.length - next))
       }
@@ -109,11 +125,34 @@ object Rlp:
       IArray((0xb7 + len.length).toByte) ++ len ++ x
 
   private def encodeSequence(items: Vector[RlpItem]): IArray[Byte] =
-    val payload = items.foldLeft(IArray.empty[Byte])((acc, item) => acc ++ encode(item))
+    // Concatenate once, not once per element. Folding with `++` reallocates the
+    // whole accumulator on every item, which is quadratic in the number of
+    // siblings — and a transaction list is hundreds of them, at every nesting
+    // level. The decode side already accumulates in amortized constant time.
+    val payload = concatAll(items.map(encode))
     if payload.length < ShortFormLimit then IArray((0xc0 + payload.length).toByte) ++ payload
     else
       val len = bigEndian(payload.length)
       IArray((0xf7 + len.length).toByte) ++ len ++ payload
+
+  private def concatAll(parts: Vector[IArray[Byte]]): IArray[Byte] =
+    var total = 0
+    var i     = 0
+    while i < parts.length do
+      total += parts(i).length
+      i += 1
+    val out = new Array[Byte](total)
+    var pos = 0
+    i = 0
+    while i < parts.length do
+      val part = parts(i)
+      var j    = 0
+      while j < part.length do
+        out(pos + j) = part(j)
+        j += 1
+      pos += part.length
+      i += 1
+    IArray.unsafeFromArray(out)
 
   /** Minimal-length big-endian, so the leading byte is never zero. */
   private def bigEndian(n: Int): IArray[Byte] =
@@ -122,15 +161,15 @@ object Rlp:
       if rest == 0 then acc else go(rest >>> 8, (rest & 0xff).toByte :: acc)
     IArray.from(go(n, Nil))
 
-  private def decodeItem(b: IArray[Byte], off: Int): Either[RlpError, (RlpItem, Int)] =
+  private def decodeItem(b: IArray[Byte], off: Int, depth: Int): Either[RlpError, (RlpItem, Int)] =
     if off >= b.length then Left(RlpError.Truncated(1, 0))
     else
       val prefix = b(off) & 0xff
       if prefix < SingleByteLimit then Right((RlpItem.Bytes(IArray(b(off))), off + 1))
       else if prefix <= ShortBytesMax then decodeShortBytes(b, off, prefix - 0x80)
       else if prefix <= LongBytesMax then decodeLongBytes(b, off, prefix - 0xb7)
-      else if prefix <= ShortSeqMax then decodeShortSequence(b, off, prefix - 0xc0)
-      else decodeLongSequence(b, off, prefix - 0xf7)
+      else if prefix <= ShortSeqMax then decodeShortSequence(b, off, prefix - 0xc0, depth)
+      else decodeLongSequence(b, off, prefix - 0xf7, depth)
 
   private def decodeShortBytes(b: IArray[Byte], off: Int, len: Int): Either[RlpError, (RlpItem, Int)] =
     readBytes(b, off + 1, len).flatMap { payload =>
@@ -149,17 +188,18 @@ object Rlp:
           .map(payload => (RlpItem.Bytes(payload), off + 1 + lenOfLen + len))
     }
 
-  private def decodeShortSequence(b: IArray[Byte], off: Int, len: Int): Either[RlpError, (RlpItem, Int)] =
-    decodeItems(b, off + 1, len).map(items => (RlpItem.Sequence(items), off + 1 + len))
+  private def decodeShortSequence(b: IArray[Byte], off: Int, len: Int, depth: Int): Either[RlpError, (RlpItem, Int)] =
+    decodeItems(b, off + 1, len, depth).map(items => (RlpItem.Sequence(items), off + 1 + len))
 
-  private def decodeLongSequence(b: IArray[Byte], off: Int, lenOfLen: Int): Either[RlpError, (RlpItem, Int)] =
+  private def decodeLongSequence(b: IArray[Byte], off: Int, lenOfLen: Int, depth: Int): Either[RlpError, (RlpItem, Int)] =
     readLength(b, off + 1, lenOfLen).flatMap { len =>
       if len < ShortFormLimit then Left(RlpError.NonOptimalLength(len))
-      else decodeItems(b, off + 1 + lenOfLen, len).map(items => (RlpItem.Sequence(items), off + 1 + lenOfLen + len))
+      else decodeItems(b, off + 1 + lenOfLen, len, depth).map(items => (RlpItem.Sequence(items), off + 1 + lenOfLen + len))
     }
 
-  private def decodeItems(b: IArray[Byte], off: Int, len: Int): Either[RlpError, Vector[RlpItem]] =
-    if off.toLong + len > b.length then Left(RlpError.Truncated(len, (b.length - off).max(0)))
+  private def decodeItems(b: IArray[Byte], off: Int, len: Int, depth: Int): Either[RlpError, Vector[RlpItem]] =
+    if depth >= MaxNestingDepth then Left(RlpError.NestingTooDeep(MaxNestingDepth))
+    else if off.toLong + len > b.length then Left(RlpError.Truncated(len, (b.length - off).max(0)))
     else
       val end = off + len
       @tailrec
@@ -167,7 +207,7 @@ object Rlp:
         if pos == end then Right(acc)
         else if pos > end then Left(RlpError.Truncated(len, pos - off))
         else
-          decodeItem(b, pos) match
+          decodeItem(b, pos, depth + 1) match
             case Left(e)             => Left(e)
             case Right((item, next)) => loop(next, acc :+ item)
       loop(off, Vector.empty)

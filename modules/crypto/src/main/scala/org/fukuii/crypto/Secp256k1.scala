@@ -34,7 +34,7 @@ object Secp256k1:
 
   /** Signatures with `s` above this are the same signature reflected, so
     * accepting both makes a signed payload malleable — its hash changes while
-    * it stays valid. Signing canonicalises to the low half.
+    * it stays valid. Signing canonicalizes to the low half.
     */
   private val halfCurveOrder = params.getN.shiftRight(1)
 
@@ -46,15 +46,23 @@ object Secp256k1:
     * path.
     */
   def sign(messageHash: IArray[Byte], privateKey: BigInt): Option[Signature] =
-    val e = BigInteger(1, mutableCopy(messageHash))
-    val signer = ECDSASigner(HMacDSAKCalculator(SHA256Digest()))
-    signer.init(true, ECPrivateKeyParameters(privateKey.bigInteger, domain))
-    val out = signer.generateSignature(mutableCopy(messageHash))
-    val r   = out(0)
-    val rawS = out(1)
-    val s   = if rawS.compareTo(halfCurveOrder) > 0 then domain.getN.subtract(rawS) else rawS
-    val expected = publicKeyOf(privateKey)
-    recoveryIdFor(e, r, s, expected).map(id => Signature(BigInt(r), BigInt(s), id))
+    // The key must lie in [1, n-1]. The provider throws rather than returning
+    // for a key outside it — measured against the pinned version for 0, -1 and
+    // n — and this returns an Option, so the guard is what makes that signature
+    // honest rather than aspirational.
+    if privateKey.signum <= 0 || privateKey.bigInteger.compareTo(domain.getN) >= 0 then None
+    else
+      try
+        val bytes  = mutableCopy(messageHash)
+        val e      = BigInteger(1, bytes)
+        val signer = ECDSASigner(HMacDSAKCalculator(SHA256Digest()))
+        signer.init(true, ECPrivateKeyParameters(privateKey.bigInteger, domain))
+        val out  = signer.generateSignature(bytes)
+        val r    = out(0)
+        val rawS = out(1)
+        val s    = if rawS.compareTo(halfCurveOrder) > 0 then domain.getN.subtract(rawS) else rawS
+        recoveryIdFor(e, r, s, publicKeyOf(privateKey)).map(id => Signature(BigInt(r), BigInt(s), id))
+      catch case NonFatal(_) => None
 
   def verify(publicKey: IArray[Byte], messageHash: IArray[Byte], signature: Signature): Boolean =
     try
@@ -75,8 +83,15 @@ object Secp256k1:
     val r     = signature.r.bigInteger
     val s     = signature.s.bigInteger
     val recId = signature.recoveryId
+    // r and s must lie in [1, n-1]. The upper bound is NOT implied by the
+    // `x < prime` test below: the field prime exceeds the curve order, so an r
+    // in [n, p) passes that test, and s is never compared to anything without
+    // this line — `s.mod(n)` downstream would silently accept a reduced value.
+    // The reference implementation requires both unconditionally, and the
+    // sibling curve in this module already did.
     if recId < 0 || recId > 3 then None
     else if r.signum <= 0 || s.signum <= 0 then None
+    else if r.compareTo(n) >= 0 || s.compareTo(n) >= 0 then None
     else
       try
         // The x coordinate of R. recId's high bit selects which candidate x,

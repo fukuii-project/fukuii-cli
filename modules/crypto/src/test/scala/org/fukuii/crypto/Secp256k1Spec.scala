@@ -33,6 +33,15 @@ class Secp256k1Spec extends AnyFlatSpec:
   private val compressedKeyHex =
     "02e32df42865e97135acfb65f3bae71bdc86f4d49150ad6a440b6f15878109880a"
 
+  /** The curve order. r and s must both be below it.
+    *
+    * This bound is not implied by the field-prime test inside recovery: the
+    * prime is the LARGER of the two, so an r between the order and the prime
+    * passes that test. The reference client rejects both unconditionally.
+    */
+  private val curveOrder =
+    BigInt("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", 16)
+
   "recoverPublicKey" should "reproduce the reference client's published key" in {
     val recovered = Secp256k1.recoverPublicKey(message, signature).map(Hex.encode)
     assert(recovered.contains(publicKeyHex), "ecrecover must return the published uncompressed key")
@@ -49,6 +58,26 @@ class Secp256k1Spec extends AnyFlatSpec:
 
   it should "reject a zero r" in {
     assert(Secp256k1.recoverPublicKey(message, signature.copy(r = BigInt(0))).isEmpty, "r must be positive")
+  }
+
+
+  it should "reject an r at the curve order" in {
+    assert(Secp256k1.recoverPublicKey(message, signature.copy(r = curveOrder)).isEmpty, "r must be below n")
+  }
+
+  it should "reject an r between the curve order and the field prime" in {
+    assert(
+      Secp256k1.recoverPublicKey(message, signature.copy(r = curveOrder + 1)).isEmpty,
+      "an r above n but below p must not slip past the field-prime test"
+    )
+  }
+
+  it should "reject an s at the curve order" in {
+    assert(Secp256k1.recoverPublicKey(message, signature.copy(s = curveOrder)).isEmpty, "s must be below n")
+  }
+
+  it should "reject a zero s" in {
+    assert(Secp256k1.recoverPublicKey(message, signature.copy(s = BigInt(0))).isEmpty, "s must be positive")
   }
 
   "verify" should "accept the published signature under the uncompressed key" in {
@@ -85,10 +114,18 @@ class Secp256k1Spec extends AnyFlatSpec:
     )
   }
 
-  it should "canonicalise s to the low half of the curve order" in {
+  it should "canonicalize s to the low half of the curve order" in {
     val key       = BigInt("4646464646464646464646464646464646464646464646464646464646464646", 16)
     val halfOrder = BigInt("7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0", 16)
     assert(Secp256k1.sign(message, key).exists(_.s <= halfOrder), "a high s is the same signature, reflected")
+  }
+
+  it should "return None for a zero private key rather than throwing" in {
+    assert(Secp256k1.sign(message, BigInt(0)).isEmpty, "the provider throws for this; the Option must absorb it")
+  }
+
+  it should "return None for a private key at the curve order rather than throwing" in {
+    assert(Secp256k1.sign(message, curveOrder).isEmpty, "a key must lie in [1, n-1]")
   }
 
   it should "recover the signer's own key from what it produced" in {
