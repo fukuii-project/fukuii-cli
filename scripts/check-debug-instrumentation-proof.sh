@@ -108,6 +108,19 @@ for pat in 'println' 'System\.out\.print' 'System\.err\.print' 'printStackTrace'
   fi
 done
 
+# Every check above is PATTERN-scoped, and that is not sufficient here. The
+# NUL-byte fixture's violation is an ordinary println, so another fixture file
+# supplies that pattern and the loop passes whether or not the binary file was
+# read at all. This case is FILE-scoped for that reason: grep classifies a
+# NUL-bearing file as binary and reports its match on stderr, so without -a the
+# filename never reaches stdout while every pattern above still fires.
+if printf '%s' "$hits" | grep -q 'NulByte\.scala'; then
+  echo "    caught: NulByte.scala (the binary-classified file was actually read)"
+else
+  echo "    MISSED: NulByte.scala  <-- a NUL byte makes this file invisible to the gate"
+  a5=1
+fi
+
 echo
 echo "###### ARM 6 — seed a PLAUSIBLE regression; the fixture must catch it. #"
 echo "       Not a total ablation. This anchors the println pattern at line"

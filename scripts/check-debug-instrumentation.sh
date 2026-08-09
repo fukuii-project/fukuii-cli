@@ -71,7 +71,21 @@ if [ "$SCANNED" -eq 0 ]; then
   exit 2
 fi
 
-HITS=$(grep -nE "$PATTERNS" -- "${FILES[@]}" 2>/dev/null)
+# -a IS LOAD-BEARING, AND ITS ABSENCE WAS A LIVE HOLE IN THIS GATE.
+# A source file containing a NUL byte -- which a stray escape in a string
+# literal produces, and which renders as an ordinary space in an editor -- is
+# classified BINARY by grep. For a binary file grep does not print
+# `file:line:match` to stdout; it writes `binary file X matches` to STDERR,
+# which the redirect below discards. So the match vanishes, HITS is empty, and
+# this gate prints "clean" over a file it did not really read.
+#
+# Found 2026-08-09 by an independent reviewer, in this repository, in a real
+# tracked spec that had acquired a NUL byte. Reproduced end to end: the same
+# file with a seeded println returns empty stdout without -a and the correct
+# `line:match` with it. The offending byte was removed, but removing it fixes
+# ONE FILE and this fixes the CLASS -- any future file that acquires one is
+# covered here rather than silently exempt.
+HITS=$(grep -anE "$PATTERNS" -- "${FILES[@]}" 2>/dev/null)
 RC=$?
 
 # grep exits 1 for "no match" and >1 for a real error. Only the first is clean.
