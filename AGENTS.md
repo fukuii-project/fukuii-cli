@@ -28,9 +28,20 @@ a client forked and adapted per chain. Today that spans proof-of-work networks
 (Ethereum Classic mainnet, Mordor) and proof-of-stake networks (Ethereum
 mainnet, Sepolia). This is a from-scratch rebuild carrying no code from any
 prior implementation, and it started from a pinned toolchain. The foundation
-layer now exists under `modules/`; **`ls modules/` is the current shape, and
-this sentence deliberately names no module roster, because one written here goes
-stale the next time a layer lands.**
+layer now exists under `modules/`.
+
+**`modules/` holds a directory per PLANNED layer, most of them empty, and that
+is deliberate.** Git does not track an empty directory, so a placeholder is
+untracked and reaches no clone — expected, and not a defect to fix. **Do not
+delete them, and do not report their number as a finding**; that has been
+re-reported by session after session, each one re-deriving the same listing and
+reaching the same wrong conclusion.
+
+**So read the BUILT set with
+`git ls-files 'modules/*' | cut -d/ -f2 | sort -u`, never with `ls modules/`.**
+The plain listing mixes planned layers in with built ones and reads as though
+the whole client existed. No roster is written here on purpose: one goes stale
+the next time a layer lands.
 
 ## Stack
 
@@ -45,7 +56,9 @@ stale the next time a layer lands.**
 | JDK | **25 LTS**, Eclipse Temurin | `.sdkmanrc` |
 | sbt | **2.0.x** (2.0.4) | `project/build.properties` |
 | ScalaTest | **3.2.20**, `Test` scope only | `build.sbt` |
-| Pekko | **1.6.x** (1.6.0) — *decided, not yet declared* | — |
+| ScalaCheck | **1.19.x**, with the `scalacheck-1-19` bridge, `Test` scope only | `build.sbt` |
+| BouncyCastle | **1.85** (`bcprov-jdk18on`), compile scope | `build.sbt` |
+| Pekko | **1.6.x** (1.6.0) — *decided, not yet declared, and it does NOT reach L0* | — |
 
 **Scala is on the LTS line, and that is line membership rather than a version
 preference.** 3.8.x is *Scala Next*, a different line this project does not run —
@@ -63,13 +76,17 @@ distributions by years, so a JDK version without a distribution does not say
 what is actually supported. `.sdkmanrc` pins both; run `sdk env` to apply it, or
 `sdk env install` first if the JDK is absent.
 
-**No compile-scope library dependency is declared, and that is deliberate.**
-Each one is added when a real need for it arises, and adding one means
+**Every dependency is added when a real need for it arises, and adding one means
 answering: what problem does this solve, why this over the alternatives, why
-this version, and what would change the answer. **A dependency with no present
+this version, and what would change the answer. A dependency with no present
 need is not an entry** — do not add one because another project has it, or
-because an older build did. ScalaTest, above and in `## Testing` below, is the
-first dependency to answer those four questions, and it is `Test`-scope only.
+because an older build did.
+
+**`build.sbt` is the authority for what is declared, and this table is a
+summary that ages.** Where they disagree, believe the build. The compile-scope
+set is deliberately small; the cryptography provider is the only entry so far,
+and it earned it against a named list of primitives rather than as a
+general-purpose utility.
 
 **One constraint binds every library added here.** Scala 3 guarantees that LTS
 output can be consumed by newer Scala Next, but **not the reverse** — so a
@@ -462,10 +479,12 @@ the expected total means **this run** was partial. Here, a count below the
 
 Use the **capitalized** `Feature` / `Scenario`. The lowercase `feature` /
 `scenario` was deprecated in ScalaTest 3.1.0 and is slated for removal, though
-much ScalaTest documentation still shows the old form. **Confirmed against the
-pinned ScalaTest 3.2.20** — `ToolchainFeatureSpec.scala` is written in exactly
-this form and compiles and runs, so a change in that syntax becomes a build
-failure rather than a stale instruction.
+much ScalaTest documentation still shows the old form. This was confirmed
+against the pinned ScalaTest 3.2.20 by a toolchain-proof spec written in exactly
+this form, which compiled and ran — **but that spec has since been retired, so
+nothing in this repository exercises the syntax today and the confirmation is a
+record rather than a live check.** The first acceptance test restores it: written
+in the form below, it either compiles or names the problem immediately.
 
 ```scala
 class ThingSpec extends AnyFeatureSpec with GivenWhenThen:

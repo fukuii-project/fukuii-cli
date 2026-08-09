@@ -38,9 +38,11 @@ wrong is yours.
 
 ## The engine is not selected, and this charter does not select one
 
-**This repository has not chosen a key-value store.** No compile-scope
-dependency of any kind is declared — `AGENTS.md` § Stack states that rule and
-the four questions any first dependency has to answer.
+**This repository has not chosen a key-value store.** No storage or key-value
+dependency is declared, whatever else the build now carries — `AGENTS.md`
+§ Stack states the rule every dependency is added under, and the four questions
+any one of them has to answer. Read the declared set from `build.sbt` rather
+than from either document.
 
 **Choosing one is a dependency decision, not a storage-design decision.** It
 routes to the global `sentinel` agent and is operator-gated, and
@@ -112,12 +114,15 @@ git ls-files '*.scala'          # every Scala source that exists
 git ls-files '.claude/**'       # the repo-local framework layer
 ```
 
-At the time this charter was written there was no main source tree at all —
-only toolchain-proof test sources — so **no data source, no cache, no batch and
-no storage component exists here**, and almost every path a prior
-implementation named does not exist either. A path that cannot be listed is not
-a location to edit; it is evidence the layer has not landed. Say so rather than
-inventing one.
+**Layers land one at a time, so a partly-built tree is the standing condition
+here rather than a phase that ended.** Whatever the listing now contains, **no
+data source, no cache, no batch and no storage component is in it**, and almost
+every path a prior implementation named is absent. A path the listing does not
+contain is not a location to edit; it is evidence the layer has not landed. Say
+so rather than inventing one.
+
+**The listing is the authority and the paragraph above is a summary of it that
+ages.** Where the two disagree, re-run the listing and believe it.
 
 The module names, package layout and type names of the eventual storage layer
 are likewise **undecided**, per `.claude/rules/nomenclature.md`.

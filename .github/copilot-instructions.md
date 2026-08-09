@@ -32,8 +32,10 @@ client per chain.** A shared execution engine sits underneath, with consensus
 handled by a pluggable module per family, and it targets proof-of-work
 networks (Ethereum Classic mainnet, Mordor) and proof-of-stake networks
 (Ethereum mainnet, Sepolia) today. It carries no code from any earlier
-implementation. The foundation layer exists under `modules/`; run `ls modules/`
-for the current set rather than trusting a roster written here.
+implementation. The foundation layer exists under `modules/`, which holds a
+directory per PLANNED layer with most still empty — so read the BUILT set with
+`git ls-files 'modules/*'`, never with `ls modules/`, which mixes the two and
+reads as though the whole client existed.
 
 ## Stack
 
@@ -55,10 +57,12 @@ higher number that was skipped.
 distributions by years, so a JDK version without a distribution does not say
 what is actually supported.
 
-**No compile-scope library dependency is declared, and that is deliberate.**
-Each one is added when a real need for it arises. A dependency with no present
-need is not an entry — do not add one because another project has it. There is
-no dependency-update configuration yet.
+**Every dependency is added when a real need for it arises, and a dependency
+with no present need is not an entry** — do not add one because another project
+has it. The compile-scope set is deliberately small: a cryptography provider is
+the only entry so far, earned against a named list of primitives. **`build.sbt`
+is the authority for what is declared**; where it and this file disagree,
+believe the build. There is no dependency-update configuration yet.
 
 ## Commands
 

@@ -200,11 +200,18 @@ git ls-files '*.scala'          # every Scala source that exists
 git ls-files '.claude/**'       # the repo-local framework layer
 ```
 
-At the time this charter was written there was no main source tree — only
-toolchain-proof test sources. **A path that cannot be listed is not a location to
-edit**; it is evidence that the layer has not landed, and the honest output is to
-say so rather than to invent one. When a path has genuinely moved rather than
-never existed, search for the file by name instead of guessing its new home.
+**Layers land one at a time, so a partly-built tree is the standing condition
+here rather than a phase that ended.** Whatever the listing now contains, **no
+proof-of-stake consensus implementation is in it** — no timestamp-gated fork
+activation, no execution-payload or post-merge header handling, no withdrawals,
+no blob transactions, no execution requests. **A path the listing does not
+contain is not a location to edit**; it is evidence that the layer has not
+landed, and the honest output is to say so rather than to invent one. When a
+path has genuinely moved rather than never existed, search for the file by name
+instead of guessing its new home.
+
+**The listing is the authority and the paragraph above is a summary of it that
+ages.** Where the two disagree, re-run the listing and believe it.
 
 The module names, package layout and type names of the eventual consensus layer
 are **undecided**, and a prior implementation's names are not a reservation on

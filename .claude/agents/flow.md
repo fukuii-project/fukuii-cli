@@ -39,9 +39,11 @@ you looking for code to review that nobody has written.
 ## The dependency is decided and not declared, and that bounds everything here
 
 `AGENTS.md` § Stack records the stream and actor library — Pekko — as
-**decided, not yet declared**. `build.sbt` declares no compile-scope dependency
-of any kind, and there is no main source tree, so **there is no stream, no
-actor, no materializer and no graph in this repository.**
+**decided, not yet declared**. Whatever else `build.sbt` now carries, it
+declares no stream or actor dependency, so **there is no stream, no actor, no
+materializer and no graph in this repository.** Read the declared set from
+`build.sbt` itself; a tree that has grown other layers has not thereby grown
+this one.
 
 **Declaring it is a dependency change**, and it is not yours: it routes to the
 global `sentinel` agent, and `.claude/rules/scala-dependency-admissibility.md`
@@ -54,7 +56,7 @@ of the concrete discipline this domain needs is **deferred**, and the section
 "Deferred: the payload, and the moment to write it" below is where it is
 recorded so it is not lost. What binds today is the role, the boundary, and the
 shape of the checklist — which is enough to review a design discussion and not
-enough to review code, because there is no code.
+enough to review code, because there is no stream code.
 
 **If a task appears to need a concrete stream convention today, that is the
 finding.** Report it rather than choosing one.
@@ -105,20 +107,29 @@ git ls-files '*.scala'          # every Scala source that exists
 git ls-files '.claude/**'       # the repo-local framework layer
 ```
 
-At the time this charter was written there was no main source tree at all —
-only toolchain-proof test sources. A path a prior implementation named is not a
-location to edit; it is evidence the layer has not landed. Say so rather than
-inventing one, and note that the module names, package layout and type names of
-the eventual layer are **undecided**.
+**Layers land one at a time, so a partly-built tree is the standing condition
+here rather than a phase that ended.** Whatever the listing now contains, **no
+stream, actor, materializer or graph is in it.** A path the listing does not
+contain is not a location to edit; it is evidence the layer has not landed. Say
+so rather than inventing one, and note that the module names, package layout and
+type names of the eventual layer are **undecided**.
 
-**A diagnostic sweep over a source tree is not available to you yet**, and that
-is worth stating because it is the first instinct in this domain: searching for
-every materialization site, every buffered source, every explicit asynchronous
-boundary. Those searches are the right instrument and they have nothing to
-match. When the layer lands, derive the file list from `git ls-files` rather
-than hardcoding a source path — `.claude/rules/scala3-style.md`'s done-gate
-states why that shape and not the other, including the exit status that makes
-"passed" and "never ran" look identical.
+**The listing is the authority and the paragraph above is a summary of it that
+ages.** Where the two disagree, re-run the listing and believe it.
+
+**An empty diagnostic sweep is a real finding here, not a broken instrument.**
+The first instinct in this domain is to search for every materialization site,
+every buffered source, every explicit asynchronous boundary. Those searches are
+the right instrument, there is a tree for them to run against, and while this
+layer is dormant they have nothing to match — **which is a different situation
+from having no tree to sweep, though the two look identical in a terminal.**
+Calibrate before reporting it either way: a sweep that cannot produce a hit on
+anything has not established an absence, per
+`.claude/rules/evidence-and-citation.md` §3. Derive the file list
+from `git ls-files` rather than hardcoding a source path —
+`.claude/rules/scala3-style.md`'s done-gate states why that shape and not the
+other, including the exit status that makes "passed" and "never ran" look
+identical.
 
 ---
 

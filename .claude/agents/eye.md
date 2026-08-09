@@ -155,14 +155,22 @@ git ls-files '*.scala'          # every Scala source that exists
 git diff                        # what changed, and therefore what to cover
 ```
 
-At the time this charter was written there was **no main source tree** — only
-toolchain-proof test sources under the `org.fukuii` package, each proving one
-declared ScalaTest style artifact resolves and that the runner reports a real
-result. `AGENTS.md` § Testing carries their retirement trigger.
+**The suite covers the layers that have landed and nothing else, and it grows as
+they do** — so *what a green run actually covered* has a different answer each
+time you ask it. Take that answer from the run itself, never from this charter
+and never from a previous run: the suites the runner names, and the count it
+reports, are the scope of the result.
 
-**So a run today validates the toolchain, and says so.** That is a real result
-and it is a small one; do not describe it as validating behavior that does not
-exist yet.
+**So report the scope with the verdict, and do not generalize past it.** A green
+over the layers that exist is a real result about those layers and says nothing
+about one that has not landed. The failure this prevents outlives any particular
+state of the tree: **"the tests pass" is a claim about the whole client, and it
+is almost never the claim the run supports.** Name what ran.
+
+`AGENTS.md` § Testing is the authority on the declared style artifacts and on
+which of them a run has actually exercised — read it there rather than inferring
+coverage from a passing build, because an artifact can be proven to *resolve* by
+every successful build while its runner has never reported a result.
 
 `scripts/README.md` is the authority for what tooling is in `scripts/` and what
 contract each script follows. Two are directly yours:

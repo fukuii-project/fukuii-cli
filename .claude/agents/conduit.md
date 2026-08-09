@@ -188,10 +188,16 @@ git ls-files '*.scala'          # every Scala source that exists
 git ls-files '.claude/**'       # the repo-local framework layer
 ```
 
-At the time this charter was written there was no main source tree at all — only
-toolchain-proof test sources — so **no method, dispatcher, codec, transport or
-subscription implementation exists here.** A path a prior implementation named is
-not a location to edit; it is evidence the layer has not landed.
+**Layers land one at a time, so a partly-built tree is the standing condition
+here rather than a phase that ended.** Whatever the listing now contains, **no
+method, dispatcher, request codec, transport or subscription implementation is
+in it.** A path the listing does not contain is not a location to edit; it is
+evidence the layer has not landed. A general serialization primitive is
+foundation-layer work and may well be present; that is not your request and
+response encoding, and finding it is not finding your layer.
+
+**The listing is the authority and the paragraph above is a summary of it that
+ages.** Where the two disagree, re-run the listing and believe it.
 
 **No transport, serialization or query-language dependency is declared, and that
 is deliberate** — `AGENTS.md` § Stack states the rule and the four questions any

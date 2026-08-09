@@ -37,7 +37,7 @@ Each configured network is meant to run as its own actor supervision tree — it
 The foundation layer is built. What's here is a pinned toolchain and the bottom of the module tree:
 
 - A `build.sbt` declaring only what's settled — the Scala and JDK versions, the ScalaTest style artifacts the testing policy commits to, and the cryptography provider. [`AGENTS.md`](AGENTS.md) has the full stack table, the setup commands, and the reasoning behind each pin.
-- `modules/`, where the layering above lives. Run `ls modules/` for the current set; a list here would go stale the next time a layer lands.
+- `modules/`, where the layering above lives. It holds a directory per planned layer, most still empty and so untracked — `git ls-files 'modules/*'` shows what's actually built. A list here would go stale the next time a layer lands.
 - Every module is certified against published sources rather than against its own output — the specifications, the conformance corpora, and the reference clients. Each spec names the document or commit its vectors came from.
 
 Apache Pekko is decided as the actor-system dependency and isn't declared in the build yet — nothing gets added before something needs it.

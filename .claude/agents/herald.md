@@ -201,12 +201,22 @@ git ls-files '*.scala'          # every Scala source that exists
 git ls-files '.claude/**'       # the repo-local framework layer
 ```
 
-At the time this charter was written there was no main source tree at all — only
-toolchain-proof test sources — so **no transport, codec, handshake, discovery or
-socket implementation exists here**, and almost every path a prior implementation
-named does not exist either. A path that cannot be listed is not a location to
-edit; it is evidence that the layer has not landed. Say so rather than inventing
-one.
+**Layers land one at a time, so a partly-built tree is the standing condition
+here rather than a phase that ended.** Whatever the listing now contains, **no
+transport, wire codec, handshake, discovery or socket implementation is in it**,
+and almost every path a prior implementation named is absent. A path the listing
+does not contain is not a location to edit; it is evidence that the layer has
+not landed. Say so rather than inventing one.
+
+**One near-miss the listing will hand you, so it is named here.** A general RLP
+codec is foundation-layer work and may well be present; **that is not the wire
+layer and it is not yours.** Your codec is the ETH message encoding built on top
+of a serialization primitive — finding the primitive is not finding your layer,
+and treating it as though it were is how a prior implementation's message types
+get invented on top of something real.
+
+**The listing is the authority and the paragraph above is a summary of it that
+ages.** Where the two disagree, re-run the listing and believe it.
 
 **No networking, compression, encoding or actor dependency is declared, and that
 is deliberate** — `AGENTS.md` § Stack states the rule and the four questions any
