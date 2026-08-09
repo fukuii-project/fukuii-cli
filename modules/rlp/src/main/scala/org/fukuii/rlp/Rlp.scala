@@ -92,11 +92,25 @@ object Rlp:
     * peer can send, and this codec's whole purpose is parsing bytes that
     * arrive from one.
     *
-    * The value is far above anything the protocol's own structures need — the
-    * deepest is single digits — and far below where the stack gives out. A
-    * legitimate payload never approaches it.
+    * THE VALUE IS CALIBRATED TO THE SMALLEST STACK THIS CAN RUN ON, NOT TO A
+    * COMFORTABLE ONE. Measured on the pinned toolchain, one fresh JVM per row,
+    * with the bound lifted so the real limit shows:
+    *
+    *   - 1 MB stack (the JVM's own default), frames INTERPRETED — overflow at
+    *     depth ~904. A bound of 1024 would never fire there.
+    *   - 1 MB stack, once the decode path is JIT-compiled — past 3000.
+    *
+    * The interpreted figure is the one that binds: a handler thread decodes its
+    * first payloads before anything is compiled, which is exactly when a peer's
+    * opening message arrives. A bound tuned to the warm case is a bound that
+    * fails on precisely the input it exists to stop.
+    *
+    * 512 clears the interpreted 1 MB case with room to spare and is still two
+    * orders of magnitude above anything the protocol's own structures need,
+    * which is single digits. Raising it re-opens the coupling to `-Xss`, so
+    * re-measure interpreted rather than reasoning from the warm number.
     */
-  val MaxNestingDepth = 1024
+  val MaxNestingDepth = 512
 
   def encode(item: RlpItem): IArray[Byte] = item match
     case RlpItem.Bytes(value)    => encodeBytes(value)

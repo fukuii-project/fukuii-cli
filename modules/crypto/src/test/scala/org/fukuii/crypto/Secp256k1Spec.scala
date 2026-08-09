@@ -80,6 +80,33 @@ class Secp256k1Spec extends AnyFlatSpec:
     assert(Secp256k1.recoverPublicKey(message, signature.copy(s = BigInt(0))).isEmpty, "s must be positive")
   }
 
+  /** A signature crafted so recovery yields the point at infinity.
+    *
+    * Pick any k, set r = (kG).x and s = e/k; then the recovered point is
+    * r⁻¹(sR − eG) = O. Both values land inside [1, n-1], so every range guard
+    * above passes and only an explicit infinity check rejects it. The provider
+    * encodes infinity as the single byte 0x00, so without that check this
+    * returns a one-byte "public key" — and a precompile hashing it derives a
+    * fixed, live-looking address where every reference client returns nothing.
+    */
+  it should "reject a signature that recovers to the point at infinity" in {
+    val crafted = Signature(
+      r = BigInt("bb50e2d89a4ed70663d080659fe0ad4b9bc3e06c17a227433966cb59ceee020d", 16),
+      s = BigInt("f1d0341fc1815ef97016dcec209a8764c9e9a70ef493a88cc7ad879d6f2a629c", 16),
+      recoveryId = 0
+    )
+    assert(Secp256k1.recoverPublicKey(message, crafted).isEmpty, "infinity is not a public key")
+  }
+
+  "publicKeyOf" should "return None for a key outside [1, n-1] rather than a one-byte key" in {
+    assert(Secp256k1.publicKeyOf(BigInt(0)).isEmpty, "zero multiplies to infinity, which is not a key")
+  }
+
+  it should "return 65 uncompressed bytes for a valid key" in {
+    val key = BigInt("4646464646464646464646464646464646464646464646464646464646464646", 16)
+    assert(Secp256k1.publicKeyOf(key).exists(_.length == 65), "the documented width must hold")
+  }
+
   "verify" should "accept the published signature under the uncompressed key" in {
     assert(Secp256k1.verify(hex(publicKeyHex), message, signature), "the published signature must verify")
   }
@@ -101,7 +128,7 @@ class Secp256k1Spec extends AnyFlatSpec:
     val key    = BigInt("4646464646464646464646464646464646464646464646464646464646464646", 16)
     val signed = Secp256k1.sign(message, key)
     assert(
-      signed.exists(sig => Secp256k1.verify(Secp256k1.publicKeyOf(key), message, sig)),
+      signed.exists(sig => Secp256k1.publicKeyOf(key).exists(pk => Secp256k1.verify(pk, message, sig))),
       "a signature this module produced must verify under the key that made it"
     )
   }
@@ -133,7 +160,7 @@ class Secp256k1Spec extends AnyFlatSpec:
     val signed = Secp256k1.sign(message, key)
     assert(
       signed.flatMap(sig => Secp256k1.recoverPublicKey(message, sig)).map(Hex.encode)
-        == Some(Hex.encode(Secp256k1.publicKeyOf(key))),
+        == Secp256k1.publicKeyOf(key).map(Hex.encode),
       "the recovery id this module chose must be the one that works"
     )
   }

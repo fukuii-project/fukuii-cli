@@ -9,6 +9,7 @@ import org.bouncycastle.crypto.params.ECPublicKeyParameters
 import org.bouncycastle.crypto.signers.ECDSASigner
 import org.bouncycastle.crypto.signers.HMacDSAKCalculator
 import org.bouncycastle.math.ec.ECAlgorithms
+import org.bouncycastle.math.ec.FixedPointCombMultiplier
 import scala.util.control.NonFatal
 
 /** An ECDSA signature over secp256k1.
@@ -61,7 +62,9 @@ object Secp256k1:
         val r    = out(0)
         val rawS = out(1)
         val s    = if rawS.compareTo(halfCurveOrder) > 0 then domain.getN.subtract(rawS) else rawS
-        recoveryIdFor(e, r, s, publicKeyOf(privateKey)).map(id => Signature(BigInt(r), BigInt(s), id))
+        publicKeyOf(privateKey).flatMap(expected =>
+          recoveryIdFor(e, r, s, expected).map(id => Signature(BigInt(r), BigInt(s), id))
+        )
       catch case NonFatal(_) => None
 
   def verify(publicKey: IArray[Byte], messageHash: IArray[Byte], signature: Signature): Boolean =
@@ -108,14 +111,34 @@ object Secp256k1:
             val rInv    = r.modInverse(n)
             val srInv   = rInv.multiply(s).mod(n)
             val eInvInv = rInv.multiply(n.subtract(e.mod(n)).mod(n)).mod(n)
-            val q       = ECAlgorithms.sumOfTwoMultiplies(domain.getG, eInvInv, pointR, srInv)
-            Some(IArray.unsafeFromArray(q.normalize().getEncoded(false)))
+            val q = ECAlgorithms.sumOfTwoMultiplies(domain.getG, eInvInv, pointR, srInv)
+            // The recovered point can be the point at infinity, and this
+            // provider encodes that as the single byte 0x00 rather than
+            // refusing. Returning it hands the caller a one-byte "public key":
+            // a precompile hashing it computes the digest of the empty string
+            // and derives a fixed, live-looking address, where every reference
+            // client returns failure. Reachable on demand — pick any k, set
+            // r = (kG).x and s = e/k, and both land inside [1, n-1].
+            if q.isInfinity then None
+            else Some(IArray.unsafeFromArray(q.normalize().getEncoded(false)))
       catch case NonFatal(_) => None
 
-  /** The uncompressed public key for a private key, as 65 bytes. */
-  def publicKeyOf(privateKey: BigInt): IArray[Byte] =
-    val point = ECAlgorithms.referenceMultiply(domain.getG, privateKey.bigInteger).normalize()
-    IArray.unsafeFromArray(point.getEncoded(false))
+  /** The uncompressed public key for a private key, as 65 bytes.
+    *
+    * `None` for a key outside [1, n-1]. Those multiply to the point at
+    * infinity, which this provider encodes as a single zero byte — so the
+    * 65-byte contract would otherwise be one a caller could not rely on.
+    */
+  def publicKeyOf(privateKey: BigInt): Option[IArray[Byte]] =
+    if privateKey.signum <= 0 || privateKey.bigInteger.compareTo(domain.getN) >= 0 then None
+    else
+      // A comb multiplier with a fixed access pattern, NOT the provider's
+      // `referenceMultiply`, whose double-and-add branches once per set bit of
+      // the scalar — so its timing and cache trace are a function of the
+      // private key. The provider's own key generator uses this one.
+      val point = FixedPointCombMultiplier().multiply(domain.getG, privateKey.bigInteger).normalize()
+      if point.isInfinity then None
+      else Some(IArray.unsafeFromArray(point.getEncoded(false)))
 
   /** Which recovery id reproduces this key, found by trying each.
     *
