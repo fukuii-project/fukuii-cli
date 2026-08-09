@@ -12,8 +12,17 @@ transparency against the Scala 3 Book (`scala/docs.scala-lang` @ commit
 alias-to-lazy-val analogy and the recursive-lazy-val behavior against the Scala 3
 reference at tag **`3.3.8`**, which is the version `build.sbt` pins. Also
 measured against this repository the same day: `build.sbt` declares **no logging,
-metrics, actor or effect dependency**, and no `src/main` tree exists — both
-load-bearing for the logging section and its deferral.
+metrics, actor or effect dependency** — which is what the logging section and its
+deferral rest on. **Re-derive that rather than trusting this sentence**, with
+`grep -nE 'slf4j|logback|log4j|micrometer|pekko|cats-effect|zio' build.sbt`; a
+declared dependency list is exactly the thing that changes without anyone
+re-reading a rule header.
+
+**The same sentence used to add "and no `src/main` tree exists", and that went
+false** the moment the first module landed. It is removed rather than updated,
+because a state claim of that shape rots on a commit nobody connects to this
+file: what the logging deferral actually depends on is the *dependency* half
+above, and the source tree's existence was never load-bearing for it.
 
 **A third category, and it is the one a header can hide.** Several blocks below
 are **inherited factual claims from this project's prior implementation, and are
