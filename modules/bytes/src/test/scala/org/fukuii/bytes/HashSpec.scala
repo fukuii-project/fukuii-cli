@@ -4,7 +4,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 /** The 32-byte values are published constants, taken from besu
   * `datatypes/src/test/java/org/hyperledger/besu/datatypes/HashTest.java`
-  * @ `fd8389c576f4065ec77fea1130885ee09ffdc4b1`. They are used here only as
+  * @ `besu-eth/besu, main, fd8389c5 (2026-07-31)`. They are used here only as
   * well-known 32-byte sequences: this module computes no digest, so nothing
   * below asserts that either value is the digest of anything.
   */

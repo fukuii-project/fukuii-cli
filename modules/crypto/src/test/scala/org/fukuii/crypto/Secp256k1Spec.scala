@@ -4,7 +4,7 @@ import org.fukuii.bytes.Hex
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Certification against go-ethereum's published secp256k1 vector, from
-  * `crypto/signature_test.go` @ `7a1b11564c16f54dff0a2f578179c482d9f701bf` —
+  * `crypto/signature_test.go` @ `ethereum/go-ethereum, master, 7a1b1156 (2026-07-30)` —
   * the message, signature and both key encodings its own `TestEcrecover` and
   * `TestVerifySignature` run on.
   *

@@ -7,9 +7,9 @@ import org.scalatest.prop.TableDrivenPropertyChecks
 /** Certification against the Ethereum conformance corpus.
   *
   * Vectors are [[RlpVectors]], generated from the `RLPTests` fixtures of
-  * ethereum/tests @ `c67e485ff8b5be9abc8ad15345ec21aa22e290d9`. The encoding
-  * rules they check are the Yellow Paper's Appendix B, `Paper.tex`
-  * @ `efc5f9a1f356cba376c978eedb63cb0363c2aa85`.
+  * `ethereum/tests @ develop, c67e485f (2025-06-04)`. The encoding
+  * rules they check are the Yellow Paper's Appendix B, `Paper.tex`,
+  * `ethereum/yellowpaper @ master, efc5f9a1 (2025-02-04)`.
   *
   * Encoding and decoding are asserted SEPARATELY, against the corpus, rather
   * than as a round trip through each other. A codec that round-trips itself

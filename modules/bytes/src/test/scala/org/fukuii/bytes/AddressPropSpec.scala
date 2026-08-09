@@ -7,13 +7,13 @@ import org.scalatest.prop.TableDrivenPropertyChecks
   * example-shaped cases live in [[AddressSpec]].
   *
   * The accept-and-reject rows are go-ethereum's, from `TestAddressUnmarshalJSON`
-  * in `common/types_test.go` @ `7a1b11564c16f54dff0a2f578179c482d9f701bf`, which
+  * in `common/types_test.go` @ `ethereum/go-ethereum, master, 7a1b1156 (2026-07-30)`, which
   * exercises that client's own strict address parse. Two of its rows are omitted
   * rather than adapted: it drives JSON, so its empty-string and bare-quotes cases
   * test the JSON layer, and this module has none.
   *
-  * The published addresses are the four in ERC-55
-  * @ `2b5baad95598defa4eaf18fc0674a2675b378b57`, lowercased. This module computes
+  * The published addresses are the four MIXED-CASE addresses in ERC-55's Test Cases
+  * @ `ethereum/ERCs, master, 2b5baad9 (2026-08-04)`, lowercased. This module computes
   * no digest, so the mixed-case checksum those vectors also encode is not
   * testable here and is not tested here.
   */

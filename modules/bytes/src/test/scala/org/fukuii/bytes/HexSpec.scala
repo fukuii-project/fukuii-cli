@@ -5,7 +5,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 /** Vectors are drawn from published sources rather than from this
   * implementation's own output: the 32-byte value is `Hash.EMPTY` in besu
   * `datatypes/src/test/java/org/hyperledger/besu/datatypes/HashTest.java`
-  * @ `fd8389c576f4065ec77fea1130885ee09ffdc4b1`.
+  * @ `besu-eth/besu, main, fd8389c5 (2026-07-31)`.
   */
 class HexSpec extends AnyFlatSpec:
 

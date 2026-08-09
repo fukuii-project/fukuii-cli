@@ -35,12 +35,17 @@ object Secp256r1:
     else
       try
         val point = domain.getCurve.createPoint(x.bigInteger, y.bigInteger)
-        // Defense in depth, and REDUNDANT against this provider version:
-        // deleting this line changes no outcome across the whole corpus,
-        // including its 46 point-at-infinity and off-curve cases, so the
-        // provider is already rejecting them somewhere below. Kept because
-        // which layer enforces it is the provider's choice and not a contract,
-        // and left honest rather than described as the thing doing the work.
+        // Defense in depth. The corpus CANNOT tell you whether this line
+        // matters: measured over all its vectors, none carries an off-curve
+        // public key, a coordinate at or above the field prime, or the point
+        // at infinity — so removing the line changes no outcome there, and
+        // that survival is the corpus's silence rather than evidence.
+        //
+        // What does establish it is a direct measurement against this provider
+        // version: an infinity or off-curve point raises below this layer and
+        // the outcome is false either way. Kept because which layer enforces
+        // it is the provider's choice rather than a contract, and because the
+        // governing specification lists it as a MUST in its own right.
         if !point.isValid then false
         else
           val signer = ECDSASigner()

@@ -3,7 +3,7 @@ package org.fukuii.bytes
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** The alignment behavior is go-ethereum's `Address.SetBytes`, `common/types.go`
-  * @ `7a1b11564c16f54dff0a2f578179c482d9f701bf`: keep the rightmost bytes when
+  * @ `ethereum/go-ethereum, master, 7a1b1156 (2026-07-30)`: keep the rightmost bytes when
   * the input is too long, right-align when it is too short.
   *
   * The published address forms and the strict accept-and-reject cases are

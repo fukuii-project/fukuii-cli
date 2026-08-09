@@ -32,15 +32,15 @@ import org.scalatest.prop.TableDrivenPropertyChecks
   *
   *   - the empty input, as `Hash.EMPTY` in besu
   *     `datatypes/src/test/java/org/hyperledger/besu/datatypes/HashTest.java`
-  *     @ `fd8389c576f4065ec77fea1130885ee09ffdc4b1`, and independently as
+  *     @ `besu-eth/besu, main, fd8389c5 (2026-07-31)`, and independently as
   *     `KeccakOfAnEmptyString` in nethermind
   *     `src/Nethermind/Nethermind.Core.Test/KeccakTests.cs`
-  *     @ `2706ce9e024a679c38c18a9329c7f9f4ba7282da`
+  *     @ `NethermindEth/nethermind, master, 2706ce9e (2026-07-31)`
   *   - `"abc"`, from go-ethereum `crypto/keccak/sha3_test.go`'s `TestKeccak`
-  *     @ `7a1b11564c16f54dff0a2f578179c482d9f701bf`
+  *     @ `ethereum/go-ethereum, master, 7a1b1156 (2026-07-30)`
   *   - `"cow"` and `"horse"`, from besu
   *     `crypto/algorithms/src/test/java/org/hyperledger/besu/crypto/HashTest.java`
-  *     @ `fd8389c576f4065ec77fea1130885ee09ffdc4b1`
+  *     @ `besu-eth/besu, main, fd8389c5 (2026-07-31)`
   */
 class Keccak256PropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 

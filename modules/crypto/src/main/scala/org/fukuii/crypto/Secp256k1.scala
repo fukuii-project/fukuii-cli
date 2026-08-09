@@ -90,8 +90,12 @@ object Secp256k1:
     // `x < prime` test below: the field prime exceeds the curve order, so an r
     // in [n, p) passes that test, and s is never compared to anything without
     // this line — `s.mod(n)` downstream would silently accept a reduced value.
-    // The reference implementation requires both unconditionally, and the
-    // sibling curve in this module already did.
+    // The specification requires it outright -- the Yellow Paper's ECREC
+    // returns 0 when r or s is zero or at least the curve order,
+    // `ethereum/yellowpaper, master, efc5f9a1 (2025-02-04)` -- and both halves
+    // of the reference pair enforce it: go-ethereum's ValidateSignatureValues
+    // and besu's SECPSignature.checkInBounds. The sibling curve in this module
+    // already did.
     if recId < 0 || recId > 3 then None
     else if r.signum <= 0 || s.signum <= 0 then None
     else if r.compareTo(n) >= 0 || s.compareTo(n) >= 0 then None
