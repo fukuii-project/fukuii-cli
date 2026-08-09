@@ -156,7 +156,7 @@ them to `main`.
 |---|---|---|---|
 | `IPs/ECIPs` | [ethereumclassic/ECIPs](https://github.com/ethereumclassic/ECIPs) | `master` | **The specification for ETC consensus.** Authoritative and complete for every ECIP **except the Olympia set**, which is still being drafted by this project's maintainer and reaches the published repository after implementation and testing — **see below before citing anything Olympia** |
 | `IPs/EIPs` | [ethereum/EIPs](https://github.com/ethereum/EIPs) | `master` | **The specification for ETH-family consensus.** Many EIPs apply to ETC identically and ETH leads on those; where ETC carries a different parameter for an otherwise-identical EIP, the ECIP governs the parameter |
-| `IPs/ERCs` | [ethereum/ERCs](https://github.com/ethereum/ERCs) | `master` | **The application-layer standards series, and not optional for a client.** Documents that began in the EIPs repository were moved here and the EIPs clone retains only a stub naming the new location — **so a document can be "in EIPs" and unreadable there.** ERC-55, the mixed-case address checksum, is the instance L0 meets first |
+| `IPs/ERCs` | [ethereum/ERCs](https://github.com/ethereum/ERCs) | `master` | **The application-layer standards series, and not optional for a client.** Documents that began in the EIPs repository were moved here and the EIPs clone retains only a stub naming the new location — **so a document can be "in EIPs" and unreadable there.** ERC-55, the mixed-case address checksum, is the instance the foundation layer meets first |
 
 **None of these three repositories carries a single tag, so a tag citation is
 structurally unavailable for all of them.** Cite by **document number and commit

@@ -48,6 +48,9 @@ reads as though the whole client existed.
 | JDK | **25 LTS**, Eclipse Temurin | `.sdkmanrc` |
 | sbt | **2.0.x** | `project/build.properties` |
 | ScalaTest | **3.2.x**, `Test` scope only | `build.sbt` |
+| ScalaCheck | **1.19.x**, with the `scalacheck-1-19` bridge, `Test` scope only | `build.sbt` |
+| BouncyCastle | **1.85** (`bcprov-jdk18on`), compile scope | `build.sbt` |
+| Pekko | **1.6.x** — *decided, not yet declared, and it does NOT reach the foundation layer* | — |
 
 **Scala is on the LTS line, and that is line membership rather than a version
 preference.** Scala Next is a different line this project does not run, not a

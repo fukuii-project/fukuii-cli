@@ -58,7 +58,7 @@ the next time a layer lands.
 | ScalaTest | **3.2.20**, `Test` scope only | `build.sbt` |
 | ScalaCheck | **1.19.x**, with the `scalacheck-1-19` bridge, `Test` scope only | `build.sbt` |
 | BouncyCastle | **1.85** (`bcprov-jdk18on`), compile scope | `build.sbt` |
-| Pekko | **1.6.x** (1.6.0) — *decided, not yet declared, and it does NOT reach L0* | — |
+| Pekko | **1.6.x** (1.6.0) — *decided, not yet declared, and it does NOT reach the foundation layer* | — |
 
 **Scala is on the LTS line, and that is line membership rather than a version
 preference.** 3.8.x is *Scala Next*, a different line this project does not run —
@@ -293,9 +293,9 @@ their own trigger was the first real `AnyFlatSpec` under `modules/bytes`, which
 now exists alongside real `AnyPropSpec` use. Real specs prove both, and the
 proofs became an artifact with nothing to do.
 
-**One residual, stated rather than left to be discovered.** `AnyFeatureSpec` has
-no use yet — acceptance tests await a stakeholder-facing requirement — so its
-runner is currently unexercised. Resolution is still proven by every successful
+**One residual, stated rather than left to be discovered.** `AnyFeatureSpec`'s
+runner is exercised by the first acceptance test written against it, and not
+before. Resolution is still proven by every successful
 build, since an unresolvable artifact fails `update` outright; what is unproven
 is only that the runner reports a result, and the first acceptance test proves
 that at the moment it is written, where a failure is loud rather than silent.
