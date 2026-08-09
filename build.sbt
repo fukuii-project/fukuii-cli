@@ -42,8 +42,10 @@ ThisBuild / javacOptions := Seq("--release", "25")
 // WHY NOW, AND WHY NOT LATER. A warning category costs nothing to gate before
 // the code it would flag exists, and is a migration afterwards. There is one
 // moment at which that cost is zero, it does not recur, and writing ungated
-// code destroys it. This repository is at that moment: no src/main, and a
-// handful of test sources. `.claude/protocols/warning-ratchet.md` holds the
+// code destroys it. This repository took that moment: the ratchet was
+// configured while it held no application code, so the foundation layer was
+// written under it rather than migrated onto it, and every category below has
+// been paid for exactly once. `.claude/protocols/warning-ratchet.md` holds the
 // full warrant; this is its application.
 //
 // WHY AS ERRORS RATHER THAN WARNINGS TO BE WORKED DOWN. A warning nobody must

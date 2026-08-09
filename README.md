@@ -34,11 +34,11 @@ Each configured network is meant to run as its own actor supervision tree — it
 
 ## Status
 
-No application code exists in this repository yet. What's here is a pinned toolchain and the scaffolding it will build on:
+The foundation layer is built. What's here is a pinned toolchain and the bottom of the module tree:
 
-- A minimal `build.sbt` declaring only what's settled — the Scala and JDK versions, and the ScalaTest style artifacts the testing policy commits to. [`AGENTS.md`](AGENTS.md) has the full stack table, the setup commands, and the reasoning behind each pin.
-- No `modules/` tree yet. It is where the layering above will live, and a clone does not receive it — git does not track empty directories, so it arrives with the first module that has a file in it.
-- `src/test/`, one toolchain-proof spec per declared ScalaTest style artifact, proving the pinned test toolchain resolves and actually reports a result. They're retired the day a real spec exists to replace them.
+- A `build.sbt` declaring only what's settled — the Scala and JDK versions, the ScalaTest style artifacts the testing policy commits to, and the cryptography provider. [`AGENTS.md`](AGENTS.md) has the full stack table, the setup commands, and the reasoning behind each pin.
+- `modules/`, where the layering above lives. Run `ls modules/` for the current set; a list here would go stale the next time a layer lands.
+- Every module is certified against published sources rather than against its own output — the specifications, the conformance corpora, and the reference clients. Each spec names the document or commit its vectors came from.
 
 Apache Pekko is decided as the actor-system dependency and isn't declared in the build yet — nothing gets added before something needs it.
 

@@ -23,9 +23,10 @@
 # script can do that where a pipeline cannot.
 #
 # WHAT IT SCANS. Every TRACKED *.scala file, discovered with `git ls-files`.
-# Deliberately not a path such as src/main: this repository has no src/main
-# today, so a check hardcoding one would match nothing and report clean
-# forever. `git ls-files` follows the layout wherever it goes, and it cannot
+# Deliberately not a hardcoded path such as src/main: the layout MOVES -- this
+# repository's sources began under src/ and now live under modules/*/src/ --
+# and a check naming a path that no longer exists matches nothing and reports
+# clean forever. `git ls-files` follows the layout wherever it goes, and it cannot
 # descend into untracked reference material and report another project's code
 # as a finding.
 #

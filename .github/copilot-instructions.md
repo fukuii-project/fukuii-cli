@@ -32,8 +32,8 @@ client per chain.** A shared execution engine sits underneath, with consensus
 handled by a pluggable module per family, and it targets proof-of-work
 networks (Ethereum Classic mainnet, Mordor) and proof-of-stake networks
 (Ethereum mainnet, Sepolia) today. It carries no code from any earlier
-implementation, and there is no `src/main` yet — only the pinned toolchain
-below.
+implementation. The foundation layer exists under `modules/`; run `ls modules/`
+for the current set rather than trusting a roster written here.
 
 ## Stack
 
@@ -105,11 +105,12 @@ command — one the build does not define will fail and read as a broken build.
 | `.claude/` | This environment's own framework layer — agents, path-scoped rules, protocols, hooks, and the settings that register and gate them; tracked by default |
 | `.github/assets/` | The logo this file and `README.md` render |
 | `scripts/` | Repository test infrastructure — checkers and a wrapper, most paired with a proof script, plus the fixtures they run against |
-| `src/test/scala/org/fukuii/` | Three toolchain-proof specs, one per declared ScalaTest style artifact — see `## Testing` |
+| `modules/` | The layered module tree. Each module holds `src/main/scala/` and `src/test/scala/` under `org/fukuii/<module>/` — **read the directory for the current set rather than a list here** |
 
-**`modules/` does not appear above.** It is the intended home for a future
-layered module tree; git does not track empty directories, so nothing under it
-reaches a clone until a module holds a real file.
+**A module directory holding no tracked file is in no clone.** Git does not
+track empty directories, so the tree arrives with content rather than ahead of
+it. That is a property of git, not a status of this repository, so it holds
+whenever a module is created.
 
 ## Testing
 

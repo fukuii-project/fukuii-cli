@@ -27,8 +27,10 @@ behind a shared execution engine and a pluggable consensus module, rather than
 a client forked and adapted per chain. Today that spans proof-of-work networks
 (Ethereum Classic mainnet, Mordor) and proof-of-stake networks (Ethereum
 mainnet, Sepolia). This is a from-scratch rebuild carrying no code from any
-prior implementation, and it starts from a pinned toolchain: there is no
-`src/main` yet.
+prior implementation, and it started from a pinned toolchain. The foundation
+layer now exists under `modules/`; **`ls modules/` is the current shape, and
+this sentence deliberately names no module roster, because one written here goes
+stale the next time a layer lands.**
 
 ## Stack
 
@@ -215,9 +217,8 @@ detects that case, so a green from an incremental run is weaker evidence than a
 green from a clean one. When a result has to be trusted, make it a clean run.
 
 > **Inherited and unverified.** Both were observed in this project's prior
-> implementation on 2026-07-16, against a multi-module layout this repository
-> does not yet have, and neither has been reproduced here — this repo has one
-> module and no `src/main`. They are recorded because both are properties of sbt
+> implementation on 2026-07-16, against a multi-module layout, and neither has
+> been reproduced here. They are recorded because both are properties of sbt
 > rather than of that codebase, and because the cost of rediscovering them is a
 > debugging session spent trusting a green.
 
@@ -251,12 +252,14 @@ build does not define will fail and read as a broken build.
 | `.claude/settings.json` | Hook registrations and the read-deny list — see `## Boundaries` item 4 |
 | `.github/copilot-instructions.md`, `.github/assets/` | Copilot's self-contained instructions, and the logo `README.md` renders |
 | `scripts/` | Repository test infrastructure — checkers and a wrapper, most paired with a `*-proof.sh`, plus the fixtures and reference figures they run against; see `scripts/README.md` |
-| `src/test/scala/org/fukuii/` | Three toolchain-proof specs, one per declared ScalaTest style artifact — see `## Testing` |
+| `modules/` | The layered module tree. Each module holds `src/main/scala/` and `src/test/scala/` under `org/fukuii/<module>/` — **read the directory for the current set rather than a list here** |
 
-**`modules/` does not appear above.** It is the intended home for the layered
-module tree `README.md` § Status describes; git does not track empty
-directories, so nothing under it reaches a clone until a module holds a real
-file.
+**`modules/` reaches a clone from the commit its first module had a file in.**
+Git does not track empty directories, so the tree arrives with content rather
+than ahead of it. That is a property of git rather than a status of this
+repository, so it stays true on both sides of the transition and needs no
+revisiting: a module directory holding no tracked file is in no clone,
+whenever it is created.
 
 ## Testing
 
@@ -267,13 +270,18 @@ count ratchet that governs what may land.
 
 ### Test style is assigned by use case, not by author
 
-**A toolchain-proof spec exists for each declared style artifact** — `AnyFlatSpec`,
-`AnyPropSpec`, `AnyFeatureSpec` — at `src/test/scala/org/fukuii/Toolchain*.scala`,
-each proving its artifact resolves and that the runner reports a real result.
-**They are not evidence the use cases below have been exercised:** there is no
-application code, so each tests the toolchain itself and carries its own
-retirement trigger in its Scaladoc. Anything in this section stated as a
-measurement was measured elsewhere and says so.
+**The three toolchain-proof specs are retired.** They existed to show each
+declared style artifact resolved and that its runner reported a real result, and
+their own trigger was the first real `AnyFlatSpec` under `modules/bytes`, which
+now exists alongside real `AnyPropSpec` use. Real specs prove both, and the
+proofs became an artifact with nothing to do.
+
+**One residual, stated rather than left to be discovered.** `AnyFeatureSpec` has
+no use yet — acceptance tests await a stakeholder-facing requirement — so its
+runner is currently unexercised. Resolution is still proven by every successful
+build, since an unresolvable artifact fails `update` outright; what is unproven
+is only that the runner reports a result, and the first acceptance test proves
+that at the moment it is written, where a failure is loud rather than silent.
 
 ScalaTest ships eight styles so a *project* can fit a style to each use case —
 not so each contributor can pick a favorite. This project's assignment:
