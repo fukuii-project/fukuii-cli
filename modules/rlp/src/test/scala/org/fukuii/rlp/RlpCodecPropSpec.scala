@@ -1,6 +1,6 @@
 package org.fukuii.rlp
 
-import org.fukuii.bytes.{Hex, UInt256}
+import org.fukuii.bytes.{Hex, UInt256, UInt64}
 import org.scalatest.propspec.AnyPropSpec
 import org.scalatest.prop.TableDrivenPropertyChecks
 
@@ -54,15 +54,15 @@ class RlpCodecPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     }
   }
 
-  /** A machine-word quantity follows the same scalar rule, so every fixture
-    * small enough to fit one must encode identically through both codecs. A
-    * divergence would mean one of them is not the scalar rule.
+  /** The machine word follows the same scalar rule, so every fixture that fits
+    * one must encode identically through both codecs. A divergence would mean
+    * one of them is not the scalar rule.
     */
-  property("a machine word agrees with the corpus wherever it can hold the value") {
+  property("the machine word agrees with the corpus wherever it can hold the value") {
     forAll(scalars) { (name: String, decimal: String, rlpHex: String) =>
       val n = BigInt(decimal)
       assert(
-        n > Long.MaxValue || Hex.encode(RlpCodec.encodeTo(n.toLong)) == rlpHex,
+        n >= BigInt(2).pow(64) || Hex.encode(RlpCodec.encodeTo(UInt64.fromBigInt(n).toOption.get)) == rlpHex,
         name + " must agree with the published encoding when it fits"
       )
     }

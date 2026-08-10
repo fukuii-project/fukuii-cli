@@ -1,6 +1,6 @@
 package org.fukuii.rlp
 
-import org.fukuii.bytes.{Address, Hash, Hex, UInt256}
+import org.fukuii.bytes.{Address, Hash, Hex, UInt256, UInt64}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Behavior of the codec layer, and the demonstration that one value cannot
@@ -61,30 +61,37 @@ class RlpCodecSpec extends AnyFlatSpec:
   }
 
   "a machine word" should "round-trip through bytes" in {
-    assert(RlpCodec.decodeFrom[Long](RlpCodec.encodeTo(1000L)) == Right(1000L), "exact")
+    val value = UInt64.fromLong(1000L).toOption.get
+    assert(RlpCodec.decodeFrom[UInt64](RlpCodec.encodeTo(value)) == Right(value), "exact")
   }
 
   it should "spell zero as the empty string" in {
-    assert(Hex.encode(RlpCodec.encodeTo(0L)) == "80", "the scalar rule gives zero an empty payload")
+    assert(Hex.encode(RlpCodec.encodeTo(UInt64.Zero)) == "80", "the scalar rule gives zero an empty payload")
   }
 
-  it should "accept the largest value it can represent" in {
-    val bytes = Hex.decode("887fffffffffffffff").toOption.get
-    assert(RlpCodec.decodeFrom[Long](bytes) == Right(Long.MaxValue), "the top of the signed range must decode")
-  }
-
-  /** The protocol's machine word is unsigned and this one is not, so the top
-    * half of the range is representable in a block and not in this type.
-    *
-    * The value is not hypothetical: `ffffffffffffffff` appears as a withdrawal's
-    * `validatorIndex` and again as its `index` in the conformance corpus's block
-    * fixtures. Wrapping it to a negative would round-trip back through `encode`'s
-    * non-negative requirement and throw, so refusing is what keeps the codec
-    * total.
+  /** The value is not hypothetical: `ffffffffffffffff` appears as a withdrawal's
+    * `validatorIndex` and again as its `index` in the corpus's block fixtures. A
+    * signed reading of the same eight bytes is negative, which is why the word
+    * this decodes into is unsigned.
     */
-  it should "reject an unsigned value the signed type cannot hold" in {
+  it should "carry the whole unsigned range" in {
     val bytes = Hex.decode("88ffffffffffffffff").toOption.get
-    assert(RlpCodec.decodeFrom[Long](bytes) == Left(RlpError.ScalarOutOfRange), "a uint64 above 2^63 is not a Long")
+    assert(RlpCodec.decodeFrom[UInt64](bytes) == Right(UInt64.MaxValue), "the top of the range occurs in real blocks")
+  }
+
+  /** A gas limit at or above 2^63 is INVALID and still has to decode: the corpus
+    * asserts `GASLIMIT_TOO_BIG` on a block, which is a judgment about a value it
+    * expects a client to have read. A codec that could not represent it would
+    * report the wrong failure from the wrong layer.
+    */
+  it should "decode a value the protocol forbids, leaving the judgment to consensus" in {
+    val bytes = Hex.decode("888000000000000000").toOption.get
+    assert(RlpCodec.decodeFrom[UInt64](bytes).map(_.toBigInt) == Right(BigInt(2).pow(63)), "decodable, not acceptable")
+  }
+
+  it should "reject a payload wider than the word" in {
+    val bytes = Rlp.encode(RlpItem.Bytes(IArray.from(Seq.fill(9)(0x01.toByte))))
+    assert(RlpCodec.decodeFrom[UInt64](bytes) == Left(RlpError.WrongWidth(8, 9)), "nine bytes is not a machine word")
   }
 
   "a sequence" should "round-trip element-wise" in {

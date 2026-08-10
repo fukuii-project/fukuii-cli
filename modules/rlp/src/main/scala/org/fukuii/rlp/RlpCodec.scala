@@ -1,6 +1,6 @@
 package org.fukuii.rlp
 
-import org.fukuii.bytes.{Address, Hash, UInt256}
+import org.fukuii.bytes.{Address, Hash, UInt256, UInt64}
 
 /** A total, round-trippable mapping between a value and its RLP form.
   *
@@ -82,39 +82,20 @@ object RlpCodec:
         else UInt256.fromBytes(payload).left.map(_ => RlpError.WrongWidth(UInt256.Width, payload.length))
       case _: RlpItem.Sequence => Left(RlpError.ExpectedBytes)
 
-  /** A machine-word quantity — a block number, a gas figure, a timestamp.
+  /** The protocol's machine word — a block number, a gas figure, a timestamp.
     *
-    * The same scalar rule as [[uint256Codec]], bounded at eight bytes. Negative
-    * values cannot be encoded: the scalar rule has no representation for one,
-    * and a caller holding a negative here has a defect this cannot express.
+    * The same scalar rule as [[uint256Codec]]. Unsigned, so every eight-byte
+    * payload is a value and there is no in-range failure to report: a gas limit
+    * at or above 2^63 decodes here and is rejected by the layer that owns fork
+    * rules, which is where the corpus expects it to be rejected.
     */
-  given longCodec: RlpCodec[Long] with
-    private val Width = 8
-
-    def encode(value: Long): RlpItem =
-      require(value >= 0, "a scalar has no encoding for a negative value")
-      RlpItem.Bytes(minimal(value))
-
-    def decode(item: RlpItem): Either[RlpError, Long] = item match
+  given uint64Codec: RlpCodec[UInt64] with
+    def encode(value: UInt64): RlpItem = RlpItem.Bytes(value.toMinimalBytes)
+    def decode(item: RlpItem): Either[RlpError, UInt64] = item match
       case RlpItem.Bytes(payload) =>
         if payload.nonEmpty && payload(0) == 0 then Left(RlpError.NonCanonicalScalar)
-        else if payload.length > Width then Left(RlpError.WrongWidth(Width, payload.length))
-        else
-          val value = payload.foldLeft(0L)((acc, b) => (acc << 8) | (b & 0xffL))
-          // The protocol's machine word is UNSIGNED and this one is not. Eight
-          // bytes with the high bit set is a legitimate uint64 and a negative
-          // Long, which would round-trip back through `encode`'s non-negative
-          // requirement and throw. Rejecting is the honest answer: the value is
-          // representable in the protocol and not in this type.
-          if value < 0 then Left(RlpError.ScalarOutOfRange) else Right(value)
+        else UInt64.fromBytes(payload).left.map(_ => RlpError.WrongWidth(UInt64.Width, payload.length))
       case _: RlpItem.Sequence => Left(RlpError.ExpectedBytes)
-
-    private def minimal(value: Long): IArray[Byte] =
-      if value == 0 then IArray.empty[Byte]
-      else
-        var width = 8
-        while width > 1 && ((value >>> ((width - 1) * 8)) & 0xffL) == 0 do width -= 1
-        IArray.from((0 until width).map(i => ((value >>> ((width - 1 - i) * 8)) & 0xffL).toByte))
 
   /** A fixed-width value is NOT a scalar: its leading zeros are part of it.
     *
