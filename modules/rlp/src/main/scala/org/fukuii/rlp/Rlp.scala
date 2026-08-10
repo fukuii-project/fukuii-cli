@@ -27,13 +27,23 @@ object RlpItem:
       case other: Bytes => Bytes.sameBytes(value, other.value)
       case _            => false
 
+    /** FNV-1a with a final avalanche. The reasoning belongs with the value
+      * types that share this property and is stated there; in short, these are
+      * `Map` keys decoded from a peer's bytes, a linear accumulator has
+      * collisions that fall out of arithmetic, and Scala's hash map keeps
+      * colliding keys in a linear list.
+      */
     override def hashCode(): Int =
-      var h = 1
+      var h = 0xcbf29ce484222325L
       var i = 0
       while i < value.length do
-        h = 31 * h + value(i)
+        h = (h ^ (value(i) & 0xffL)) * 0x100000001b3L
         i += 1
-      h
+      var x = h
+      x ^= x >>> 33
+      x *= 0xff51afd7ed558ccdL
+      x ^= x >>> 33
+      (x ^ (x >>> 32)).toInt
 
     override def toString: String = "RlpItem.Bytes(length=" + value.length + ")"
 
@@ -58,14 +68,22 @@ object RlpItem:
     */
   final case class Sequence(items: Vector[RlpItem]) extends RlpItem
 
-/** A reason a byte sequence is not valid RLP.
+/** A reason a byte sequence is not valid RLP, or is not a valid value of the
+  * type a codec was asked for.
   *
   * Several of these are canonicity failures rather than structural ones: the
   * bytes describe a well-formed item that is not the *only* encoding of its
   * value. RLP admits exactly one encoding per value, so a second one is invalid
   * input and not a variant to be accepted leniently.
+  *
+  * The two groups are separated below because they answer different questions.
+  * The first is *are these bytes RLP at all*, decided without knowing what the
+  * caller wanted. The second is *are these well-formed items the value that was
+  * asked for*, which only a codec can decide. One channel carries both so that
+  * a decode composes through a single `flatMap`.
   */
 enum RlpError:
+  // Structural: the bytes are not RLP.
   case EmptyInput
   case Truncated(needed: Int, available: Int)
   case NonCanonicalSingleByte(value: Int)
@@ -74,6 +92,12 @@ enum RlpError:
   case LengthTooLarge
   case TrailingBytes(count: Int)
   case NestingTooDeep(limit: Int)
+
+  // Typed: the items are RLP, and are not this value.
+  case ExpectedBytes
+  case ExpectedSequence
+  case NonCanonicalScalar
+  case WrongWidth(expected: Int, actual: Int)
 
 object Rlp:
 
@@ -166,13 +190,23 @@ object Rlp:
       val len = bigEndian(payload.length)
       IArray((0xf7 + len.length).toByte) ++ len ++ payload
 
+  /** The running total accumulates in a `Long` and is checked once.
+    *
+    * Summing into an `Int` wraps negative somewhere past two gigabytes of
+    * output and reaches `new Array[Byte]` as a negative size, which surfaces as
+    * a `NegativeArraySizeException` naming nothing. The result is
+    * unrepresentable at that size whatever this does — a JVM array is indexed
+    * by `Int` — so the failure is not avoidable; what is avoidable is its being
+    * unintelligible.
+    */
   private def concatAll(parts: Vector[IArray[Byte]]): IArray[Byte] =
-    var total = 0
+    var total = 0L
     var i     = 0
     while i < parts.length do
-      total += parts(i).length
+      total += parts(i).length.toLong
       i += 1
-    val out = new Array[Byte](total)
+    require(total <= Int.MaxValue, "RLP payload exceeds the largest representable byte array")
+    val out = new Array[Byte](total.toInt)
     var pos = 0
     i = 0
     while i < parts.length do

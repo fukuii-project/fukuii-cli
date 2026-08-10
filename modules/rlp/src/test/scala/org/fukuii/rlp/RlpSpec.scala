@@ -80,3 +80,18 @@ class RlpSpec extends AnyPropSpec with TableDrivenPropertyChecks:
       assert(Rlp.decode(hex(encodedHex + "00")).isLeft, name + " with a trailing byte must not decode")
     }
   }
+
+  /** The pair is constructed, not searched for. Under an accumulator of the form
+    * `31 * h + b`, two inputs agreeing on a prefix and then differing by
+    * `(+1, -31)` in adjacent bytes share a code, because the accumulator is
+    * linear.
+    *
+    * A decoded item is a `Map` key whose bytes came from a peer, and Scala's
+    * hash map keeps colliding keys in a linear list, so a cheap supply of
+    * collisions is quadratic work.
+    */
+  property("two different items do not share a hash code a linear accumulator would give them") {
+    val a = RlpItem.Bytes(hex("00" + "001f"))
+    val b = RlpItem.Bytes(hex("00" + "0100"))
+    assert(a.hashCode() != b.hashCode(), "these items differ, so their hash codes must differ too")
+  }
