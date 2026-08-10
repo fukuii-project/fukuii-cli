@@ -1,6 +1,6 @@
 package org.fukuii.crypto
 
-import org.fukuii.bytes.Hex
+import org.fukuii.bytes.{Hash, Hex}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Certification against go-ethereum's published secp256k1 vector, from
@@ -18,7 +18,10 @@ class Secp256k1Spec extends AnyFlatSpec:
 
   private def hex(s: String): IArray[Byte] = Hex.decode(s).toOption.get
 
-  private val message = hex("ce0677bb30baa8cf067c88db9811f4333d131bf8bcf12fe7065d211dce971008")
+  /** The digest the signing entry points take is a [[Hash]], so a wrong width
+    * is a type error rather than a runtime divergence.
+    */
+  private val message = Hash.fromHex("ce0677bb30baa8cf067c88db9811f4333d131bf8bcf12fe7065d211dce971008").toOption.get
 
   private val signature = Signature(
     r = BigInt("90f27b8b488db00b00606796d2987f6a5f59ae62ea05effe84fef5b8b0e54998", 16),
@@ -116,7 +119,7 @@ class Secp256k1Spec extends AnyFlatSpec:
   }
 
   it should "reject a signature against the wrong message" in {
-    val otherMessage = Keccak256.hash(IArray.empty[Byte]).toBytes
+    val otherMessage = Keccak256.hash(IArray.empty[Byte])
     assert(!Secp256k1.verify(hex(publicKeyHex), otherMessage, signature), "a signature is bound to its message")
   }
 
@@ -163,4 +166,33 @@ class Secp256k1Spec extends AnyFlatSpec:
         == Secp256k1.publicKeyOf(key).map(Hex.encode),
       "the recovery id this module chose must be the one that works"
     )
+  }
+
+  // ─────────────────── a wrong-width digest is not writable ───────────────────
+  //
+  // The three entry points do not agree on what an arbitrary-width input means:
+  // two route through the provider, which truncates to the leftmost bits of the
+  // curve order, and one takes the whole integer and reduces it. Rather than
+  // check for the widths that diverge, the parameter is a type that cannot hold
+  // one. These assertions are what keep that true — a signature change back to a
+  // byte sequence makes every one of them compile.
+
+  "a raw byte sequence" should "not be accepted as a digest by sign" in {
+    assertDoesNotCompile("Secp256k1.sign(IArray.empty[Byte], BigInt(1))")
+  }
+
+  it should "not be accepted as a digest by verify" in {
+    assertDoesNotCompile("Secp256k1.verify(IArray.empty[Byte], IArray.empty[Byte], signature)")
+  }
+
+  it should "not be accepted as a digest by recoverPublicKey" in {
+    assertDoesNotCompile("Secp256k1.recoverPublicKey(IArray.empty[Byte], signature)")
+  }
+
+  "a Hash" should "be accepted, so the three rejections above are about the width and not the call" in {
+    assertCompiles("Secp256k1.recoverPublicKey(message, signature)")
+  }
+
+  "a digest straight from the module's own hash" should "need no conversion" in {
+    assertCompiles("Secp256k1.recoverPublicKey(Keccak256.hash(IArray.empty[Byte]), signature)")
   }

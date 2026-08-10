@@ -1,6 +1,7 @@
 package org.fukuii.crypto
 
 import java.math.BigInteger
+import org.fukuii.bytes.Hash
 import org.bouncycastle.asn1.sec.SECNamedCurves
 import org.bouncycastle.crypto.digests.SHA256Digest
 import org.bouncycastle.crypto.params.ECDomainParameters
@@ -28,21 +29,21 @@ final case class Signature(r: BigInt, s: BigInt, recoveryId: Int)
   * and the arithmetic below is this module's own, which is why it is certified
   * against a reference client's published vector rather than reviewed by eye.
   *
-  * ==The message-hash width is unchecked, and the three entry points disagree==
+  * ==The message hash is a type, so a wrong width is unwritable==
   *
-  * None of `sign`, `verify` or `recoverPublicKey` requires its `messageHash` to
-  * be 32 bytes, and they do not derive the same value from a wrong-width one:
-  * `sign` and `verify` route through the provider, which truncates to the
+  * `sign`, `verify` and `recoverPublicKey` take [[org.fukuii.bytes.Hash]]
+  * rather than a byte sequence, and that is a correctness boundary rather than
+  * a convenience.
+  *
+  * Given an arbitrary-width input the three do NOT derive the same value from
+  * it: `sign` and `verify` route through the provider, which truncates to the
   * leftmost bits of the curve order, while `recoverPublicKey` takes the whole
-  * integer and reduces it. Measured — on a 48-byte input the two disagree.
+  * integer and reduces it — on a 48-byte input the two disagree. A caller with
+  * a wrong-width digest would get a signature that verifies here and nowhere
+  * else, with no signal at the call site.
   *
-  * **This is safe only because the EVM precompile always supplies exactly 32
-  * bytes.** The first caller that does not — a transaction sighash, EIP-712, a
-  * signed handshake — makes it a divergence with no signal, and closing it then
-  * means taking the `Hash` type from `modules/bytes` instead of `IArray[Byte]`,
-  * so a wrong width is unwritable rather than merely checked. That type already
-  * exists; the reason to wait is that changing the signature with no caller
-  * would be a guess at what the caller wants.
+  * Taking the type removes the input that causes it instead of checking for it,
+  * so the divergence has no reachable case rather than a guarded one.
   */
 object Secp256k1:
 
@@ -62,7 +63,7 @@ object Secp256k1:
     * outright, and determinism removes the runtime's entropy from that failure
     * path.
     */
-  def sign(messageHash: IArray[Byte], privateKey: BigInt): Option[Signature] =
+  def sign(messageHash: Hash, privateKey: BigInt): Option[Signature] =
     // The key must lie in [1, n-1]. The provider throws rather than returning
     // for a key outside it — measured against the pinned version for 0, -1 and
     // n — and this returns an Option, so the guard is what makes that signature
@@ -70,7 +71,7 @@ object Secp256k1:
     if privateKey.signum <= 0 || privateKey.bigInteger.compareTo(domain.getN) >= 0 then None
     else
       try
-        val bytes  = mutableCopy(messageHash)
+        val bytes  = mutableCopy(messageHash.toBytes)
         val e      = BigInteger(1, bytes)
         val signer = ECDSASigner(HMacDSAKCalculator(SHA256Digest()))
         signer.init(true, ECPrivateKeyParameters(privateKey.bigInteger, domain))
@@ -83,12 +84,25 @@ object Secp256k1:
         )
       catch case NonFatal(_) => None
 
-  def verify(publicKey: IArray[Byte], messageHash: IArray[Byte], signature: Signature): Boolean =
+  /** Verifies against a public key in any encoding the curve admits.
+    *
+    * `publicKey` may be uncompressed (65 bytes, `0x04`), compressed (33 bytes,
+    * `0x02`/`0x03`) or hybrid (65 bytes, `0x06`/`0x07`) — the provider's point
+    * decoder accepts all three and this does not narrow it. A caller holding
+    * exactly one of those forms is not obliged to convert, and one holding
+    * attacker-supplied bytes should know that three shapes reach here.
+    *
+    * The `r` and `s` bounds are the provider's rather than this module's, which
+    * is an asymmetry with the sibling curve — that one checks them itself. The
+    * provider was confirmed to perform the check, so this is a difference in
+    * where the guard lives and not a gap in whether one runs.
+    */
+  def verify(publicKey: IArray[Byte], messageHash: Hash, signature: Signature): Boolean =
     try
       val point  = domain.getCurve.decodePoint(mutableCopy(publicKey))
       val signer = ECDSASigner()
       signer.init(false, ECPublicKeyParameters(point, domain))
-      signer.verifySignature(mutableCopy(messageHash), signature.r.bigInteger, signature.s.bigInteger)
+      signer.verifySignature(mutableCopy(messageHash.toBytes), signature.r.bigInteger, signature.s.bigInteger)
     catch case NonFatal(_) => false
 
   /** Recovers the uncompressed public key that produced a signature.
@@ -97,7 +111,7 @@ object Secp256k1:
     * consensus fault rather than a local error. `None` for any input the curve
     * rejects; the caller decides what an unrecoverable signature means.
     */
-  def recoverPublicKey(messageHash: IArray[Byte], signature: Signature): Option[IArray[Byte]] =
+  def recoverPublicKey(messageHash: Hash, signature: Signature): Option[IArray[Byte]] =
     val n     = domain.getN
     val r     = signature.r.bigInteger
     val s     = signature.s.bigInteger
@@ -127,7 +141,7 @@ object Secp256k1:
           val pointR  = domain.getCurve.decodePoint(encoded)
           if !pointR.multiply(n).isInfinity then None
           else
-            val e       = BigInteger(1, mutableCopy(messageHash))
+            val e       = BigInteger(1, mutableCopy(messageHash.toBytes))
             val rInv    = r.modInverse(n)
             val srInv   = rInv.multiply(s).mod(n)
             val eInvInv = rInv.multiply(n.subtract(e.mod(n)).mod(n)).mod(n)
@@ -168,7 +182,9 @@ object Secp256k1:
     */
   private def recoveryIdFor(e: BigInteger, r: BigInteger, s: BigInteger, expected: IArray[Byte]): Option[Int] =
     val candidate = Signature(BigInt(r), BigInt(s), 0)
-    val hash      = IArray.unsafeFromArray(leftPad32(e))
+    // leftPad32 returns exactly 32 bytes, so the truncating constructor is
+    // total here and the checked one would add a branch nothing can reach.
+    val hash      = Hash.fromBytesTruncating(IArray.unsafeFromArray(leftPad32(e)))
     (0 to 3).find { id =>
       recoverPublicKey(hash, candidate.copy(recoveryId = id))
         .exists(found => ConstantTime.equal(found, expected))

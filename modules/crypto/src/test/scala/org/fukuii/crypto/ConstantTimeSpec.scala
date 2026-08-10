@@ -7,9 +7,12 @@ import org.scalatest.flatspec.AnyFlatSpec
   * A wall-clock assertion on a constant-time property is the wrong instrument:
   * it is flaky under load, and it goes inert on faster hardware without
   * announcing that it has. What is checked here is that the comparison answers
-  * correctly in the cases a hand-written loop gets wrong — an early difference,
-  * a late one, and unequal lengths. The timing property is a property of the
-  * implementation this delegates to.
+  * correctly in the cases an early-exit loop gets wrong — an early difference,
+  * a late one, and unequal lengths.
+  *
+  * The timing property itself is established by reading the implementation: it
+  * accumulates over the whole length and branches on nothing the content
+  * decides. That is not something a test on this side of the JIT can assert.
   */
 class ConstantTimeSpec extends AnyFlatSpec:
 
