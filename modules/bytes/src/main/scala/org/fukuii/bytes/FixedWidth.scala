@@ -6,7 +6,17 @@ enum BytesError:
   case BadWidth(expected: Int, actual: Int)
   case OutOfRange
 
-private[bytes] object FixedWidth:
+/** Visible across the project rather than to `bytes` alone, because a
+  * fixed-width value type is not confined to this module: a block's logs bloom
+  * is 256 bytes and its nonce is 8, and both are domain concepts that belong
+  * with the types that carry them.
+  *
+  * The alternative was a second copy of [[FixedWidth.hash]], and that one is
+  * not ordinary duplication — it is the avalanche the comment below argues for,
+  * on keys an attacker supplies. Two copies of it drift, and the copy that
+  * drifts is the one nobody re-derives the reasoning for.
+  */
+private[fukuii] object FixedWidth:
 
   /** Right-aligns `bytes` into exactly `width` bytes: keeps the rightmost
     * `width` when there are too many, and left-pads with zero when there are

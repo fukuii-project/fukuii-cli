@@ -1,6 +1,6 @@
 package org.fukuii.rlp
 
-import org.fukuii.bytes.{Address, Hash, UInt256, UInt64}
+import org.fukuii.bytes.{Address, Bytes, Hash, UInt256, UInt64}
 
 /** A total, round-trippable mapping between a value and its RLP form.
   *
@@ -64,6 +64,22 @@ object RlpCodec:
     def decode(item: RlpItem): Either[RlpError, IArray[Byte]] = item match
       case RlpItem.Bytes(value) => Right(value)
       case _: RlpItem.Sequence  => Left(RlpError.ExpectedBytes)
+
+  /** The same byte string as [[bytesCodec]], for the value type that carries
+    * one inside a domain type.
+    *
+    * **Two instances, one encoding — which is the opposite of the hazard.** A
+    * `Bytes` and an `IArray[Byte]` are different static types and neither is
+    * assignable to the other, so no value can reach both instances; and the two
+    * agree byte for byte, so nothing observable depends on which a call site
+    * holds. The hazard is one *value* reaching two encodings, and that stays
+    * unreachable.
+    */
+  given bytesValueCodec: RlpCodec[Bytes] with
+    def encode(value: Bytes): RlpItem = RlpItem.Bytes(value.toIArray)
+    def decode(item: RlpItem): Either[RlpError, Bytes] = item match
+      case RlpItem.Bytes(payload) => Right(Bytes.fromIArray(payload))
+      case _: RlpItem.Sequence    => Left(RlpError.ExpectedSequence)
 
   /** A quantity, under the Yellow Paper's scalar rule: minimal big-endian, and
     * the empty string for zero.

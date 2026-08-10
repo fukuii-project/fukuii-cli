@@ -313,10 +313,13 @@ lazy val crypto = (project in file("modules/crypto"))
 // deliberately does not have. `domain` appears nowhere in the corpus.
 //
 // It depends on rlp (which brings bytes transitively, declared here anyway
-// because these types name Address and Hash directly). crypto is NOT declared
-// yet: the first type needing a digest or a sender recovery is not here.
+// because these types name Address and Hash directly), and on crypto: a block
+// header's hash IS keccak over its own RLP encoding, so the digest is not an
+// accessory to this layer but the thing a header exists to produce. The edge
+// was deliberately left out until a type here needed it rather than declared
+// against a type that might.
 lazy val types = (project in file("modules/types"))
-  .dependsOn(bytes, rlp)
+  .dependsOn(bytes, rlp, crypto)
   .settings(
     name := "fukuii-types",
     libraryDependencies ++= testDeps
