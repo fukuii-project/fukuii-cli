@@ -4,6 +4,7 @@ package org.fukuii.bytes
 enum BytesError:
   case BadHex(cause: HexError)
   case BadWidth(expected: Int, actual: Int)
+  case OutOfRange
 
 private[bytes] object FixedWidth:
 
@@ -25,16 +26,36 @@ private[bytes] object FixedWidth:
       i += 1
     IArray.unsafeFromArray(out)
 
-  /** `java.util.Arrays.hashCode` semantics, written out because reaching the
-    * backing array would need a cast.
+  /** A hash code for values used as `Map` and `Set` keys.
+    *
+    * These values are keys an attacker supplies — a hash or an address decoded
+    * from a peer's message — and Scala's CHAMP hash map has no tree-bin
+    * fallback, so colliding keys stay in a linear list and a supply of them is
+    * quadratic work rather than a slowdown. **The mixing therefore has to
+    * avalanche, not merely accumulate.** A linear form such as `31 * h + b`
+    * does not: under it `[0x00, 0x1f]` and `[0x01, 0x00]` have the same code,
+    * and pairs like that fall out of arithmetic rather than out of search.
+    *
+    * FNV-1a over a 64-bit accumulator with a final avalanche, folded to 32
+    * bits, so nothing is allocated and the backing array needs no cast.
+    *
+    * **The bound of this, stated because it is easy to over-read:** FNV-1a is
+    * unseeded and is not collision-resistant against an adversary computing
+    * offline. It removes the class of collisions constructible by hand, not the
+    * class findable by search. Closing that needs a per-process seed, which
+    * carries its own consequences and is not decided here.
     */
   def hash(bytes: IArray[Byte]): Int =
-    var h = 1
+    var h = 0xcbf29ce484222325L
     var i = 0
     while i < bytes.length do
-      h = 31 * h + bytes(i)
+      h = (h ^ (bytes(i) & 0xffL)) * 0x100000001b3L
       i += 1
-    h
+    var x = h
+    x ^= x >>> 33
+    x *= 0xff51afd7ed558ccdL
+    x ^= x >>> 33
+    (x ^ (x >>> 32)).toInt
 
   def sameBytes(a: IArray[Byte], b: IArray[Byte]): Boolean =
     if a.length != b.length then false

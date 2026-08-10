@@ -66,3 +66,21 @@ class HashSpec extends AnyFlatSpec:
   it should "render without a prefix in toHex" in {
     assert(Hash.fromHex(EmptyKeccak).map(_.toHex) == Right(EmptyKeccak), "toHex is the bare form")
   }
+
+  /** The pair is constructed, not searched for. Under an accumulator of the form
+    * `31 * h + b` any two inputs agreeing on a prefix and then differing by
+    * `(+1, -31)` in two adjacent bytes produce the same code, because the
+    * accumulator is linear: `31 * (31*h + 0x00) + 0x1f` and
+    * `31 * (31*h + 0x01) + 0x00` are both `961*h + 31`.
+    *
+    * These are `Map` keys an attacker supplies, and Scala's CHAMP hash map keeps
+    * colliding keys in a linear list, so a cheap supply of collisions is
+    * quadratic work. A hash code that avalanches separates this pair; one that
+    * merely accumulates cannot.
+    */
+  it should "not collide on a pair a linear accumulator cannot separate" in {
+    val prefix = "00" * 30
+    val a      = Hash.fromHex(prefix + "001f").toOption.get
+    val b      = Hash.fromHex(prefix + "0100").toOption.get
+    assert(a.hashCode() != b.hashCode(), "these differ, so their hash codes must differ too")
+  }

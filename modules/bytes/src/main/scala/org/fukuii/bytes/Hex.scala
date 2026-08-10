@@ -16,12 +16,26 @@ enum HexError:
 /** Hexadecimal encoding and decoding for byte sequences. */
 object Hex:
 
+  /** The longest input `encode` can represent. Two characters per byte, and a
+    * `String` is backed by an array whose length is an `Int`.
+    */
+  val MaxEncodable: Int = Int.MaxValue / 2
+
   /** Encodes to lowercase without a `0x` prefix.
     *
     * The prefix is left to whoever renders the value: adding it here would
     * force every consumer that does not want one to strip it back off.
+    *
+    * @throws IllegalArgumentException
+    *   for an input longer than [[MaxEncodable]]. The result is unrepresentable
+    *   at that size whatever this returns, so the failure is not avoidable — but
+    *   `length * 2` overflows to a negative before it is unrepresentable, which
+    *   surfaces as a `NegativeArraySizeException` naming nothing. This states
+    *   what happened instead. It is not part of the ordinary contract: every
+    *   caller in this module encodes a value of bounded width.
     */
   def encode(bytes: IArray[Byte]): String =
+    require(bytes.length <= MaxEncodable, "hex encoding needs two chars per byte; input is too long to represent")
     val out = new Array[Char](bytes.length * 2)
     var i   = 0
     while i < bytes.length do
