@@ -173,19 +173,75 @@ by opening `EIPS/eip-55.md` for its test vectors and getting a one-line pointer.
 
 | Path under the corpus root | Upstream | Ref | Authoritative for |
 |---|---|---|---|
-| `test-suites/ethereum/tests` | [ethereum/tests](https://github.com/ethereum/tests) | `develop` | The primary Ethereum conformance corpus |
+| `test-suites/ethereum/execution-specs` | [ethereum/execution-specs](https://github.com/ethereum/execution-specs) | a `tests@vN` tag — **not** the default branch, see below | **The executable specification, and the live source of both fixtures and fork definitions.** `src/ethereum/forks/<fork>/` carries a per-fork implementation — `blocks.py`, `transactions.py`, `bloom.py`, `fork_types.py`, `vm/` — which is a *specification* rather than an implementation of one, and therefore outranks every client row above for structure |
+| `test-suites/ethereum/tests` | [ethereum/tests](https://github.com/ethereum/tests) | `develop` | The primary Ethereum conformance corpus **for forks up to Prague**, and **dormant** — see the currency note below |
 | `test-suites/core-geth-tests` | [etclabscore/tests](https://github.com/etclabscore/tests) | `develop` | The Ethereum corpus as core-geth consumes it |
-| `test-suites/fukuii-etc-tests` | [etclabscore/tests](https://github.com/etclabscore/tests) | `main` | **The corpus fukuii hosts** — every known ETC test in one place, and the destination for the vectors fukuii authors. Its authority is **prospective**: its current content is upstream ETC-translation work with no fukuii-authored commits, so citing it as fukuii's answer to a historical question is circular. A fukuii vector becomes authority when it is derived from the spec and cleared by a reviewer who did not author it |
+| `test-suites/fukuii-etc-tests` | [etclabscore/tests](https://github.com/etclabscore/tests) | `main` | **The corpus fukuii hosts** — every known ETC test in one place, and the destination for the vectors fukuii authors. Its authority is **prospective**: its current content is upstream ETC-translation work with no fukuii-authored commits, so citing it as fukuii's answer to a historical question is circular. A fukuii vector becomes authority when it is derived from the spec and cleared by a reviewer who did not author it. **Its custodial role is now deliberate — see below** |
 | `test-suites/ethereum/consensus-specs` | [ethereum/consensus-specs](https://github.com/ethereum/consensus-specs) | `master` | The consensus-layer specification and its own test vectors |
 | `test-suites/ethereum/execution-apis` | [ethereum/execution-apis](https://github.com/ethereum/execution-apis) | `main` | The JSON-RPC and Engine API specification |
 | `test-suites/ethereum/devp2p` | [ethereum/devp2p](https://github.com/ethereum/devp2p) | `master` | The peer-to-peer wire specification: RLPx, discovery, and the ETH protocol versions |
 | `test-suites/ethereum/hive` | [ethereum/hive](https://github.com/ethereum/hive) | `master` | The cross-client integration harness — how conformance is exercised, rather than what conformance is |
 | `test-suites/ethereum/yellowpaper` | [ethereum/yellowpaper](https://github.com/ethereum/yellowpaper) | `master` | The formal specification of the EVM |
 
+### Currency: three of these corpora are frozen, and none of them says so
+
+**A dormant repository is indistinguishable from a current one by cloning it.** It
+clones cleanly, its default branch is its newest work, and nothing in the tree
+announces that generation moved elsewhere. Verified live 2026-08-10:
+
+| Repo | State | Last push |
+|---|---|---|
+| `ethereum/tests` | **dormant** — its newest tag `v17.2` *is* its `develop` head | 2025-06-04 |
+| `etclabscore/tests` | **dormant**, both refs | 2023-08-25 |
+| `ethereum/execution-spec-tests` | **archived and migrated** — do not clone it | 2026-07-02 |
+| `ethereum/execution-specs` | **live** — the successor to both | daily |
+| `ethereum/hive` | **live** | daily |
+
+`execution-spec-tests`' own README states it is archived and that all code **and
+fixture releases** moved to `ethereum/execution-specs`.
+
+**Two traps in the successor, both of which cost a wrong assumption to find.** Its
+default branch is `forks/amsterdam` — a fork-development branch, not a stable one —
+so a plain clone checks out unreleased work and a citation must name a tag. And **its
+fixtures are release assets rather than repository content** (`tests@vN`, a
+~400 MB `fixtures.tar.gz`), so cloning yields the executable spec and the generator
+while yielding no vectors at all.
+
+**What the dormancy does and does not invalidate.** It does not make a stale fixture
+wrong: a block's octets and its published hash are what they were. It bounds
+*coverage* — `ethereum/tests` represents no fork after Prague, so a header longer than
+21 elements appears nowhere in it, while the executable spec's `amsterdam` already
+defines one of 23.
+
+### Custody: fukuii preserves the ETC corpus, and preserving is not authoring
+
+**Intent, operator, 2026-08-10: `fukuii-etc-tests` becomes the durable home for every
+ETC test.** The upstream this corpus depends on has been unmaintained since 2023 and
+may not survive; this project maintains a leading ETC client, so hosting the corpus
+itself is the only way its stability stops being someone else's decision. Organizing
+the ETH-side corpus the same way, and consuming both as submodules, is the intended
+shape.
+
+**Preserve the provenance with the content.** A mirrored test carries where it came
+from — upstream repository and ref — because that provenance is the whole of its
+evidentiary value, and a corpus that has forgotten its sources is a corpus that
+cannot be audited.
+
+> **Custody does not confer authority, and conflating the two would be the most
+> expensive error available here.** Hosting a test makes this project responsible for
+> its *availability*; it says nothing about whether the test is *right*. The row
+> above stands unchanged: a vector in this repository is authority only once it is
+> derived from a specification and cleared by a reviewer who did not author it.
+> **Certifying fukuii against a corpus fukuii hosts is circular the moment the corpus
+> stops being a faithful mirror** — so the mirrored material and fukuii-authored
+> material must stay distinguishable, by directory or by provenance metadata, rather
+> than merging into one undifferentiated tree.
+
 **`etclabscore/tests` appears twice at two refs, and they are not
 interchangeable**: `develop` is a strict ancestor of `main`, which adds the ETC
 translation. This is the same shape as the two besu rows — one repository, two
-deliberately different sources — and it is why a citation must name the ref.
+deliberately different sources — and it is why a citation must name the ref. **For
+evidence they are one source, not two**: agreement between them is not corroboration.
 
 `test-suites/fukuii-etc-tests`'s `main` is also published at
 [white-b0x/fukuii-etc-tests](https://github.com/white-b0x/fukuii-etc-tests) at
