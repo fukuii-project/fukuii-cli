@@ -27,6 +27,22 @@ final case class Signature(r: BigInt, s: BigInt, recoveryId: Int)
   * The provider supplies the curve and ECDSA; recovery is not part of that API
   * and the arithmetic below is this module's own, which is why it is certified
   * against a reference client's published vector rather than reviewed by eye.
+  *
+  * ==The message-hash width is unchecked, and the three entry points disagree==
+  *
+  * None of `sign`, `verify` or `recoverPublicKey` requires its `messageHash` to
+  * be 32 bytes, and they do not derive the same value from a wrong-width one:
+  * `sign` and `verify` route through the provider, which truncates to the
+  * leftmost bits of the curve order, while `recoverPublicKey` takes the whole
+  * integer and reduces it. Measured — on a 48-byte input the two disagree.
+  *
+  * **This is safe only because the EVM precompile always supplies exactly 32
+  * bytes.** The first caller that does not — a transaction sighash, EIP-712, a
+  * signed handshake — makes it a divergence with no signal, and closing it then
+  * means taking the `Hash` type from `modules/bytes` instead of `IArray[Byte]`,
+  * so a wrong width is unwritable rather than merely checked. That type already
+  * exists; the reason to wait is that changing the signature with no caller
+  * would be a guess at what the caller wants.
   */
 object Secp256k1:
 

@@ -122,6 +122,23 @@ object Rlp:
     * boundary they mean the input was not the single item it was taken to be,
     * and accepting them silently is how a truncated read becomes a valid-looking
     * value.
+    *
+    * ==There is no size or item budget here, and one is owed==
+    *
+    * Nesting is bounded; total size is not. Measured against this codec: a
+    * long-form sequence whose payload is many one-byte items retains **20 to 45
+    * times** the input in heap, and every such input is valid, canonical RLP
+    * that returns `Right`. At a 16 MB frame that is hundreds of megabytes of
+    * live heap from a single message. The cost is per-item object overhead, so
+    * it is structural rather than a leak, and no bounds check reaches it —
+    * every read is already checked before allocating.
+    *
+    * **Whoever wires the first decode path that takes bytes from a peer or an
+    * RPC caller owns closing this**, with a maximum input length, a maximum
+    * item count, or both, applied here rather than left to each caller. It is
+    * deliberately not chosen now: the value belongs with the transport that
+    * sets a frame size, and picking one without that is a number with no
+    * evidence behind it.
     */
   def decode(bytes: IArray[Byte]): Either[RlpError, RlpItem] =
     if bytes.isEmpty then Left(RlpError.EmptyInput)
