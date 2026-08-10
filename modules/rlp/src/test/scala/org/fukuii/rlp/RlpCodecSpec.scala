@@ -68,6 +68,25 @@ class RlpCodecSpec extends AnyFlatSpec:
     assert(Hex.encode(RlpCodec.encodeTo(0L)) == "80", "the scalar rule gives zero an empty payload")
   }
 
+  it should "accept the largest value it can represent" in {
+    val bytes = Hex.decode("887fffffffffffffff").toOption.get
+    assert(RlpCodec.decodeFrom[Long](bytes) == Right(Long.MaxValue), "the top of the signed range must decode")
+  }
+
+  /** The protocol's machine word is unsigned and this one is not, so the top
+    * half of the range is representable in a block and not in this type.
+    *
+    * The value is not hypothetical: `ffffffffffffffff` appears as a withdrawal's
+    * `validatorIndex` and again as its `index` in the conformance corpus's block
+    * fixtures. Wrapping it to a negative would round-trip back through `encode`'s
+    * non-negative requirement and throw, so refusing is what keeps the codec
+    * total.
+    */
+  it should "reject an unsigned value the signed type cannot hold" in {
+    val bytes = Hex.decode("88ffffffffffffffff").toOption.get
+    assert(RlpCodec.decodeFrom[Long](bytes) == Left(RlpError.ScalarOutOfRange), "a uint64 above 2^63 is not a Long")
+  }
+
   "a sequence" should "round-trip element-wise" in {
     val values = Seq(aHash, hashOf("ff" * 32))
     assert(RlpCodec.decodeFrom[Seq[Hash]](RlpCodec.encodeTo(values)) == Right(values), "exact")

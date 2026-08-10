@@ -304,6 +304,24 @@ lazy val crypto = (project in file("modules/crypto"))
     libraryDependencies += "org.bouncycastle" % "bcprov-jdk18on" % bouncyCastleVersion
   )
 
+// types — the domain values every layer above L1 speaks, and their canonical
+// encodings.
+//
+// Named for what the field names it. Four of the six reference clients call
+// this package `types`; the two that say `core` use that name for the
+// execution engine WITH these types inside it, which is a scope this module
+// deliberately does not have. `domain` appears nowhere in the corpus.
+//
+// It depends on rlp (which brings bytes transitively, declared here anyway
+// because these types name Address and Hash directly). crypto is NOT declared
+// yet: the first type needing a digest or a sender recovery is not here.
+lazy val types = (project in file("modules/types"))
+  .dependsOn(bytes, rlp)
+  .settings(
+    name := "fukuii-types",
+    libraryDependencies ++= testDeps
+  )
+
 // The aggregate. `aggregate` makes a task at the root fan out to every module;
 // it is NOT a dependency edge, so the root gains nothing on its classpath.
 //
@@ -312,7 +330,7 @@ lazy val crypto = (project in file("modules/crypto"))
 // org.fukuii:fukuii_3, so the repo name must not leak into it. Lowercase
 // because this is a Maven artifactId, not a display name.
 lazy val root = (project in file("."))
-  .aggregate(bytes, rlp, crypto)
+  .aggregate(bytes, rlp, crypto, types)
   .settings(
     name := "fukuii",
     libraryDependencies ++= testDeps

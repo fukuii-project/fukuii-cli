@@ -99,7 +99,14 @@ object RlpCodec:
       case RlpItem.Bytes(payload) =>
         if payload.nonEmpty && payload(0) == 0 then Left(RlpError.NonCanonicalScalar)
         else if payload.length > Width then Left(RlpError.WrongWidth(Width, payload.length))
-        else Right(payload.foldLeft(0L)((acc, b) => (acc << 8) | (b & 0xffL)))
+        else
+          val value = payload.foldLeft(0L)((acc, b) => (acc << 8) | (b & 0xffL))
+          // The protocol's machine word is UNSIGNED and this one is not. Eight
+          // bytes with the high bit set is a legitimate uint64 and a negative
+          // Long, which would round-trip back through `encode`'s non-negative
+          // requirement and throw. Rejecting is the honest answer: the value is
+          // representable in the protocol and not in this type.
+          if value < 0 then Left(RlpError.ScalarOutOfRange) else Right(value)
       case _: RlpItem.Sequence => Left(RlpError.ExpectedBytes)
 
     private def minimal(value: Long): IArray[Byte] =

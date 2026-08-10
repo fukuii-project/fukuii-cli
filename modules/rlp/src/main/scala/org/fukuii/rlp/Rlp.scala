@@ -98,6 +98,7 @@ enum RlpError:
   case ExpectedSequence
   case NonCanonicalScalar
   case WrongWidth(expected: Int, actual: Int)
+  case ScalarOutOfRange
 
 object Rlp:
 
