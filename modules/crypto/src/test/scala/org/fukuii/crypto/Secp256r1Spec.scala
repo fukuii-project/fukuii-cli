@@ -25,7 +25,7 @@ import org.scalatest.prop.TableDrivenPropertyChecks
   *
   * ==The specification, and what the corpus cannot reach==
   *
-  * The governing specification is **EIP-7951** (`Final`), `IPs/EIPs` @
+  * The governing specification is **EIP-7951** (`Final`), `ethereum/EIPs` @
   * `e18e618c` — not besu, which is the reference implementation supplying the
   * vectors. It states five MUST conditions: input length, scalar bounds,
   * public-key coordinate bounds, the curve equation, and not-at-infinity.

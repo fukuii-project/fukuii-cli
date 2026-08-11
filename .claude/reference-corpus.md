@@ -14,31 +14,56 @@ dependency with no present need is not an entry* — and
 before it can become one. Nothing may be added to `build.sbt` because it appears
 below.
 
-**The corpus itself is machine-local and a clone does not receive it.**
-`.gitignore` excludes the directory it lives in, deliberately: these are other
-people's repositories, several of them very large, and vendoring them into this
-one would be both wrong and impractical. That absence is exactly why this file
-exists.
+**The corpus itself is machine-local and a clone does not receive it.** These are
+other people's repositories, several of them very large, and vendoring them into
+this one would be both wrong and impractical. That absence is exactly why this
+file exists.
+
+**It no longer lives inside this repository at all.** It sat at
+`.local/reference-material/` until 2026-08-10, which is why the paths below were
+once relative to a root inside this tree. It does not any more, and the reason is
+worth stating rather than just the new location: a 50 GB corpus of third-party
+clones inside a repo's gitignored directory is versioned by nothing, backed up by
+nothing, and reachable by no other project on the machine.
 
 ---
 
 ## Rebuilding it
 
-Choose a corpus root outside this repository's tracked tree. This project keeps
-it at `.local/reference-material/`, which `.gitignore` covers; any location
-works, and nothing in the build reads it. Every path in the tables below is
-relative to that root, so the layout is reproduced by cloning each row into its
-stated path:
+**The layout is one directory per GitHub organization, and the organization is
+read from the clone's own `origin` — never from what the repository is *for*.**
+That is the whole convention, and it is what makes a corpus shared across
+projects possible: any consumer resolves a clone from its upstream coordinates,
+so two projects wanting the same library get one clone rather than two.
 
 ```
 <corpus-root>/
-  clients/etc/…            reference clients for Ethereum Classic
-  clients/eth/el/…         Ethereum execution-layer clients
-  clients/eth/cl/…         Ethereum consensus-layer clients
-  IPs/…                    the specifications: ECIPs and EIPs
-  test-suites/…            conformance corpora and wire, API and execution specs
-  stack/…                  the toolchain components this repository declares
+  <github-org>/<repo>      e.g. ethereum/EIPs, besu-eth/besu, sbt/zinc
 ```
+
+A path in the tables below is relative to that root. Choose any root; nothing in
+the build reads it. **The corpus sits outside every repository**, so no project
+owns it and every project resolves the same clone.
+
+**A second root holds candidates under review — dependencies being evaluated,
+not adopted.** It is deliberately a separate root rather than a subdirectory of
+this one, because presence in the corpus is a claim that a clone is worth citing
+and a candidate has not earned that. **It does not follow the org convention
+above**, being bucketed by review status instead; nothing in this file describes
+its layout, and nothing here may be cited from it. A clone graduates by being
+adopted and re-cloned into the corpus proper under its org.
+
+Two consequences of org-keying that a reader will otherwise hit as surprises:
+
+- **A directory name that looks like a topic is a coincidence.** `scala/scala3`
+  is under `scala/` because the org is `scala`, not because it is Scala tooling.
+  `apache/pekko`, `typelevel/cats` and `scalatest/scalatest` are the same
+  language ecosystem under three different org directories.
+- **Two clones of one upstream at different refs need two directories**, and the
+  ref is encoded in the second name: `besu-eth/besu` + `besu-eth/besu-etc`,
+  `etclabscore/tests` + `etclabscore/tests-etc`. See **Refs that are deliberately
+  pinned** for why each pair exists — and note the two pairs are not equally
+  load-bearing.
 
 Clone with full history. A truncated clone cannot answer the question a
 reference corpus exists to answer — see **Depth** below, which is a rule about
@@ -80,25 +105,41 @@ Three rules the column depends on, stated once so each row can stay short:
 
 ---
 
-## Ethereum Classic clients — `clients/etc/`
-
-> **Three of these six entries are fukuii's own work and are NEVER an
-> authority.** They sit under `olympia-wip/`, beside the genuine references and
-> under directory names that carry no warning. Checking fukuii against them is
-> checking fukuii against fukuii. The trap is live rather than theoretical: a
-> reader who learns that besu-etc carries no MESS implementation and then wants a
-> JVM reference for it will find exactly one on this layout, and it is ours.
-> Worse, `olympia-wip/core-geth` carries **more** `ecbp1100` hits than the
-> authority it overlays, so a naive "which tree knows most about this" heuristic
-> ranks our draft above the source of truth.
+## Ethereum Classic clients
 
 | Path under the corpus root | Upstream | Ref | Authoritative for |
 |---|---|---|---|
-| `clients/etc/core-geth` | [ethereumclassic/core-geth](https://github.com/ethereumclassic/core-geth) | `master` | **ETC consensus, Frontier through Spiral** — the reference implementation, and what mainnet runs. **The sole external authority for MESS**, which client code spells `ecbp1100` (the registry spells it ECIP-1100; searching the registry's spelling returns zero here). Silent on post-Spiral and Olympia work, which is not disagreement |
-| `clients/etc/besu-etc` | [besu-eth/besu](https://github.com/besu-eth/besu) | `etc-frozen` — **pinned, see below** | **JVM implementation shape on the historical ETC era, and nothing else.** It carries ETC's fork schedule and it carries no MESS. An absence here is evidence about besu-etc: it was a reference client during ETC development, never a mainstream deployment, and was never asked to be complete |
-| `clients/etc/olympia-wip/besu` | [white-b0x/besu](https://github.com/white-b0x/besu) | `main` | **NOT AN AUTHORITY.** Fukuii's own Olympia overlay. Input, never oracle |
-| `clients/etc/olympia-wip/core-geth` | [white-b0x/core-geth](https://github.com/white-b0x/core-geth) | `main` | **NOT AN AUTHORITY.** Fukuii's own Olympia overlay, on top of the authority it shadows. Input, never oracle |
-| `clients/etc/olympia-wip/nethermind` | [white-b0x/nethermind](https://github.com/white-b0x/nethermind) | `main` | **NOT AN AUTHORITY.** Fukuii's own Olympia overlay. Input, never oracle |
+| `ethereumclassic/core-geth` | [ethereumclassic/core-geth](https://github.com/ethereumclassic/core-geth) | `master` | **ETC consensus, Frontier through Spiral** — the reference implementation, and what mainnet runs. **The sole external authority for MESS**, which client code spells `ecbp1100` (the registry spells it ECIP-1100; searching the registry's spelling returns zero here). Silent on post-Spiral and Olympia work, which is not disagreement |
+| `besu-eth/besu-etc` | [besu-eth/besu](https://github.com/besu-eth/besu) | `etc-frozen` — **pinned, see below** | **JVM implementation shape on the historical ETC era, and nothing else.** It carries ETC's fork schedule and it carries no MESS. An absence here is evidence about besu-etc: it was a reference client during ETC development, never a mainstream deployment, and was never asked to be complete |
+
+### The Olympia work-in-progress clients are NOT in this corpus, and NOT authorities
+
+**Fukuii's own Olympia overlays live outside the corpus entirely**, alongside the
+other repositories being worked on rather than among the ones being cited.
+Checking fukuii against them is checking fukuii against fukuii.
+
+| Where | What |
+|---|---|
+| `<work-root>/core-geth` | Olympia modernization of core-geth. **Input, never oracle** |
+| `<work-root>/besu` | besu at head with an ETC overlay. **Input, never oracle** |
+| `<work-root>/nethermind` | nethermind at head with an ETC overlay. **Input, never oracle** |
+
+**The separation removed one trap and created a sharper one.** These no longer
+sit beside the genuine references under names that carry no warning — but
+`<work-root>/core-geth` and `<corpus-root>/ethereumclassic/core-geth` are now
+**the same repository name in two trees, one an authority and one not**. A path
+that names only the last component is unusable; a citation must carry the root it
+came from.
+
+The specific hazard is unchanged and worth restating because it inverts the
+obvious heuristic: the Olympia core-geth overlay carries **more** `ecbp1100` hits
+than the authority it overlays, so "whichever tree knows most about this" ranks
+our own draft above the source of truth.
+
+**One of them is also shallow.** `<work-root>/core-geth` reports
+`is-shallow-repository = true`, so it cannot answer a question about any earlier
+state. That is tolerable for a working tree and would be a defect in a reference
+clone — see **Depth**.
 
 **`besu-eth/besu` appears twice in this file at two different refs, and the two
 trees disagree about whether ETC exists.** The row above is the ETC-bearing one;
@@ -108,16 +149,16 @@ client. A citation naming only the repository is unusable. The former
 
 ---
 
-## Ethereum execution-layer clients — `clients/eth/el/`
+## Ethereum execution-layer clients
 
 | Path under the corpus root | Upstream | Ref | Authoritative for |
 |---|---|---|---|
-| `clients/eth/el/go-ethereum` | [ethereum/go-ethereum](https://github.com/ethereum/go-ethereum) | `master` | **The reference implementation of ETH-family consensus.** Half of the shared-EVM agreement pair (rule 1 above) |
-| `clients/eth/el/besu` | [besu-eth/besu](https://github.com/besu-eth/besu) | `main` | The other half of the shared-EVM agreement pair, and **JVM implementation shape** on the Ethereum side. This ref has no ETC support |
-| `clients/eth/el/erigon` | [erigontech/erigon](https://github.com/erigontech/erigon) | `main` | **Framework structure** — per-family module layout |
-| `clients/eth/el/nethermind` | [NethermindEth/nethermind](https://github.com/NethermindEth/nethermind) | `master` | **Framework structure** — the consensus-plugin and chain-spec-parameter seams |
-| `clients/eth/el/reth` | [paradigmxyz/reth](https://github.com/paradigmxyz/reth) | `main` | **Framework structure** — node-types and fork-condition types |
-| `clients/eth/el/ethrex` | [lambdaclass/ethrex](https://github.com/lambdaclass/ethrex) | `main` | **Framework structure** — a recent ground-up client, useful as a second reading of the same seams |
+| `ethereum/go-ethereum` | [ethereum/go-ethereum](https://github.com/ethereum/go-ethereum) | `master` | **The reference implementation of ETH-family consensus.** Half of the shared-EVM agreement pair (rule 1 above) |
+| `besu-eth/besu` | [besu-eth/besu](https://github.com/besu-eth/besu) | `main` | The other half of the shared-EVM agreement pair, and **JVM implementation shape** on the Ethereum side. This ref has no ETC support |
+| `erigontech/erigon` | [erigontech/erigon](https://github.com/erigontech/erigon) | `main` | **Framework structure** — per-family module layout |
+| `NethermindEth/nethermind` | [NethermindEth/nethermind](https://github.com/NethermindEth/nethermind) | `master` | **Framework structure** — the consensus-plugin and chain-spec-parameter seams |
+| `paradigmxyz/reth` | [paradigmxyz/reth](https://github.com/paradigmxyz/reth) | `main` | **Framework structure** — node-types and fork-condition types |
+| `lambdaclass/ethrex` | [lambdaclass/ethrex](https://github.com/lambdaclass/ethrex) | `main` | **Framework structure** — a recent ground-up client, useful as a second reading of the same seams |
 
 **The framework-structure rows are a deliberate carve-out and are routinely
 over-read in both directions.** A modern client is **not** an authority for an
@@ -129,7 +170,7 @@ codebase's habits.
 
 ---
 
-## Ethereum consensus-layer clients — `clients/eth/cl/`
+## Ethereum consensus-layer clients
 
 Authoritative for the **consumer side of the Engine API** and for **framework
 structure** across implementation languages. None is an authority for Ethereum
@@ -137,12 +178,12 @@ Classic, which has no consensus layer.
 
 | Path under the corpus root | Upstream | Ref |
 |---|---|---|
-| `clients/eth/cl/teku` | [Consensys/teku](https://github.com/Consensys/teku) | `master` |
-| `clients/eth/cl/lighthouse` | [sigp/lighthouse](https://github.com/sigp/lighthouse) | `stable` |
-| `clients/eth/cl/prysm` | [prysmaticlabs/prysm](https://github.com/prysmaticlabs/prysm) | `develop` |
-| `clients/eth/cl/nimbus-eth2` | [status-im/nimbus-eth2](https://github.com/status-im/nimbus-eth2) | `stable` |
-| `clients/eth/cl/lodestar` | [ChainSafe/lodestar](https://github.com/ChainSafe/lodestar) | `unstable` |
-| `clients/eth/cl/grandine` | [grandinetech/grandine](https://github.com/grandinetech/grandine) | `develop` |
+| `Consensys/teku` | [Consensys/teku](https://github.com/Consensys/teku) | `master` |
+| `sigp/lighthouse` | [sigp/lighthouse](https://github.com/sigp/lighthouse) | `stable` |
+| `prysmaticlabs/prysm` | [prysmaticlabs/prysm](https://github.com/prysmaticlabs/prysm) | `develop` |
+| `status-im/nimbus-eth2` | [status-im/nimbus-eth2](https://github.com/status-im/nimbus-eth2) | `stable` |
+| `ChainSafe/lodestar` | [ChainSafe/lodestar](https://github.com/ChainSafe/lodestar) | `unstable` |
+| `grandinetech/grandine` | [grandinetech/grandine](https://github.com/grandinetech/grandine) | `develop` |
 
 **Each upstream's own default branch differs, and the ref column reflects what
 that project publishes as its development or release line.** Do not normalize
@@ -150,13 +191,13 @@ them to `main`.
 
 ---
 
-## The specifications — `IPs/`
+## The specifications
 
 | Path under the corpus root | Upstream | Ref | Authoritative for |
 |---|---|---|---|
-| `IPs/ECIPs` | [ethereumclassic/ECIPs](https://github.com/ethereumclassic/ECIPs) | `master` | **The specification for ETC consensus.** Authoritative and complete for every ECIP **except the Olympia set**, which is still being drafted by this project's maintainer and reaches the published repository after implementation and testing — **see below before citing anything Olympia** |
-| `IPs/EIPs` | [ethereum/EIPs](https://github.com/ethereum/EIPs) | `master` | **The specification for ETH-family consensus.** Many EIPs apply to ETC identically and ETH leads on those; where ETC carries a different parameter for an otherwise-identical EIP, the ECIP governs the parameter |
-| `IPs/ERCs` | [ethereum/ERCs](https://github.com/ethereum/ERCs) | `master` | **The application-layer standards series, and not optional for a client.** Documents that began in the EIPs repository were moved here and the EIPs clone retains only a stub naming the new location — **so a document can be "in EIPs" and unreadable there.** ERC-55, the mixed-case address checksum, is the instance the foundation layer meets first |
+| `ethereumclassic/ECIPs` | [ethereumclassic/ECIPs](https://github.com/ethereumclassic/ECIPs) | `master` | **The specification for ETC consensus.** Authoritative and complete for every ECIP **except the Olympia set**, which is still being drafted by this project's maintainer and reaches the published repository after implementation and testing — **see below before citing anything Olympia** |
+| `ethereum/EIPs` | [ethereum/EIPs](https://github.com/ethereum/EIPs) | `master` | **The specification for ETH-family consensus.** Many EIPs apply to ETC identically and ETH leads on those; where ETC carries a different parameter for an otherwise-identical EIP, the ECIP governs the parameter |
+| `ethereum/ERCs` | [ethereum/ERCs](https://github.com/ethereum/ERCs) | `master` | **The application-layer standards series, and not optional for a client.** Documents that began in the EIPs repository were moved here and the EIPs clone retains only a stub naming the new location — **so a document can be "in EIPs" and unreadable there.** ERC-55, the mixed-case address checksum, is the instance the foundation layer meets first |
 
 **None of these three repositories carries a single tag, so a tag citation is
 structurally unavailable for all of them.** Cite by **document number and commit
@@ -169,19 +210,19 @@ by opening `EIPS/eip-55.md` for its test vectors and getting a one-line pointer.
 
 ---
 
-## Conformance corpora and protocol specifications — `test-suites/`
+## Conformance corpora and protocol specifications
 
 | Path under the corpus root | Upstream | Ref | Authoritative for |
 |---|---|---|---|
-| `test-suites/ethereum/execution-specs` | [ethereum/execution-specs](https://github.com/ethereum/execution-specs) | a `tests@vN` tag — **not** the default branch, see below | **The executable specification, and the live source of both fixtures and fork definitions.** `src/ethereum/forks/<fork>/` carries a per-fork implementation — `blocks.py`, `transactions.py`, `bloom.py`, `fork_types.py`, `vm/` — which is a *specification* rather than an implementation of one, and therefore outranks every client row above for structure |
-| `test-suites/ethereum/tests` | [ethereum/tests](https://github.com/ethereum/tests) | `develop` | The primary Ethereum conformance corpus **for forks up to Prague**, and **dormant** — see the currency note below |
-| `test-suites/core-geth-tests` | [etclabscore/tests](https://github.com/etclabscore/tests) | `develop` | The Ethereum corpus as core-geth consumes it |
-| `test-suites/fukuii-etc-tests` | [etclabscore/tests](https://github.com/etclabscore/tests) | `main` | **The corpus fukuii hosts** — every known ETC test in one place, and the destination for the vectors fukuii authors. Its authority is **prospective**: its current content is upstream ETC-translation work with no fukuii-authored commits, so citing it as fukuii's answer to a historical question is circular. A fukuii vector becomes authority when it is derived from the spec and cleared by a reviewer who did not author it. **Its custodial role is now deliberate — see below** |
-| `test-suites/ethereum/consensus-specs` | [ethereum/consensus-specs](https://github.com/ethereum/consensus-specs) | `master` | The consensus-layer specification and its own test vectors |
-| `test-suites/ethereum/execution-apis` | [ethereum/execution-apis](https://github.com/ethereum/execution-apis) | `main` | The JSON-RPC and Engine API specification |
-| `test-suites/ethereum/devp2p` | [ethereum/devp2p](https://github.com/ethereum/devp2p) | `master` | The peer-to-peer wire specification: RLPx, discovery, and the ETH protocol versions |
-| `test-suites/ethereum/hive` | [ethereum/hive](https://github.com/ethereum/hive) | `master` | The cross-client integration harness — how conformance is exercised, rather than what conformance is |
-| `test-suites/ethereum/yellowpaper` | [ethereum/yellowpaper](https://github.com/ethereum/yellowpaper) | `master` | The formal specification of the EVM |
+| `ethereum/execution-specs` | [ethereum/execution-specs](https://github.com/ethereum/execution-specs) | a `tests@vN` tag — **not** the default branch, see below | **The executable specification, and the live source of both fixtures and fork definitions.** `src/ethereum/forks/<fork>/` carries a per-fork implementation — `blocks.py`, `transactions.py`, `bloom.py`, `fork_types.py`, `vm/` — which is a *specification* rather than an implementation of one, and therefore outranks every client row above for structure |
+| `ethereum/tests` | [ethereum/tests](https://github.com/ethereum/tests) | `develop` | The primary Ethereum conformance corpus **for forks up to Prague**, and **dormant** — see the currency note below |
+| `etclabscore/tests` | [etclabscore/tests](https://github.com/etclabscore/tests) | `develop` | The Ethereum corpus as core-geth consumes it |
+| `etclabscore/tests-etc` | [etclabscore/tests](https://github.com/etclabscore/tests) | `main` | **The corpus fukuii hosts** — every known ETC test in one place, and the destination for the vectors fukuii authors. Its authority is **prospective**: its current content is upstream ETC-translation work with no fukuii-authored commits, so citing it as fukuii's answer to a historical question is circular. A fukuii vector becomes authority when it is derived from the spec and cleared by a reviewer who did not author it. **Its custodial role is now deliberate — see below** |
+| `ethereum/consensus-specs` | [ethereum/consensus-specs](https://github.com/ethereum/consensus-specs) | `master` | The consensus-layer specification and its own test vectors |
+| `ethereum/execution-apis` | [ethereum/execution-apis](https://github.com/ethereum/execution-apis) | `main` | The JSON-RPC and Engine API specification |
+| `ethereum/devp2p` | [ethereum/devp2p](https://github.com/ethereum/devp2p) | `master` | The peer-to-peer wire specification: RLPx, discovery, and the ETH protocol versions |
+| `ethereum/hive` | [ethereum/hive](https://github.com/ethereum/hive) | `master` | The cross-client integration harness — how conformance is exercised, rather than what conformance is |
+| `ethereum/yellowpaper` | [ethereum/yellowpaper](https://github.com/ethereum/yellowpaper) | `master` | The formal specification of the EVM |
 
 ### Currency: three of these corpora are frozen, and none of them says so
 
@@ -243,13 +284,13 @@ translation. This is the same shape as the two besu rows — one repository, two
 deliberately different sources — and it is why a citation must name the ref. **For
 evidence they are one source, not two**: agreement between them is not corroboration.
 
-`test-suites/fukuii-etc-tests`'s `main` is also published at
+`etclabscore/tests-etc`'s `main` is also published at
 [white-b0x/fukuii-etc-tests](https://github.com/white-b0x/fukuii-etc-tests) at
 the same commit; either remote reconstructs the same tree.
 
 ---
 
-## Toolchain — `stack/`
+## Toolchain
 
 **Only components this repository already declares appear here.** The versions
 are in `build.sbt`, `project/build.properties` and `.sdkmanrc`, so listing the
@@ -262,10 +303,10 @@ library is declared, its row becomes admissible then.
 
 | Path under the corpus root | Upstream | Ref | Authoritative for |
 |---|---|---|---|
-| `stack/scala/scala3` | [scala/scala3](https://github.com/scala/scala3) | a release tag | Compiler behavior at a named release — diagnostics, flag names, TASTy versioning |
-| `stack/sbt/sbt` | [sbt/sbt](https://github.com/sbt/sbt) | a release tag | Build-tool behavior at a named release, including task semantics and the caching behavior `AGENTS.md` § Commands documents |
-| `stack/sbt/zinc` | [sbt/zinc](https://github.com/sbt/zinc) | a release tag | Incremental-compilation behavior underneath sbt |
-| `stack/scalatest/scalatest` | [scalatest/scalatest](https://github.com/scalatest/scalatest) | a release tag | Test-framework behavior at a named release: style artifacts, deprecations, what each artifact pulls transitively |
+| `scala/scala3` | [scala/scala3](https://github.com/scala/scala3) | a release tag | Compiler behavior at a named release — diagnostics, flag names, TASTy versioning |
+| `sbt/sbt` | [sbt/sbt](https://github.com/sbt/sbt) | a release tag | Build-tool behavior at a named release, including task semantics and the caching behavior `AGENTS.md` § Commands documents |
+| `sbt/zinc` | [sbt/zinc](https://github.com/sbt/zinc) | a release tag | Incremental-compilation behavior underneath sbt |
+| `scalatest/scalatest` | [scalatest/scalatest](https://github.com/scalatest/scalatest) | a release tag | Test-framework behavior at a named release: style artifacts, deprecations, what each artifact pulls transitively |
 
 **Cite these by tag.** Every row in this table is a tagged repository, so the
 weaker branch-plus-commit form is not needed and should not be used — and a row
@@ -287,7 +328,7 @@ Most rows above name a tracking branch, and no commit is recorded for them on
 purpose: a SHA for a moving branch is a maintained value that is stale within
 days. Two rows are different, because there the **ref is the artifact**.
 
-### `clients/etc/besu-etc` @ `eb4248c997`, branch `etc-frozen`
+### `besu-eth/besu-etc` @ `eb4248c997`, branch `etc-frozen`
 
 **The freeze is deliberate and this ref must not be re-pointed or updated.**
 It holds besu's Ethereum Classic and Mordor support, which `main` no longer
@@ -299,8 +340,8 @@ every commit on it is also on `main`, and none of `main`'s later commits is on i
 — and the ETC-specific paths present at the freeze are absent from `main`.
 
 ```
-git -C <corpus-root>/clients/etc/besu-etc merge-base --is-ancestor HEAD origin/main
-git -C <corpus-root>/clients/etc/besu-etc rev-list --left-right --count origin/main...HEAD
+git -C <corpus-root>/besu-eth/besu-etc merge-base --is-ancestor HEAD origin/main
+git -C <corpus-root>/besu-eth/besu-etc rev-list --left-right --count origin/main...HEAD
 ```
 
 The second command's right-hand number is zero, and stays zero: a non-zero value
@@ -321,8 +362,8 @@ control.** What exists instead is a recovery pointer, placed inside the clone
 rather than only in this file:
 
 ```
-git -C <corpus-root>/clients/etc/besu-etc tag --list etc-frozen-baseline
-git -C <corpus-root>/clients/etc/besu-etc reset --hard etc-frozen-baseline
+git -C <corpus-root>/besu-eth/besu-etc tag --list etc-frozen-baseline
+git -C <corpus-root>/besu-eth/besu-etc reset --hard etc-frozen-baseline
 ```
 
 The annotated tag `etc-frozen-baseline` names the freeze commit and carries the
@@ -330,12 +371,21 @@ reason. **A tag blocks nothing, so it cannot be miscalibrated** — its whole jo
 is that someone who has already moved the branch finds the way back where they
 are standing, instead of needing to know this document exists.
 
-### `IPs/ECIPs` — cite the published specification, and know what it does not yet contain
+### `ethereumclassic/ECIPs` — cite the published specification, and know what it does not yet contain
 
 **Clone [ethereumclassic/ECIPs](https://github.com/ethereumclassic/ECIPs) at
 `master`.** That is the published Ethereum Classic specification, it is what a
 reader of this repository can reach and verify, and it is what every citation in
 tracked text names.
+
+**Where a maintainer keeps an authoring clone, it will sit outside this corpus
+and on a branch ahead of `master`** — the Olympia drafts are written before they
+are published, so such a clone is *newer* than the specification rather than
+stale. It is the right thing to read when authoring and the wrong thing to cite:
+a citation must name what a reader of this repository can fetch. The rule that
+keeps the two apart is `.claude/rules/evidence-and-citation.md` § 1 and § 4, and
+the machine-local location of any such clone deliberately does not appear in
+tracked text.
 
 **For Olympia specifically, the published specification is not yet complete, and
 that is a property of the work rather than a gap in this corpus.** The Olympia
@@ -406,7 +456,7 @@ git -C <clone> log --reverse --format='%h %ad %s' --date=short <ref> | head -1
 Everything else in the corpus is a full clone. These are not, each for a stated
 reason, so that nobody "fixes" them:
 
-1. **`clients/etc/olympia-wip/core-geth` reports shallow, and its `main` is
+1. **`repos/core-geth` reports shallow, and its `main` is
    complete to the project's first commit.** The boundary is not an ancestor of
    that ref: it sits on upstream devnet branches fetched from a second remote,
    and `--unshallow` against `origin` cannot clear it, because `origin` does not
@@ -466,10 +516,47 @@ a clone renamed, moved, or never made. Re-derive rather than trusting a reading
 of this file. From the corpus root:
 
 ```
-find . -maxdepth 5 -name .git -prune | sed 's#/\.git$##' | sort
+find . -name .git -prune | sed 's#/\.git$##' | sort
 ```
 
-Every path that command prints, in the trees this file lists, should appear
-above; every path above should appear in that output. A path in one and not the
-other is the finding. Rows are compared against the clone's own `git remote
-get-url origin` and `git rev-parse --abbrev-ref HEAD`, not against memory.
+**Drop the `-maxdepth`.** It read `-maxdepth 5` until 2026-08-11, and a cap makes
+this check silently under-report: a clone one level deeper than the cap is
+indistinguishable from one that was never made. `-prune` already stops the walk
+descending into object storage, so the cap bought nothing. Measured during the
+migration, a `-maxdepth 7` sweep of the same shape reported **76 clones missing
+that were on disk**.
+
+**The check is one-directional now, and reading it the old way produces false
+findings.** It used to run both ways: every path in the output should appear
+here, and every path here should appear in the output. The first half stopped
+being true when the corpus became **shared across projects** — the tree holds
+many clones this project does not cite, and their presence is correct.
+
+> **Every path in this file must appear in the tree.** A row with no clone is the
+> finding: a missing clone, a rename, or a stale row.
+>
+> **The reverse is not a finding.** A clone with no row here simply belongs to
+> another consumer.
+
+**Two rows are expected NOT to resolve, and a check that flags them is reporting
+its own defect rather than the corpus's.** Both are stated here so the exception
+list is one place rather than a rediscovery each time:
+
+- **`ethereum/execution-spec-tests`** appears only in the currency table, whose
+  own entry reads *"archived and migrated — do not clone it"*. A row that tells
+  you not to clone something is not a claim that it is present.
+- **`ethereumclassic/ECIPs`** is the path a rebuilder should clone to, and on a
+  maintainer's machine the authoring clone lives outside the corpus instead —
+  ahead of `master`, on a drafting branch. **Pulling a second copy into the
+  corpus would create exactly the two-clones-one-name confusion this file warns
+  about elsewhere**, so the absence is deliberate. Citations are unaffected:
+  tracked text names the published repository at `master` either way.
+
+**Any automated check needs both exceptions built in, and a check that cannot
+name why it skipped a row is worse than none** — that is how a real missing clone
+gets filed under "known exception" and stops being looked at.
+
+Rows are compared against the clone's own `git remote get-url origin` and
+`git rev-parse --abbrev-ref HEAD`, not against memory — and under org-keying the
+first of those is also what decides the directory, so a row whose org directory
+disagrees with its origin is a real defect rather than a cosmetic one.

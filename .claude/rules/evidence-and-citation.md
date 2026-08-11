@@ -56,8 +56,8 @@ is recorded here to be maintained.
 | Shallow history | **the SHA, plus "HEAD-only"** | `ethereum/tests @ 9f8e7d6, HEAD-only (shallow clone; the ref is real, the history behind it is truncated, so this cannot show the state at any earlier version)` |
 
 **Untagged is not the same defect as shallow, and the remedy differs.**
-`IPs/ECIPs`, `IPs/EIPs`, `ethereum/hive` and `docs.scala-lang` are **full clones
-that simply never tag**. Their SHAs are fully trustworthy and they need no
+`ethereumclassic/ECIPs`, `ethereum/EIPs`, `ethereum/hive` and
+`scala/docs.scala-lang` are **full clones that simply never tag**. Their SHAs are fully trustworthy and they need no
 fixing. A shallow clone is different: the SHA is real but the history behind it
 is missing, so it cannot answer "what did this look like at version X."
 
