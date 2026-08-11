@@ -80,6 +80,12 @@ and is not restated here. Two consequences bind every row below:
   row's ref is a tracking branch, cite the branch **and** the commit; where a
   repository carries no tags, a tag citation is not available and inventing one
   is worse than the honest form.
+
+  **Every branch in the ref column moves by design, not by neglect.** The corpus
+  is refreshed from upstream — that is what it is for — so a clone's HEAD is
+  wherever the last fetch left it. **A citation naming only a branch describes a
+  different tree after the next refresh**, and it does so silently, because the
+  branch name still resolves.
 - **A version is answered by a registry, never by a clone.** A clone sits at
   whatever ref someone last fetched. Maven Central and Scaladex answer what is
   published; a `git log` in a clone answers neither.
@@ -156,11 +162,18 @@ source of truth. Depth and staleness will not warn you either — see below.
 **Two mechanical cautions.**
 
 - **`<work-root>/core-geth` and `<corpus-root>/ethereumclassic/core-geth` are the
-  same repository name in two trees**, one a reference and one active work. A
-  path naming only the last component is unusable; a citation carries its root.
-  **An `olympia-wip/` umbrella directory would make the distinction visible in
-  the path itself**, which is the cheapest available fix and is an operator
-  decision rather than this file's.
+  same repository name in two trees**, so a path naming only the last component
+  is unusable and a citation carries its root.
+
+  **The roots are told apart by what they are, not by what they are called.** The
+  corpus is **read-only and refreshed from upstream** — material to source from,
+  never to edit. The work root is **active local development**. Any question of
+  the form *"which core-geth?"* is answered by asking whether you are reading or
+  writing, and that is normally already settled by the task.
+
+  *(A disambiguating umbrella directory under the work root was considered and
+  declined, 2026-08-11: the two roots' natures already separate them, and a
+  second naming convention would be one more thing to keep true.)*
 - **`<work-root>/core-geth` is shallow.** It cannot answer a question about any
   earlier state. Tolerable in a working tree, and a defect in a reference clone —
   see **Depth**.
