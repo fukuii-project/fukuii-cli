@@ -112,34 +112,58 @@ Three rules the column depends on, stated once so each row can stay short:
 | `ethereumclassic/core-geth` | [ethereumclassic/core-geth](https://github.com/ethereumclassic/core-geth) | `master` | **ETC consensus, Frontier through Spiral** — the reference implementation, and what mainnet runs. **The sole external authority for MESS**, which client code spells `ecbp1100` (the registry spells it ECIP-1100; searching the registry's spelling returns zero here). Silent on post-Spiral and Olympia work, which is not disagreement |
 | `besu-eth/besu-etc` | [besu-eth/besu](https://github.com/besu-eth/besu) | `etc-frozen` — **pinned, see below** | **JVM implementation shape on the historical ETC era, and nothing else.** It carries ETC's fork schedule and it carries no MESS. An absence here is evidence about besu-etc: it was a reference client during ETC development, never a mainstream deployment, and was never asked to be complete |
 
-### The Olympia work-in-progress clients are NOT in this corpus, and NOT authorities
+### The Olympia work clients — reference them, and know what for
 
-**Fukuii's own Olympia overlays live outside the corpus entirely**, alongside the
-other repositories being worked on rather than among the ones being cited.
-Checking fukuii against them is checking fukuii against fukuii.
+**These are production Ethereum Classic clients being made Olympia-ready, and
+fukuii has to interoperate with them.** They are not scratch overlays and
+dismissing them costs real information: **for Olympia-era protocol work they are
+the only implementations that exist.**
 
-| Where | What |
+| Where | What it is |
 |---|---|
-| `<work-root>/core-geth` | Olympia modernization of core-geth. **Input, never oracle** |
-| `<work-root>/besu` | besu at head with an ETC overlay. **Input, never oracle** |
-| `<work-root>/nethermind` | nethermind at head with an ETC overlay. **Input, never oracle** |
+| `<work-root>/core-geth` | Olympia modernization of core-geth, tracking both `ethereumclassic/core-geth` and `ethereum/go-ethereum` upstreams |
+| `<work-root>/besu` | besu at head with an ETC overlay |
+| `<work-root>/nethermind` | nethermind at head with an ETC overlay |
 
-**The separation removed one trap and created a sharper one.** These no longer
-sit beside the genuine references under names that carry no warning — but
-`<work-root>/core-geth` and `<corpus-root>/ethereumclassic/core-geth` are now
-**the same repository name in two trees, one an authority and one not**. A path
-that names only the last component is unusable; a citation must carry the root it
-came from.
+**The worked case, and it is why this section exists.** ETH/69 over
+proof-of-work appears in **seven files of the work core-geth and in none of the
+reference ETC client**. go-ethereum carries ETH/69 in fifteen files and is
+proof-of-stake, so its handling is not the proof-of-work integration. **No
+reference client in this corpus implements what fukuii needs here** — the
+Ethereum clients are proof-of-stake, and the proof-of-work ones stop at ETH/68.
+Refusing to read the work clients does not make fukuii more independent; it makes
+it unable to sync.
 
-The specific hazard is unchanged and worth restating because it inverts the
-obvious heuristic: the Olympia core-geth overlay carries **more** `ecbp1100` hits
-than the authority it overlays, so "whichever tree knows most about this" ranks
-our own draft above the source of truth.
+**So use them for what they are: peer implementations solving the same problem
+first.** Wire-protocol behavior, fork plumbing, and anything needed to sync
+against ETC mainnet or Mordor are legitimately read here, and **alignment with
+them is a requirement rather than a contamination** — a client that disagrees
+with the network's other clients is wrong however principled its derivation was.
 
-**One of them is also shallow.** `<work-root>/core-geth` reports
-`is-shallow-repository = true`, so it cannot answer a question about any earlier
-state. That is tolerable for a working tree and would be a defect in a reference
-clone — see **Depth**.
+**What they are NOT is an independent check on fukuii's correctness.** They share
+a maintainer with this project, so agreement between fukuii and them is not
+confirmation — it is the same judgment expressed twice. For a **consensus value**
+— a gas figure, an activation block, an emission schedule — the authority is the
+ECIP, and after it `ethereumclassic/core-geth`. Validating an Olympia consensus
+value against our own Olympia client is circular no matter which repository it
+is read from.
+
+**The hazard that survives, and it inverts the obvious heuristic:** the work
+core-geth carries **more** `ecbp1100` hits than the reference it derives from, so
+"whichever tree knows most about this" ranks the work-in-progress above the
+source of truth. Depth and staleness will not warn you either — see below.
+
+**Two mechanical cautions.**
+
+- **`<work-root>/core-geth` and `<corpus-root>/ethereumclassic/core-geth` are the
+  same repository name in two trees**, one a reference and one active work. A
+  path naming only the last component is unusable; a citation carries its root.
+  **An `olympia-wip/` umbrella directory would make the distinction visible in
+  the path itself**, which is the cheapest available fix and is an operator
+  decision rather than this file's.
+- **`<work-root>/core-geth` is shallow.** It cannot answer a question about any
+  earlier state. Tolerable in a working tree, and a defect in a reference clone —
+  see **Depth**.
 
 **`besu-eth/besu` appears twice in this file at two different refs, and the two
 trees disagree about whether ETC exists.** The row above is the ETC-bearing one;
@@ -195,7 +219,7 @@ them to `main`.
 
 | Path under the corpus root | Upstream | Ref | Authoritative for |
 |---|---|---|---|
-| `ethereumclassic/ECIPs` | [ethereumclassic/ECIPs](https://github.com/ethereumclassic/ECIPs) | `master` | **The specification for ETC consensus.** Authoritative and complete for every ECIP **except the Olympia set**, which is still being drafted by this project's maintainer and reaches the published repository after implementation and testing — **see below before citing anything Olympia** |
+| `ethereumclassic/ECIPs` | [ethereumclassic/ECIPs](https://github.com/ethereumclassic/ECIPs) | `master` | **The specification for ETC consensus, and the authority for the Olympia upgrade.** Published `master` is **static and complete for every non-Olympia ECIP** — it is not a moving target and a citation to it does not decay. **For the Olympia suite it is not yet current**, and the authoritative text is the maintainer's working copy — **see below, because for those documents the published repository is the WRONG source rather than merely an older one** |
 | `ethereum/EIPs` | [ethereum/EIPs](https://github.com/ethereum/EIPs) | `master` | **The specification for ETH-family consensus.** Many EIPs apply to ETC identically and ETH leads on those; where ETC carries a different parameter for an otherwise-identical EIP, the ECIP governs the parameter |
 | `ethereum/ERCs` | [ethereum/ERCs](https://github.com/ethereum/ERCs) | `master` | **The application-layer standards series, and not optional for a client.** Documents that began in the EIPs repository were moved here and the EIPs clone retains only a stub naming the new location — **so a document can be "in EIPs" and unreadable there.** ERC-55, the mixed-case address checksum, is the instance the foundation layer meets first |
 
@@ -373,45 +397,51 @@ are standing, instead of needing to know this document exists.
 
 ### `ethereumclassic/ECIPs` — cite the published specification, and know what it does not yet contain
 
-**Clone [ethereumclassic/ECIPs](https://github.com/ethereumclassic/ECIPs) at
-`master`.** That is the published Ethereum Classic specification, it is what a
-reader of this repository can reach and verify, and it is what every citation in
-tracked text names.
+**Which copy is authoritative depends on which document you are reading, and for
+the Olympia suite the published repository is the wrong source rather than an
+older one.**
 
-**Where a maintainer keeps an authoring clone, it will sit outside this corpus
-and on a branch ahead of `master`** — the Olympia drafts are written before they
-are published, so such a clone is *newer* than the specification rather than
-stale. It is the right thing to read when authoring and the wrong thing to cite:
-a citation must name what a reader of this repository can fetch. The rule that
-keeps the two apart is `.claude/rules/evidence-and-citation.md` § 1 and § 4, and
-the machine-local location of any such clone deliberately does not appear in
-tracked text.
+| Documents | Authoritative copy | Why |
+|---|---|---|
+| Every **non-Olympia** ECIP | **Published `master`** | Static. The historical specification is settled and is not being revised, so a citation to it does not decay |
+| The **Olympia** suite | **The maintainer's working copy** | Written here first. `master` does not yet carry the current text of these documents |
 
-**For Olympia specifically, the published specification is not yet complete, and
-that is a property of the work rather than a gap in this corpus.** The Olympia
-proposals are authored by this project's maintainer, who is a core developer on
-Ethereum Classic. They are **active drafting work, and they reach
-`ethereumclassic/ECIPs` once implementation is done and testing confirms them
-accurate.** Until then the published repository does not carry their current
-text.
+**The working copy is strictly ahead, not divergent.** Measured against published
+`master`: **zero commits behind, and the differing documents are exactly ECIP-1066
+and the 1111–1122 Olympia set.** So there is no reconciliation to perform and no
+risk of the two disagreeing about settled history — the gap is confined to
+documents the published repository has not received yet.
 
-**Two consequences, and the second is the one to hold on to:**
+**This is the general rule applied, not an exception to it.** Where a repository
+on this machine is the *author* of a specification, the local working copy is
+authoritative and the published version is not. The failure mode it prevents is
+specific and hard to catch: a stale published spec **answers every question you
+ask it**, confidently and wrongly, with nothing in the text signalling that a
+newer version exists.
 
-1. **An Olympia claim cannot yet be checked against a published specification.**
-   This is the same fact as core-geth being silent on Olympia — no external
-   authority exists for it yet, in either the specification or any client. A
-   review that wants an independent Olympia source will not find one, and
-   **that absence is the condition, not a search to run harder.**
-2. **So do not treat a fukuii implementation, a fukuii overlay, or a fukuii draft
-   as the specification it is meant to satisfy.** Validating our Olympia work
-   against our own Olympia material is circular whichever artifact is used. Where
-   an Olympia detail is load-bearing, it is settled by the maintainer as the
-   proposals' author, and recorded as a decision — never inferred from our own
-   code.
+**Two consequences, and the second is the one to hold on to.**
 
-**For every non-Olympia ECIP, the published repository is authoritative and
-complete**, and citations are by document number plus commit SHA, because the
-repository carries no tags.
+1. **A published Olympia specification does not exist yet, so an "independent"
+   external check on an Olympia claim does not either.** This is the same fact as
+   `ethereumclassic/core-geth` being silent on Olympia. **That absence is the
+   condition, not a search to run harder.**
+2. **The specification is still the authority; a fukuii implementation is not.**
+   The working copy is the *spec*, authored by the maintainer as a core developer
+   on Ethereum Classic. What remains forbidden is inferring the specification
+   from our own code — reading fukuii, or a fukuii-adjacent client, and treating
+   what it does as what the proposal says. Where an Olympia detail is
+   load-bearing, it comes from the proposal text and is recorded as a decision.
+
+**Citation form is unchanged and is the one place the published copy always
+wins.** Tracked text names `ethereumclassic/ECIPs` @ `master` plus document
+number and commit SHA, because that is what a reader of this repository can fetch
+and verify, and because the repository carries **zero tags**. Where an Olympia
+document has no published text to cite, say that rather than citing a commit no
+reader can resolve.
+
+**The machine-local location of the working copy deliberately does not appear in
+this file** — `.claude/rules/evidence-and-citation.md` § 4. It is recorded in the
+gitignored local pointers alongside the corpus root.
 
 ---
 
@@ -545,12 +575,15 @@ list is one place rather than a rediscovery each time:
 - **`ethereum/execution-spec-tests`** appears only in the currency table, whose
   own entry reads *"archived and migrated — do not clone it"*. A row that tells
   you not to clone something is not a claim that it is present.
-- **`ethereumclassic/ECIPs`** is the path a rebuilder should clone to, and on a
-  maintainer's machine the authoring clone lives outside the corpus instead —
-  ahead of `master`, on a drafting branch. **Pulling a second copy into the
-  corpus would create exactly the two-clones-one-name confusion this file warns
-  about elsewhere**, so the absence is deliberate. Citations are unaffected:
-  tracked text names the published repository at `master` either way.
+- **`ethereumclassic/ECIPs`** is the path a rebuilder should clone to, and it is
+  very much a reference — **the authority for ETC consensus and for Olympia.**
+  What is absent is a *second* copy under the corpus root: on a maintainer's
+  machine the authoritative copy is the working one, which lives with the other
+  repositories being worked on. **Cloning a published copy alongside it would put
+  the stale version and the current version side by side under one name**, which
+  is the precise failure the ECIPs section exists to prevent. A rebuilder who
+  does not author these documents has no such conflict and should clone it
+  normally.
 
 **Any automated check needs both exceptions built in, and a check that cannot
 name why it skipped a row is worse than none** — that is how a real missing clone
