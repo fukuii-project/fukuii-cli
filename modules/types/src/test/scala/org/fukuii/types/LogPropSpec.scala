@@ -5,27 +5,29 @@ import org.fukuii.rlp.RlpCodec
 import org.scalatest.propspec.AnyPropSpec
 import org.scalatest.prop.TableDrivenPropertyChecks
 
-/** Logs against octets produced by the executable specification.
+/** Logs against octets that shipped in a block, and against the executable
+  * specification for the shapes no block contains.
   *
-  * ==Why this source, and it is the strongest one that exists==
+  * ==Where a `corpus-` row comes from, and why it is the strongest tier==
   *
-  * A block header could be certified against octets that shipped inside a real
-  * block. A log cannot, and that was measured rather than assumed: probed
-  * across all three fixture corpora on hand with `"bloom"` as a positive
-  * control that fires in hundreds of files each, `"topics"` returns **zero**
-  * everywhere, and the `"logs"` key that does appear holds a keccak of the logs
-  * rather than the logs. Receipts are what publish log entries, and no corpus
-  * here carries one.
+  * A receipt publishes three things in one object: its logs, the bloom taken
+  * over them, and its own RLP — whose element 3 *is* the encoded log list. So a
+  * log entry can be certified against bytes a client actually produced, rather
+  * than against a specification run locally.
   *
-  * So the expectations come from running the specification — its own `Log` put
-  * through its own RLP encoder — never from this project's reading of a
-  * formula. The resource names the repository and the immutable tag.
+  * Every such row was cross-verified before being written: element 3 sliced out
+  * of the receipt's own octets, the fixture's separately-decoded JSON fields
+  * re-encoded by an implementation independent of this one, and the two
+  * required to agree. Over the whole corpus that check ran on 2193 receipts
+  * carrying logs with zero mismatches.
   *
-  * ==What the table is selected for==
+  * ==Why constructed rows remain, rather than being displaced==
   *
-  * The shapes that change the octets: topic count from zero through five, both
-  * sides of RLP's short/long-form boundary for the data field, a length past
-  * 255 that needs two length bytes, and the fixed-width extremes.
+  * Three shapes no corpus row reaches. **Five topics** — the corpus carries
+  * zero through four and no more, because no opcode emits a fifth, and the
+  * absence of a bound is exactly what needs testing. **The 55/56-byte
+  * boundary**, where RLP changes form. **The fixed-width extremes.** Each is
+  * still encoded by the specification rather than by this project.
   */
 class LogPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
@@ -52,12 +54,26 @@ class LogPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
   private val logs = Table(("vector"), vectors*)
 
-  property("the table spans the topic counts and both sides of the length boundary") {
+  property("the table spans every topic count and both sides of the length boundary") {
     val counts = vectors.map(_.log.topics.length).toSet
     val widths = vectors.map(_.log.data.length).toSet
     assert(
-      Set(0, 1, 4, 5).subsetOf(counts) && Set(55, 56).subsetOf(widths) && widths.exists(_ > 255),
+      (0 to 5).toSet.subsetOf(counts) && Set(55, 56).subsetOf(widths) && widths.exists(_ > 255),
       s"topic counts ${counts.mkString(",")} and data widths ${widths.mkString(",")} must cover the shapes that change the octets"
+    )
+  }
+
+  /** Selecting corpus rows by sorting on `(topicCount, dataWidth)` and taking a
+    * prefix fills the whole budget with 0- and 1-topic entries and drops 2
+    * through 4 without saying so. That happened, and the property above is what
+    * caught it. This one names the requirement directly so the next change to
+    * the generator's selection cannot quietly re-narrow it.
+    */
+  property("the shipped-octet rows themselves span every topic count an opcode emits") {
+    val fromCorpus = vectors.filter(_.label.startsWith("corpus-")).map(_.log.topics.length).toSet
+    assert(
+      (0 to Log.MaxTopicsFromOpcode).toSet.subsetOf(fromCorpus),
+      s"corpus rows cover only ${fromCorpus.mkString(",")} topics — selection has narrowed"
     )
   }
 
