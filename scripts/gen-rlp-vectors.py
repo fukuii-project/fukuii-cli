@@ -94,7 +94,21 @@ def main() -> int:
         "  * encoding of it. The invalid table carries encodings only: each must be\n"
         "  * REJECTED, and several are well-formed items in a non-canonical spelling\n"
         "  * rather than structurally broken bytes.\n"
+        "  *\n"
+        "  * ==Not formatted, and that follows from being generated==\n"
+        "  *\n"
+        "  * The formatter wraps a long encoding across five lines. Two costs, and the\n"
+        "  * second is the one that decides it: a vector stops being one greppable line\n"
+        "  * to compare against the corpus it came from, and the file stops matching what\n"
+        "  * the generator emits — so the next regeneration would produce a diff made\n"
+        "  * entirely of layout. A generated file is formatted by its generator or not at\n"
+        "  * all.\n"
         "  */\n"
+        # The marker below must be EMITTED, not added to the output by hand. A
+        # generated file cannot carry an edit the generator does not know about:
+        # the next run drops it silently, the formatter re-wraps every vector,
+        # and nothing says why.
+        "// format: off\n"
         "object RlpVectors:\n"
         "\n"
         "  private def b(hex: String): RlpItem =\n"

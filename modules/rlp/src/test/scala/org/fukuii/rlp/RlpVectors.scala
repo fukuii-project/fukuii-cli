@@ -15,7 +15,17 @@ import org.scalatest.prop.TableDrivenPropertyChecks.Table
   * encoding of it. The invalid table carries encodings only: each must be
   * REJECTED, and several are well-formed items in a non-canonical spelling
   * rather than structurally broken bytes.
+  *
+  * ==Not formatted, and that follows from being generated==
+  *
+  * The formatter wraps a long encoding across five lines. Two costs, and the
+  * second is the one that decides it: a vector stops being one greppable line
+  * to compare against the corpus it came from, and the file stops matching what
+  * the generator emits — so the next regeneration would produce a diff made
+  * entirely of layout. A generated file is formatted by its generator or not at
+  * all.
   */
+// format: off
 object RlpVectors:
 
   private def b(hex: String): RlpItem =
