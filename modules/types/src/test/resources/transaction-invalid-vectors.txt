@@ -10,9 +10,16 @@
 # that distinction was forced by measurement rather than chosen. All
 # sixteen cases the corpus names TYPE_4_INVALID_AUTHORITY_SIGNATURE in
 # fact carry a field wider than EIP-7702's own assert -- an `r` or `s` of
-# 33 bytes, or a `y_parity` of 2 -- and four are additionally labelled
-# S_TOO_HIGH, which reads as a malleability rule and is here a width
-# violation. Classifying by name put every one on the wrong side.
+# 33 bytes, or a `y_parity` of 2 -- and ALL SIXTEEN are additionally
+# labelled S_TOO_HIGH, which reads as a malleability rule and is here a
+# width violation. Classifying by name put every one on the wrong side.
+#
+# NOTE THE CORPUS SPELLS THAT LABEL AS ONE COMPOUND STRING:
+# `TYPE_4_INVALID_AUTHORITY_SIGNATURE|TYPE_4_INVALID_AUTHORITY_SIGNATURE_S_TOO_HIGH`,
+# and carries no bare TYPE_4_INVALID_AUTHORITY_SIGNATURE anywhere. The
+# corpus-exception column below records the truncated form, so grepping
+# the corpus for this file's own value finds nothing -- match on the
+# prefix, or on the compound string above.
 #
 #   reject  some field exceeds a width a specification states, so it is
 #           decidable from the bytes and this layer must refuse it.

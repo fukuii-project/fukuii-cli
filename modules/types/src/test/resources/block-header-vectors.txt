@@ -8,14 +8,24 @@
 #
 # Sources, cited by immutable ref:
 #   ethereum/tests @ v17.2 (c67e485ff8, 2025-06-04)
-#   etclabscore/tests @ 0ca936b392 (2022-11-14), no tags
-#   etclabscore/tests @ 06ec708ea7 (2023-08-25), no tags
+#   etclabscore/tests @ 0ca936b392 (2022-11-14), beyond the last tag
+#   etclabscore/tests @ 06ec708ea7 (2023-08-25), beyond the last tag
+#
+# The etclabscore refs are SHAs because no tag covers either commit --
+# the newest, v7.0.0-beta.1 (2019-10-04), sits hundreds of commits
+# behind both. The repository does carry tags; these commits are past
+# them.
 #
 # NOTE ON CURRENCY. ethereum/tests is DORMANT rather than merely
 # unfetched: the ref above is simultaneously its newest tag and its
-# upstream develop head. Fixture generation moved to
-# ethereum/execution-spec-tests, which this corpus does not yet
-# carry. The consequence is a coverage bound, not a wrong vector --
+# upstream develop head. Fixture generation now publishes from
+# ethereum/execution-specs as its tests@vN releases -- the successor
+# this file predates, and the source six sibling vector files in this
+# directory already use. (ethereum/execution-spec-tests, named here
+# before, is ARCHIVED.) Sourcing this file from the release is
+# possible and simply has not been done, so the bound below is a
+# scoping choice rather than an unavailable corpus.
+# The consequence is a coverage bound, not a wrong vector --
 # no fork after Prague is represented here, so no header longer
 # than 21 elements appears in any row.
 # The two etclabscore refs are the SAME upstream repository at two

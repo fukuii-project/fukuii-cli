@@ -27,9 +27,16 @@
 # A DECLARED CAP, not a silent one: the corpus's widest log data is
 # 9,177,456 bytes and a row carrying it would be 18 MB of unreviewable hex.
 # Corpus rows are capped at 512 bytes of data; 3011 log entries were
-# dropped by that cap, and the widest row kept carries 241 bytes.
-# 56 distinct (topic-count, data-width) shapes were found and
-# 24 kept.
+# dropped by that cap, and the widest corpus entry surviving it carries
+# 241 bytes.
+#
+# TWO SELECTIONS RAN, AND THE SECOND IS THE NARROWER ONE. After the cap,
+# rows were chosen to cover distinct (topic-count, data-width) shapes:
+# 56 shapes were found and 24 kept. That shape selection, not the cap,
+# is what decides the widths actually written here -- the widest CORPUS
+# row in this file carries 4 bytes of data, and the widest row of any
+# kind carries 300 (a constructed one). Reading 241 as this file's
+# widest row overstates its data coverage by about sixtyfold.
 corpus-0topic-0bytes b1a1052905ef90239967f4f8a4d63dcf4f40720d - - d794b1a1052905ef90239967f4f8a4d63dcf4f40720dc080
 corpus-0topic-1bytes 10d63b362605aa26866d56057aecdd59b7f363b2 - 00 d79410d63b362605aa26866d56057aecdd59b7f363b2c000
 corpus-0topic-2bytes b9b1bd6b54bf194e41315471d09f2d173665becf - 0000 d994b9b1bd6b54bf194e41315471d09f2d173665becfc0820000

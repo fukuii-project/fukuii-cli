@@ -2,7 +2,8 @@
 # nonce and balance are decimal; the rest is hex without 0x.
 #
 # ENCODED BY THE EXECUTABLE SPECIFICATION, not by this project and
-# not by a client: ethereum/execution-specs, its own encode_account.
+# not by a client: ethereum/execution-specs, its own encode_account,
+# at release tests@v20.0.1 (2026-07-15).
 # An account's natural certification is the state trie root, and the
 # trie is a later section -- so the corpus route used for the block
 # header is unavailable here and this is the strongest source left.
