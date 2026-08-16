@@ -51,9 +51,9 @@ object Withdrawal:
         if items.length != FieldCount then Left(RlpError.WrongArity(FieldCount, items.length))
         else
           for
-            index          <- RlpCodec[UInt64].decode(items(0))
+            index <- RlpCodec[UInt64].decode(items(0))
             validatorIndex <- RlpCodec[UInt64].decode(items(1))
-            address        <- RlpCodec[Address].decode(items(2))
-            amount         <- RlpCodec[UInt64].decode(items(3))
+            address <- RlpCodec[Address].decode(items(2))
+            amount <- RlpCodec[UInt64].decode(items(3))
           yield Withdrawal(index, validatorIndex, address, amount)
       case _: RlpItem.Bytes => Left(RlpError.ExpectedSequence)

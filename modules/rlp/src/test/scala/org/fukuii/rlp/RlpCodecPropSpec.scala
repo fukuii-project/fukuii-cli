@@ -74,8 +74,8 @@ class RlpCodecPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     */
   property("a scalar with a leading zero byte is rejected by the codec") {
     forAll(scalars) { (name: String, decimal: String, _: String) =>
-      val payload    = UInt256.fromBigInt(BigInt(decimal)).toOption.get.toMinimalBytes
-      val padded     = IArray(0.toByte) ++ payload
+      val payload = UInt256.fromBigInt(BigInt(decimal)).toOption.get.toMinimalBytes
+      val padded = IArray(0.toByte) ++ payload
       val wellFormed = Rlp.encode(RlpItem.Bytes(padded))
       assert(
         RlpCodec.decodeFrom[UInt256](wellFormed) == Left(RlpError.NonCanonicalScalar),

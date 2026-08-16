@@ -43,80 +43,72 @@ class ReceiptSpec extends AnyFlatSpec:
   private def withOutcome(item: RlpItem): Either[RlpError, Receipt] =
     withFields(fields.updated(0, item))
 
-  "a receipt of five elements" should "be refused rather than truncated to four" in {
+  "a receipt of five elements" should "be refused rather than truncated to four" in
     assert(
       withFields(fields :+ RlpItem.Bytes(IArray.empty)) ==
         Left(RlpError.WrongArity(Receipt.FieldCount, 5)),
       "the receipt payload has never grown, so a fifth element is malformed"
     )
-  }
 
-  it should "be refused when an element is missing" in {
+  it should "be refused when an element is missing" in
     assert(
       withFields(fields.dropRight(1)) == Left(RlpError.WrongArity(Receipt.FieldCount, 3)),
       "four fields or none"
     )
-  }
 
   /** The status form and the post-state form differ only in the width of one
     * element, so a width between them is the case a decoder is most likely to
     * accept by accident.
     */
-  "a first field of two bytes" should "be neither a status nor a root" in {
+  "a first field of two bytes" should "be neither a status nor a root" in
     assert(
       withOutcome(RlpItem.Bytes(IArray.fill(2)(1))) ==
         Left(RlpError.WrongWidth(Hash.Width, 2)),
       "the first field is a 32-byte root or a one-byte status, and two bytes is neither"
     )
-  }
 
-  it should "be refused at thirty-one bytes, one short of a root" in {
+  it should "be refused at thirty-one bytes, one short of a root" in
     assert(
       withOutcome(RlpItem.Bytes(IArray.fill(31)(1))) ==
         Left(RlpError.WrongWidth(Hash.Width, 31)),
       "a root is fixed-width, so a short one is not a root that needs padding"
     )
-  }
 
   /** EIP-658 names exactly two status codes. The Yellow Paper asserts only
     * that the status is a non-negative integer and one reference client is
     * correspondingly loose, so this pins the stricter reading deliberately
     * rather than by omission.
     */
-  "a status of two" should "be refused rather than carried" in {
+  "a status of two" should "be refused rather than carried" in
     assert(
       withOutcome(RlpItem.Bytes(IArray(2.toByte))) ==
         Left(RlpError.UnknownDiscriminant(2)),
       "the proposal that defines the field names 0 and 1, and nothing else"
     )
-  }
 
   /** Failure is the empty string, because the status is a scalar and a scalar
     * zero has no leading byte. A literal `0x00` is that value spelled the one
     * way the canonicality rule forbids, and reporting it as an unknown status
     * would name the wrong defect.
     */
-  "a status written as a literal zero byte" should "be refused as non-canonical" in {
+  "a status written as a literal zero byte" should "be refused as non-canonical" in
     assert(
       withOutcome(RlpItem.Bytes(IArray(0.toByte))) == Left(RlpError.NonCanonicalScalar),
       "a zero status is the empty string, so 0x00 is a second encoding of it"
     )
-  }
 
-  "a first field given as a list" should "be refused as not being a byte string" in {
+  "a first field given as a list" should "be refused as not being a byte string" in
     assert(
       withOutcome(RlpItem.Sequence(Vector.empty)) == Left(RlpError.ExpectedBytes),
       "the reason must name what was wanted rather than what arrived"
     )
-  }
 
-  "a bloom that is not 256 bytes" should "be refused rather than padded" in {
+  "a bloom that is not 256 bytes" should "be refused rather than padded" in
     assert(
       withFields(fields.updated(2, RlpItem.Bytes(IArray.fill(255)(0)))) ==
         Left(RlpError.WrongWidth(Bloom.Width, 255)),
       "the bloom is fixed-width and its leading zeros are part of it"
     )
-  }
 
   /** The legacy shape predates the envelope and carries no tag, so a leading
     * `0x00` is not "the untyped one written explicitly" — it is malformed.
@@ -141,12 +133,11 @@ class ReceiptSpec extends AnyFlatSpec:
     )
   }
 
-  "an empty input" should "be refused before a tag is read" in {
+  "an empty input" should "be refused before a tag is read" in
     assert(
       Receipt.fromCanonicalBytes(IArray.empty[Byte]) == Left(RlpError.EmptyInput),
       "there is no byte to read a tag from"
     )
-  }
 
   /** The trie stores the canonical bytes unwrapped and a list holds them
     * wrapped in a string, so the two forms must not be interchangeable. A
@@ -162,20 +153,18 @@ class ReceiptSpec extends AnyFlatSpec:
     )
   }
 
-  it should "round-trip through that string form" in {
+  it should "round-trip through that string form" in
     assert(
       RlpCodec.decodeFrom[Receipt](RlpCodec.encodeTo(typed)) == Right(typed),
       "the wrapped form must decode back to the same receipt"
     )
-  }
 
   /** Every other case here builds an item tree directly. This one starts from
     * octets, so a structural RLP failure has to reach the caller through the
     * same channel a typed one does.
     */
-  "a receipt whose octets are truncated" should "fail as RLP before the codec sees it" in {
+  "a receipt whose octets are truncated" should "fail as RLP before the codec sees it" in
     assert(
       RlpCodec.decodeFrom[Receipt](RlpCodec.encodeTo(legacy).dropRight(1)).isLeft,
       "a short read must not decode into a smaller receipt"
     )
-  }

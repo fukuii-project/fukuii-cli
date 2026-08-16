@@ -100,7 +100,7 @@ class BloomPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     * rows and diverges on this one alone.
     */
   property("a repeated log sets no bit twice") {
-    val once  = vectors.find(_.label == "single-log-once").get
+    val once = vectors.find(_.label == "single-log-once").get
     val twice = vectors.find(_.label == "same-log-twice").get
     assert(
       Bloom.fromLogs(twice.logs) == once.bloom && twice.bloom == once.bloom,

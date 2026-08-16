@@ -19,38 +19,35 @@ import org.scalatest.flatspec.AnyFlatSpec
   */
 class AccessTupleSpec extends AnyFlatSpec:
 
-  private def hash(b: Byte): Hash    = Hash.fromBytesTruncating(IArray.fill(32)(b))
-  private val address: Address       = Address.fromBytesTruncating(IArray.fill(20)(3.toByte))
-  private val tuple                  = AccessTuple(address, Seq(hash(1), hash(2)))
+  private def hash(b: Byte): Hash = Hash.fromBytesTruncating(IArray.fill(32)(b))
+  private val address: Address = Address.fromBytesTruncating(IArray.fill(20)(3.toByte))
+  private val tuple = AccessTuple(address, Seq(hash(1), hash(2)))
 
   private def itemsOf(item: RlpItem): Vector[RlpItem] = item match
     case RlpItem.Sequence(items) => items
     case _: RlpItem.Bytes        => Vector.empty
 
-  private val encoded  = RlpCodec[AccessTuple].encode(tuple)
-  private val tooLong  = RlpItem.Sequence(itemsOf(encoded) :+ RlpItem.Bytes(IArray.empty))
+  private val encoded = RlpCodec[AccessTuple].encode(tuple)
+  private val tooLong = RlpItem.Sequence(itemsOf(encoded) :+ RlpItem.Bytes(IArray.empty))
   private val tooShort = RlpItem.Sequence(itemsOf(encoded).dropRight(1))
 
-  "an access tuple of three elements" should "be refused rather than truncated to two" in {
+  "an access tuple of three elements" should "be refused rather than truncated to two" in
     assert(
       RlpCodec[AccessTuple].decode(tooLong) == Left(RlpError.WrongArity(AccessTuple.FieldCount, 3)),
       "EIP-2930 fixes the shape at an address and a key list, so a third element is malformed"
     )
-  }
 
-  "an access tuple of one element" should "be refused" in {
+  "an access tuple of one element" should "be refused" in
     assert(
       RlpCodec[AccessTuple].decode(tooShort) == Left(RlpError.WrongArity(AccessTuple.FieldCount, 1)),
       "two fields or none"
     )
-  }
 
-  "a byte string where an access tuple is expected" should "be refused" in {
+  "a byte string where an access tuple is expected" should "be refused" in
     assert(
       RlpCodec[AccessTuple].decode(RlpItem.Bytes(IArray.empty)) == Left(RlpError.ExpectedSequence),
       "an access tuple is a list"
     )
-  }
 
   "an access tuple whose address is the wrong width" should "be refused" in {
     val short = RlpItem.Sequence(itemsOf(encoded).updated(0, RlpItem.Bytes(IArray.fill(19)(1.toByte))))

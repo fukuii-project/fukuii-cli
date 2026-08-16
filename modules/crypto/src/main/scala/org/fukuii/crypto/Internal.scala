@@ -20,7 +20,7 @@ package org.fukuii.crypto
   */
 private[crypto] def mutableCopy(source: IArray[Byte]): Array[Byte] =
   val out = new Array[Byte](source.length)
-  var i   = 0
+  var i = 0
   while i < source.length do
     out(i) = source(i)
     i += 1

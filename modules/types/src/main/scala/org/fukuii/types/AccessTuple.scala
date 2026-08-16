@@ -54,6 +54,6 @@ object AccessTuple:
         else
           for
             address <- RlpCodec[Address].decode(items(0))
-            keys    <- RlpCodec[Seq[Hash]].decode(items(1))
+            keys <- RlpCodec[Seq[Hash]].decode(items(1))
           yield AccessTuple(address, keys)
       case _: RlpItem.Bytes => Left(RlpError.ExpectedSequence)

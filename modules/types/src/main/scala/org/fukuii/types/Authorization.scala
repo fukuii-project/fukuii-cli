@@ -74,9 +74,9 @@ object Authorization:
           for
             chainId <- RlpCodec[UInt256].decode(items(0))
             address <- RlpCodec[Address].decode(items(1))
-            nonce   <- RlpCodec[UInt64].decode(items(2))
-            parity  <- RlpCodec[UInt8].decode(items(3))
-            r       <- RlpCodec[UInt256].decode(items(4))
-            s       <- RlpCodec[UInt256].decode(items(5))
+            nonce <- RlpCodec[UInt64].decode(items(2))
+            parity <- RlpCodec[UInt8].decode(items(3))
+            r <- RlpCodec[UInt256].decode(items(4))
+            s <- RlpCodec[UInt256].decode(items(5))
           yield Authorization(chainId, address, nonce, parity, r, s)
       case _: RlpItem.Bytes => Left(RlpError.ExpectedSequence)

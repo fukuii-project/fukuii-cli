@@ -58,7 +58,7 @@ class Secp256r1Spec extends AnyPropSpec with TableDrivenPropertyChecks:
     * present and substantial.
     */
   property("the corpus loaded, with both outcomes represented") {
-    val valid   = corpus.count(_.shouldVerify)
+    val valid = corpus.count(_.shouldVerify)
     val invalid = corpus.count(!_.shouldVerify)
     assert(
       valid > 100 && invalid > 100,

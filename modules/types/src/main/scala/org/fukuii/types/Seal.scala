@@ -133,11 +133,11 @@ object Seal:
       case RlpItem.Bytes(payload) if payload.length == Hash.Width =>
         for
           mixHash <- RlpCodec[Hash].decode(first)
-          nonce   <- RlpCodec[BlockNonce].decode(second)
+          nonce <- RlpCodec[BlockNonce].decode(second)
         yield MixHashAndNonce(mixHash, nonce)
       case _: RlpItem.Bytes =>
         for
-          step      <- RlpCodec[UInt64].decode(first)
+          step <- RlpCodec[UInt64].decode(first)
           signature <- RlpCodec[Bytes].decode(second)
         yield AuthorityRound(step, signature)
       case _: RlpItem.Sequence => Left(RlpError.ExpectedBytes)

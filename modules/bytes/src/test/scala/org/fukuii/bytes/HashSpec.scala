@@ -16,13 +16,11 @@ class HashSpec extends AnyFlatSpec:
   private val EmptyRequests =
     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
-  "Hash.fromHex" should "round-trip a published 32-byte value" in {
+  "Hash.fromHex" should "round-trip a published 32-byte value" in
     assert(Hash.fromHex(EmptyKeccak).map(_.toHex) == Right(EmptyKeccak), "round trip must be exact")
-  }
 
-  it should "distinguish two different published values" in {
+  it should "distinguish two different published values" in
     assert(Hash.fromHex(EmptyKeccak) != Hash.fromHex(EmptyRequests), "different bytes must not compare equal")
-  }
 
   "Hash.fromBytes" should "reject an address-width input" in {
     val twenty = IArray.from(Seq.fill(20)(0.toByte))
@@ -43,9 +41,8 @@ class HashSpec extends AnyFlatSpec:
     )
   }
 
-  it should "left-pad with zero when the input is too short" in {
+  it should "left-pad with zero when the input is too short" in
     assert(Hash.fromBytesTruncating(IArray(0x10.toByte)).toHex == "0" * 62 + "10", "a short input is right-aligned")
-  }
 
   "a Hash" should "find its entry when used as a Map key" in {
     val key = Hash.fromHex(EmptyKeccak).toOption.get
@@ -59,13 +56,11 @@ class HashSpec extends AnyFlatSpec:
     assert(Set(a, b).size == 1, "value-equal members must deduplicate")
   }
 
-  it should "render with a 0x prefix in toString" in {
+  it should "render with a 0x prefix in toString" in
     assert(Hash.fromHex(EmptyKeccak).map(_.toString) == Right("0x" + EmptyKeccak), "toString is the prefixed form")
-  }
 
-  it should "render without a prefix in toHex" in {
+  it should "render without a prefix in toHex" in
     assert(Hash.fromHex(EmptyKeccak).map(_.toHex) == Right(EmptyKeccak), "toHex is the bare form")
-  }
 
   /** The pair is constructed, not searched for. Under an accumulator of the form
     * `31 * h + b` any two inputs agreeing on a prefix and then differing by
@@ -80,7 +75,7 @@ class HashSpec extends AnyFlatSpec:
     */
   it should "not collide on a pair a linear accumulator cannot separate" in {
     val prefix = "00" * 30
-    val a      = Hash.fromHex(prefix + "001f").toOption.get
-    val b      = Hash.fromHex(prefix + "0100").toOption.get
+    val a = Hash.fromHex(prefix + "001f").toOption.get
+    val b = Hash.fromHex(prefix + "0100").toOption.get
     assert(a.hashCode() != b.hashCode(), "these differ, so their hash codes must differ too")
   }

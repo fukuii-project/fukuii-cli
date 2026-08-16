@@ -77,7 +77,7 @@ object Sender:
     */
   def recover(transaction: Transaction): Either[Error, Address] =
     for
-      preimage  <- SigningPreimage.hashForRecovery(transaction).left.map(Error.UnreadableScheme.apply)
+      preimage <- SigningPreimage.hashForRecovery(transaction).left.map(Error.UnreadableScheme.apply)
       signature <- signatureOf(transaction).toRight(Error.Unrecoverable)
       publicKey <- Secp256k1.recoverPublicKey(preimage, signature).toRight(Error.Unrecoverable)
     yield addressOf(publicKey)
@@ -92,19 +92,20 @@ object Sender:
   def signatureOf(transaction: Transaction): Option[Signature] =
     transaction match
       case t: Transaction.Legacy =>
-        SignatureScheme.of(t.v).toOption.flatMap: scheme =>
-          val v = t.v.toBigInt
-          val parity = scheme match
-            case SignatureScheme.Unprotected   => v - 27
-            case SignatureScheme.Protected(id) => v - 35 - (id.toBigInt * 2)
-          if parity == 0 || parity == 1 then
-            Some(Signature(t.r.toBigInt, t.s.toBigInt, parity.toInt))
-          else None
+        SignatureScheme
+          .of(t.v)
+          .toOption
+          .flatMap: scheme =>
+            val v = t.v.toBigInt
+            val parity = scheme match
+              case SignatureScheme.Unprotected   => v - 27
+              case SignatureScheme.Protected(id) => v - 35 - (id.toBigInt * 2)
+            if parity == 0 || parity == 1 then Some(Signature(t.r.toBigInt, t.s.toBigInt, parity.toInt))
+            else None
 
       case other =>
         val parity = yParityOf(other).toBigInt
-        if parity == 0 || parity == 1 then
-          Some(Signature(rOf(other).toBigInt, sOf(other).toBigInt, parity.toInt))
+        if parity == 0 || parity == 1 then Some(Signature(rOf(other).toBigInt, sOf(other).toBigInt, parity.toInt))
         else None
 
   /** The low twenty bytes of the digest of the key's coordinate pair. */

@@ -20,7 +20,7 @@ object Keccak256:
     val buffer = mutableCopy(input)
     digest.update(buffer, 0, buffer.length)
     val out = new Array[Byte](digest.getDigestSize)
-    val _   = digest.doFinal(out, 0)
+    val _ = digest.doFinal(out, 0)
     // 32 bytes by construction, so the total constructor is right: the checked
     // one would add an error branch that cannot be reached or tested.
     Hash.fromBytesTruncating(IArray.unsafeFromArray(out))

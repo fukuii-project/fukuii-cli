@@ -59,12 +59,11 @@ class SealSpec extends AnyFlatSpec:
     )
   }
 
-  it should "still occupy exactly two elements" in {
+  it should "still occupy exactly two elements" in
     assert(
       sealOf(header.copy(seal = authorityRound)).length == Seal.FieldCount,
       "the arity is the same under either engine, which is why nothing else moves"
     )
-  }
 
   /** The discrimination, stated as the property that makes it exact rather than
     * heuristic: a mixed hash is fixed-width so its element is always 32 bytes,
@@ -117,12 +116,11 @@ class SealSpec extends AnyFlatSpec:
     * different values of one field, so there is no second branch to leave
     * behind.
     */
-  "two headers differing only in their seal" should "have different hashes" in {
+  "two headers differing only in their seal" should "have different hashes" in
     assert(
       header.hash != header.copy(seal = authorityRound).hash,
       "the seal is inside the hash preimage, so it cannot be invisible to it"
     )
-  }
 
   "a seal whose first element is a list" should "be refused" in {
     val items = RlpCodec[BlockHeader].encode(header) match
@@ -158,10 +156,9 @@ class SealSpec extends AnyFlatSpec:
       case _: RlpItem.Bytes    => Vector.empty
     assert(
       items.length == BlockHeader.MandatoryFields &&
-        Hex.encode(items(13) match {
+        Hex.encode(items(13) match
           case RlpItem.Bytes(p)    => p
-          case _: RlpItem.Sequence => IArray.empty[Byte]
-        }) == hash(7).toHex,
+          case _: RlpItem.Sequence => IArray.empty[Byte]) == hash(7).toHex,
       "elements 13 and 14 are the header's own, so nesting them would be a header no client accepts"
     )
   }

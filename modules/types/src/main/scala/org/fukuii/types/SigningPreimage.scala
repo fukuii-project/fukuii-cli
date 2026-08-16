@@ -73,9 +73,11 @@ object SigningPreimage:
   def forRecovery(transaction: Transaction): Either[SignatureScheme.Error, IArray[Byte]] =
     transaction match
       case t: Transaction.Legacy =>
-        SignatureScheme.of(t.v).map:
-          case SignatureScheme.Unprotected      => Rlp.encode(RlpItem.Sequence(signedFields(t)))
-          case SignatureScheme.Protected(id)    => Rlp.encode(RlpItem.Sequence(protectedFields(t, id)))
+        SignatureScheme
+          .of(t.v)
+          .map:
+            case SignatureScheme.Unprotected   => Rlp.encode(RlpItem.Sequence(signedFields(t)))
+            case SignatureScheme.Protected(id) => Rlp.encode(RlpItem.Sequence(protectedFields(t, id)))
       case other => Right(typedPreimage(other))
 
   /** The bytes an authorization tuple's own signer signed:

@@ -108,11 +108,11 @@ enum RlpError:
 
 object Rlp:
 
-  private val SingleByteLimit  = 0x80
-  private val ShortBytesMax    = 0xb7
-  private val LongBytesMax     = 0xbf
-  private val ShortSeqMax      = 0xf7
-  private val ShortFormLimit   = 56
+  private val SingleByteLimit = 0x80
+  private val ShortBytesMax = 0xb7
+  private val LongBytesMax = 0xbf
+  private val ShortSeqMax = 0xf7
+  private val ShortFormLimit = 56
 
   /** The deepest nesting `decode` will follow before rejecting the input.
     *
@@ -208,7 +208,7 @@ object Rlp:
     */
   private def concatAll(parts: Vector[IArray[Byte]]): IArray[Byte] =
     var total = 0L
-    var i     = 0
+    var i = 0
     while i < parts.length do
       total += parts(i).length.toLong
       i += 1
@@ -218,7 +218,7 @@ object Rlp:
     i = 0
     while i < parts.length do
       val part = parts(i)
-      var j    = 0
+      var j = 0
       while j < part.length do
         out(pos + j) = part(j)
         j += 1
@@ -247,8 +247,7 @@ object Rlp:
     readBytes(b, off + 1, len).flatMap { payload =>
       // A lone byte below 0x80 encodes as itself, so the prefixed form of one
       // is a second encoding of the same value.
-      if len == 1 && (payload(0) & 0xff) < SingleByteLimit then
-        Left(RlpError.NonCanonicalSingleByte(payload(0) & 0xff))
+      if len == 1 && (payload(0) & 0xff) < SingleByteLimit then Left(RlpError.NonCanonicalSingleByte(payload(0) & 0xff))
       else Right((RlpItem.Bytes(payload), off + 1 + len))
     }
 
@@ -263,10 +262,16 @@ object Rlp:
   private def decodeShortSequence(b: IArray[Byte], off: Int, len: Int, depth: Int): Either[RlpError, (RlpItem, Int)] =
     decodeItems(b, off + 1, len, depth).map(items => (RlpItem.Sequence(items), off + 1 + len))
 
-  private def decodeLongSequence(b: IArray[Byte], off: Int, lenOfLen: Int, depth: Int): Either[RlpError, (RlpItem, Int)] =
+  private def decodeLongSequence(
+      b: IArray[Byte],
+      off: Int,
+      lenOfLen: Int,
+      depth: Int
+  ): Either[RlpError, (RlpItem, Int)] =
     readLength(b, off + 1, lenOfLen).flatMap { len =>
       if len < ShortFormLimit then Left(RlpError.NonOptimalLength(len))
-      else decodeItems(b, off + 1 + lenOfLen, len, depth).map(items => (RlpItem.Sequence(items), off + 1 + lenOfLen + len))
+      else
+        decodeItems(b, off + 1 + lenOfLen, len, depth).map(items => (RlpItem.Sequence(items), off + 1 + lenOfLen + len))
     }
 
   private def decodeItems(b: IArray[Byte], off: Int, len: Int, depth: Int): Either[RlpError, Vector[RlpItem]] =

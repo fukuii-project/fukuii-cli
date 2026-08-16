@@ -34,20 +34,18 @@ class TransactionSpec extends AnyFlatSpec:
   private def envelopeOfType(typeByte: Int): IArray[Byte] =
     IArray(typeByte.toByte) ++ Rlp.encode(RlpItem.Sequence(Vector(RlpItem.Bytes(IArray.empty[Byte]))))
 
-  "fromCanonicalBytes" should "refuse the largest type number EIP-2718 admits, as an unknown type" in {
+  "fromCanonicalBytes" should "refuse the largest type number EIP-2718 admits, as an unknown type" in
     assert(
       Transaction.fromCanonicalBytes(envelopeOfType(TransactionType.MaxTypeNumber)) ==
         Left(RlpError.UnknownDiscriminant(TransactionType.MaxTypeNumber)),
       "0x7f is a legal type number with no payload defined, so it is unknown rather than legacy"
     )
-  }
 
-  it should "refuse a type number between the modeled set and the envelope's ceiling" in {
+  it should "refuse a type number between the modeled set and the envelope's ceiling" in
     assert(
       Transaction.fromCanonicalBytes(envelopeOfType(0x05)) == Left(RlpError.UnknownDiscriminant(0x05)),
       "an undefined type is refused by number, not by payload shape"
     )
-  }
 
   it should "read a leading byte above the ceiling as a legacy list rather than a type" in {
     val encoded = Transaction.canonicalBytes(legacy(27))
@@ -57,33 +55,28 @@ class TransactionSpec extends AnyFlatSpec:
     )
   }
 
-  it should "reject empty input" in {
+  it should "reject empty input" in
     assert(Transaction.fromCanonicalBytes(IArray.empty[Byte]) == Left(RlpError.EmptyInput))
-  }
 
   /** The mutation that flipped EIP-155's base survived the corpus rows,
     * because integer division hides the error at even parity. Both parities
     * are pinned here so the arithmetic is exercised on the side that shows it.
     */
-  "SignatureScheme" should "read the unprotected scheme from a v of 27" in {
+  "SignatureScheme" should "read the unprotected scheme from a v of 27" in
     assert(SignatureScheme.of(legacy(27).v) == Right(SignatureScheme.Unprotected))
-  }
 
-  it should "read the unprotected scheme from a v of 28" in {
+  it should "read the unprotected scheme from a v of 28" in
     assert(SignatureScheme.of(legacy(28).v) == Right(SignatureScheme.Unprotected))
-  }
 
-  it should "recover chain identifier 1 from the even-parity v of 37" in {
+  it should "recover chain identifier 1 from the even-parity v of 37" in
     assert(
       SignatureScheme.of(legacy(37).v) == Right(SignatureScheme.Protected(UInt64.fromLong(1).toOption.get))
     )
-  }
 
-  it should "recover chain identifier 1 from the odd-parity v of 38" in {
+  it should "recover chain identifier 1 from the odd-parity v of 38" in
     assert(
       SignatureScheme.of(legacy(38).v) == Right(SignatureScheme.Protected(UInt64.fromLong(1).toOption.get))
     )
-  }
 
   it should "recover a large chain identifier, where the doubling could overflow a smaller word" in {
     val id = BigInt(61)
@@ -93,16 +86,15 @@ class TransactionSpec extends AnyFlatSpec:
     )
   }
 
-  it should "refuse a v that names neither scheme" in {
+  it should "refuse a v that names neither scheme" in
     assert(SignatureScheme.of(legacy(26).v).isLeft, "26 is below every scheme's range")
-  }
 
   /** Contract creation is the empty byte string, and the zero address is a
     * real account twenty bytes wide. Collapsing them sends value to 0x0.
     */
   "the codec" should "encode an absent recipient as the empty string, not the zero address" in {
     val creation = legacy(27).copy(to = None)
-    val encoded  = Hex.encode(Transaction.canonicalBytes(creation))
+    val encoded = Hex.encode(Transaction.canonicalBytes(creation))
     assert(
       !encoded.contains("94" + "00" * 20),
       "an absent recipient must not encode as a twenty-byte address"
@@ -117,15 +109,14 @@ class TransactionSpec extends AnyFlatSpec:
   }
 
   it should "distinguish a creation from a transfer to the zero address" in {
-    val zero     = Address.fromBytes(IArray.fill(20)(0.toByte)).toOption.get
+    val zero = Address.fromBytes(IArray.fill(20)(0.toByte)).toOption.get
     val creation = Transaction.canonicalBytes(legacy(27).copy(to = None))
-    val toZero   = Transaction.canonicalBytes(legacy(27).copy(to = Some(zero)))
+    val toZero = Transaction.canonicalBytes(legacy(27).copy(to = Some(zero)))
     assert(Hex.encode(creation) != Hex.encode(toZero))
   }
 
   /** A legacy transaction nests into a block body as the list itself, so its
     * codec output must not acquire a string header.
     */
-  "the block-body form" should "nest a legacy transaction as a sequence" in {
+  "the block-body form" should "nest a legacy transaction as a sequence" in
     assert(RlpCodec[Transaction].encode(legacy(27)).isInstanceOf[RlpItem.Sequence])
-  }

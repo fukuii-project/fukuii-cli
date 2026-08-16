@@ -27,10 +27,10 @@ private[fukuii] object FixedWidth:
     * for a value derived from a hash it is a different account.
     */
   def align(bytes: IArray[Byte], width: Int): IArray[Byte] =
-    val out    = new Array[Byte](width)
-    val src    = if bytes.length > width then bytes.length - width else 0
+    val out = new Array[Byte](width)
+    val src = if bytes.length > width then bytes.length - width else 0
     val copied = bytes.length - src
-    var i      = 0
+    var i = 0
     while i < copied do
       out(width - copied + i) = bytes(src + i)
       i += 1
@@ -70,7 +70,7 @@ private[fukuii] object FixedWidth:
   def sameBytes(a: IArray[Byte], b: IArray[Byte]): Boolean =
     if a.length != b.length then false
     else
-      var i    = 0
+      var i = 0
       var same = true
       while i < a.length && same do
         if a(i) != b(i) then same = false

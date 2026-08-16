@@ -40,7 +40,7 @@ class ReceiptPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
       canonical: String
   ):
     def bytes: IArray[Byte] = Hex.decode(canonical).toOption.get
-    def decoded: Receipt    = Receipt.fromCanonicalBytes(bytes).toOption.get
+    def decoded: Receipt = Receipt.fromCanonicalBytes(bytes).toOption.get
 
     def expectedOutcome: PostStateOrStatus = outcome match
       case "ok"   => PostStateOrStatus.Successful
@@ -86,11 +86,14 @@ class ReceiptPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     * pre-Byzantium block, and would do so with a full green.
     */
   property("the table spans all three forms of the first field") {
-    val forms = vectors.map(_.expectedOutcome).map {
-      case PostStateOrStatus.PostState(_) => "root"
-      case PostStateOrStatus.Successful   => "ok"
-      case PostStateOrStatus.Failed       => "fail"
-    }.toSet
+    val forms = vectors
+      .map(_.expectedOutcome)
+      .map {
+        case PostStateOrStatus.PostState(_) => "root"
+        case PostStateOrStatus.Successful   => "ok"
+        case PostStateOrStatus.Failed       => "fail"
+      }
+      .toSet
     assert(
       forms == Set("root", "ok", "fail"),
       s"only ${forms.toSeq.sorted.mkString(",")} present — a form is untested"

@@ -37,7 +37,7 @@ object Hex:
   def encode(bytes: IArray[Byte]): String =
     require(bytes.length <= MaxEncodable, "hex encoding needs two chars per byte; input is too long to represent")
     val out = new Array[Char](bytes.length * 2)
-    var i   = 0
+    var i = 0
     while i < bytes.length do
       val b = bytes(i) & 0xff
       out(i * 2) = Digits(b >>> 4)

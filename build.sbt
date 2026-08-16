@@ -225,7 +225,7 @@ lazy val scalatestVersion = "3.2.20"
 // artifacts above — it resolves scalatest-core_3, which scalatest-flatspec_3
 // already pulls — so this adds no admissibility surface beyond what the build
 // already carried.
-lazy val scalacheckVersion       = "1.19.0"
+lazy val scalacheckVersion = "1.19.0"
 lazy val scalacheckBridgeVersion = "3.2.20.0"
 
 // BouncyCastle: L0's cryptography provider, and the build's FIRST compile-scope
@@ -252,11 +252,11 @@ lazy val bouncyCastleVersion = "1.85"
 // A per-module copy is how one module silently ends up on a different test
 // stack than its siblings.
 lazy val testDeps = Seq(
-  "org.scalatest"     %% "scalatest-flatspec"    % scalatestVersion       % Test,
-  "org.scalatest"     %% "scalatest-propspec"    % scalatestVersion       % Test,
-  "org.scalatest"     %% "scalatest-featurespec" % scalatestVersion       % Test,
-  "org.scalacheck"    %% "scalacheck"            % scalacheckVersion      % Test,
-  "org.scalatestplus" %% "scalacheck-1-19"       % scalacheckBridgeVersion % Test
+  "org.scalatest" %% "scalatest-flatspec" % scalatestVersion % Test,
+  "org.scalatest" %% "scalatest-propspec" % scalatestVersion % Test,
+  "org.scalatest" %% "scalatest-featurespec" % scalatestVersion % Test,
+  "org.scalacheck" %% "scalacheck" % scalacheckVersion % Test,
+  "org.scalatestplus" %% "scalacheck-1-19" % scalacheckBridgeVersion % Test
 )
 
 // ───────────────────────────── The module tree ─────────────────────────────

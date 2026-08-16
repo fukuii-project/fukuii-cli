@@ -57,8 +57,8 @@ class BlockHeaderPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
   private def bytesOf(cell: String): IArray[Byte] =
     if cell == "-" then IArray.empty else Hex.decode(cell).toOption.get
 
-  private def hashOf(cell: String): Hash          = Hash.fromHex(cell).toOption.get
-  private def wordOf(cell: String): UInt256       = UInt256.fromBytes(bytesOf(cell)).toOption.get
+  private def hashOf(cell: String): Hash = Hash.fromHex(cell).toOption.get
+  private def wordOf(cell: String): UInt256 = UInt256.fromBytes(bytesOf(cell)).toOption.get
   private def machineWordOf(cell: String): UInt64 = UInt64.fromBytes(bytesOf(cell)).toOption.get
 
   /** Builds the tail by an explicit case per field count.
@@ -68,12 +68,12 @@ class BlockHeaderPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     * is the failure this whole suite is arranged to avoid.
     */
   private def tailOf(n: Int, f: IndexedSeq[String]): Option[BaseFeeTail] =
-    def baseFee   = wordOf(f(15))
-    def withdraw  = hashOf(f(16))
-    def blobUsed  = machineWordOf(f(17))
+    def baseFee = wordOf(f(15))
+    def withdraw = hashOf(f(16))
+    def blobUsed = machineWordOf(f(17))
     def blobExtra = machineWordOf(f(18))
-    def beacon    = hashOf(f(19))
-    def requests  = hashOf(f(20))
+    def beacon = hashOf(f(19))
+    def requests = hashOf(f(20))
     n match
       case 15 => None
       case 16 => Some(BaseFeeTail(baseFee))
@@ -167,8 +167,8 @@ class BlockHeaderPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
   property("the assembled genesis row carries a non-zero nonce and is still exact") {
     val genesis = vectors.find(_.network == "mainnet-genesis").get
     val nonceHex = genesis.header.seal match
-      case Seal.MixHashAndNonce(_, nonce)      => nonce.toHex
-      case _: Seal.AuthorityRound     => "not a proof-of-work seal"
+      case Seal.MixHashAndNonce(_, nonce) => nonce.toHex
+      case _: Seal.AuthorityRound         => "not a proof-of-work seal"
     assert(
       nonceHex == "0000000000000042" && genesis.header.hash.toHex == genesis.hash,
       "a nonce with leading zeros survives, and the hash still lands"

@@ -92,7 +92,7 @@ object Bloom:
     */
   private def addEntry(bits: Array[Byte], entry: IArray[Byte]): Unit =
     val hashed = Keccak256.hash(entry).toBytes
-    var pair   = 0
+    var pair = 0
     while pair < 6 do
       val low11 = (((hashed(pair) & 0xff) << 8) | (hashed(pair + 1) & 0xff)) & 0x7ff
       val index = 0x7ff - low11

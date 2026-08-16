@@ -27,13 +27,12 @@ class BlockSpec extends AnyFlatSpec:
   private def decodeBody(items: Vector[RlpItem]): Either[RlpError, BlockBody] =
     RlpCodec[BlockBody].decode(RlpItem.Sequence(items))
 
-  "a block of two elements" should "be refused" in {
+  "a block of two elements" should "be refused" in
     assert(
       decodeBlock(blockItems.dropRight(1)) ==
         Left(RlpError.WrongArity(Block.WithWithdrawalsFields, 2)),
       "a block is a header plus a body, so two elements is missing one"
     )
-  }
 
   "a block of five elements" should "be refused rather than truncated to four" in {
     val tooLong = blockItems ++ Vector(RlpItem.Sequence(Vector.empty), RlpItem.Sequence(Vector.empty))
@@ -43,28 +42,25 @@ class BlockSpec extends AnyFlatSpec:
     )
   }
 
-  "a byte string where a block is expected" should "be refused" in {
+  "a byte string where a block is expected" should "be refused" in
     assert(
       RlpCodec[Block].decode(RlpItem.Bytes(IArray.empty)) == Left(RlpError.ExpectedSequence),
       "a block is a list"
     )
-  }
 
-  "a block whose header element is a byte string" should "be refused" in {
+  "a block whose header element is a byte string" should "be refused" in
     assert(
       decodeBlock(blockItems.updated(0, RlpItem.Bytes(IArray.empty))) ==
         Left(RlpError.ExpectedSequence),
       "the first element is a header, which is a list"
     )
-  }
 
-  "a body of one element" should "be refused" in {
+  "a body of one element" should "be refused" in
     assert(
       decodeBody(Vector(RlpItem.Sequence(Vector.empty))) ==
         Left(RlpError.WrongArity(BlockBody.WithWithdrawalsFields, 1)),
       "a body is transactions and ommers at minimum"
     )
-  }
 
   "a body of four elements" should "be refused" in {
     val tooLong = Vector.fill(4)(RlpItem.Sequence(Vector.empty))
@@ -81,7 +77,7 @@ class BlockSpec extends AnyFlatSpec:
     */
   "an absent withdrawals element" should "not encode the same as an empty one" in {
     val absent = BlockBody(Seq.empty, Seq.empty, None)
-    val empty  = BlockBody(Seq.empty, Seq.empty, Some(Seq.empty))
+    val empty = BlockBody(Seq.empty, Seq.empty, Some(Seq.empty))
     assert(
       RlpCodec.encodeTo(absent).toSeq != RlpCodec.encodeTo(empty).toSeq,
       "three elements and two are different bodies, not two spellings of one"

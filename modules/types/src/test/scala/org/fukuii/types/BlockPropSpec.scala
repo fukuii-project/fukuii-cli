@@ -38,7 +38,7 @@ class BlockPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
       encoded: String
   ):
     def bytes: IArray[Byte] = Hex.decode(encoded).toOption.get
-    def decoded: Block      = RlpCodec.decodeFrom[Block](bytes).toOption.get
+    def decoded: Block = RlpCodec.decodeFrom[Block](bytes).toOption.get
     def carriesWithdrawalsElement: Boolean = withdrawalCount >= 0
 
   private def parse(line: String): Vector =
@@ -78,7 +78,7 @@ class BlockPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     * about different forks, and they are one element apart in the encoding.
     */
   property("the table spans an empty withdrawals list and an absent one") {
-    val empty  = vectors.exists(v => v.carriesWithdrawalsElement && v.withdrawalCount == 0)
+    val empty = vectors.exists(v => v.carriesWithdrawalsElement && v.withdrawalCount == 0)
     val absent = vectors.exists(v => !v.carriesWithdrawalsElement)
     assert(empty && absent, "both the empty list and the absent element must appear")
   }

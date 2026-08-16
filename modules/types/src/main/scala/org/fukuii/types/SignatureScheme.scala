@@ -36,9 +36,9 @@ object SignatureScheme:
     case NotASignatureV(v: BigInt)
     case ChainIdTooLarge(v: BigInt)
 
-  private val UnprotectedLow: BigInt  = 27
+  private val UnprotectedLow: BigInt = 27
   private val UnprotectedHigh: BigInt = 28
-  private val ProtectedBase: BigInt   = 35
+  private val ProtectedBase: BigInt = 35
 
   /** Classifies a legacy `v`.
     *

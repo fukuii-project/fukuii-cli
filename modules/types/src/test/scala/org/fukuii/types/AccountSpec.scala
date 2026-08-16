@@ -33,27 +33,24 @@ class AccountSpec extends AnyFlatSpec:
     case RlpItem.Sequence(items) => items
     case _: RlpItem.Bytes        => Vector.empty
 
-  private val encoded  = RlpCodec[Account].encode(account)
-  private val tooLong  = RlpItem.Sequence(itemsOf(encoded) :+ RlpItem.Bytes(IArray.empty))
+  private val encoded = RlpCodec[Account].encode(account)
+  private val tooLong = RlpItem.Sequence(itemsOf(encoded) :+ RlpItem.Bytes(IArray.empty))
   private val tooShort = RlpItem.Sequence(itemsOf(encoded).dropRight(1))
 
-  "an account of five elements" should "be refused rather than truncated to four" in {
+  "an account of five elements" should "be refused rather than truncated to four" in
     assert(
       RlpCodec[Account].decode(tooLong) == Left(RlpError.WrongArity(Account.FieldCount, 5)),
       "the account encoding has never grown, so a fifth element is malformed"
     )
-  }
 
-  "an account of three elements" should "be refused" in {
+  "an account of three elements" should "be refused" in
     assert(
       RlpCodec[Account].decode(tooShort) == Left(RlpError.WrongArity(Account.FieldCount, 3)),
       "four fields or none"
     )
-  }
 
-  "a byte string where an account is expected" should "be refused" in {
+  "a byte string where an account is expected" should "be refused" in
     assert(
       RlpCodec[Account].decode(RlpItem.Bytes(IArray.empty)) == Left(RlpError.ExpectedSequence),
       "an account is a list"
     )
-  }

@@ -97,16 +97,16 @@ final case class BlockHeader(
 ):
 
   private def withdrawalsTail: Option[WithdrawalsTail] = tail.flatMap(_.next)
-  private def blobGasTail: Option[BlobGasTail]         = withdrawalsTail.flatMap(_.next)
-  private def beaconRootTail: Option[BeaconRootTail]   = blobGasTail.flatMap(_.next)
-  private def requestsTail: Option[RequestsTail]       = beaconRootTail.flatMap(_.next)
+  private def blobGasTail: Option[BlobGasTail] = withdrawalsTail.flatMap(_.next)
+  private def beaconRootTail: Option[BeaconRootTail] = blobGasTail.flatMap(_.next)
+  private def requestsTail: Option[RequestsTail] = beaconRootTail.flatMap(_.next)
 
-  def baseFeePerGas: Option[UInt256]      = tail.map(_.baseFeePerGas)
-  def withdrawalsRoot: Option[Hash]       = withdrawalsTail.map(_.withdrawalsRoot)
-  def blobGasUsed: Option[UInt64]         = blobGasTail.map(_.blobGasUsed)
-  def excessBlobGas: Option[UInt64]       = blobGasTail.map(_.excessBlobGas)
+  def baseFeePerGas: Option[UInt256] = tail.map(_.baseFeePerGas)
+  def withdrawalsRoot: Option[Hash] = withdrawalsTail.map(_.withdrawalsRoot)
+  def blobGasUsed: Option[UInt64] = blobGasTail.map(_.blobGasUsed)
+  def excessBlobGas: Option[UInt64] = blobGasTail.map(_.excessBlobGas)
   def parentBeaconBlockRoot: Option[Hash] = beaconRootTail.map(_.parentBeaconBlockRoot)
-  def requestsHash: Option[Hash]          = requestsTail.map(_.requestsHash)
+  def requestsHash: Option[Hash] = requestsTail.map(_.requestsHash)
 
   /** Trailing elements carried but not interpreted — see [[UnmodeledTail]].
     *
@@ -276,7 +276,7 @@ object BlockHeader:
       case Some(w) => RlpCodec[Hash].encode(w.withdrawalsRoot) +: encodeBlobGas(w.next)
 
     private def encodeBlobGas(tail: Option[BlobGasTail]): Vector[RlpItem] = tail match
-      case None => Vector.empty
+      case None    => Vector.empty
       case Some(b) =>
         Vector(
           RlpCodec[UInt64].encode(b.blobGasUsed),
@@ -288,7 +288,7 @@ object BlockHeader:
       case Some(r) => RlpCodec[Hash].encode(r.parentBeaconBlockRoot) +: encodeRequests(r.next)
 
     private def encodeRequests(tail: Option[RequestsTail]): Vector[RlpItem] = tail match
-      case None => Vector.empty
+      case None    => Vector.empty
       case Some(q) =>
         RlpCodec[Hash].encode(q.requestsHash) +: q.next.map(_.items).getOrElse(Vector.empty)
 
@@ -297,27 +297,26 @@ object BlockHeader:
       * refused.
       */
     def decode(item: RlpItem): Either[RlpError, BlockHeader] = item match
-      case RlpItem.Bytes(_) => Left(RlpError.ExpectedSequence)
+      case RlpItem.Bytes(_)        => Left(RlpError.ExpectedSequence)
       case RlpItem.Sequence(items) =>
-        if items.length < MandatoryFields then
-          Left(RlpError.WrongArity(MandatoryFields, items.length))
+        if items.length < MandatoryFields then Left(RlpError.WrongArity(MandatoryFields, items.length))
         else
           for
-            parentHash       <- RlpCodec[Hash].decode(items(0))
-            ommersHash       <- RlpCodec[Hash].decode(items(1))
-            beneficiary      <- RlpCodec[Address].decode(items(2))
-            stateRoot        <- RlpCodec[Hash].decode(items(3))
+            parentHash <- RlpCodec[Hash].decode(items(0))
+            ommersHash <- RlpCodec[Hash].decode(items(1))
+            beneficiary <- RlpCodec[Address].decode(items(2))
+            stateRoot <- RlpCodec[Hash].decode(items(3))
             transactionsRoot <- RlpCodec[Hash].decode(items(4))
-            receiptsRoot     <- RlpCodec[Hash].decode(items(5))
-            logsBloom        <- RlpCodec[Bloom].decode(items(6))
-            difficulty       <- RlpCodec[UInt256].decode(items(7))
-            number           <- RlpCodec[UInt64].decode(items(8))
-            gasLimit         <- RlpCodec[UInt64].decode(items(9))
-            gasUsed          <- RlpCodec[UInt64].decode(items(10))
-            timestamp        <- RlpCodec[UInt64].decode(items(11))
-            extraData        <- RlpCodec[Bytes].decode(items(12))
-            seal             <- Seal.fromFields(items(13), items(14))
-            tail             <- decodeTail(items)
+            receiptsRoot <- RlpCodec[Hash].decode(items(5))
+            logsBloom <- RlpCodec[Bloom].decode(items(6))
+            difficulty <- RlpCodec[UInt256].decode(items(7))
+            number <- RlpCodec[UInt64].decode(items(8))
+            gasLimit <- RlpCodec[UInt64].decode(items(9))
+            gasUsed <- RlpCodec[UInt64].decode(items(10))
+            timestamp <- RlpCodec[UInt64].decode(items(11))
+            extraData <- RlpCodec[Bytes].decode(items(12))
+            seal <- Seal.fromFields(items(13), items(14))
+            tail <- decodeTail(items)
           yield BlockHeader(
             parentHash,
             ommersHash,
@@ -369,7 +368,7 @@ object BlockHeader:
       else
         for
           baseFee <- RlpCodec[UInt256].decode(items(15))
-          rest    <- decodeWithdrawals(items)
+          rest <- decodeWithdrawals(items)
         yield Some(BaseFeeTail(baseFee, rest))
 
     private def decodeWithdrawals(items: Vector[RlpItem]): Either[RlpError, Option[WithdrawalsTail]] =
@@ -384,9 +383,9 @@ object BlockHeader:
       if items.length == MandatoryFields + 2 then Right(None)
       else
         for
-          used   <- RlpCodec[UInt64].decode(items(17))
+          used <- RlpCodec[UInt64].decode(items(17))
           excess <- RlpCodec[UInt64].decode(items(18))
-          rest   <- decodeBeaconRoot(items)
+          rest <- decodeBeaconRoot(items)
         yield Some(BlobGasTail(used, excess, rest))
 
     private def decodeBeaconRoot(items: Vector[RlpItem]): Either[RlpError, Option[BeaconRootTail]] =

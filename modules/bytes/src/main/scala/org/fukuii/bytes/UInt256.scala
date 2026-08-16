@@ -102,6 +102,6 @@ object UInt256:
   private def minimal(value: BigInt): IArray[Byte] =
     if value.signum == 0 then IArray.empty[Byte]
     else
-      val raw  = value.toByteArray
+      val raw = value.toByteArray
       val from = if raw(0) == 0 then 1 else 0
       IArray.unsafeFromArray(java.util.Arrays.copyOfRange(raw, from, raw.length))

@@ -47,8 +47,8 @@ enum TransactionType(val number: Int):
 
   case AccessList extends TransactionType(0x01)
   case DynamicFee extends TransactionType(0x02)
-  case Blob       extends TransactionType(0x03)
-  case SetCode    extends TransactionType(0x04)
+  case Blob extends TransactionType(0x03)
+  case SetCode extends TransactionType(0x04)
 
 object TransactionType:
 

@@ -75,7 +75,7 @@ object Log:
         else
           for
             address <- RlpCodec[Address].decode(items(0))
-            topics  <- RlpCodec[Seq[Hash]].decode(items(1))
-            data    <- RlpCodec[Bytes].decode(items(2))
+            topics <- RlpCodec[Seq[Hash]].decode(items(1))
+            data <- RlpCodec[Bytes].decode(items(2))
           yield Log(address, topics, data)
       case _: RlpItem.Bytes => Left(RlpError.ExpectedSequence)

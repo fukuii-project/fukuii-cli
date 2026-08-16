@@ -48,7 +48,7 @@ object ConstantTime:
     // equal lengths contribute zero, unequal lengths can never come back to
     // zero, and no branch is taken on the answer.
     var diff = a.length ^ b.length
-    var i    = 0
+    var i = 0
     while i < shared do
       diff |= a(i) ^ b(i)
       i += 1

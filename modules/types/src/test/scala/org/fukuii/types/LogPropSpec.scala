@@ -110,7 +110,7 @@ class LogPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     */
   property("a single zero data byte does not collapse into the empty string") {
     val zeroByte = vectors.find(_.label == "data-single-zero-byte").get
-    val empty    = vectors.find(_.label == "no-topics-no-data").get
+    val empty = vectors.find(_.label == "no-topics-no-data").get
     assert(
       zeroByte.rlp != empty.rlp && Hex.encode(RlpCodec.encodeTo(zeroByte.log)) == zeroByte.rlp,
       "0x00 is one byte of data, not an absent one"

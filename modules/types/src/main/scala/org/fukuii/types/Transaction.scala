@@ -100,7 +100,7 @@ object Transaction:
       s: UInt256
   ) extends Transaction:
     def transactionType: TransactionType = TransactionType.Legacy
-    lazy val hash: Hash  = Keccak256.hash(canonicalBytes(this))
+    lazy val hash: Hash = Keccak256.hash(canonicalBytes(this))
 
   /** EIP-2930's payload: the legacy fields, a chain identifier, and an access
     * list.
@@ -167,8 +167,8 @@ object Transaction:
       s: UInt256
   ) extends Transaction:
     def transactionType: TransactionType = TransactionType.Blob
-    def to: Option[Address]  = Some(recipient)
-    lazy val hash: Hash      = Keccak256.hash(canonicalBytes(this))
+    def to: Option[Address] = Some(recipient)
+    lazy val hash: Hash = Keccak256.hash(canonicalBytes(this))
 
   /** EIP-7702's payload.
     *
@@ -199,7 +199,7 @@ object Transaction:
   ) extends Transaction:
     def transactionType: TransactionType = TransactionType.SetCode
     def to: Option[Address] = Some(recipient)
-    lazy val hash: Hash     = Keccak256.hash(canonicalBytes(this))
+    lazy val hash: Hash = Keccak256.hash(canonicalBytes(this))
 
   /** The tag numbers themselves live on [[TransactionType]], which a receipt
     * carries too. Only the field counts are here, because only a transaction
@@ -267,7 +267,7 @@ object Transaction:
     */
   def canonicalBytes(transaction: Transaction): IArray[Byte] = transaction match
     case t: Legacy => Rlp.encode(RlpItem.Sequence(legacyFields(t)))
-    case other =>
+    case other     =>
       val body = Rlp.encode(RlpItem.Sequence(payloadFields(other)))
       IArray(other.typeNumber.toByte) ++ body
 
@@ -380,26 +380,25 @@ object Transaction:
     case other                                     => RlpCodec[Address].decode(other).map(Some.apply)
 
   private def decodeLegacyItem(item: RlpItem): Either[RlpError, Transaction] = item match
-    case RlpItem.Bytes(_) => Left(RlpError.ExpectedSequence)
+    case RlpItem.Bytes(_)        => Left(RlpError.ExpectedSequence)
     case RlpItem.Sequence(items) =>
-      if items.length != Legacy.FieldCount then
-        Left(RlpError.WrongArity(Legacy.FieldCount, items.length))
+      if items.length != Legacy.FieldCount then Left(RlpError.WrongArity(Legacy.FieldCount, items.length))
       else
         for
-          nonce    <- RlpCodec[UInt64].decode(items(0))
+          nonce <- RlpCodec[UInt64].decode(items(0))
           gasPrice <- RlpCodec[UInt256].decode(items(1))
           gasLimit <- RlpCodec[UInt64].decode(items(2))
-          to       <- decodeRecipient(items(3))
-          value    <- RlpCodec[UInt256].decode(items(4))
-          data     <- RlpCodec[Bytes].decode(items(5))
-          v        <- RlpCodec[UInt256].decode(items(6))
-          r        <- RlpCodec[UInt256].decode(items(7))
-          s        <- RlpCodec[UInt256].decode(items(8))
+          to <- decodeRecipient(items(3))
+          value <- RlpCodec[UInt256].decode(items(4))
+          data <- RlpCodec[Bytes].decode(items(5))
+          v <- RlpCodec[UInt256].decode(items(6))
+          r <- RlpCodec[UInt256].decode(items(7))
+          s <- RlpCodec[UInt256].decode(items(8))
         yield Legacy(nonce, gasPrice, gasLimit, to, value, data, v, r, s)
 
   private def decodeTypedPayload(typeNumber: Int, item: RlpItem): Either[RlpError, Transaction] =
     item match
-      case RlpItem.Bytes(_) => Left(RlpError.ExpectedSequence)
+      case RlpItem.Bytes(_)        => Left(RlpError.ExpectedSequence)
       case RlpItem.Sequence(items) =>
         TransactionType.fromNumber(typeNumber) match
           case Some(TransactionType.AccessList) => decodeAccessList(items)
@@ -409,61 +408,58 @@ object Transaction:
           case _                                => Left(RlpError.UnknownDiscriminant(typeNumber))
 
   private def decodeAccessList(items: Vector[RlpItem]): Either[RlpError, Transaction] =
-    if items.length != AccessList.FieldCount then
-      Left(RlpError.WrongArity(AccessList.FieldCount, items.length))
+    if items.length != AccessList.FieldCount then Left(RlpError.WrongArity(AccessList.FieldCount, items.length))
     else
       for
-        chainId  <- RlpCodec[UInt64].decode(items(0))
-        nonce    <- RlpCodec[UInt64].decode(items(1))
+        chainId <- RlpCodec[UInt64].decode(items(0))
+        nonce <- RlpCodec[UInt64].decode(items(1))
         gasPrice <- RlpCodec[UInt256].decode(items(2))
         gasLimit <- RlpCodec[UInt64].decode(items(3))
-        to       <- decodeRecipient(items(4))
-        value    <- RlpCodec[UInt256].decode(items(5))
-        data     <- RlpCodec[Bytes].decode(items(6))
-        access   <- RlpCodec[Seq[AccessTuple]].decode(items(7))
-        yParity  <- RlpCodec[UInt256].decode(items(8))
-        r        <- RlpCodec[UInt256].decode(items(9))
-        s        <- RlpCodec[UInt256].decode(items(10))
+        to <- decodeRecipient(items(4))
+        value <- RlpCodec[UInt256].decode(items(5))
+        data <- RlpCodec[Bytes].decode(items(6))
+        access <- RlpCodec[Seq[AccessTuple]].decode(items(7))
+        yParity <- RlpCodec[UInt256].decode(items(8))
+        r <- RlpCodec[UInt256].decode(items(9))
+        s <- RlpCodec[UInt256].decode(items(10))
       yield AccessList(chainId, nonce, gasPrice, gasLimit, to, value, data, access, yParity, r, s)
 
   private def decodeDynamicFee(items: Vector[RlpItem]): Either[RlpError, Transaction] =
-    if items.length != DynamicFee.FieldCount then
-      Left(RlpError.WrongArity(DynamicFee.FieldCount, items.length))
+    if items.length != DynamicFee.FieldCount then Left(RlpError.WrongArity(DynamicFee.FieldCount, items.length))
     else
       for
-        chainId  <- RlpCodec[UInt64].decode(items(0))
-        nonce    <- RlpCodec[UInt64].decode(items(1))
-        tip      <- RlpCodec[UInt256].decode(items(2))
-        cap      <- RlpCodec[UInt256].decode(items(3))
+        chainId <- RlpCodec[UInt64].decode(items(0))
+        nonce <- RlpCodec[UInt64].decode(items(1))
+        tip <- RlpCodec[UInt256].decode(items(2))
+        cap <- RlpCodec[UInt256].decode(items(3))
         gasLimit <- RlpCodec[UInt64].decode(items(4))
-        to       <- decodeRecipient(items(5))
-        value    <- RlpCodec[UInt256].decode(items(6))
-        data     <- RlpCodec[Bytes].decode(items(7))
-        access   <- RlpCodec[Seq[AccessTuple]].decode(items(8))
-        yParity  <- RlpCodec[UInt256].decode(items(9))
-        r        <- RlpCodec[UInt256].decode(items(10))
-        s        <- RlpCodec[UInt256].decode(items(11))
+        to <- decodeRecipient(items(5))
+        value <- RlpCodec[UInt256].decode(items(6))
+        data <- RlpCodec[Bytes].decode(items(7))
+        access <- RlpCodec[Seq[AccessTuple]].decode(items(8))
+        yParity <- RlpCodec[UInt256].decode(items(9))
+        r <- RlpCodec[UInt256].decode(items(10))
+        s <- RlpCodec[UInt256].decode(items(11))
       yield DynamicFee(chainId, nonce, tip, cap, gasLimit, to, value, data, access, yParity, r, s)
 
   private def decodeBlob(items: Vector[RlpItem]): Either[RlpError, Transaction] =
-    if items.length != Blob.FieldCount then
-      Left(RlpError.WrongArity(Blob.FieldCount, items.length))
+    if items.length != Blob.FieldCount then Left(RlpError.WrongArity(Blob.FieldCount, items.length))
     else
       for
-        chainId   <- RlpCodec[UInt64].decode(items(0))
-        nonce     <- RlpCodec[UInt64].decode(items(1))
-        tip       <- RlpCodec[UInt256].decode(items(2))
-        cap       <- RlpCodec[UInt256].decode(items(3))
-        gasLimit  <- RlpCodec[UInt64].decode(items(4))
+        chainId <- RlpCodec[UInt64].decode(items(0))
+        nonce <- RlpCodec[UInt64].decode(items(1))
+        tip <- RlpCodec[UInt256].decode(items(2))
+        cap <- RlpCodec[UInt256].decode(items(3))
+        gasLimit <- RlpCodec[UInt64].decode(items(4))
         recipient <- RlpCodec[Address].decode(items(5))
-        value     <- RlpCodec[UInt256].decode(items(6))
-        data      <- RlpCodec[Bytes].decode(items(7))
-        access    <- RlpCodec[Seq[AccessTuple]].decode(items(8))
-        blobFee   <- RlpCodec[UInt256].decode(items(9))
-        hashes    <- RlpCodec[Seq[Hash]].decode(items(10))
-        yParity   <- RlpCodec[UInt256].decode(items(11))
-        r         <- RlpCodec[UInt256].decode(items(12))
-        s         <- RlpCodec[UInt256].decode(items(13))
+        value <- RlpCodec[UInt256].decode(items(6))
+        data <- RlpCodec[Bytes].decode(items(7))
+        access <- RlpCodec[Seq[AccessTuple]].decode(items(8))
+        blobFee <- RlpCodec[UInt256].decode(items(9))
+        hashes <- RlpCodec[Seq[Hash]].decode(items(10))
+        yParity <- RlpCodec[UInt256].decode(items(11))
+        r <- RlpCodec[UInt256].decode(items(12))
+        s <- RlpCodec[UInt256].decode(items(13))
       yield Blob(
         chainId,
         nonce,
@@ -482,23 +478,22 @@ object Transaction:
       )
 
   private def decodeSetCode(items: Vector[RlpItem]): Either[RlpError, Transaction] =
-    if items.length != SetCode.FieldCount then
-      Left(RlpError.WrongArity(SetCode.FieldCount, items.length))
+    if items.length != SetCode.FieldCount then Left(RlpError.WrongArity(SetCode.FieldCount, items.length))
     else
       for
-        chainId   <- RlpCodec[UInt64].decode(items(0))
-        nonce     <- RlpCodec[UInt64].decode(items(1))
-        tip       <- RlpCodec[UInt256].decode(items(2))
-        cap       <- RlpCodec[UInt256].decode(items(3))
-        gasLimit  <- RlpCodec[UInt64].decode(items(4))
+        chainId <- RlpCodec[UInt64].decode(items(0))
+        nonce <- RlpCodec[UInt64].decode(items(1))
+        tip <- RlpCodec[UInt256].decode(items(2))
+        cap <- RlpCodec[UInt256].decode(items(3))
+        gasLimit <- RlpCodec[UInt64].decode(items(4))
         recipient <- RlpCodec[Address].decode(items(5))
-        value     <- RlpCodec[UInt256].decode(items(6))
-        data      <- RlpCodec[Bytes].decode(items(7))
-        access    <- RlpCodec[Seq[AccessTuple]].decode(items(8))
-        auths     <- RlpCodec[Seq[Authorization]].decode(items(9))
-        yParity   <- RlpCodec[UInt256].decode(items(10))
-        r         <- RlpCodec[UInt256].decode(items(11))
-        s         <- RlpCodec[UInt256].decode(items(12))
+        value <- RlpCodec[UInt256].decode(items(6))
+        data <- RlpCodec[Bytes].decode(items(7))
+        access <- RlpCodec[Seq[AccessTuple]].decode(items(8))
+        auths <- RlpCodec[Seq[Authorization]].decode(items(9))
+        yParity <- RlpCodec[UInt256].decode(items(10))
+        r <- RlpCodec[UInt256].decode(items(11))
+        s <- RlpCodec[UInt256].decode(items(12))
       yield SetCode(
         chainId,
         nonce,
@@ -535,7 +530,7 @@ object Transaction:
 
     def decode(item: RlpItem): Either[RlpError, Transaction] = item match
       case sequence: RlpItem.Sequence => decodeLegacyItem(sequence)
-      case RlpItem.Bytes(payload) =>
+      case RlpItem.Bytes(payload)     =>
         if payload.isEmpty then Left(RlpError.EmptyInput)
         else
           val head = payload(0) & 0xff

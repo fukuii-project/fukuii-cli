@@ -72,9 +72,9 @@ object Account:
         if items.length != FieldCount then Left(RlpError.WrongArity(FieldCount, items.length))
         else
           for
-            nonce       <- RlpCodec[UInt64].decode(items(0))
-            balance     <- RlpCodec[UInt256].decode(items(1))
+            nonce <- RlpCodec[UInt64].decode(items(0))
+            balance <- RlpCodec[UInt256].decode(items(1))
             storageRoot <- RlpCodec[Hash].decode(items(2))
-            codeHash    <- RlpCodec[Hash].decode(items(3))
+            codeHash <- RlpCodec[Hash].decode(items(3))
           yield Account(nonce, balance, storageRoot, codeHash)
       case _: RlpItem.Bytes => Left(RlpError.ExpectedSequence)

@@ -71,14 +71,14 @@ object Secp256k1:
     if privateKey.signum <= 0 || privateKey.bigInteger.compareTo(domain.getN) >= 0 then None
     else
       try
-        val bytes  = mutableCopy(messageHash.toBytes)
-        val e      = BigInteger(1, bytes)
+        val bytes = mutableCopy(messageHash.toBytes)
+        val e = BigInteger(1, bytes)
         val signer = ECDSASigner(HMacDSAKCalculator(SHA256Digest()))
         signer.init(true, ECPrivateKeyParameters(privateKey.bigInteger, domain))
-        val out  = signer.generateSignature(bytes)
-        val r    = out(0)
+        val out = signer.generateSignature(bytes)
+        val r = out(0)
         val rawS = out(1)
-        val s    = if rawS.compareTo(halfCurveOrder) > 0 then domain.getN.subtract(rawS) else rawS
+        val s = if rawS.compareTo(halfCurveOrder) > 0 then domain.getN.subtract(rawS) else rawS
         publicKeyOf(privateKey).flatMap(expected =>
           recoveryIdFor(e, r, s, expected).map(id => Signature(BigInt(r), BigInt(s), id))
         )
@@ -99,7 +99,7 @@ object Secp256k1:
     */
   def verify(publicKey: IArray[Byte], messageHash: Hash, signature: Signature): Boolean =
     try
-      val point  = domain.getCurve.decodePoint(mutableCopy(publicKey))
+      val point = domain.getCurve.decodePoint(mutableCopy(publicKey))
       val signer = ECDSASigner()
       signer.init(false, ECPublicKeyParameters(point, domain))
       signer.verifySignature(mutableCopy(messageHash.toBytes), signature.r.bigInteger, signature.s.bigInteger)
@@ -120,9 +120,9 @@ object Secp256k1:
     * height its network activates it.
     */
   def recoverPublicKey(messageHash: Hash, signature: Signature): Option[IArray[Byte]] =
-    val n     = domain.getN
-    val r     = signature.r.bigInteger
-    val s     = signature.s.bigInteger
+    val n = domain.getN
+    val r = signature.r.bigInteger
+    val s = signature.s.bigInteger
     val recId = signature.recoveryId
     // r and s must lie in [1, n-1]. The upper bound is NOT implied by the
     // `x < prime` test below: the field prime exceeds the curve order, so an r
@@ -142,16 +142,16 @@ object Secp256k1:
         // The x coordinate of R. recId's high bit selects which candidate x,
         // its low bit which of the two y values for that x.
         val prime = domain.getCurve.getField.getCharacteristic
-        val x     = r.add(BigInteger.valueOf((recId / 2).toLong).multiply(n))
+        val x = r.add(BigInteger.valueOf((recId / 2).toLong).multiply(n))
         if x.compareTo(prime) >= 0 then None
         else
           val encoded = Array((0x02 + (recId & 1)).toByte) ++ leftPad32(x)
-          val pointR  = domain.getCurve.decodePoint(encoded)
+          val pointR = domain.getCurve.decodePoint(encoded)
           if !pointR.multiply(n).isInfinity then None
           else
-            val e       = BigInteger(1, mutableCopy(messageHash.toBytes))
-            val rInv    = r.modInverse(n)
-            val srInv   = rInv.multiply(s).mod(n)
+            val e = BigInteger(1, mutableCopy(messageHash.toBytes))
+            val rInv = r.modInverse(n)
+            val srInv = rInv.multiply(s).mod(n)
             val eInvInv = rInv.multiply(n.subtract(e.mod(n)).mod(n)).mod(n)
             val q = ECAlgorithms.sumOfTwoMultiplies(domain.getG, eInvInv, pointR, srInv)
             // The recovered point can be the point at infinity, and this
@@ -192,7 +192,7 @@ object Secp256k1:
     val candidate = Signature(BigInt(r), BigInt(s), 0)
     // leftPad32 returns exactly 32 bytes, so the truncating constructor is
     // total here and the checked one would add a branch nothing can reach.
-    val hash      = Hash.fromBytesTruncating(IArray.unsafeFromArray(leftPad32(e)))
+    val hash = Hash.fromBytesTruncating(IArray.unsafeFromArray(leftPad32(e)))
     (0 to 3).find { id =>
       recoverPublicKey(hash, candidate.copy(recoveryId = id))
         .exists(found => ConstantTime.equal(found, expected))

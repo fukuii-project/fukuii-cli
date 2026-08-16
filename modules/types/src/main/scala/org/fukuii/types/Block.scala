@@ -98,7 +98,7 @@ object BlockBody:
     else
       for
         transactions <- RlpCodec[Seq[Transaction]].decode(items(0))
-        ommers       <- RlpCodec[Seq[BlockHeader]].decode(items(1))
+        ommers <- RlpCodec[Seq[BlockHeader]].decode(items(1))
         withdrawals <-
           if items.length == MandatoryFields then Right(None)
           else RlpCodec[Seq[Withdrawal]].decode(items(2)).map(Some.apply)
@@ -129,7 +129,7 @@ object Block:
   /** A block is its header plus the body's elements, so its arity is the
     * body's plus one.
     */
-  val MandatoryFields: Int       = BlockBody.MandatoryFields + 1
+  val MandatoryFields: Int = BlockBody.MandatoryFields + 1
   val WithWithdrawalsFields: Int = BlockBody.WithWithdrawalsFields + 1
 
   given blockCodec: RlpCodec[Block] with
@@ -140,12 +140,12 @@ object Block:
       )
 
     def decode(item: RlpItem): Either[RlpError, Block] = item match
-      case _: RlpItem.Bytes => Left(RlpError.ExpectedSequence)
+      case _: RlpItem.Bytes        => Left(RlpError.ExpectedSequence)
       case RlpItem.Sequence(items) =>
         if items.length != MandatoryFields && items.length != WithWithdrawalsFields then
           Left(RlpError.WrongArity(WithWithdrawalsFields, items.length))
         else
           for
             header <- RlpCodec[BlockHeader].decode(items(0))
-            body   <- BlockBody.fromFields(items.drop(1))
+            body <- BlockBody.fromFields(items.drop(1))
           yield Block(header, body)

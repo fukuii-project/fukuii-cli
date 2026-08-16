@@ -55,33 +55,26 @@ class Secp256k1Spec extends AnyFlatSpec:
     assert(!other.contains(publicKeyHex), "a wrong recovery id must not yield the right key")
   }
 
-  it should "reject a recovery id outside 0..3" in {
+  it should "reject a recovery id outside 0..3" in
     assert(Secp256k1.recoverPublicKey(message, signature.copy(recoveryId = 4)).isEmpty, "4 is not a recovery id")
-  }
 
-  it should "reject a zero r" in {
+  it should "reject a zero r" in
     assert(Secp256k1.recoverPublicKey(message, signature.copy(r = BigInt(0))).isEmpty, "r must be positive")
-  }
 
-
-  it should "reject an r at the curve order" in {
+  it should "reject an r at the curve order" in
     assert(Secp256k1.recoverPublicKey(message, signature.copy(r = curveOrder)).isEmpty, "r must be below n")
-  }
 
-  it should "reject an r between the curve order and the field prime" in {
+  it should "reject an r between the curve order and the field prime" in
     assert(
       Secp256k1.recoverPublicKey(message, signature.copy(r = curveOrder + 1)).isEmpty,
       "an r above n but below p must not slip past the field-prime test"
     )
-  }
 
-  it should "reject an s at the curve order" in {
+  it should "reject an s at the curve order" in
     assert(Secp256k1.recoverPublicKey(message, signature.copy(s = curveOrder)).isEmpty, "s must be below n")
-  }
 
-  it should "reject a zero s" in {
+  it should "reject a zero s" in
     assert(Secp256k1.recoverPublicKey(message, signature.copy(s = BigInt(0))).isEmpty, "s must be positive")
-  }
 
   /** A signature crafted so recovery yields the point at infinity.
     *
@@ -101,34 +94,30 @@ class Secp256k1Spec extends AnyFlatSpec:
     assert(Secp256k1.recoverPublicKey(message, crafted).isEmpty, "infinity is not a public key")
   }
 
-  "publicKeyOf" should "return None for a key outside [1, n-1] rather than a one-byte key" in {
+  "publicKeyOf" should "return None for a key outside [1, n-1] rather than a one-byte key" in
     assert(Secp256k1.publicKeyOf(BigInt(0)).isEmpty, "zero multiplies to infinity, which is not a key")
-  }
 
   it should "return 65 uncompressed bytes for a valid key" in {
     val key = BigInt("4646464646464646464646464646464646464646464646464646464646464646", 16)
     assert(Secp256k1.publicKeyOf(key).exists(_.length == 65), "the documented width must hold")
   }
 
-  "verify" should "accept the published signature under the uncompressed key" in {
+  "verify" should "accept the published signature under the uncompressed key" in
     assert(Secp256k1.verify(hex(publicKeyHex), message, signature), "the published signature must verify")
-  }
 
-  it should "accept it under the compressed key" in {
+  it should "accept it under the compressed key" in
     assert(Secp256k1.verify(hex(compressedKeyHex), message, signature), "both key encodings name the same point")
-  }
 
   it should "reject a signature against the wrong message" in {
     val otherMessage = Keccak256.hash(IArray.empty[Byte])
     assert(!Secp256k1.verify(hex(publicKeyHex), otherMessage, signature), "a signature is bound to its message")
   }
 
-  it should "reject a malformed public key rather than throwing" in {
+  it should "reject a malformed public key rather than throwing" in
     assert(!Secp256k1.verify(hex("0400"), message, signature), "an undecodable key is a false, not an exception")
-  }
 
   "sign" should "produce a signature that verifies under the matching key" in {
-    val key    = BigInt("4646464646464646464646464646464646464646464646464646464646464646", 16)
+    val key = BigInt("4646464646464646464646464646464646464646464646464646464646464646", 16)
     val signed = Secp256k1.sign(message, key)
     assert(
       signed.exists(sig => Secp256k1.publicKeyOf(key).exists(pk => Secp256k1.verify(pk, message, sig))),
@@ -145,21 +134,19 @@ class Secp256k1Spec extends AnyFlatSpec:
   }
 
   it should "canonicalize s to the low half of the curve order" in {
-    val key       = BigInt("4646464646464646464646464646464646464646464646464646464646464646", 16)
+    val key = BigInt("4646464646464646464646464646464646464646464646464646464646464646", 16)
     val halfOrder = BigInt("7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0", 16)
     assert(Secp256k1.sign(message, key).exists(_.s <= halfOrder), "a high s is the same signature, reflected")
   }
 
-  it should "return None for a zero private key rather than throwing" in {
+  it should "return None for a zero private key rather than throwing" in
     assert(Secp256k1.sign(message, BigInt(0)).isEmpty, "the provider throws for this; the Option must absorb it")
-  }
 
-  it should "return None for a private key at the curve order rather than throwing" in {
+  it should "return None for a private key at the curve order rather than throwing" in
     assert(Secp256k1.sign(message, curveOrder).isEmpty, "a key must lie in [1, n-1]")
-  }
 
   it should "recover the signer's own key from what it produced" in {
-    val key    = BigInt("4646464646464646464646464646464646464646464646464646464646464646", 16)
+    val key = BigInt("4646464646464646464646464646464646464646464646464646464646464646", 16)
     val signed = Secp256k1.sign(message, key)
     assert(
       signed.flatMap(sig => Secp256k1.recoverPublicKey(message, sig)).map(Hex.encode)
@@ -177,22 +164,17 @@ class Secp256k1Spec extends AnyFlatSpec:
   // one. These assertions are what keep that true — a signature change back to a
   // byte sequence makes every one of them compile.
 
-  "a raw byte sequence" should "not be accepted as a digest by sign" in {
+  "a raw byte sequence" should "not be accepted as a digest by sign" in
     assertDoesNotCompile("Secp256k1.sign(IArray.empty[Byte], BigInt(1))")
-  }
 
-  it should "not be accepted as a digest by verify" in {
+  it should "not be accepted as a digest by verify" in
     assertDoesNotCompile("Secp256k1.verify(IArray.empty[Byte], IArray.empty[Byte], signature)")
-  }
 
-  it should "not be accepted as a digest by recoverPublicKey" in {
+  it should "not be accepted as a digest by recoverPublicKey" in
     assertDoesNotCompile("Secp256k1.recoverPublicKey(IArray.empty[Byte], signature)")
-  }
 
-  "a Hash" should "be accepted, so the three rejections above are about the width and not the call" in {
+  "a Hash" should "be accepted, so the three rejections above are about the width and not the call" in
     assertCompiles("Secp256k1.recoverPublicKey(message, signature)")
-  }
 
-  "a digest straight from the module's own hash" should "need no conversion" in {
+  "a digest straight from the module's own hash" should "need no conversion" in
     assertCompiles("Secp256k1.recoverPublicKey(Keccak256.hash(IArray.empty[Byte]), signature)")
-  }

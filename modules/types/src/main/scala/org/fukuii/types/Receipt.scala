@@ -179,10 +179,8 @@ object Receipt:
     if bytes.isEmpty then Left(RlpError.EmptyInput)
     else
       val head = bytes(0) & 0xff
-      if head > TransactionType.MaxTypeNumber then
-        Rlp.decode(bytes).flatMap(decodePayload(TransactionType.Legacy, _))
-      else
-        typedTag(head).flatMap(tag => Rlp.decode(bytes.drop(1)).flatMap(decodePayload(tag, _)))
+      if head > TransactionType.MaxTypeNumber then Rlp.decode(bytes).flatMap(decodePayload(TransactionType.Legacy, _))
+      else typedTag(head).flatMap(tag => Rlp.decode(bytes.drop(1)).flatMap(decodePayload(tag, _)))
 
   /** `[postStateOrStatus, cumulativeGasUsed, logsBloom, logs]`, in that order.
     *
@@ -215,15 +213,15 @@ object Receipt:
       transactionType: TransactionType,
       item: RlpItem
   ): Either[RlpError, Receipt] = item match
-    case _: RlpItem.Bytes => Left(RlpError.ExpectedSequence)
+    case _: RlpItem.Bytes        => Left(RlpError.ExpectedSequence)
     case RlpItem.Sequence(items) =>
       if items.length != FieldCount then Left(RlpError.WrongArity(FieldCount, items.length))
       else
         for
           outcome <- RlpCodec[PostStateOrStatus].decode(items(0))
           gasUsed <- RlpCodec[UInt64].decode(items(1))
-          bloom   <- RlpCodec[Bloom].decode(items(2))
-          logs    <- RlpCodec[Seq[Log]].decode(items(3))
+          bloom <- RlpCodec[Bloom].decode(items(2))
+          logs <- RlpCodec[Seq[Log]].decode(items(3))
         yield Receipt(transactionType, outcome, gasUsed, bloom, logs)
 
   /** The form a receipt takes as an ELEMENT OF A LIST, which is the only
@@ -237,13 +235,12 @@ object Receipt:
   given receiptCodec: RlpCodec[Receipt] with
 
     def encode(value: Receipt): RlpItem =
-      if value.transactionType == TransactionType.Legacy then
-        RlpItem.Sequence(payloadFields(value))
+      if value.transactionType == TransactionType.Legacy then RlpItem.Sequence(payloadFields(value))
       else RlpItem.Bytes(canonicalBytes(value))
 
     def decode(item: RlpItem): Either[RlpError, Receipt] = item match
       case sequence: RlpItem.Sequence => decodePayload(TransactionType.Legacy, sequence)
-      case RlpItem.Bytes(payload) =>
+      case RlpItem.Bytes(payload)     =>
         if payload.isEmpty then Left(RlpError.EmptyInput)
         else
           typedTag(payload(0) & 0xff).flatMap: tag =>

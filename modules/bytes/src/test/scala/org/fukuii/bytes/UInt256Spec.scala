@@ -14,29 +14,27 @@ class UInt256Spec extends AnyFlatSpec:
 
   private val maxHex = "ff" * UInt256.Width
 
-  "fromBigInt" should "accept 2^256 - 1" in {
+  "fromBigInt" should "accept 2^256 - 1" in
     assert(UInt256.fromBigInt(BigInt(2).pow(256) - 1).isRight, "the largest word must be representable")
-  }
 
-  it should "reject 2^256" in {
+  it should "reject 2^256" in
     assert(UInt256.fromBigInt(BigInt(2).pow(256)) == Left(BytesError.OutOfRange), "one past the top is not a word")
-  }
 
-  it should "reject a negative value" in {
+  it should "reject a negative value" in
     assert(UInt256.fromBigInt(BigInt(-1)) == Left(BytesError.OutOfRange), "the type is unsigned")
-  }
 
-  "fromLong" should "reject a negative long rather than wrapping it" in {
+  "fromLong" should "reject a negative long rather than wrapping it" in
     assert(UInt256.fromLong(-1L) == Left(BytesError.OutOfRange), "a negative must not become a huge positive")
-  }
 
-  "fromBytes" should "read an empty sequence as zero" in {
+  "fromBytes" should "read an empty sequence as zero" in
     assert(UInt256.fromBytes(IArray.empty[Byte]).map(_.toBigInt) == Right(BigInt(0)), "RLP spells zero as no bytes")
-  }
 
   it should "read 32 bytes of 0xff as the maximum" in {
     val bytes = Hex.decode(maxHex).toOption.get
-    assert(UInt256.fromBytes(bytes).map(_.toBigInt) == Right(BigInt(2).pow(256) - 1), "a full-width read must not overflow")
+    assert(
+      UInt256.fromBytes(bytes).map(_.toBigInt) == Right(BigInt(2).pow(256) - 1),
+      "a full-width read must not overflow"
+    )
   }
 
   it should "read the high bit as magnitude, never as a sign" in {
@@ -49,17 +47,14 @@ class UInt256Spec extends AnyFlatSpec:
     assert(UInt256.fromBytes(bytes) == Left(BytesError.BadWidth(32, 33)), "one byte too many is not a word")
   }
 
-  "toBytes" should "render zero as 32 zero bytes" in {
+  "toBytes" should "render zero as 32 zero bytes" in
     assert(Hex.encode(UInt256.Zero.toBytes) == "00" * UInt256.Width, "the fixed form is padded, not empty")
-  }
 
-  "toMinimalBytes" should "render zero as no bytes at all" in {
+  "toMinimalBytes" should "render zero as no bytes at all" in
     assert(UInt256.Zero.toMinimalBytes.length == 0, "the scalar rule gives zero an empty encoding")
-  }
 
-  "MaxValue" should "round-trip through the fixed-width form" in {
+  "MaxValue" should "round-trip through the fixed-width form" in
     assert(Hex.encode(UInt256.MaxValue.toBytes) == maxHex, "the largest word is 32 bytes of 0xff")
-  }
 
   "a word" should "equal another built from a different path" in {
     val fromBytes = UInt256.fromBytes(Hex.decode("0186a0").toOption.get).toOption.get
@@ -67,7 +62,7 @@ class UInt256Spec extends AnyFlatSpec:
   }
 
   it should "be found again as a Map key" in {
-    val key   = UInt256.fromLong(100000L).toOption.get
+    val key = UInt256.fromLong(100000L).toOption.get
     val other = UInt256.fromBytes(Hex.decode("0186a0").toOption.get).toOption.get
     assert(Map(key -> "found").get(other).contains("found"), "an erased type that inherited array identity would miss")
   }

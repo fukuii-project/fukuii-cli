@@ -40,7 +40,7 @@ class WithdrawalPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     }
 
   private val Recipient = "c94f5374fce5edbc8e2a8697c15331677e6ebf0b"
-  private val MaxWord   = "18446744073709551615"
+  private val MaxWord = "18446744073709551615"
 
   private def one(i: String, v: String, a: String, m: String): Seq[(String, String, String, String)] =
     Seq((i, v, a, m))
@@ -111,7 +111,7 @@ class WithdrawalPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     * if the codec ignored field order they would encode identically.
     */
   property("transposing the two counters changes the encoding") {
-    val forward  = withdrawals(one("0", MaxWord, Recipient, "10000"))
+    val forward = withdrawals(one("0", MaxWord, Recipient, "10000"))
     val reversed = withdrawals(one(MaxWord, "0", Recipient, "10000"))
     assert(
       Hex.encode(RlpCodec.encodeTo(forward)) != Hex.encode(RlpCodec.encodeTo(reversed)),

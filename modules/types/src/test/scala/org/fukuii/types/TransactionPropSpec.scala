@@ -38,8 +38,8 @@ class TransactionPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
       hash: String,
       canonical: String
   ):
-    def bytes: IArray[Byte]         = Hex.decode(canonical).toOption.get
-    def decoded: Transaction        = Transaction.fromCanonicalBytes(bytes).toOption.get
+    def bytes: IArray[Byte] = Hex.decode(canonical).toOption.get
+    def decoded: Transaction = Transaction.fromCanonicalBytes(bytes).toOption.get
 
   private def parse(line: String): Vector =
     val c = line.split(" ").toIndexedSeq

@@ -34,7 +34,7 @@ final class Bytes private (private val raw: IArray[Byte]):
 
   def toArray: Array[Byte] =
     val out = new Array[Byte](raw.length)
-    var i   = 0
+    var i = 0
     while i < raw.length do
       out(i) = raw(i)
       i += 1

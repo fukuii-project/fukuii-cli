@@ -66,7 +66,7 @@ class TransactionRejectionPropSpec extends AnyPropSpec with TableDrivenPropertyC
 
   property("the table spans every structural rejection class the corpus names") {
     val classes = vectors.filter(_.verdict == "reject").map(_.exception).toSet
-    val named   = classes.toSeq.sorted.mkString(", ")
+    val named = classes.toSeq.sorted.mkString(", ")
     assert(
       Set("NONCE_OVERFLOW", "TYPE_4_INVALID_AUTHORIZATION_FORMAT").subsetOf(classes),
       s"structural classes $named — selection has narrowed"

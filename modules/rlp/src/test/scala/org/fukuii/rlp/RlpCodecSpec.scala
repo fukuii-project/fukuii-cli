@@ -11,11 +11,11 @@ import org.scalatest.flatspec.AnyFlatSpec
   */
 class RlpCodecSpec extends AnyFlatSpec:
 
-  private def hashOf(hex: String): Hash       = Hash.fromHex(hex).toOption.get
+  private def hashOf(hex: String): Hash = Hash.fromHex(hex).toOption.get
   private def addressOf(hex: String): Address = Address.fromHex(hex).toOption.get
-  private def word(n: Long): UInt256          = UInt256.fromLong(n).toOption.get
+  private def word(n: Long): UInt256 = UInt256.fromLong(n).toOption.get
 
-  private val aHash    = hashOf("00" * 31 + "ab")
+  private val aHash = hashOf("00" * 31 + "ab")
   private val anAddress = addressOf("5aaeb6053f3e94c9b9a09f33669435e7ef1beaed")
 
   "a byte string" should "round-trip through bytes" in {
@@ -38,9 +38,8 @@ class RlpCodecSpec extends AnyFlatSpec:
     assert(RlpCodec.decodeFrom[Bytes](bytes) == Left(RlpError.ExpectedBytes), "a list is not a byte string")
   }
 
-  "a word" should "round-trip through bytes" in {
+  "a word" should "round-trip through bytes" in
     assert(RlpCodec.decodeFrom[UInt256](RlpCodec.encodeTo(word(1000))) == Right(word(1000)), "exact")
-  }
 
   it should "reject a sequence where a leaf was required" in {
     val bytes = Rlp.encode(RlpItem.Sequence(Vector.empty))
@@ -62,27 +61,24 @@ class RlpCodecSpec extends AnyFlatSpec:
     assert(encoded == "a0" + "00" * 31 + "ab", "a hash is 32 bytes and its zeros are part of it")
   }
 
-  it should "round-trip through bytes" in {
+  it should "round-trip through bytes" in
     assert(RlpCodec.decodeFrom[Hash](RlpCodec.encodeTo(aHash)) == Right(aHash), "exact")
-  }
 
   it should "reject a short payload rather than left-padding it" in {
     val bytes = Rlp.encode(RlpItem.Bytes(IArray(0xab.toByte)))
     assert(RlpCodec.decodeFrom[Hash](bytes) == Left(RlpError.WrongWidth(32, 1)), "one byte is not a hash")
   }
 
-  "an address" should "round-trip through bytes" in {
+  "an address" should "round-trip through bytes" in
     assert(RlpCodec.decodeFrom[Address](RlpCodec.encodeTo(anAddress)) == Right(anAddress), "exact")
-  }
 
   "a machine word" should "round-trip through bytes" in {
     val value = UInt64.fromLong(1000L).toOption.get
     assert(RlpCodec.decodeFrom[UInt64](RlpCodec.encodeTo(value)) == Right(value), "exact")
   }
 
-  it should "spell zero as the empty string" in {
+  it should "spell zero as the empty string" in
     assert(Hex.encode(RlpCodec.encodeTo(UInt64.Zero)) == "80", "the scalar rule gives zero an empty payload")
-  }
 
   /** The value is not hypothetical: `ffffffffffffffff` appears as a withdrawal's
     * `validatorIndex` and again as its `index` in the corpus's block fixtures. A
@@ -134,21 +130,17 @@ class RlpCodecSpec extends AnyFlatSpec:
   // cannot be summoned, so no byte sequence has a list-shaped encoding to be
   // confused with its leaf-shaped one.
 
-  "a byte sequence" should "have no list-shaped encoding to be confused with" in {
+  "a byte sequence" should "have no list-shaped encoding to be confused with" in
     assertDoesNotCompile("summon[RlpCodec[Seq[Byte]]]")
-  }
 
-  it should "still have its leaf-shaped one, so the absence above is specific" in {
+  it should "still have its leaf-shaped one, so the absence above is specific" in
     assertCompiles("summon[RlpCodec[IArray[Byte]]]")
-  }
 
-  "the sequence codec" should "work for element types that have an instance" in {
+  "the sequence codec" should "work for element types that have an instance" in
     assertCompiles("summon[RlpCodec[Seq[Hash]]]")
-  }
 
-  it should "not fabricate an instance for an element type without one" in {
+  it should "not fabricate an instance for an element type without one" in
     assertDoesNotCompile("summon[RlpCodec[Seq[java.io.File]]]")
-  }
 
   /** What this does NOT close, stated so the demonstration above is not read as
     * more than it is.
@@ -160,7 +152,7 @@ class RlpCodecSpec extends AnyFlatSpec:
     * What is closed is the accidental case — two instances both reachable for
     * one value with nothing written to choose between them.
     */
-  "a locally defined instance" should "shadow rather than collide, which is the residual" in {
+  "a locally defined instance" should "shadow rather than collide, which is the residual" in
     assertCompiles(
       """
       given RlpCodec[Hash] with
@@ -169,4 +161,3 @@ class RlpCodecSpec extends AnyFlatSpec:
       summon[RlpCodec[Hash]]
       """
     )
-  }

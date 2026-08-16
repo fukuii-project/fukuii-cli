@@ -13,18 +13,16 @@ class AddressSpec extends AnyFlatSpec:
 
   private val Zero20 = IArray.from(Seq.fill(20)(0.toByte))
 
-  "Address.fromBytes" should "reject an input shorter than twenty bytes" in {
+  "Address.fromBytes" should "reject an input shorter than twenty bytes" in
     assert(Address.fromBytes(IArray(0x00.toByte)) == Left(BytesError.BadWidth(20, 1)), "one byte is not an address")
-  }
 
   it should "reject an input longer than twenty bytes" in {
     val long = IArray.from(Seq.fill(21)(0.toByte))
     assert(Address.fromBytes(long) == Left(BytesError.BadWidth(20, 21)), "twenty-one bytes is not an address")
   }
 
-  it should "accept exactly twenty bytes" in {
+  it should "accept exactly twenty bytes" in
     assert(Address.fromBytes(Zero20).map(_.toHex) == Right("0" * 40), "the zero address renders as forty zeros")
-  }
 
   "Address.fromBytesTruncating" should "keep the rightmost bytes when the input is too long" in {
     val overlong = IArray.from((1 to 24).map(_.toByte))
@@ -35,23 +33,20 @@ class AddressSpec extends AnyFlatSpec:
     )
   }
 
-  it should "left-pad with zero when the input is too short" in {
+  it should "left-pad with zero when the input is too short" in
     assert(
       Address.fromBytesTruncating(IArray(0x10.toByte)).toHex == "0" * 38 + "10",
       "a short input is right-aligned, so its numeric value is preserved"
     )
-  }
 
-  "an Address" should "equal another built from the same bytes" in {
+  "an Address" should "equal another built from the same bytes" in
     assert(Address.fromBytesTruncating(Zero20) == Address.fromBytesTruncating(Zero20), "equality is by value")
-  }
 
-  it should "agree with an equal Address on hashCode" in {
+  it should "agree with an equal Address on hashCode" in
     assert(
       Address.fromBytesTruncating(Zero20).hashCode() == Address.fromBytesTruncating(Zero20).hashCode(),
       "equal values must agree on hashCode or collections break"
     )
-  }
 
   it should "find its entry when used as a Map key" in {
     val key = Address.fromBytesTruncating(Zero20)
@@ -63,9 +58,8 @@ class AddressSpec extends AnyFlatSpec:
     assert(members.size == 1, "value-equal members must deduplicate")
   }
 
-  it should "not equal a Hash carrying the same bytes" in {
+  it should "not equal a Hash carrying the same bytes" in
     assert(
       !Address.fromBytesTruncating(Zero20).equals(Hash.fromBytesTruncating(Zero20)),
       "distinct types must not compare equal even when the bytes agree"
     )
-  }

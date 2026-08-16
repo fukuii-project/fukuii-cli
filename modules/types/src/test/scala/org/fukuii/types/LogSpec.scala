@@ -47,12 +47,11 @@ class LogSpec extends AnyFlatSpec:
     )
   }
 
-  "a byte string where a log is expected" should "be refused" in {
+  "a byte string where a log is expected" should "be refused" in
     assert(
       RlpCodec[Log].decode(RlpItem.Bytes(IArray.empty)) == Left(RlpError.ExpectedSequence),
       "a log is a list"
     )
-  }
 
   "an address that is not twenty bytes" should "be refused rather than padded" in {
     val short = RlpItem.Sequence(itemsOf(encoded).updated(0, RlpItem.Bytes(IArray.fill(19)(1))))
