@@ -63,4 +63,4 @@ object BlockNonce:
     def decode(item: RlpItem): Either[RlpError, BlockNonce] = item match
       case RlpItem.Bytes(payload) =>
         BlockNonce.fromBytes(payload).left.map(_ => RlpError.WrongWidth(Width, payload.length))
-      case _: RlpItem.Sequence => Left(RlpError.ExpectedSequence)
+      case _: RlpItem.Sequence => Left(RlpError.ExpectedBytes)
