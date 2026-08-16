@@ -237,6 +237,7 @@ client. A citation naming only the repository is unusable. The former
 | `NethermindEth/nethermind` | [NethermindEth/nethermind](https://github.com/NethermindEth/nethermind) | `master` | **Framework structure** — the consensus-plugin and chain-spec-parameter seams |
 | `paradigmxyz/reth` | [paradigmxyz/reth](https://github.com/paradigmxyz/reth) | `main` | **Framework structure** — node-types and fork-condition types |
 | `lambdaclass/ethrex` | [lambdaclass/ethrex](https://github.com/lambdaclass/ethrex) | `main` | **Framework structure** — a recent ground-up client, useful as a second reading of the same seams |
+| `bluealloy/revm` | [bluealloy/revm](https://github.com/bluealloy/revm) | `main` | **A dependency of a client above, not a client.** Cloned because reading that client alone answers some questions wrongly: its transaction validation, including the chain-identifier check, lives here rather than in its own tree. Authoritative for nothing on its own — cite it as what the depending client executes |
 
 **The framework-structure rows are a deliberate carve-out and are routinely
 over-read in both directions.** A modern client is **not** an authority for an
