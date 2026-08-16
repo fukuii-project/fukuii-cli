@@ -32,8 +32,10 @@ client per chain.** A shared execution engine sits underneath, with consensus
 handled by a pluggable module per family, and it targets proof-of-work
 networks (Ethereum Classic mainnet, Mordor) and proof-of-stake networks
 (Ethereum mainnet, Sepolia) today. It carries no code from any earlier
-implementation. The foundation layer exists under `modules/`, which holds a
-directory per PLANNED layer with most still empty — so read the BUILT set with
+implementation. The foundation layer exists under `modules/`, and above it the
+typed-value layer — the domain values every higher layer speaks, and the
+canonical encodings a block hash is computed over. `modules/` holds a directory
+per PLANNED layer with most still empty — so read the BUILT set with
 `git ls-files 'modules/*'`, never with `ls modules/`, which mixes the two and
 reads as though the whole client existed.
 
@@ -109,9 +111,9 @@ command — one the build does not define will fail and read as a broken build.
 | `LICENSE`, `NOTICE` | Apache-2.0 and its required attribution |
 | `build.sbt`, `project/build.properties` | The build definition and the sbt launcher pin |
 | `.sdkmanrc`, `.jvmopts`, `.gitattributes`, `.gitignore` | JDK, JVM, line-ending and private/public-gate pins |
-| `.claude/` | This environment's own framework layer — agents, path-scoped rules, protocols, hooks, and the settings that register and gate them; tracked by default |
+| `.claude/` | This environment's own framework layer — agents, rules, protocols, hooks, and the settings that register and gate them; tracked by default. **Some rules are path-scoped and fire on a matching read; the rest load every session** — read each file's own opening rather than assuming either |
 | `.github/assets/` | The logo this file and `README.md` render |
-| `scripts/` | Repository test infrastructure — checkers and a wrapper, most paired with a proof script, plus the fixtures they run against |
+| `scripts/` | Two kinds of thing, held to different standards: **checkers** and a wrapper, most paired with a proof script, plus the fixtures they run against; and **vector generators**, which read an external corpus and write a test resource rather than checking anything |
 | `modules/` | The layered module tree. Each module holds `src/main/scala/` and `src/test/scala/` under `org/fukuii/<module>/` — **read the directory for the current set rather than a list here** |
 
 **A module directory holding no tracked file is in no clone.** Git does not
