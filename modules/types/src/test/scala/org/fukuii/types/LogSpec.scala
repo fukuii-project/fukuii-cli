@@ -34,7 +34,7 @@ class LogSpec extends AnyFlatSpec:
   "a log of four elements" should "be refused rather than truncated to three" in {
     val tooLong = RlpItem.Sequence(itemsOf(encoded) :+ RlpItem.Bytes(IArray.empty))
     assert(
-      RlpCodec[Log].decode(tooLong) == Left(RlpError.WrongWidth(Log.FieldCount, 4)),
+      RlpCodec[Log].decode(tooLong) == Left(RlpError.WrongArity(Log.FieldCount, 4)),
       "the log encoding has never grown, so a fourth element is malformed"
     )
   }
@@ -42,7 +42,7 @@ class LogSpec extends AnyFlatSpec:
   it should "be refused when an element is missing" in {
     val tooShort = RlpItem.Sequence(itemsOf(encoded).dropRight(1))
     assert(
-      RlpCodec[Log].decode(tooShort) == Left(RlpError.WrongWidth(Log.FieldCount, 2)),
+      RlpCodec[Log].decode(tooShort) == Left(RlpError.WrongArity(Log.FieldCount, 2)),
       "three fields or none"
     )
   }

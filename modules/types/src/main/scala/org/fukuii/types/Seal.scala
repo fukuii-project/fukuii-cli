@@ -46,21 +46,34 @@ import org.fukuii.rlp.{RlpCodec, RlpError, RlpItem}
   */
 enum Seal:
 
-  /** The proof-of-work seal: a mixed hash and the nonce that satisfies it.
+  /** The two-slot seal: a 32-byte digest, and a fixed-width nonce.
+    *
+    * Named for the slots rather than for an engine, because several engines
+    * write this shape and disagree about what the slots hold. A proof-of-work
+    * network puts a mixed hash and the nonce satisfying it here; a network that
+    * has replaced proof of work reads the first slot as its previous randomness
+    * value and writes a zero nonce; an authority engine that reuses the pair
+    * writes a zero digest and a marker nonce. An engine name on this case would
+    * therefore be false of every header but one family's, and the client running
+    * the largest alternative-engine network names the pair by its slots for the
+    * same reason.
     *
     * @param mixHash
-    *   the same slot a network that has replaced proof of work reads as its
-    *   previous randomness value. The name is the one the conformance fixtures
-    *   use at every fork including the most recent, so it is the encoding
-    *   layer's name for the slot rather than either family's reading of it.
+    *   the slot's encoding-layer name, which is the one the conformance
+    *   fixtures use at every fork including the most recent — deliberately not
+    *   either family's reading of it.
     */
-  case Ethash(mixHash: Hash, nonce: BlockNonce)
+  case MixHashAndNonce(mixHash: Hash, nonce: BlockNonce)
 
   /** The authority-round seal: the step the block was sealed in, and the
     * sealer's signature.
     *
     * Named for the engine as the chain specifications name it, rather than for
-    * the abbreviation both implementing clients use in code.
+    * the abbreviation both implementing clients use in code. **The asymmetry
+    * against the case above is deliberate and is not a naming inconsistency to
+    * repair:** this shape belongs to one engine, so an engine name describes it
+    * exactly, while the two-slot shape is shared and an engine name there would
+    * not.
     *
     * @param signature
     *   empty until the block is sealed, which is a state one client encodes
@@ -76,7 +89,7 @@ object Seal:
   val FieldCount: Int = 2
 
   private[types] def fieldsOf(seal: Seal): Vector[RlpItem] = seal match
-    case Ethash(mixHash, nonce) =>
+    case MixHashAndNonce(mixHash, nonce) =>
       Vector(RlpCodec[Hash].encode(mixHash), RlpCodec[BlockNonce].encode(nonce))
     case AuthorityRound(step, signature) =>
       Vector(RlpCodec[UInt64].encode(step), RlpCodec[Bytes].encode(signature))
@@ -104,6 +117,16 @@ object Seal:
     * network is a fork rule the layer above owns, and a decoder that could not
     * read the header could not tell a malformed one from a well-formed one it
     * does not accept — which are different answers to the peer that sent it.
+    *
+    * ==So the layer above owes a positive rejection, not merely a non-reading==
+    *
+    * Widening this to a sum moved a refusal out of the decoder: a first element
+    * of eight canonical bytes or fewer used to fail to decode at all, and now
+    * decodes and round-trips. **A network whose engine writes the two-slot seal
+    * must therefore REJECT the other case rather than decline to interpret it**,
+    * because nothing here does that any more. An exhaustive match over this sum
+    * is what surfaces the obligation at the point it has to be met; a catch-all
+    * arm silently discharges it.
     */
   private[types] def fromFields(first: RlpItem, second: RlpItem): Either[RlpError, Seal] =
     first match
@@ -111,7 +134,7 @@ object Seal:
         for
           mixHash <- RlpCodec[Hash].decode(first)
           nonce   <- RlpCodec[BlockNonce].decode(second)
-        yield Ethash(mixHash, nonce)
+        yield MixHashAndNonce(mixHash, nonce)
       case _: RlpItem.Bytes =>
         for
           step      <- RlpCodec[UInt64].decode(first)

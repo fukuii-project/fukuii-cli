@@ -39,14 +39,14 @@ class AccountSpec extends AnyFlatSpec:
 
   "an account of five elements" should "be refused rather than truncated to four" in {
     assert(
-      RlpCodec[Account].decode(tooLong) == Left(RlpError.WrongWidth(Account.FieldCount, 5)),
+      RlpCodec[Account].decode(tooLong) == Left(RlpError.WrongArity(Account.FieldCount, 5)),
       "the account encoding has never grown, so a fifth element is malformed"
     )
   }
 
   "an account of three elements" should "be refused" in {
     assert(
-      RlpCodec[Account].decode(tooShort) == Left(RlpError.WrongWidth(Account.FieldCount, 3)),
+      RlpCodec[Account].decode(tooShort) == Left(RlpError.WrongArity(Account.FieldCount, 3)),
       "four fields or none"
     )
   }

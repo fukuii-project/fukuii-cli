@@ -69,7 +69,7 @@ object Authorization:
 
     def decode(item: RlpItem): Either[RlpError, Authorization] = item match
       case RlpItem.Sequence(items) =>
-        if items.length != FieldCount then Left(RlpError.WrongWidth(FieldCount, items.length))
+        if items.length != FieldCount then Left(RlpError.WrongArity(FieldCount, items.length))
         else
           for
             chainId <- RlpCodec[UInt256].decode(items(0))

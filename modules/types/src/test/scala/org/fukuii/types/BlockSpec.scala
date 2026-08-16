@@ -30,7 +30,7 @@ class BlockSpec extends AnyFlatSpec:
   "a block of two elements" should "be refused" in {
     assert(
       decodeBlock(blockItems.dropRight(1)) ==
-        Left(RlpError.WrongWidth(Block.WithWithdrawalsFields, 2)),
+        Left(RlpError.WrongArity(Block.WithWithdrawalsFields, 2)),
       "a block is a header plus a body, so two elements is missing one"
     )
   }
@@ -38,7 +38,7 @@ class BlockSpec extends AnyFlatSpec:
   "a block of five elements" should "be refused rather than truncated to four" in {
     val tooLong = blockItems ++ Vector(RlpItem.Sequence(Vector.empty), RlpItem.Sequence(Vector.empty))
     assert(
-      decodeBlock(tooLong) == Left(RlpError.WrongWidth(Block.WithWithdrawalsFields, 5)),
+      decodeBlock(tooLong) == Left(RlpError.WrongArity(Block.WithWithdrawalsFields, 5)),
       "no fork defines a fifth element, and carrying one would cost injectivity"
     )
   }
@@ -61,7 +61,7 @@ class BlockSpec extends AnyFlatSpec:
   "a body of one element" should "be refused" in {
     assert(
       decodeBody(Vector(RlpItem.Sequence(Vector.empty))) ==
-        Left(RlpError.WrongWidth(BlockBody.WithWithdrawalsFields, 1)),
+        Left(RlpError.WrongArity(BlockBody.WithWithdrawalsFields, 1)),
       "a body is transactions and ommers at minimum"
     )
   }
@@ -69,7 +69,7 @@ class BlockSpec extends AnyFlatSpec:
   "a body of four elements" should "be refused" in {
     val tooLong = Vector.fill(4)(RlpItem.Sequence(Vector.empty))
     assert(
-      decodeBody(tooLong) == Left(RlpError.WrongWidth(BlockBody.WithWithdrawalsFields, 4)),
+      decodeBody(tooLong) == Left(RlpError.WrongArity(BlockBody.WithWithdrawalsFields, 4)),
       "the body has three fields at most"
     )
   }
@@ -139,7 +139,7 @@ object BlockSpec:
       gasUsed = UInt64.fromLong(10).toOption.get,
       timestamp = UInt64.fromLong(11).toOption.get,
       extraData = Bytes.fromIArray(IArray.empty[Byte]),
-      seal = Seal.Ethash(
+      seal = Seal.MixHashAndNonce(
         Hash.fromBytesTruncating(IArray.fill(32)(12)),
         BlockNonce.fromBytes(IArray.fill(8)(13)).toOption.get
       )

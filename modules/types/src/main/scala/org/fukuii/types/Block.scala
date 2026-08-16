@@ -94,7 +94,7 @@ object BlockBody:
   /** Reads what [[fieldsOf]] writes, from a block's elements or a body's. */
   private[types] def fromFields(items: Vector[RlpItem]): Either[RlpError, BlockBody] =
     if items.length != MandatoryFields && items.length != WithWithdrawalsFields then
-      Left(RlpError.WrongWidth(WithWithdrawalsFields, items.length))
+      Left(RlpError.WrongArity(WithWithdrawalsFields, items.length))
     else
       for
         transactions <- RlpCodec[Seq[Transaction]].decode(items(0))
@@ -143,7 +143,7 @@ object Block:
       case _: RlpItem.Bytes => Left(RlpError.ExpectedSequence)
       case RlpItem.Sequence(items) =>
         if items.length != MandatoryFields && items.length != WithWithdrawalsFields then
-          Left(RlpError.WrongWidth(WithWithdrawalsFields, items.length))
+          Left(RlpError.WrongArity(WithWithdrawalsFields, items.length))
         else
           for
             header <- RlpCodec[BlockHeader].decode(items(0))

@@ -46,14 +46,14 @@ class ReceiptSpec extends AnyFlatSpec:
   "a receipt of five elements" should "be refused rather than truncated to four" in {
     assert(
       withFields(fields :+ RlpItem.Bytes(IArray.empty)) ==
-        Left(RlpError.WrongWidth(Receipt.FieldCount, 5)),
+        Left(RlpError.WrongArity(Receipt.FieldCount, 5)),
       "the receipt payload has never grown, so a fifth element is malformed"
     )
   }
 
   it should "be refused when an element is missing" in {
     assert(
-      withFields(fields.dropRight(1)) == Left(RlpError.WrongWidth(Receipt.FieldCount, 3)),
+      withFields(fields.dropRight(1)) == Left(RlpError.WrongArity(Receipt.FieldCount, 3)),
       "four fields or none"
     )
   }

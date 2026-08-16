@@ -36,8 +36,8 @@ class TransactionSpec extends AnyFlatSpec:
 
   "fromCanonicalBytes" should "refuse the largest type number EIP-2718 admits, as an unknown type" in {
     assert(
-      Transaction.fromCanonicalBytes(envelopeOfType(Transaction.MaxTypeNumber)) ==
-        Left(RlpError.UnknownDiscriminant(Transaction.MaxTypeNumber)),
+      Transaction.fromCanonicalBytes(envelopeOfType(TransactionType.MaxTypeNumber)) ==
+        Left(RlpError.UnknownDiscriminant(TransactionType.MaxTypeNumber)),
       "0x7f is a legal type number with no payload defined, so it is unknown rather than legacy"
     )
   }

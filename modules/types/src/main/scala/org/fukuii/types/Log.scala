@@ -71,7 +71,7 @@ object Log:
 
     def decode(item: RlpItem): Either[RlpError, Log] = item match
       case RlpItem.Sequence(items) =>
-        if items.length != FieldCount then Left(RlpError.WrongWidth(FieldCount, items.length))
+        if items.length != FieldCount then Left(RlpError.WrongArity(FieldCount, items.length))
         else
           for
             address <- RlpCodec[Address].decode(items(0))

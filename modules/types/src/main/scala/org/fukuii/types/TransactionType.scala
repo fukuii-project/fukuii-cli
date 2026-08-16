@@ -52,6 +52,16 @@ enum TransactionType(val number: Int):
 
 object TransactionType:
 
+  /** The largest value EIP-2718 admits as a type byte. Anything above it is not
+    * an unknown type — it is not a type at all.
+    *
+    * Here rather than on a type that carries one of these, for the same reason
+    * the tag itself is: the envelope covers a transaction and a receipt alike,
+    * so a bound living on either would be a second place for one number to be
+    * wrong, and the other would reach across for it.
+    */
+  val MaxTypeNumber: Int = 0x7f
+
   /** The format a tag names, or nothing.
     *
     * Nothing covers two cases a caller must keep apart, so neither is resolved

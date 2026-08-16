@@ -69,7 +69,7 @@ object Account:
 
     def decode(item: RlpItem): Either[RlpError, Account] = item match
       case RlpItem.Sequence(items) =>
-        if items.length != FieldCount then Left(RlpError.WrongWidth(FieldCount, items.length))
+        if items.length != FieldCount then Left(RlpError.WrongArity(FieldCount, items.length))
         else
           for
             nonce       <- RlpCodec[UInt64].decode(items(0))

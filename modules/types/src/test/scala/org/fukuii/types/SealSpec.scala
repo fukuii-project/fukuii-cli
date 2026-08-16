@@ -21,7 +21,7 @@ class SealSpec extends AnyFlatSpec:
 
   private def hash(b: Byte): Hash = Hash.fromBytesTruncating(IArray.fill(32)(b))
 
-  private val proofOfWork = Seal.Ethash(hash(7), BlockNonce.Zero)
+  private val mixHashAndNonce = Seal.MixHashAndNonce(hash(7), BlockNonce.Zero)
 
   /** A 65-byte signature, which is the width both implementing clients reserve
     * for a sealer's signature.
@@ -43,7 +43,7 @@ class SealSpec extends AnyFlatSpec:
     gasUsed = UInt64.Zero,
     timestamp = UInt64.fromLong(1234).toOption.get,
     extraData = Bytes.Empty,
-    seal = proofOfWork
+    seal = mixHashAndNonce
   )
 
   private def sealOf(h: BlockHeader): Vector[RlpItem] =
@@ -71,16 +71,16 @@ class SealSpec extends AnyFlatSpec:
     * and a step is a machine word so its element is at most 8. The ranges
     * cannot meet.
     */
-  "the first seal element" should "be 32 bytes for proof of work and shorter otherwise" in {
-    val powWidth = sealOf(header).head match
+  "the first seal element" should "be 32 bytes for the two-slot seal and shorter for authority-round" in {
+    val twoSlotWidth = sealOf(header).head match
       case RlpItem.Bytes(payload) => payload.length
       case _: RlpItem.Sequence    => -1
     val auraWidth = sealOf(header.copy(seal = authorityRound)).head match
       case RlpItem.Bytes(payload) => payload.length
       case _: RlpItem.Sequence    => -1
     assert(
-      powWidth == Hash.Width && auraWidth < Hash.Width,
-      s"widths $powWidth and $auraWidth must not overlap, or the two seals collide"
+      twoSlotWidth == Hash.Width && auraWidth < Hash.Width,
+      s"widths $twoSlotWidth and $auraWidth must not overlap, or the two seals collide"
     )
   }
 

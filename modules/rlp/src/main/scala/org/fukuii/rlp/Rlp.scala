@@ -1,5 +1,7 @@
 package org.fukuii.rlp
 
+import org.fukuii.bytes.FixedWidth
+
 import scala.annotation.tailrec
 
 /** An RLP item: either a byte array or a sequence of further items.
@@ -24,26 +26,16 @@ object RlpItem:
     */
   final class Bytes(val value: IArray[Byte]) extends RlpItem:
     override def equals(that: Any): Boolean = that match
-      case other: Bytes => Bytes.sameBytes(value, other.value)
+      case other: Bytes => FixedWidth.sameBytes(value, other.value)
       case _            => false
 
-    /** FNV-1a with a final avalanche. The reasoning belongs with the value
-      * types that share this property and is stated there; in short, these are
-      * `Map` keys decoded from a peer's bytes, a linear accumulator has
-      * collisions that fall out of arithmetic, and Scala's hash map keeps
-      * colliding keys in a linear list.
+    /** Delegated rather than reimplemented: these are `Map` keys decoded from a
+      * peer's bytes, so the avalanche is a defense and not a detail, and a
+      * second copy of it is the one thing
+      * [[org.fukuii.bytes.FixedWidth]] was widened across the project to
+      * prevent. The reasoning lives with it.
       */
-    override def hashCode(): Int =
-      var h = 0xcbf29ce484222325L
-      var i = 0
-      while i < value.length do
-        h = (h ^ (value(i) & 0xffL)) * 0x100000001b3L
-        i += 1
-      var x = h
-      x ^= x >>> 33
-      x *= 0xff51afd7ed558ccdL
-      x ^= x >>> 33
-      (x ^ (x >>> 32)).toInt
+    override def hashCode(): Int = FixedWidth.hash(value)
 
     override def toString: String = "RlpItem.Bytes(length=" + value.length + ")"
 
@@ -51,16 +43,6 @@ object RlpItem:
     def apply(value: IArray[Byte]): Bytes = new Bytes(value)
 
     def unapply(item: Bytes): Some[IArray[Byte]] = Some(item.value)
-
-    private def sameBytes(a: IArray[Byte], b: IArray[Byte]): Boolean =
-      if a.length != b.length then false
-      else
-        var i    = 0
-        var same = true
-        while i < a.length && same do
-          if a(i) != b(i) then same = false
-          i += 1
-        same
 
   /** A sequence of further items. A `case class` is correct here: `Vector`
     * already compares structurally, and it compares its elements with their own
@@ -97,7 +79,23 @@ enum RlpError:
   case ExpectedBytes
   case ExpectedSequence
   case NonCanonicalScalar
+
+  /** A leaf's BYTE count is not the width the value requires.
+    *
+    * Distinct from [[WrongArity]], and the pair exists for the reason
+    * [[ExpectedBytes]] and [[ExpectedSequence]] are two cases rather than one:
+    * an error names what was WANTED, and "width" and "arity" want different
+    * things. `WrongWidth(32, 31)` is a 31-byte leaf where a 32-byte value was
+    * required; `WrongArity(15, 14)` is a 14-element sequence where 15 elements
+    * were required. One case for both made those two indistinguishable at the
+    * call site without knowing which decoder produced them.
+    */
   case WrongWidth(expected: Int, actual: Int)
+
+  /** A sequence's ELEMENT count is not the arity the value requires. See
+    * [[WrongWidth]] for why the two are separate.
+    */
+  case WrongArity(expected: Int, actual: Int)
 
   /** A tagged union's tag is not one the codec knows.
     *

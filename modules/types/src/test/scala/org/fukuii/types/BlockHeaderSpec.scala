@@ -49,7 +49,7 @@ class BlockHeaderSpec extends AnyFlatSpec:
     gasUsed = UInt64.Zero,
     timestamp = UInt64.fromBigInt(BigInt(1234)).toOption.get,
     extraData = Bytes.Empty,
-    seal = Seal.Ethash(mixHash = hash(7), nonce = BlockNonce.Zero)
+    seal = Seal.MixHashAndNonce(mixHash = hash(7), nonce = BlockNonce.Zero)
   )
 
   private val withWithdrawals = base.copy(tail = Some(BaseFeeTail(big(7), Some(WithdrawalsTail(hash(8))))))
@@ -119,14 +119,14 @@ class BlockHeaderSpec extends AnyFlatSpec:
 
   "an 18-element header" should "be refused rather than read past its end" in {
     assert(
-      RlpCodec[BlockHeader].decode(truncatedBlobPair) == Left(RlpError.WrongWidth(19, 18)),
+      RlpCodec[BlockHeader].decode(truncatedBlobPair) == Left(RlpError.WrongArity(19, 18)),
       "one half of the blob-gas pair is a shape no proposal defines"
     )
   }
 
   "a header shorter than the mandatory fields" should "be refused" in {
     assert(
-      RlpCodec[BlockHeader].decode(shortOfMandatory) == Left(RlpError.WrongWidth(15, 14)),
+      RlpCodec[BlockHeader].decode(shortOfMandatory) == Left(RlpError.WrongArity(15, 14)),
       "fifteen fields or nothing"
     )
   }

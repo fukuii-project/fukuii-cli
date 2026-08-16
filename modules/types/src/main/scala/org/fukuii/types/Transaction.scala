@@ -220,11 +220,6 @@ object Transaction:
   object SetCode:
     val FieldCount: Int = 13
 
-  /** The largest value EIP-2718 admits as a type byte. Anything above it is
-    * not an unknown type — it is not a type at all.
-    */
-  val MaxTypeNumber: Int = 0x7f
-
   /** Every payload ends with its three signature elements, and every one of
     * the five ends with exactly three.
     *
@@ -238,11 +233,19 @@ object Transaction:
 
   /** The payload's elements, signature included.
     *
-    * Visible inside this package so the signing projection can drop the
-    * signature from it, rather than restating five field lists that would then
-    * have to be kept in step with the ones above.
+    * Two callers need exactly this, which is why it is visible rather than
+    * folded into the codec. The signing projection drops the signature from it,
+    * rather than restating five field lists that would then have to be kept in
+    * step with the ones above. And the blob network wrapper carries the signed
+    * body as its first element — `[tx_payload_body, …]` — where the body is the
+    * full element list and not the signing projection.
+    *
+    * That second caller sits outside this package, and reaching it any other
+    * way means re-parsing [[canonicalBytes]] on a hot path, through the one
+    * function documented as *not* being the codec form, for a decode that
+    * cannot fail but still returns as though it could.
     */
-  private[types] def elementsOf(transaction: Transaction): Vector[RlpItem] =
+  def elementsOf(transaction: Transaction): Vector[RlpItem] =
     payloadFields(transaction)
 
   /** The form a transaction hash is taken over, and the form that travels as
@@ -273,7 +276,7 @@ object Transaction:
     if bytes.isEmpty then Left(RlpError.EmptyInput)
     else
       val head = bytes(0) & 0xff
-      if head > MaxTypeNumber then Rlp.decode(bytes).flatMap(decodeLegacyItem)
+      if head > TransactionType.MaxTypeNumber then Rlp.decode(bytes).flatMap(decodeLegacyItem)
       else Rlp.decode(bytes.drop(1)).flatMap(item => decodeTypedPayload(head, item))
 
   /** `[nonce, gasPrice, gasLimit, to, value, data, v, r, s]` — EIP-2718 states
@@ -380,7 +383,7 @@ object Transaction:
     case RlpItem.Bytes(_) => Left(RlpError.ExpectedSequence)
     case RlpItem.Sequence(items) =>
       if items.length != Legacy.FieldCount then
-        Left(RlpError.WrongWidth(Legacy.FieldCount, items.length))
+        Left(RlpError.WrongArity(Legacy.FieldCount, items.length))
       else
         for
           nonce    <- RlpCodec[UInt64].decode(items(0))
@@ -407,7 +410,7 @@ object Transaction:
 
   private def decodeAccessList(items: Vector[RlpItem]): Either[RlpError, Transaction] =
     if items.length != AccessList.FieldCount then
-      Left(RlpError.WrongWidth(AccessList.FieldCount, items.length))
+      Left(RlpError.WrongArity(AccessList.FieldCount, items.length))
     else
       for
         chainId  <- RlpCodec[UInt64].decode(items(0))
@@ -425,7 +428,7 @@ object Transaction:
 
   private def decodeDynamicFee(items: Vector[RlpItem]): Either[RlpError, Transaction] =
     if items.length != DynamicFee.FieldCount then
-      Left(RlpError.WrongWidth(DynamicFee.FieldCount, items.length))
+      Left(RlpError.WrongArity(DynamicFee.FieldCount, items.length))
     else
       for
         chainId  <- RlpCodec[UInt64].decode(items(0))
@@ -444,7 +447,7 @@ object Transaction:
 
   private def decodeBlob(items: Vector[RlpItem]): Either[RlpError, Transaction] =
     if items.length != Blob.FieldCount then
-      Left(RlpError.WrongWidth(Blob.FieldCount, items.length))
+      Left(RlpError.WrongArity(Blob.FieldCount, items.length))
     else
       for
         chainId   <- RlpCodec[UInt64].decode(items(0))
@@ -480,7 +483,7 @@ object Transaction:
 
   private def decodeSetCode(items: Vector[RlpItem]): Either[RlpError, Transaction] =
     if items.length != SetCode.FieldCount then
-      Left(RlpError.WrongWidth(SetCode.FieldCount, items.length))
+      Left(RlpError.WrongArity(SetCode.FieldCount, items.length))
     else
       for
         chainId   <- RlpCodec[UInt64].decode(items(0))
@@ -536,5 +539,5 @@ object Transaction:
         if payload.isEmpty then Left(RlpError.EmptyInput)
         else
           val head = payload(0) & 0xff
-          if head > MaxTypeNumber then Left(RlpError.UnknownDiscriminant(head))
+          if head > TransactionType.MaxTypeNumber then Left(RlpError.UnknownDiscriminant(head))
           else Rlp.decode(payload.drop(1)).flatMap(inner => decodeTypedPayload(head, inner))

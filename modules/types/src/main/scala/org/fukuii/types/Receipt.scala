@@ -179,7 +179,7 @@ object Receipt:
     if bytes.isEmpty then Left(RlpError.EmptyInput)
     else
       val head = bytes(0) & 0xff
-      if head > Transaction.MaxTypeNumber then
+      if head > TransactionType.MaxTypeNumber then
         Rlp.decode(bytes).flatMap(decodePayload(TransactionType.Legacy, _))
       else
         typedTag(head).flatMap(tag => Rlp.decode(bytes.drop(1)).flatMap(decodePayload(tag, _)))
@@ -217,7 +217,7 @@ object Receipt:
   ): Either[RlpError, Receipt] = item match
     case _: RlpItem.Bytes => Left(RlpError.ExpectedSequence)
     case RlpItem.Sequence(items) =>
-      if items.length != FieldCount then Left(RlpError.WrongWidth(FieldCount, items.length))
+      if items.length != FieldCount then Left(RlpError.WrongArity(FieldCount, items.length))
       else
         for
           outcome <- RlpCodec[PostStateOrStatus].decode(items(0))

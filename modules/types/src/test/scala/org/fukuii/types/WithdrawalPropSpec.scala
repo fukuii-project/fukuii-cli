@@ -100,7 +100,7 @@ class WithdrawalPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     forAll(lists) { (fields: Seq[(String, String, String, String)], _: String) =>
       val short = RlpItem.Sequence(Vector(RlpCodec[UInt64].encode(withdrawals(fields).head.index)))
       assert(
-        Withdrawal.withdrawalCodec.decode(short) == Left(RlpError.WrongWidth(Withdrawal.FieldCount, 1)),
+        Withdrawal.withdrawalCodec.decode(short) == Left(RlpError.WrongArity(Withdrawal.FieldCount, 1)),
         "four fields or none"
       )
     }

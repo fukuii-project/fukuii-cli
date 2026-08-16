@@ -236,28 +236,39 @@ object BlockHeader:
       ) ++ Seal.fieldsOf(value.seal)
       RlpItem.Sequence(head ++ encodeTail(value.tail))
 
+    /** One method per tail link, mirroring `decodeTail` and its four
+      * continuations position for position.
+      *
+      * The two sides have to agree on which field lands at which index, and
+      * that is checked by reading them against each other — so they are written
+      * in the same shape, one link each, rather than as a nest here and a chain
+      * there. A reader confirming the order translates between two identical
+      * structures instead of between two different ones.
+      */
     private def encodeTail(tail: Option[BaseFeeTail]): Vector[RlpItem] = tail match
+      case None    => Vector.empty
+      case Some(t) => RlpCodec[UInt256].encode(t.baseFeePerGas) +: encodeWithdrawals(t.next)
+
+    private def encodeWithdrawals(tail: Option[WithdrawalsTail]): Vector[RlpItem] = tail match
+      case None    => Vector.empty
+      case Some(w) => RlpCodec[Hash].encode(w.withdrawalsRoot) +: encodeBlobGas(w.next)
+
+    private def encodeBlobGas(tail: Option[BlobGasTail]): Vector[RlpItem] = tail match
       case None => Vector.empty
-      case Some(t) =>
-        RlpCodec[UInt256].encode(t.baseFeePerGas) +: (t.next match
-          case None => Vector.empty
-          case Some(w) =>
-            RlpCodec[Hash].encode(w.withdrawalsRoot) +: (w.next match
-              case None => Vector.empty
-              case Some(b) =>
-                Vector(
-                  RlpCodec[UInt64].encode(b.blobGasUsed),
-                  RlpCodec[UInt64].encode(b.excessBlobGas)
-                ) ++ (b.next match
-                  case None => Vector.empty
-                  case Some(r) =>
-                    RlpCodec[Hash].encode(r.parentBeaconBlockRoot) +: (r.next match
-                      case None    => Vector.empty
-                      case Some(q) => RlpCodec[Hash].encode(q.requestsHash) +: q.next.map(_.items).getOrElse(Vector.empty)
-                    )
-                )
-            )
-        )
+      case Some(b) =>
+        Vector(
+          RlpCodec[UInt64].encode(b.blobGasUsed),
+          RlpCodec[UInt64].encode(b.excessBlobGas)
+        ) ++ encodeBeaconRoot(b.next)
+
+    private def encodeBeaconRoot(tail: Option[BeaconRootTail]): Vector[RlpItem] = tail match
+      case None    => Vector.empty
+      case Some(r) => RlpCodec[Hash].encode(r.parentBeaconBlockRoot) +: encodeRequests(r.next)
+
+    private def encodeRequests(tail: Option[RequestsTail]): Vector[RlpItem] = tail match
+      case None => Vector.empty
+      case Some(q) =>
+        RlpCodec[Hash].encode(q.requestsHash) +: q.next.map(_.items).getOrElse(Vector.empty)
 
     /** Count-driven: the number of elements decides how much tail is present,
       * and anything past the last modeled field is carried rather than
@@ -267,7 +278,7 @@ object BlockHeader:
       case RlpItem.Bytes(_) => Left(RlpError.ExpectedSequence)
       case RlpItem.Sequence(items) =>
         if items.length < MandatoryFields then
-          Left(RlpError.WrongWidth(MandatoryFields, items.length))
+          Left(RlpError.WrongArity(MandatoryFields, items.length))
         else
           for
             parentHash       <- RlpCodec[Hash].decode(items(0))
@@ -332,7 +343,7 @@ object BlockHeader:
     private def decodeTail(items: Vector[RlpItem]): Either[RlpError, Option[BaseFeeTail]] =
       val n = items.length
       if n == MandatoryFields then Right(None)
-      else if n == MandatoryFields + 3 then Left(RlpError.WrongWidth(MandatoryFields + 4, n))
+      else if n == MandatoryFields + 3 then Left(RlpError.WrongArity(MandatoryFields + 4, n))
       else
         for
           baseFee <- RlpCodec[UInt256].decode(items(15))
