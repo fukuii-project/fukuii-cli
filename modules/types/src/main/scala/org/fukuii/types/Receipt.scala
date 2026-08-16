@@ -113,13 +113,16 @@ object PostStateOrStatus:
             if payload(0) == 1 then Right(Successful)
             else if payload(0) == 0 then Left(RlpError.NonCanonicalScalar)
             else Left(RlpError.UnknownDiscriminant(payload(0) & 0xff))
-          case Hash.Width =>
+          // Anything wider than a status must be a root, and `fromBytes` is
+          // what enforces the width — a `case Hash.Width` arm beside this one
+          // would read as the check and carry none of it, since a wrong width
+          // arrives here and leaves with the same error either way.
+          case _ =>
             Hash
               .fromBytes(payload)
               .left
               .map(_ => RlpError.WrongWidth(Hash.Width, payload.length))
               .map(PostState.apply)
-          case other => Left(RlpError.WrongWidth(Hash.Width, other))
       case _: RlpItem.Sequence => Left(RlpError.ExpectedBytes)
 
 object Receipt:
