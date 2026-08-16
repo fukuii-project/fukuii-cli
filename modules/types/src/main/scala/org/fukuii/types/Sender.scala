@@ -34,7 +34,28 @@ object Sender:
     /** The curve rejected the signature, or it recovers no point. */
     case Unrecoverable
 
-  /** The account that signed this transaction. */
+  /** The account that signed this transaction.
+    *
+    * ==EIP-2's low-`s` bound is NOT applied here, and that is deliberate==
+    *
+    * EIP-2 declares a signature whose `s` exceeds half the curve order invalid,
+    * and it takes effect at a stated fork rather than from genesis — so it is a
+    * fork rule, and this layer holds none. The curve check below bounds `r` and
+    * `s` to the field only.
+    *
+    * **The consequence a caller has to know:** a signature and its malleated
+    * twin — `(r, n - s)` with the parity flipped — recover the SAME address
+    * over the same preimage, while the transaction's own hash differs, because
+    * `s` sits inside the bytes that are hashed. So one authorization can present
+    * under two identifiers. That is not a wrong sender, and it is a duplicate
+    * this layer cannot suppress: anything keyed on the hash — a pool, nonce
+    * accounting, a receipt lookup — must apply the bound itself at the height
+    * the network activates it.
+    *
+    * Stated here because the signature carries no fork context to remember it
+    * by. A reference client's equivalent takes the activation flag as a
+    * parameter and so cannot be called without answering the question.
+    */
   def recover(transaction: Transaction): Either[Error, Address] =
     for
       preimage  <- SigningPreimage.hashForRecovery(transaction).left.map(Error.UnreadableScheme.apply)

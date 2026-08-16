@@ -110,6 +110,14 @@ object Secp256k1:
     * This is what the EVM's `ecrecover` rests on, so a wrong answer is a
     * consensus fault rather than a local error. `None` for any input the curve
     * rejects; the caller decides what an unrecoverable signature means.
+    *
+    * **`s` is bounded to the field here and NOT to half the curve order**, even
+    * though [[halfCurveOrder]] exists in this file and [[sign]] applies it. The
+    * asymmetry is deliberate: normalizing what we produce is always safe, while
+    * refusing a high `s` on recovery is a rule that takes effect at a stated
+    * fork, and applying it unconditionally would reject signatures that were
+    * valid before that fork. A caller that needs the bound applies it at the
+    * height its network activates it.
     */
   def recoverPublicKey(messageHash: Hash, signature: Signature): Option[IArray[Byte]] =
     val n     = domain.getN
