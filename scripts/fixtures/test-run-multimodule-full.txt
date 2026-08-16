@@ -1,7 +1,7 @@
 ## sbt-run.sh started 2026-08-08T17:23:57Z
 ## tasks: testFull
 
-[info] compiling 4 Scala sources to /media/dev/2tb/work/repos/fukuii-project/fukuii-cli/target/out/jvm/scala-3.3.8/fukuii-bytes/test-classes ...
+[info] compiling 4 Scala sources to /repo/target/out/jvm/scala-3.3.8/fukuii-bytes/test-classes ...
 [info] ToolchainFeatureSpec:
 [info] Feature: the featurespec artifact resolves and runs
 [info]   Scenario: a scenario states its steps in domain language
