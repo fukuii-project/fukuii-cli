@@ -315,10 +315,17 @@ object BlockHeader:
       * after it is read by index, and at this length that index is past the
       * end. Rejecting late would raise where the contract is to return a value.
       *
-      * **The corpora cannot catch an error in this arithmetic.** They contain
-      * no header of seventeen or eighteen elements at all — the fixtures jump
-      * from sixteen to twenty — so both boundaries are pinned by construction
-      * in `BlockHeaderSpec` instead.
+      * **The two boundaries are certified differently, and only one of them by
+      * a fixture.** Seventeen-element headers are published in quantity, and
+      * `BlockPropSpec` reaches one through a block that carries it. Eighteen
+      * appears only inside fixtures that expect the block to be REJECTED,
+      * which corroborates this arithmetic rather than exercising it, so that
+      * boundary is pinned by construction in `BlockHeaderSpec`.
+      *
+      * The header's own vector file reaches neither: its rows were drawn from
+      * a corpus whose headers run 15, 16, 20 and 21, and a claim that no
+      * corpus holds a seventeen-element header would now be false — the
+      * absence was a property of one fixture set rather than of the field.
       */
     private def decodeTail(items: Vector[RlpItem]): Either[RlpError, Option[BaseFeeTail]] =
       val n = items.length

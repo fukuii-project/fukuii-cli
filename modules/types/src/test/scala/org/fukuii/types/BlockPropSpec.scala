@@ -83,6 +83,21 @@ class BlockPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     assert(empty && absent, "both the empty list and the absent element must appear")
   }
 
+  /** These blocks carry real headers, so they reach a tail length the header's
+    * own vector file does not: those rows come from an older corpus whose
+    * headers run 15, 16, 20 and 21, and this one publishes 17-element headers
+    * in quantity. The middle of the tail chain is where an off-by-one index
+    * shifts every later field, so leaving it to a constructed case only was a
+    * real gap rather than a tidy one.
+    */
+  property("the table spans a header from the middle of the tail chain") {
+    val arities = vectors.map(_.decoded.header.fieldCount).toSet
+    assert(
+      arities.contains(BlockHeader.MandatoryFields + 2),
+      s"header arities ${arities.toSeq.sorted.mkString(",")} — the middle tail lengths are untested"
+    )
+  }
+
   property("a shipped block decodes") {
     forAll(blocks) { (v: Vector) =>
       assert(
