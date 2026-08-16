@@ -20,8 +20,14 @@ import org.fukuii.rlp.{Rlp, RlpCodec, RlpItem}
   *      not on the transaction's type, and not on anything a compile-time
   *      instance could dispatch on.
   *
-  * Both reference implementations agree: neither routes a signing preimage
-  * through the machinery that encodes whole transactions.
+  * The three properties above are the whole argument, and it stands on this
+  * codec layer's own contract rather than on what any client does. Reference
+  * clients are in fact split: most keep the projection out of the whole-value
+  * encoder, and at least one routes both through a single encoder that takes a
+  * for-signing flag. Either is workable in a language where an encoder may take
+  * a mode argument; neither settles anything here, because what disqualifies a
+  * codec instance in this project is that `RlpCodec` is whole-value and
+  * round-trippable by definition.
   *
   * ==The projection is one rule, not five==
   *

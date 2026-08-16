@@ -53,8 +53,27 @@ object Sender:
     * the network activates it.
     *
     * Stated here because the signature carries no fork context to remember it
-    * by. A reference client's equivalent takes the activation flag as a
-    * parameter and so cannot be called without answering the question.
+    * by. Clients split on where that context lives: some bind the activation
+    * flag into the recovery call so it cannot be omitted, and others — the
+    * larger group — apply the bound in a transaction validator that already
+    * holds the fork rules. This layer holds none, so it takes the second shape,
+    * and this paragraph is what the first shape would have enforced instead.
+    *
+    * ==The chain identifier is deferred on exactly the same ground==
+    *
+    * `SignatureScheme.of` recovers the chain identifier from a legacy `v`, and
+    * this function uses it only to rebuild the preimage. **It does not compare
+    * it to the network the node is on, and returning an address here is not a
+    * statement that the signature was made for this chain.** A caller that
+    * admits a transaction — into a pool, or into a block — owes that comparison,
+    * and omitting it accepts a transaction signed for a different network.
+    *
+    * The identifier is not lost: `SignatureScheme.of` is public, and every
+    * typed payload carries `chainId` as a field. **An unprotected signature —
+    * `v` of 27 or 28 — carries no identifier and is valid on every network by
+    * construction**, so it is not a case the comparison can decide; whether it
+    * is admitted at a given height is a fork rule, which is again the layer
+    * above.
     */
   def recover(transaction: Transaction): Either[Error, Address] =
     for
