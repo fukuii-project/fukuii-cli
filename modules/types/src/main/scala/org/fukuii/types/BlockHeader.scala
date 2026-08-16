@@ -168,6 +168,28 @@ final case class RequestsTail(requestsHash: Hash, next: Option[UnmodeledTail] = 
   * two distinct values would share an encoding and the codec would stop being
   * injective. Splitting the head off the rest makes the empty case
   * unrepresentable rather than merely rejected.
+  *
+  * ==Carrying a tail is not the same as being able to READ one==
+  *
+  * This carries whatever follows the modeled fields and re-encodes it byte for
+  * byte, which is what keeps the block hash right. It does not make those
+  * elements identifiable, and a later proposal that models one of them cannot
+  * be accommodated by inspecting their shape: a required trailing field and an
+  * optional one that a fork happens not to have set look identical on the wire,
+  * both being nothing more than further RLP content.
+  *
+  * That is not a hypothetical. A client carrying a header variant with its own
+  * required trailing fields documents having hit exactly this wall, and reaches
+  * for a decoder selected by chain configuration because no byte-shape test
+  * distinguishes its fields from the optional ones another network may omit.
+  *
+  * **So the modeled chain above is positional, and this type does not extend
+  * that protection to it.** A network adding a field at a position the chain
+  * already assigns gets the meaning the chain assigns, not the one the network
+  * intended — which is a wrong value on a header that still hashes correctly,
+  * or a refusal, depending on whether the octets happen to satisfy the type
+  * already at that position. Adding a modeled field is therefore a change to
+  * the chain and to whatever selects it, never a change here.
   */
 final case class UnmodeledTail(head: RlpItem, rest: Vector[RlpItem] = Vector.empty):
   def items: Vector[RlpItem] = head +: rest
