@@ -1,6 +1,6 @@
 package org.fukuii.rlp
 
-import org.fukuii.bytes.{Address, Bytes, Hash, UInt256, UInt64}
+import org.fukuii.bytes.{Address, Bytes, Hash, UInt256, UInt64, UInt8}
 
 /** A total, round-trippable mapping between a value and its RLP form.
   *
@@ -111,6 +111,20 @@ object RlpCodec:
       case RlpItem.Bytes(payload) =>
         if payload.nonEmpty && payload(0) == 0 then Left(RlpError.NonCanonicalScalar)
         else UInt64.fromBytes(payload).left.map(_ => RlpError.WrongWidth(UInt64.Width, payload.length))
+      case _: RlpItem.Sequence => Left(RlpError.ExpectedBytes)
+
+  /** A quantity a specification has bounded at a single byte.
+    *
+    * The same scalar rule as [[uint256Codec]]. A payload wider than one byte
+    * is refused here rather than truncated, which is what makes the bound the
+    * specification states hold when the bytes are read.
+    */
+  given uint8Codec: RlpCodec[UInt8] with
+    def encode(value: UInt8): RlpItem = RlpItem.Bytes(value.toMinimalBytes)
+    def decode(item: RlpItem): Either[RlpError, UInt8] = item match
+      case RlpItem.Bytes(payload) =>
+        if payload.nonEmpty && payload(0) == 0 then Left(RlpError.NonCanonicalScalar)
+        else UInt8.fromBytes(payload).left.map(_ => RlpError.WrongWidth(UInt8.Width, payload.length))
       case _: RlpItem.Sequence => Left(RlpError.ExpectedBytes)
 
   /** A fixed-width value is NOT a scalar: its leading zeros are part of it.

@@ -99,6 +99,15 @@ enum RlpError:
   case NonCanonicalScalar
   case WrongWidth(expected: Int, actual: Int)
 
+  /** A tagged union's tag is not one the codec knows.
+    *
+    * Deliberately named for the encoding concept rather than for any type that
+    * uses it: this module must not learn what a transaction is. A codec over a
+    * tagged union reports the tag it could not place, and the tag's meaning
+    * stays with the type that defines it.
+    */
+  case UnknownDiscriminant(value: Int)
+
 object Rlp:
 
   private val SingleByteLimit  = 0x80
