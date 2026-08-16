@@ -1,9 +1,11 @@
 # `scripts/` — repository test infrastructure
 
-**currency:** Checked 2026-08-06 against this repository's own layout and the house collector
-standard. The exit-code contract and the read-only rule come from that standard; the two-gate
-threshold and the root-resolution contract are stated here because they are decided before any
-script exists.
+**currency:** The conformance claim — that this layout and these contracts match the house collector
+standard — was checked 2026-08-06. **That date bounds the conformance claim only, not the whole
+document**; sections describing this repository's own decisions are added as those decisions are made
+and carry no external check to go stale against. The exit-code contract and the read-only rule come
+from that standard; the two-gate threshold and the root-resolution contract are stated here because
+they are decided before any script exists.
 
 ## Two homes for a script, and a third that is not one
 

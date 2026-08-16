@@ -28,7 +28,9 @@ a client forked and adapted per chain. Today that spans proof-of-work networks
 (Ethereum Classic mainnet, Mordor) and proof-of-stake networks (Ethereum
 mainnet, Sepolia). This is a from-scratch rebuild carrying no code from any
 prior implementation, and it started from a pinned toolchain. The foundation
-layer now exists under `modules/`.
+layer now exists under `modules/`, and the typed-value layer above it — the
+domain values every higher layer speaks, and the canonical encodings a block
+hash is computed over.
 
 **`modules/` holds a directory per PLANNED layer, most of them empty, and that
 is deliberate.** Git does not track an empty directory, so a placeholder is
@@ -102,20 +104,23 @@ sources independently. A repository listed there is evidence about how something
 behaves, never an adopted dependency; this table remains the authority for what
 is declared.
 
-**There is still no dependency-update (Dependabot) configuration for
-`build.sbt`, and that absence is now a pending item, not a standing
-condition.** `build.sbt` is a real manifest, and GitHub's Dependabot has
+**Whether a dependency-update (Dependabot) configuration exists for `build.sbt`
+is answered by looking for `.github/dependabot.yml`, not by this paragraph.**
+What is durable is why one is expressible and what it would and would not
+cover. `build.sbt` is a real manifest, and GitHub's Dependabot has
 carried a dedicated [`sbt` ecosystem](https://docs.github.com/en/code-security/reference/supply-chain-security/supported-ecosystems-and-repositories#sbt)
 since it [shipped 2026-05-26](https://github.blog/changelog/2026-05-26-dependabot-version-updates-now-support-the-sbt-ecosystem/);
 it fetches `build.sbt` at the repository root as a required file. Coverage has
 a real limit, though: GitHub's own wording is *"This applies to version
 updates, not security updates,"* so a configured `sbt` entry opens scheduled
 pull requests for newer upstream releases but does not plug into Dependabot's
-advisory-triggered security-update path the way some other ecosystems do. A
-`dependabot.yml` entry for this manifest is both warranted and expressible; it
-simply has not been written yet, and writing it — then pushing it, since a
-live config starts opening pull requests on the next scheduled run — is an
-operator decision, not a capability this repository is waiting on.
+advisory-triggered security-update path the way some other ecosystems do. So an
+entry for this manifest is both warranted and expressible, and **writing it is
+an operator decision rather than a capability this repository lacks** — a live
+config starts opening pull requests on the next scheduled run, which is
+outward-facing and never inferred. The security half stays uncovered by
+Dependabot whenever such an entry exists, and falls to the ecosystem's own
+tooling.
 
 [Scala Steward](https://github.com/scala-steward-org/scala-steward) no longer
 covers this surface *instead of* Dependabot — that framing depended on

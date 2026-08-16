@@ -151,14 +151,35 @@ the only implementations that exist.**
 | `<work-root>/besu` | besu at head with an ETC overlay |
 | `<work-root>/nethermind` | nethermind at head with an ETC overlay |
 
-**The worked case, and it is why this section exists.** ETH/69 over
-proof-of-work appears in **seven files of the work core-geth and in none of the
-reference ETC client**. go-ethereum carries ETH/69 in fifteen files and is
-proof-of-stake, so its handling is not the proof-of-work integration. **No
-reference client in this corpus implements what fukuii needs here** — the
-Ethereum clients are proof-of-stake, and the proof-of-work ones stop at ETH/68.
-Refusing to read the work clients does not make fukuii more independent; it makes
-it unable to sync.
+**The worked case, and it is why this section exists.** The durable half is the
+claim about the REFERENCE clients: **`ethereumclassic/core-geth` declares
+`ProtocolVersions = []uint{ETH68}` and stops there**, so the proof-of-work
+client this project treats as authoritative for settled ETC consensus does not
+implement the newer wire versions at all. Refusing to read the work clients does
+not make fukuii more independent; it can make it unable to sync.
+
+> **A measurement that used to sit here has been WITHDRAWN, and the withdrawal is
+> the more useful record.** This paragraph asserted, in bare present tense with no
+> date, that ETH/69-over-proof-of-work appeared in seven files of the work
+> core-geth. **Three independent attempts on 2026-08-16 failed to reproduce it**:
+> two agents searching that clone at its current head, and a sweep of **all 30
+> local branches** calibrated against `eth/68` — which returns 9 files on every
+> branch while `eth/69` returns 0 on every branch, including `main-pre-rebase`.
+> The control fires everywhere, so the absence is real everywhere and is not a
+> broken pattern.
+>
+> What cannot be settled from here is *why*: whether the tree moved, whether the
+> original search used a different spelling, or whether the reading was wrong when
+> written. **State a measurement with its date and its ref, or it becomes
+> unfalsifiable exactly when someone needs to check it** — which is this file's own
+> rule about moving refs, met from the inside.
+
+**A separate claim that reads similarly is NOT withdrawn**, and conflating the two
+would over-correct: eth/69's *specification* is carried by four implementations
+across three language families, one of them (`besu-eth/besu-etc`) proof-of-work
+capable and declaring `LATEST = ETH69`. So the encoding is well-evidenced. What is
+unevidenced is any claim about a proof-of-work **network** negotiating it, which is
+a deployment question rather than an encoding one.
 
 **So use them for what they are: peer implementations solving the same problem
 first.** Wire-protocol behavior, fork plumbing, and anything needed to sync
@@ -282,7 +303,7 @@ by opening `EIPS/eip-55.md` for its test vectors and getting a one-line pointer.
 | `ethereum/hive` | [ethereum/hive](https://github.com/ethereum/hive) | `master` | The cross-client integration harness — how conformance is exercised, rather than what conformance is |
 | `ethereum/yellowpaper` | [ethereum/yellowpaper](https://github.com/ethereum/yellowpaper) | `master` | The formal specification of the EVM |
 
-### Currency: three of these corpora are frozen, and none of them says so
+### Currency: three of these corpora are frozen, and cloning one will not tell you so
 
 **A dormant repository is indistinguishable from a current one by cloning it.** It
 clones cleanly, its default branch is its newest work, and nothing in the tree
@@ -615,7 +636,7 @@ git -C <clone> log --reverse --format='%h %ad %s' --date=short <ref> | head -1
 Everything else in the corpus is a full clone. These are not, each for a stated
 reason, so that nobody "fixes" them:
 
-1. **`repos/core-geth` reports shallow, and its `main` is
+1. **`<work-root>/core-geth` reports shallow, and its `main` is
    complete to the project's first commit.** The boundary is not an ancestor of
    that ref: it sits on upstream devnet branches fetched from a second remote,
    and `--unshallow` against `origin` cannot clear it, because `origin` does not

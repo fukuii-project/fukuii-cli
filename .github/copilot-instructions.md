@@ -67,7 +67,8 @@ with no present need is not an entry** — do not add one because another projec
 has it. The compile-scope set is deliberately small: a cryptography provider is
 the only entry so far, earned against a named list of primitives. **`build.sbt`
 is the authority for what is declared**; where it and this file disagree,
-believe the build. There is no dependency-update configuration yet.
+believe the build. Whether a dependency-update configuration exists is answered
+by looking for `.github/dependabot.yml`, not by this sentence.
 
 ## Commands
 

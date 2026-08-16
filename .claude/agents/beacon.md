@@ -307,8 +307,8 @@ ref, not about the ecosystem.
 ### Standing properties of this family
 
 - **The EIP-1559 base fee is burned. It is never redirected to any address.**
-  Redirecting it is the proof-of-work family's Olympia variant and must never
-  reach this code path.
+  Whatever the proof-of-work family does with its base fee — ECIP-1111 governs
+  that, read the destination there — must never reach this code path.
 - **There is no execution-layer block reward.** Validator rewards are a
   consensus-layer concern and out of the execution layer's scope entirely, so
   any reward scheme on this path is zero or a no-op — not a smaller number.
