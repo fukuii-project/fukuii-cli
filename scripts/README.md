@@ -8,9 +8,31 @@ script exists.
 ## Two homes for a script, and a third that is not one
 
 **`scripts/` — repository test infrastructure.** Committed, run by hand or by a
-reviewer, and calibrated. Everything here either checks a property of this
-repository or proves that a check can fail. A file lands here when it has
-**already proven reusable**, not when it is merely scriptable.
+reviewer, and calibrated. A file lands here when it has **already proven
+reusable**, not when it is merely scriptable.
+
+**Two kinds of file live here and they are held to different standards.** A
+**checker** asserts a property of this repository, and everything under "Why
+every checker ships with a proof" binds it. A **vector generator** asserts
+nothing: it reads an external corpus and writes a test resource, and its output
+is checked by the suite that consumes it rather than by a proof of its own.
+Reading the second kind as the first is how a generator acquires a demand for a
+known-bad fixture it has no way to satisfy.
+
+**What a generator owes instead, and this is not a lighter bar:**
+
+1. **Take the corpus directory and the output path as arguments.** A committed
+   file may not name a local clone — the same rule the root-resolution contract
+   below states, arriving from the other side.
+2. **Record its source in the file it writes** — the corpus, the release or ref,
+   and which rows came from where. A vector whose provenance lives only in the
+   generator is a vector nobody can re-derive.
+3. **Declare any cap, with the count dropped.** A partial harvest that does not
+   say so reads as full coverage.
+4. **Verify before emitting, where the corpus makes it possible** — re-encode
+   the fixture's separately-decoded fields with an implementation independent of
+   the one under test and require agreement. That is what separates a certified
+   row from a transcribed one.
 
 **`.local/scratch/<slug>.sh` — a one-off.** Gitignored, written for one
 investigation, deleted or forgotten afterwards. This is the correct home for a

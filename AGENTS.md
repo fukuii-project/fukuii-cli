@@ -284,12 +284,12 @@ build does not define will fail and read as a broken build.
 | `build.sbt`, `project/build.properties` | The build definition and the sbt launcher pin — see `## Stack` |
 | `.sdkmanrc`, `.jvmopts`, `.gitattributes`, `.gitignore` | The JDK, JVM, line-ending and private/public-gate pins — see `## Setup` and `## Security` |
 | `.claude/agents/` | This repository's own domain specialists — the directory listing is authoritative, not this row |
-| `.claude/rules/` | Path-scoped standards, loaded when a matching file is opened — see `## Code style` |
+| `.claude/rules/` | Standards that load on their own. **Some are path-scoped and fire on a matching read; the rest carry no `paths:` and load every session** — read each file's own opening for which, since a roster here would go stale on the next rule added. `## Code style` maps the ones governing Scala |
 | `.claude/protocols/` | Operating discipline that does not auto-load — see `## Protocols` |
 | `.claude/hooks/` | The hook scripts and their own tests; `settings.json` states which are actually registered |
 | `.claude/settings.json` | Hook registrations and the read-deny list — see `## Boundaries` item 4 |
 | `.github/copilot-instructions.md`, `.github/assets/` | Copilot's self-contained instructions, and the logo `README.md` renders |
-| `scripts/` | Repository test infrastructure — checkers and a wrapper, most paired with a `*-proof.sh`, plus the fixtures and reference figures they run against; see `scripts/README.md` |
+| `scripts/` | Two kinds of thing, and they answer to different standards: **checkers** and a wrapper, most paired with a `*-proof.sh`, plus the fixtures and reference figures they run against; and **vector generators**, which produce a test resource from an external corpus rather than checking anything. See `scripts/README.md` |
 | `modules/` | The layered module tree. Each module holds `src/main/scala/` and `src/test/scala/` under `org/fukuii/<module>/` — **read the directory for the current set rather than a list here** |
 
 **`modules/` reaches a clone from the commit its first module had a file in.**

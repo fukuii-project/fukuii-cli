@@ -34,7 +34,7 @@ Each configured network is meant to run as its own actor supervision tree — it
 
 ## Status
 
-The foundation layer is built. What's here is a pinned toolchain and the bottom of the module tree:
+The foundation layer is built, and the typed-value layer above it — the domain values every higher layer speaks, and the canonical encodings a block hash is computed over. What's here is a pinned toolchain and the bottom of the module tree:
 
 - A `build.sbt` declaring only what's settled — the Scala and JDK versions, the ScalaTest style artifacts the testing policy commits to, and the cryptography provider. [`AGENTS.md`](AGENTS.md) has the full stack table, the setup commands, and the reasoning behind each pin.
 - `modules/`, where the layering above lives. It holds a directory per planned layer, most still empty and so untracked — `git ls-files 'modules/*'` shows what's actually built. A list here would go stale the next time a layer lands.

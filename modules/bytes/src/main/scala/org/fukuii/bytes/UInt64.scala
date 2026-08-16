@@ -19,10 +19,18 @@ package org.fukuii.bytes
   * ==The printed form is not the value, above 2^63==
   *
   * `toString` is the underlying `Long`'s, so a value with the high bit set
-  * prints as a NEGATIVE number. That is a property of erasure and cannot be
-  * overridden on an opaque type. **Use [[show]] for anything a human or a log
-  * reads.** The compiler's interpolation warning does not cover this, because
-  * the type erases to a primitive rather than to a reference.
+  * prints as a NEGATIVE number. **Use [[show]] for anything a human or a log
+  * reads.**
+  *
+  * Two separate mechanisms put it beyond reach, and only the first is erasure.
+  * Erasure is why the `Long`'s `toString` is the one that *runs*. What stops it
+  * being replaced is that every value already has that member from `Any`, so an
+  * extension named `toString` is not merely passed over — the compiler refuses
+  * it outright, `[E194] already has a member with the same name`.
+  *
+  * The compiler's interpolation warning does not cover this either. It is
+  * enabled, and it fires on reference types; `build.sbt` records that it does
+  * not fire for primitives by design, which is what this type erases to.
   */
 opaque type UInt64 = Long
 
