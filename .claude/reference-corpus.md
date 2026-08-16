@@ -251,7 +251,8 @@ by opening `EIPS/eip-55.md` for its test vectors and getting a one-line pointer.
 
 | Path under the corpus root | Upstream | Ref | Authoritative for |
 |---|---|---|---|
-| `ethereum/execution-specs` | [ethereum/execution-specs](https://github.com/ethereum/execution-specs) | a `tests@vN` tag — **not** the default branch, see below | **The executable specification, and the live source of both fixtures and fork definitions.** `src/ethereum/forks/<fork>/` carries a per-fork implementation — `blocks.py`, `transactions.py`, `bloom.py`, `fork_types.py`, `vm/` — which is a *specification* rather than an implementation of one, and therefore outranks every client row above for structure |
+| `ethereum/execution-specs` | [ethereum/execution-specs](https://github.com/ethereum/execution-specs) | a `tests@vN` tag — **not** the default branch, see below | **The executable specification, and the live source of both fixtures and fork definitions.** `src/ethereum/forks/<fork>/` carries a per-fork implementation — `blocks.py`, `transactions.py`, `bloom.py`, `fork_types.py`, `vm/` — which is a *specification* rather than an implementation of one, and therefore outranks every client row above for structure. **Runnable, and running it is how a vector gets produced** — that needs five Python packages, not the three its `Log` path suggests: `ethereum-types`, `ethereum-rlp`, `pycryptodome`, plus `spec256k1` and `cryptography`, because `blocks.py` imports `transactions.py` |
+| `ethereum/execution-specs-fixtures` | the same repository's **release assets** | the `tests@vN` tag itself | **The vectors.** Not a clone — see "The fixture release" below, which is the only entry here that `git fetch` does not refresh |
 | `ethereum/tests` | [ethereum/tests](https://github.com/ethereum/tests) | `develop` | The primary Ethereum conformance corpus **for forks up to Prague**, and **dormant** — see the currency note below |
 | `etclabscore/tests` | [etclabscore/tests](https://github.com/etclabscore/tests) | `develop` | The Ethereum corpus as core-geth consumes it |
 | `etclabscore/tests-etc` | [etclabscore/tests](https://github.com/etclabscore/tests) | `main` | **The corpus fukuii hosts** — every known ETC test in one place, and the destination for the vectors fukuii authors. Its authority is **prospective**: its current content is upstream ETC-translation work with no fukuii-authored commits, so citing it as fukuii's answer to a historical question is circular. A fukuii vector becomes authority when it is derived from the spec and cleared by a reviewer who did not author it. **Its custodial role is now deliberate — see below** |
@@ -290,6 +291,56 @@ wrong: a block's octets and its published hash are what they were. It bounds
 *coverage* — `ethereum/tests` represents no fork after Prague, so a header longer than
 21 elements appears nowhere in it, while the executable spec's `amsterdam` already
 defines one of 23.
+
+### The fixture release — the one entry that is not a clone
+
+**Downloaded 2026-08-15, because a clone of `execution-specs` yields no vectors at all.**
+The trap above says the fixtures are release assets; this is the entry that resolves it.
+
+```
+ethereum/execution-specs-fixtures/tests-v20.0.1/
+  fixtures.tar.gz     403 MB, kept alongside the extraction
+  fixtures/           8.0 GB extracted, 34,909 JSON files
+```
+
+**It breaks three conventions this file otherwise states uniformly, and each break is the
+point rather than an exception to tidy away:**
+
+| Convention | Why this entry differs |
+|---|---|
+| One directory per GitHub org, named from `origin` | It has no `origin`. The directory is org-keyed by the repository the asset was *released from*, with `-fixtures` distinguishing it from the clone beside it |
+| Clone with full history | There is no history. An asset is a single immutable artifact; the tarball is kept beside the extraction so the entry can be re-verified without re-downloading |
+| Refresh by fetching | **`git fetch` does not touch it.** It refreshes only when upstream cuts a new `tests@vN` tag and someone re-downloads. A session reporting "the corpus is refreshed" has not refreshed this |
+
+```bash
+gh release download 'tests@v20.0.1' --repo ethereum/execution-specs \
+  --pattern 'fixtures.tar.gz' --dir <corpus-root>/ethereum/execution-specs-fixtures/tests-v20.0.1
+```
+
+**Cite it by the release tag** — `execution-specs` release `tests@v20.0.1` (2026-07-15) —
+never by a SHA. The tag names the artifact; the repository's default branch is
+fork-development and describes something else entirely.
+
+**What it publishes that no other corpus here does: receipts.** A `blockchain_tests`
+receipt carries, in one object, its `logs`, the `bloom` taken over them, and its own
+`rlp` — whose element 3 *is* the encoded log list. That is what lifts `Log`, `Bloom`,
+`Receipt`, `Transaction` and `Block` from specification-run certification to octets that
+shipped. It also reaches `for_osaka`, `for_prague` and the BPO transitions, where
+`ethereum/tests` stops at Prague and carries no receipt at all.
+
+**Its internal consistency was measured, not assumed** — 2193 receipts carrying logs,
+every one cross-verified by slicing element 3 from the published receipt RLP and
+re-encoding the fixture's separately-decoded JSON fields: zero slice mismatches, zero
+bloom mismatches. **That second figure is a cross-check between two independent sources
+in this file**, since it means the executable specification's own `logs_bloom` reproduced
+2193 blooms that shipped beside their own logs. Neither source is resting on the other's
+word.
+
+> **A caution the size invites.** `state_tests` and `blockchain_tests` overlap heavily in
+> what they assert, and `blockchain_tests_engine` is the same material in Engine API
+> spelling — note that it uses `logsBloom` where `blockchain_tests` uses `bloom`. **Two
+> formats agreeing is one source read twice, not corroboration**, which is the same rule
+> this file already applies to `etclabscore/tests` at its two refs.
 
 ### Custody: fukuii preserves the ETC corpus, and preserving is not authoring
 
@@ -419,11 +470,21 @@ older one.**
 | Every **non-Olympia** ECIP | **Published `master`** | Static. The historical specification is settled and is not being revised, so a citation to it does not decay |
 | The **Olympia** suite | **The maintainer's working copy** | Written here first. `master` does not yet carry the current text of these documents |
 
-**The working copy is strictly ahead, not divergent.** Measured against published
-`master`: **zero commits behind, and the differing documents are exactly ECIP-1066
-and the 1111–1122 Olympia set.** So there is no reconciliation to perform and no
-risk of the two disagreeing about settled history — the gap is confined to
-documents the published repository has not received yet.
+**The working copy is strictly ahead, not divergent** — nothing published is missing
+from it, so there is no reconciliation to perform and no risk of the two disagreeing
+about settled history. The gap is confined to documents the published repository has
+not received yet.
+
+**Which documents those are is a live reading, and this file deliberately records no
+list.** The suite is under active rewrite; its membership moves in both directions,
+because a document can be planned and referred to before it is authored, and another
+can exist in the working copy before it is published. **A roster written here would be
+wrong in one of those two directions long before anyone re-read it** — and it would be
+wrong while still looking specific and sourced, which is the failure this whole section
+exists to prevent.
+
+**One membership fact is stable and is the only one stated: ECIP-1120 is not part of
+the suite**, being a competing proposal authored elsewhere.
 
 **This is the general rule applied, not an exception to it.** Where a repository
 on this machine is the *author* of a specification, the local working copy is
@@ -443,7 +504,42 @@ newer version exists.
    on Ethereum Classic. What remains forbidden is inferring the specification
    from our own code — reading fukuii, or a fukuii-adjacent client, and treating
    what it does as what the proposal says. Where an Olympia detail is
-   load-bearing, it comes from the proposal text and is recorded as a decision.
+   load-bearing, it comes from the proposal text and is recorded as a dated
+   decision — dated because, under an active rewrite, a decision is a record of
+   what the spec said when it was read, never a standing statement of what it
+   says.
+
+### Cite an Olympia ECIP; never restate what it contains
+
+**No document in this repository carries Olympia specification content.** Not a
+charter, not a rule, not a plan, not a scaladoc comment. A document names the
+ECIP and the concern it governs, and whoever needs the content reads it from the
+specification at that moment.
+
+**The reason is the rewrite, and it is stronger than ordinary staleness.** These
+documents are being *replaced* rather than corrected: designs are dropped in
+favor of different ones, bespoke mechanisms give way to established patterns, and
+alignment targets move. **So a restated detail does not merely go out of date —
+it goes on describing a mechanism the specification no longer contains**, while
+still reading as specific and sourced. That is exactly the inversion this section
+records for the published copy, arriving instead through a document of our own.
+
+**What must not appear here:**
+
+| Not this | Because |
+|---|---|
+| A **value** — a contract address, a floor, a target, an activation point, a schedule | It is the spec's to change, and nothing re-reads this file when it does |
+| A **membership list** — which EIPs an ECIP adopts, or which ECIPs form the set | A list reads as checked. Read it from the proposal every time |
+| A **design summary** — "X does Y by means of Z" | The compression survives the rewrite that invalidates it |
+
+**What is safe, because none of it is the specification's to change:** the
+identifier and the concern it governs, ownership and review routing between this
+repository's agents, and the instrument that reads the current text.
+
+**The tell that this rule has been broken: a document here answers a question
+about an ECIP without the reader opening the ECIP.** If it is sufficient to act
+on, it has cached something — and the caching is the defect whether or not the
+value currently happens to be right.
 
 **Citation form is unchanged and is the one place the published copy always
 wins.** Tracked text names `ethereumclassic/ECIPs` @ `master` plus document
@@ -581,13 +677,29 @@ many clones this project does not cite, and their presence is correct.
 > **The reverse is not a finding.** A clone with no row here simply belongs to
 > another consumer.
 
-**Two rows are expected NOT to resolve, and a check that flags them is reporting
-its own defect rather than the corpus's.** Both are stated here so the exception
-list is one place rather than a rediscovery each time:
+**The instrument sees clones and nothing else, which is a limit rather than a bug —
+but it means an entry that is not a clone is invisible to it in BOTH directions.**
+`find . -name .git` cannot report a release asset present, and cannot report one
+missing either. So a non-clone entry is neither verified nor flagged by the check
+above, and needs its own:
+
+```
+test -d <corpus-root>/ethereum/execution-specs-fixtures/tests-v20.0.1/fixtures
+```
+
+**Three rows are expected NOT to resolve under the clone check, and a check that
+flags them is reporting its own defect rather than the corpus's.** All three are
+stated here so the exception list is one place rather than a rediscovery each time:
 
 - **`ethereum/execution-spec-tests`** appears only in the currency table, whose
   own entry reads *"archived and migrated — do not clone it"*. A row that tells
   you not to clone something is not a claim that it is present.
+- **`ethereum/execution-specs-fixtures`** is an extracted release asset and has no
+  `.git`, so the clone check cannot see it. Verify it with the `test -d` above.
+  **Its absence on a given machine is a real gap, not an exception** — unlike the
+  two rows around it, this one *should* be on disk, and a rebuilder who skipped
+  the download has no vectors for any domain type. The exception is only that the
+  clone check is the wrong instrument for it.
 - **`ethereumclassic/ECIPs`** is the path a rebuilder should clone to, and it is
   very much a reference — **the authority for ETC consensus and for Olympia.**
   What is absent is a *second* copy under the corpus root: on a maintainer's
