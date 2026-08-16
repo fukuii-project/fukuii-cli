@@ -1,6 +1,6 @@
 package org.fukuii.rlp
 
-import org.fukuii.bytes.{Address, Hash, Hex, UInt256, UInt64}
+import org.fukuii.bytes.{Address, Bytes, Hash, Hex, UInt256, UInt64}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Behavior of the codec layer, and the demonstration that one value cannot
@@ -21,6 +21,21 @@ class RlpCodecSpec extends AnyFlatSpec:
   "a byte string" should "round-trip through bytes" in {
     val value = Hex.decode("c0ffee").toOption.get
     assert(RlpCodec.decodeFrom[IArray[Byte]](RlpCodec.encodeTo(value)).map(Hex.encode) == Right("c0ffee"), "exact")
+  }
+
+  "a byte-string value" should "round-trip through bytes" in {
+    val value = Bytes.fromHex("c0ffee").toOption.get
+    assert(RlpCodec.decodeFrom[Bytes](RlpCodec.encodeTo(value)) == Right(value), "exact")
+  }
+
+  /** Every other leaf instance reports `ExpectedBytes` for this case. This one
+    * reported `ExpectedSequence` — naming the item it was handed rather than
+    * the one it wanted — and no test read the variant, so the whole suite
+    * passed over it.
+    */
+  it should "reject a sequence as not being a byte string" in {
+    val bytes = Rlp.encode(RlpItem.Sequence(Vector.empty))
+    assert(RlpCodec.decodeFrom[Bytes](bytes) == Left(RlpError.ExpectedBytes), "a list is not a byte string")
   }
 
   "a word" should "round-trip through bytes" in {

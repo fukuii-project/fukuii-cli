@@ -79,7 +79,7 @@ object RlpCodec:
     def encode(value: Bytes): RlpItem = RlpItem.Bytes(value.toIArray)
     def decode(item: RlpItem): Either[RlpError, Bytes] = item match
       case RlpItem.Bytes(payload) => Right(Bytes.fromIArray(payload))
-      case _: RlpItem.Sequence    => Left(RlpError.ExpectedSequence)
+      case _: RlpItem.Sequence    => Left(RlpError.ExpectedBytes)
 
   /** A quantity, under the Yellow Paper's scalar rule: minimal big-endian, and
     * the empty string for zero.
