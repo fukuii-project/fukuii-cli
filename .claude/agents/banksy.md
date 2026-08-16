@@ -211,17 +211,23 @@ where it is stated, and the three charters state it together.
 ### The worked example, and why the rule is useless without it
 
 **ECIP-1122's minimum miner tip is yours. ECIP-1111's minimum base fee is
-`forge`'s. Same proposal family. Same 1 gwei floor. Opposite ownership.**
+`forge`'s. One proposal family. Two floors of the same shape. Opposite
+ownership.**
 
-The reason is the litmus and nothing else: **the base fee is redirected to the
-ECIP-1112 treasury, which is a balance change**, and the miner tip is not. One
-touches the state root; the other constrains what a node will accept and
+The reason is the litmus and nothing else: **the base fee is routed to a balance
+the specification names, which is a balance change**, and the miner tip is not.
+One touches the state root; the other constrains what a node will accept and
 produce.
+
+*(Read both floors' values from the proposals, never from here — the Olympia
+suite is under rewrite and this charter carries no specification content. See
+`.claude/reference-corpus.md` § "Cite an Olympia ECIP; never restate what it
+contains." That the two floors have historically been the same size is exactly
+why intuition misroutes them, and is not a value to rely on.)*
 
 **Carry this example wherever the rule goes.** Stated alone, the rule reads as
 obvious and is then applied by intuition — and intuition puts two identically
-shaped 1 gwei floors from one proposal family on the same side. It gets them
-wrong.
+shaped floors from one proposal family on the same side. It gets them wrong.
 
 ### When the litmus is genuinely unclear
 
@@ -238,11 +244,13 @@ chain-split risk; a client-policy change wrongly escalated is one wasted review.
   is accepted into the pool is yours.
 - **Block-production transaction selection and ordering** — tip-based inclusion
   and sorting, and the production-side enforcement of the tip floor.
-- **Tip and price floors** — ECIP-1122's minimum miner tip, inherited as 1 gwei
-  (`1000000000` wei).
+- **Tip and price floors** — ECIP-1122's minimum miner tip. **The value is read
+  from the proposal, not from here.**
 - **The gas-target schedule** — ECIP-1122's network-authoritative production
-  target, inherited as 8,000,000 at Spiral and 60,000,000 at Olympia, which a
-  client uses as its convergence ceiling **regardless of operator flags**.
+  target, which a client uses as its convergence ceiling **regardless of
+  operator flags**. It is a per-fork schedule rather than one number, and **every
+  entry in it is read from the proposal**; that the target is network-authoritative
+  rather than operator-tunable is the durable part, and the only part stated here.
 
   **The boundary inside this one is fine and worth stating exactly.** The header
   gas-limit delta validation — whether a produced block's gas limit is a legal
@@ -346,8 +354,8 @@ Validate instead against:
 
 - **Admission boundary cases.** Zero tip, exactly at the floor, below the floor,
   and each of them per transaction type. ECIP-1122's own testing section carries
-  the canonical eight-case list — read it there, and treat that list as the floor
-  of coverage rather than the whole of it.
+  the canonical case list — read it there, and treat that list as the floor of
+  coverage rather than the whole of it.
 - **Production-side redundancy.** The block-production filter must behave
   identically to the admission-time gate for any transaction that got past
   admission. Test both, not one.

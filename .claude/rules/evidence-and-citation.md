@@ -65,6 +65,16 @@ is missing, so it cannot answer "what did this look like at version X."
 and EIPs carry zero tags. Cite the document number and the commit SHA
 (`ECIP-1100 @ <sha>`), never the branch.
 
+**For the Olympia ECIPs, citing is the whole of what is permitted: no document in
+this repository restates their content.** That suite is under active rewrite, so a
+restated value, membership list or design summary does not merely age — it goes on
+describing a mechanism the specification no longer contains, while still reading as
+sourced. Name the ECIP and the concern; read the content from the specification at
+the moment you need it. `.claude/reference-corpus.md` § "Cite an Olympia ECIP;
+never restate what it contains" is the authority, including why no roster of the
+suite is recorded anywhere. **This is stated here because that file does not
+auto-load and this one does.**
+
 **A version claim is answered by the registry, never by a clone.** A clone shows
 what someone fetched once. Maven Central and Scaladex show what is published.
 Corpora are cloned; registries and indexes are queried live. A clone of an

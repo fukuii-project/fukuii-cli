@@ -281,31 +281,31 @@ declining schedule.
 
 ### The Olympia proposal set, and its boundaries
 
-Four proposals, all required, and **the boundaries are the part a summary
-loses**:
+**This charter states no Olympia specification content, and the omission is the
+instruction.** `.claude/reference-corpus.md` § "Cite an Olympia ECIP; never
+restate what it contains" is the authority; what follows is what a charter can
+hold without breaking it.
 
-| Proposal | Carries |
-|---|---|
-| ECIP-1111 | The EIP-1559 fee market, with the base fee **redirected to a treasury rather than burned** — and it **includes the BASEFEE opcode, EIP-3198** |
-| ECIP-1112 | The treasury contract, at address `0x60d0A7394f9Cd5C469f9F5Ec4F9C803F5294d79b` |
-| ECIP-1121 | The execution-client parity EIP set |
-| ECIP-1122 | A minimum miner tip, a gas-target schedule, and MESS reactivation |
+**The suite is under active rewrite, and its own membership moves.** A proposal
+can be planned and referred to before it is authored, and one already authored
+can be replaced rather than amended. **So there is no roster here, no per-proposal
+summary, and no value** — read the current set, and each document's content, from
+the specification at the moment you need it.
 
-**Three exclusions, each of which has been got wrong before:**
+**A membership question has been got wrong from memory more than once**, in both
+directions: an EIP attributed to the wrong ECIP, and an EIP treated as Olympia
+that had shipped at an earlier fork. Every one of those readings was confident.
+**Treat any recollection of which proposal carries what as unverified**, including
+a recollection that arrives inside a task brief, and open the document.
 
-- **EIP-3198 belongs to ECIP-1111, not ECIP-1121.**
-- **EIP-3529 and EIP-3541 are not Olympia** — they shipped at Mystique.
-- **EIP-7594 (PeerDAS) is explicitly deferred**, being blob-dependent. It is not
-  in the set.
-
-**ECIP-1121's membership is deliberately not enumerated here.** It is a long
-list of proposal numbers, and a charter reciting them makes them look checked.
-Read the set from the proposal itself every time you need it.
-
-**ECIP-1122's tip floor and gas-target schedule are `banksy`'s**, even though
-they sit in this family. Its MESS reactivation is `banksy`'s too, with your
-mandatory co-signature. Only the state-affecting parts of the Olympia set —
-the fee market, the treasury routing, the opcode set — are yours.
+**What you own inside the set is decided by the litmus, not by proposal number.**
+The state-affecting parts — fee-market mechanics, where a fee is routed, the
+opcode and gas set — are yours. Operator-tunable client policy in the same
+family is `banksy`'s: tip and price floors, the gas-target a producer aims for,
+and MESS reactivation, that last one carrying your mandatory co-signature. **One
+proposal routinely splits across both of you**, which is why the litmus rather
+than the number is the assignment rule. `banksy`'s charter states the same split
+from its own side and carries the worked example.
 
 ### Where this family differs from the proof-of-stake one
 
@@ -314,7 +314,7 @@ the fee market, the treasury routing, the opcode set — are yours.
 | Consensus | Proof-of-work | Proof-of-stake, post-merge |
 | Chain ID | 61 mainnet · 63 Mordor | 1 mainnet · 11155111 Sepolia |
 | Fork dispatch | Block number | Timestamp |
-| EIP-1559 base fee | Redirected to the treasury | Burned |
+| EIP-1559 base fee | Routed per ECIP-1111 — read the destination there | Burned |
 | Block rewards | ECIP-1017 emission | None at the execution layer |
 | Blob transactions | No | Yes |
 | Withdrawals | No | Yes |

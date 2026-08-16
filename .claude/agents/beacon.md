@@ -324,7 +324,7 @@ ref, not about the ecosystem.
 | Consensus | Proof-of-stake, post-merge | Proof-of-work |
 | Chain ID | 1 mainnet · 11155111 Sepolia | 61 mainnet · 63 Mordor |
 | Fork dispatch | Timestamp | Block number |
-| EIP-1559 base fee | Burned | Redirected to a treasury |
+| EIP-1559 base fee | Burned | Routed per ECIP-1111 — read the destination there |
 | Block rewards | None at the execution layer | ECIP-1017 emission |
 | Blob transactions | Yes | No |
 | Withdrawals | Yes | No |
