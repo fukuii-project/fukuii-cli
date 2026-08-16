@@ -65,12 +65,14 @@ import org.fukuii.rlp.{RlpCodec, RlpError, RlpItem}
   * block per second it is beyond 10^11 years away, and a gas limit is held far
   * below it by rules the layer above owns.
   *
-  * @param mixHash
-  *   the same header slot a network that has replaced proof of work reads as
-  *   its previous randomness value. The name is the one the conformance
-  *   fixtures use at every fork including the most recent, so it is the
-  *   encoding layer's name for the slot rather than either family's reading of
-  *   it.
+  * ==The engine is pluggable, and [[Seal]] is the whole of what it changes==
+  *
+  * Every field here means the same thing under every consensus engine except
+  * the two the engine fills with its proof, and those are [[Seal]]. So a
+  * header is not proof-of-work-shaped with alternatives bolted on; it is
+  * engine-neutral with one two-element hole, which is what lets a second
+  * engine arrive without duplicating the fifteen fields or the tail chain.
+  *
   * @param extraData
   *   consensus rules cap this at 32 bytes on the networks this client targets.
   *   That is a validity rule rather than an encoding one and is not enforced
@@ -90,8 +92,7 @@ final case class BlockHeader(
     gasUsed: UInt64,
     timestamp: UInt64,
     extraData: Bytes,
-    mixHash: Hash,
-    nonce: BlockNonce,
+    seal: Seal,
     tail: Option[BaseFeeTail] = None
 ):
 
@@ -201,14 +202,19 @@ object BlockHeader:
 
   /** `[parentHash, ommersHash, beneficiary, stateRoot, transactionsRoot,
     * receiptsRoot, logsBloom, difficulty, number, gasLimit, gasUsed, timestamp,
-    * extraData, mixHash, nonce]`, then the tail.
+    * extraData]`, then the [[Seal]]'s two elements, then the tail.
+    *
+    * The seal is spliced in rather than nested, for the reason [[Block]]
+    * splices its body in: elements 13 and 14 are the header's own, and nesting
+    * them as one element would be a well-formed header no client accepts.
     *
     * ==Two fields are fixed-width where a reader expects a scalar==
     *
-    * `nonce` is eight bytes and `logsBloom` is 256, leading zeros included. A
-    * scalar drops those, so a zero nonce would encode as one byte rather than
-    * nine and every block hash over it would be wrong. Both are value types
-    * whose own codecs are fixed-width, so the mistake is not available here.
+    * A proof-of-work nonce is eight bytes and `logsBloom` is 256, leading zeros
+    * included. A scalar drops those, so a zero nonce would encode as one byte
+    * rather than nine and every block hash over it would be wrong. Both are
+    * value types whose own codecs are fixed-width, so the mistake is not
+    * available here.
     */
   given blockHeaderCodec: RlpCodec[BlockHeader] with
 
@@ -226,10 +232,8 @@ object BlockHeader:
         RlpCodec[UInt64].encode(value.gasLimit),
         RlpCodec[UInt64].encode(value.gasUsed),
         RlpCodec[UInt64].encode(value.timestamp),
-        RlpCodec[Bytes].encode(value.extraData),
-        RlpCodec[Hash].encode(value.mixHash),
-        RlpCodec[BlockNonce].encode(value.nonce)
-      )
+        RlpCodec[Bytes].encode(value.extraData)
+      ) ++ Seal.fieldsOf(value.seal)
       RlpItem.Sequence(head ++ encodeTail(value.tail))
 
     private def encodeTail(tail: Option[BaseFeeTail]): Vector[RlpItem] = tail match
@@ -279,8 +283,7 @@ object BlockHeader:
             gasUsed          <- RlpCodec[UInt64].decode(items(10))
             timestamp        <- RlpCodec[UInt64].decode(items(11))
             extraData        <- RlpCodec[Bytes].decode(items(12))
-            mixHash          <- RlpCodec[Hash].decode(items(13))
-            nonce            <- RlpCodec[BlockNonce].decode(items(14))
+            seal             <- Seal.fromFields(items(13), items(14))
             tail             <- decodeTail(items)
           yield BlockHeader(
             parentHash,
@@ -296,8 +299,7 @@ object BlockHeader:
             gasUsed,
             timestamp,
             extraData,
-            mixHash,
-            nonce,
+            seal,
             tail
           )
 

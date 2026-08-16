@@ -139,6 +139,8 @@ object BlockSpec:
       gasUsed = UInt64.fromLong(10).toOption.get,
       timestamp = UInt64.fromLong(11).toOption.get,
       extraData = Bytes.fromIArray(IArray.empty[Byte]),
-      mixHash = Hash.fromBytesTruncating(IArray.fill(32)(12)),
-      nonce = BlockNonce.fromBytes(IArray.fill(8)(13)).toOption.get
+      seal = Seal.Ethash(
+        Hash.fromBytesTruncating(IArray.fill(32)(12)),
+        BlockNonce.fromBytes(IArray.fill(8)(13)).toOption.get
+      )
     )

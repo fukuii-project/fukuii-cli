@@ -49,8 +49,7 @@ class BlockHeaderSpec extends AnyFlatSpec:
     gasUsed = UInt64.Zero,
     timestamp = UInt64.fromBigInt(BigInt(1234)).toOption.get,
     extraData = Bytes.Empty,
-    mixHash = hash(7),
-    nonce = BlockNonce.Zero
+    seal = Seal.Ethash(mixHash = hash(7), nonce = BlockNonce.Zero)
   )
 
   private val withWithdrawals = base.copy(tail = Some(BaseFeeTail(big(7), Some(WithdrawalsTail(hash(8))))))

@@ -121,8 +121,7 @@ class BlockHeaderPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
         gasUsed = machineWordOf(f(10)),
         timestamp = machineWordOf(f(11)),
         extraData = if f(12) == "-" then Bytes.Empty else Bytes.fromHex(f(12)).toOption.get,
-        mixHash = hashOf(f(13)),
-        nonce = BlockNonce.fromHex(f(14)).toOption.get,
+        seal = Seal.Ethash(hashOf(f(13)), BlockNonce.fromHex(f(14)).toOption.get),
         tail = tailOf(n, f)
       ),
       rlp = f(n),
@@ -167,8 +166,11 @@ class BlockHeaderPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     */
   property("the assembled genesis row carries a non-zero nonce and is still exact") {
     val genesis = vectors.find(_.network == "mainnet-genesis").get
+    val nonceHex = genesis.header.seal match
+      case Seal.Ethash(_, nonce)      => nonce.toHex
+      case _: Seal.AuthorityRound     => "not a proof-of-work seal"
     assert(
-      genesis.header.nonce.toHex == "0000000000000042" && genesis.header.hash.toHex == genesis.hash,
+      nonceHex == "0000000000000042" && genesis.header.hash.toHex == genesis.hash,
       "a nonce with leading zeros survives, and the hash still lands"
     )
   }
