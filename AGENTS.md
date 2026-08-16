@@ -529,18 +529,20 @@ dedicated lint plugin this repository does not have. There is still no
 formatter and no CI. Everything the compiler does not catch is checked by
 review, so it binds by being read.
 
-**Three rules carry the detail. They are the authority; this section is the
-map.**
+**The rules carry the detail. They are the authority; this section is the map.**
 
-| Rule | Governs |
-|---|---|
-| `.claude/rules/scala3-style.md` | Scala 3 idiom, design rules, `given`/`using` semantics, logging conventions, and the lint prohibitions to switch on when a linter first lands |
-| `.claude/rules/nomenclature.md` | The vocabulary a name is drawn from — identifiers, types, and prose |
-| `.claude/rules/comment-content.md` | What a comment is for, and what must never appear in one |
+| Rule | Governs | Loads |
+|---|---|---|
+| `.claude/rules/scala3-style.md` | Scala 3 idiom, design rules, `given`/`using` semantics, logging conventions, and the lint prohibitions to switch on when a linter first lands | on a `.scala` read |
+| `.claude/rules/nomenclature.md` | The vocabulary a name is drawn from — identifiers, types, and prose | on a `.scala` read |
+| `.claude/rules/comment-content.md` | What a comment is for, and what must never appear in one | on a `.scala` read |
+| `.claude/rules/reference-first.md` | **What must be consulted before a structural recommendation is formed** — the production clients, and how to survey them without lying to yourself | **every session** |
 
-Each is scoped to `**/*.scala`, so it loads when Scala is opened and **not**
-during design discussion. The two rules below are the part that must reach you
-before a file exists, so they are stated here, where they load every session.
+**The `Loads` column is the point of the table, not decoration.** The first
+three fire when Scala is opened and therefore **not during design discussion**,
+which is exactly when structure, placement and naming are decided. That gap is
+why the fourth is unscoped, and why the two rules below are stated here rather
+than behind a pointer: they must reach you before a file exists.
 
 **A name is chosen once and read forever, so choose it from the registry, never
 from a prior implementation.** An earlier attempt tells you where something
