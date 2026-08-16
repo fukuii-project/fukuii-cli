@@ -44,14 +44,17 @@ import org.fukuii.rlp.{Rlp, RlpCodec, RlpError, RlpItem}
   */
 sealed trait Transaction:
 
-  /** The EIP-2718 type number: 0 for the legacy shape, and the value the
-    * payload's own proposal states otherwise.
+  /** Which of EIP-2718's formats this is.
     *
     * First-class rather than recovered by matching, because the layer that
-    * decides whether this network admits this type needs exactly this and
-    * nothing else about the transaction.
+    * decides whether this network admits this format needs exactly this and
+    * nothing else about the transaction — and an admitted set is a set of
+    * formats, which is what makes this an enumeration rather than a number.
     */
-  def typeNumber: Int
+  def transactionType: TransactionType
+
+  /** The tag as it appears in the octets. */
+  final def typeNumber: Int = transactionType.number
 
   def nonce: UInt64
   def gasLimit: UInt64
@@ -96,7 +99,7 @@ object Transaction:
       r: UInt256,
       s: UInt256
   ) extends Transaction:
-    def typeNumber: Int  = Legacy.TypeNumber
+    def transactionType: TransactionType = TransactionType.Legacy
     lazy val hash: Hash  = Keccak256.hash(canonicalBytes(this))
 
   /** EIP-2930's payload: the legacy fields, a chain identifier, and an access
@@ -115,7 +118,7 @@ object Transaction:
       r: UInt256,
       s: UInt256
   ) extends Transaction:
-    def typeNumber: Int = AccessList.TypeNumber
+    def transactionType: TransactionType = TransactionType.AccessList
     lazy val hash: Hash = Keccak256.hash(canonicalBytes(this))
 
   /** EIP-1559's payload: one gas price becomes a cap and a tip. */
@@ -133,7 +136,7 @@ object Transaction:
       r: UInt256,
       s: UInt256
   ) extends Transaction:
-    def typeNumber: Int = DynamicFee.TypeNumber
+    def transactionType: TransactionType = TransactionType.DynamicFee
     lazy val hash: Hash = Keccak256.hash(canonicalBytes(this))
 
   /** EIP-4844's payload.
@@ -163,7 +166,7 @@ object Transaction:
       r: UInt256,
       s: UInt256
   ) extends Transaction:
-    def typeNumber: Int      = Blob.TypeNumber
+    def transactionType: TransactionType = TransactionType.Blob
     def to: Option[Address]  = Some(recipient)
     lazy val hash: Hash      = Keccak256.hash(canonicalBytes(this))
 
@@ -194,32 +197,27 @@ object Transaction:
       r: UInt256,
       s: UInt256
   ) extends Transaction:
-    def typeNumber: Int     = SetCode.TypeNumber
+    def transactionType: TransactionType = TransactionType.SetCode
     def to: Option[Address] = Some(recipient)
     lazy val hash: Hash     = Keccak256.hash(canonicalBytes(this))
 
+  /** The tag numbers themselves live on [[TransactionType]], which a receipt
+    * carries too. Only the field counts are here, because only a transaction
+    * has them — a receipt's field list is the same whatever its type.
+    */
   object Legacy:
-    /** Not a number any proposal assigns — the legacy shape predates the
-      * envelope and carries no type byte. Zero is the ecosystem's name for
-      * "the untyped one" and is what the conformance fixtures report.
-      */
-    val TypeNumber: Int  = 0x00
-    val FieldCount: Int  = 9
+    val FieldCount: Int = 9
 
   object AccessList:
-    val TypeNumber: Int = 0x01
     val FieldCount: Int = 11
 
   object DynamicFee:
-    val TypeNumber: Int = 0x02
     val FieldCount: Int = 12
 
   object Blob:
-    val TypeNumber: Int = 0x03
     val FieldCount: Int = 14
 
   object SetCode:
-    val TypeNumber: Int = 0x04
     val FieldCount: Int = 13
 
   /** The largest value EIP-2718 admits as a type byte. Anything above it is
@@ -400,12 +398,12 @@ object Transaction:
     item match
       case RlpItem.Bytes(_) => Left(RlpError.ExpectedSequence)
       case RlpItem.Sequence(items) =>
-        typeNumber match
-          case AccessList.TypeNumber => decodeAccessList(items)
-          case DynamicFee.TypeNumber => decodeDynamicFee(items)
-          case Blob.TypeNumber       => decodeBlob(items)
-          case SetCode.TypeNumber    => decodeSetCode(items)
-          case other                 => Left(RlpError.UnknownDiscriminant(other))
+        TransactionType.fromNumber(typeNumber) match
+          case Some(TransactionType.AccessList) => decodeAccessList(items)
+          case Some(TransactionType.DynamicFee) => decodeDynamicFee(items)
+          case Some(TransactionType.Blob)       => decodeBlob(items)
+          case Some(TransactionType.SetCode)    => decodeSetCode(items)
+          case _                                => Left(RlpError.UnknownDiscriminant(typeNumber))
 
   private def decodeAccessList(items: Vector[RlpItem]): Either[RlpError, Transaction] =
     if items.length != AccessList.FieldCount then
