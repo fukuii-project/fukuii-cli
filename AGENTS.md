@@ -102,8 +102,29 @@ sources independently. A repository listed there is evidence about how something
 behaves, never an adopted dependency; this table remains the authority for what
 is declared.
 
-There is still no dependency-update (Dependabot) configuration. That was correct
-while no manifest existed and is now a gap to close as the dependency set grows.
+**There is still no dependency-update (Dependabot) configuration for
+`build.sbt`, and that absence is now a pending item, not a standing
+condition.** `build.sbt` is a real manifest, and GitHub's Dependabot has
+carried a dedicated [`sbt` ecosystem](https://docs.github.com/en/code-security/reference/supply-chain-security/supported-ecosystems-and-repositories#sbt)
+since it [shipped 2026-05-26](https://github.blog/changelog/2026-05-26-dependabot-version-updates-now-support-the-sbt-ecosystem/);
+it fetches `build.sbt` at the repository root as a required file. Coverage has
+a real limit, though: GitHub's own wording is *"This applies to version
+updates, not security updates,"* so a configured `sbt` entry opens scheduled
+pull requests for newer upstream releases but does not plug into Dependabot's
+advisory-triggered security-update path the way some other ecosystems do. A
+`dependabot.yml` entry for this manifest is both warranted and expressible; it
+simply has not been written yet, and writing it — then pushing it, since a
+live config starts opening pull requests on the next scheduled run — is an
+operator decision, not a capability this repository is waiting on.
+
+[Scala Steward](https://github.com/scala-steward-org/scala-steward) no longer
+covers this surface *instead of* Dependabot — that framing depended on
+Dependabot having nothing to offer sbt at all, and it now does. Scala Steward
+is complementary at most: a separate, general-purpose version-bump mechanism
+that would overlap with a configured `sbt` entry on routine updates rather
+than substitute for one, and it does not close the gap Dependabot's own sbt
+support explicitly leaves open — the security-update half. Adopting either
+mechanism, and any CI either needs, remains this repository's own future work.
 
 ## Setup
 
