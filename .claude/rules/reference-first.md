@@ -98,6 +98,50 @@ So: **run the sweep against a client you already know is positive, and one you
 know is negative, before believing any row of it.** A survey that cannot report
 a known-positive is not measuring what its column header says.
 
+## The recurring shape: narrow scope, wide-enough survey
+
+**This has now happened at every layer that has reached this rule — L1, then L2 — and it is
+worth naming as a pattern rather than re-deriving per section.** Each time, the scope stayed
+narrow; what widened was the SURVEY that decided the narrow scope's shape.
+
+The shape, stated once so it does not need re-litigating:
+
+1. **Scope the build narrow.** Build only what the current layer's own stated need requires.
+   Do not build support for a consumer that does not exist yet.
+2. **Before finalizing the SHAPE — not the implementation, the shape — survey the field for
+   every consumer that shape will eventually have to serve.** Not hypothetical consumers:
+   ones that already concretely exist, either as a shipped specification (a numbered proposal,
+   a wire-protocol version) or as running code in a production client this project's own corpus
+   already carries.
+3. **Change the shape where the survey shows it would otherwise foreclose one of those
+   consumers.** This is usually cheap — a field that can be recomputed instead of only stored,
+   a case that admits a second variant, a boundary drawn one seam over from where it first
+   looked obvious.
+4. **Do not build the deferred consumers.** Record what would trigger building them, and stop.
+   The survey's job is to keep today's narrow thing from becoming tomorrow's rewrite; it is not
+   license to build tomorrow's thing today.
+
+**The worked instance this rule already carries makes step 3 concrete.** L1's `PROTOCOL-ALIGNMENT.md`
+surveyed eight clients before any type shipped, and it changed two shapes on the strength of
+consumers that already existed: `Receipt`'s bloom became derivable, because eth/69 — an
+already-specified wire version — drops it from the message and a peer must recompute it;
+`Seal` became a sum, because the survey found two production clients already sealing blocks a
+different way. Neither eth/69 support nor a second consensus engine was built. Both remain
+buildable without a rewrite.
+
+**The test that keeps this from becoming a mandate to over-engineer:** *does the consumer this
+finding is protecting already exist, checkably, in the field* — a specification at a stated
+status, a client at a citable ref — *or is it a guess about what might someday be wanted?* The
+first is this rule; the second is exactly what `CLAUDE.md`'s anti-over-engineering principle
+already forbids, and this rule does not create an exception to it. A survey that cannot name
+the concrete consumer it is protecting against has not earned a shape change.
+
+**Recognize the shape at the moment a new layer is being scoped, not after its first type
+ships.** The trigger is the same one this rule already states: a decision about whether a shape
+should be supported at all is structural, and structural decisions begin with the field. What
+this section adds is only the sequencing — narrow the build first, so the survey has a concrete
+scope to survey *for*, rather than surveying in the abstract.
+
 ## What this does not license
 
 **It is not a mandate to copy.** The clients are evidence about what is
