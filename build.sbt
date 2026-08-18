@@ -327,13 +327,7 @@ lazy val types = (project in file("modules/types"))
 
 // storage — the byte-pure key/value persistence contract: namespace
 // separation along L2's two axes, the atomic batch, the versioned view, and
-// one in-memory implementation. L2's other half, `modules/trie` — the
-// Merkle-Patricia node model built on top of this module — is not declared
-// here. Unlike `crypto`'s empty-project precedent, trie's own dependency
-// edges beyond `storage` (at minimum `bytes`, `rlp` and `crypto`, for node
-// encoding and hashing) are not settled by this module, so declaring an
-// empty `trie` project now would commit to an incomplete edge set rather
-// than a complete one.
+// one in-memory implementation.
 //
 // Depends on bytes alone, deliberately not on types: every key and value
 // here is Bytes, and the layer that constructs Namespace values decides what
@@ -346,6 +340,36 @@ lazy val storage = (project in file("modules/storage"))
     libraryDependencies ++= testDeps
   )
 
+// trie — L2's other half: the Merkle-Patricia node model, its encoding, its
+// hashing, and the seam a state root is computed over.
+//
+// The edge set was left unsettled when `storage` landed, because a module's
+// edges are a claim about what it needs and an empty project would have
+// committed to an incomplete one. It is settled here, and every edge is used
+// by a type in this module rather than declared against one that might be:
+//
+//   bytes    keys, values and digests are Bytes, Hash and Address
+//   rlp      a node IS its RLP encoding; the commitment is taken over those
+//            bytes, so the codec is not an accessory to this layer
+//   crypto   the node cap rule and the root rule are both keccak-256, and a
+//            secured trie hashes every key before insertion
+//   storage  the versioned key/value view a commitment is computed over, and
+//            the content-addressed node keyspace the other implementation
+//            writes into
+//   types    the state trie's leaf value is an RLP-encoded account. The
+//            alternative was a second account encoding written here, which is
+//            the one hazard RlpCodec's contract exists to forbid: one value
+//            with two encodings, selected by which layer a call site is in
+//
+// The direction is one-way: `storage` is byte-pure and names nothing here, so
+// a cycle is a build error rather than a review comment.
+lazy val trie = (project in file("modules/trie"))
+  .dependsOn(bytes, rlp, crypto, types, storage)
+  .settings(
+    name := "fukuii-trie",
+    libraryDependencies ++= testDeps
+  )
+
 // The aggregate. `aggregate` makes a task at the root fan out to every module;
 // it is NOT a dependency edge, so the root gains nothing on its classpath.
 //
@@ -354,7 +378,7 @@ lazy val storage = (project in file("modules/storage"))
 // org.fukuii:fukuii_3, so the repo name must not leak into it. Lowercase
 // because this is a Maven artifactId, not a display name.
 lazy val root = (project in file("."))
-  .aggregate(bytes, rlp, crypto, types, storage)
+  .aggregate(bytes, rlp, crypto, types, storage, trie)
   .settings(
     name := "fukuii",
     libraryDependencies ++= testDeps
