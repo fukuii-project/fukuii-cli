@@ -27,7 +27,12 @@ THAN LEFT TO BE REDISCOVERED:
 
   * A storage slot holding ZERO is ABSENT from the storage trie -- it is not a
     leaf holding a zero. Fixtures do carry such entries, so this script drops
-    them and prints the count. NOTE WHERE THAT RULE LIVES: the trie takes
+    them. TWO COUNTS ARE PRINTED AND THEY MEASURE DIFFERENT THINGS: one is
+    corpus-wide, over every case scanned, and is what establishes that such
+    entries exist at all; the other is scoped to the rows this table emitted,
+    and reads 0 whenever no selected case carried one. A reader who takes the
+    second for the first concludes the corpus is clean from a number that
+    never looked at it. NOTE WHERE THAT RULE LIVES: the trie takes
     opaque bytes and has no notion of a zero-valued word, so this is not the
     trie's rule to enforce and no row here can test it. It belongs to whichever
     layer later writes storage from typed values, and that layer does not exist
@@ -49,7 +54,6 @@ its last block's header, and it is not attempted here.
 import collections
 import json
 import pathlib
-import subprocess
 import sys
 
 if len(sys.argv) != 3:
@@ -136,6 +140,8 @@ def minimal(n: int) -> str:
 rows = []
 mismatches = []
 dropped_zero_slots = 0
+corpus_zero_slots = 0
+corpus_zero_cases = 0
 dropped_by_cap = collections.Counter()
 buckets = collections.Counter()
 scanned = 0
@@ -158,6 +164,20 @@ for path in sorted(ROOT.glob("**/*.json")):
             continue
         scanned += 1
         pre = case["pre"]
+        # Corpus-wide, over every scanned case rather than the selected ones.
+        # The dropped count below is scoped to this table and is 0 whenever no
+        # selected case happens to carry one -- which is equally what a corpus
+        # holding none would print, so it cannot evidence that the corpus holds
+        # any. This counter is what does.
+        case_zero = sum(
+            1
+            for a in pre.values()
+            for v in (a.get("storage") or {}).values()
+            if as_int(v) == 0
+        )
+        if case_zero:
+            corpus_zero_slots += case_zero
+            corpus_zero_cases += 1
         if len(pre) > MAX_ACCOUNTS:
             dropped_by_cap["accounts"] += 1
             continue
@@ -286,8 +306,12 @@ lines = [
     "# order the two levels wrongly, secure one level and not the other, or",
     "# encode the account's four fields out of order.",
     "#",
-    "# A ZERO STORAGE SLOT IS ABSENT, NOT A LEAF HOLDING ZERO. The fixtures do",
-    f"# carry such entries; {dropped_zero_slots} were dropped building this table.",
+    "# A ZERO STORAGE SLOT IS ABSENT, NOT A LEAF HOLDING ZERO. The corpus",
+    f"# carries {corpus_zero_slots} such entries across {corpus_zero_cases} of",
+    f"# the {scanned} cases scanned, and {dropped_zero_slots} were dropped",
+    "# building this table. THE SECOND FIGURE CANNOT EVIDENCE THE FIRST: it",
+    "# counts only what the selected rows carried, so a 0 there is what a",
+    "# clean corpus and an unlucky selection both print.",
     "# NOTHING HERE TESTS THAT RULE, and the reason is where the rule lives: the",
     "# trie takes opaque bytes and has no notion of a zero-valued word, so it is",
     "# not the trie's to enforce. It belongs to whichever layer later writes",
@@ -335,6 +359,11 @@ print(
     f"wrote {len(rows)} vectors ({total_accounts} accounts, {total_slots} slots) -> {OUT}",
     file=sys.stderr,
 )
-print(f"zero-valued storage slots dropped: {dropped_zero_slots}", file=sys.stderr)
+print(
+    f"zero-valued storage slots: {corpus_zero_slots} corpus-wide "
+    f"across {corpus_zero_cases}/{scanned} cases; "
+    f"{dropped_zero_slots} dropped from the emitted table",
+    file=sys.stderr,
+)
 if mismatches:
     raise SystemExit(1)

@@ -34,8 +34,12 @@
 # order the two levels wrongly, secure one level and not the other, or
 # encode the account's four fields out of order.
 #
-# A ZERO STORAGE SLOT IS ABSENT, NOT A LEAF HOLDING ZERO. The fixtures do
-# carry such entries; 0 were dropped building this table.
+# A ZERO STORAGE SLOT IS ABSENT, NOT A LEAF HOLDING ZERO. The corpus
+# carries 774 such entries across 774 of
+# the 70864 cases scanned, and 0 were dropped
+# building this table. THE SECOND FIGURE CANNOT EVIDENCE THE FIRST: it
+# counts only what the selected rows carried, so a 0 there is what a
+# clean corpus and an unlucky selection both print.
 # NOTHING HERE TESTS THAT RULE, and the reason is where the rule lives: the
 # trie takes opaque bytes and has no notion of a zero-valued word, so it is
 # not the trie's to enforce. It belongs to whichever layer later writes
