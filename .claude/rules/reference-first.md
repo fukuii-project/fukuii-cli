@@ -121,8 +121,8 @@ The shape, stated once so it does not need re-litigating:
    The survey's job is to keep today's narrow thing from becoming tomorrow's rewrite; it is not
    license to build tomorrow's thing today.
 
-**The worked instance this rule already carries makes step 3 concrete.** L1's `PROTOCOL-ALIGNMENT.md`
-surveyed eight clients before any type shipped, and it changed two shapes on the strength of
+**The worked instance this rule already carries makes step 3 concrete.** L1's protocol-alignment
+survey covered eight clients before any type shipped, and it changed two shapes on the strength of
 consumers that already existed: `Receipt`'s bloom became derivable, because eth/69 — an
 already-specified wire version — drops it from the message and a peer must recompute it;
 `Seal` became a sum, because the survey found two production clients already sealing blocks a
@@ -132,9 +132,15 @@ buildable without a rewrite.
 **The test that keeps this from becoming a mandate to over-engineer:** *does the consumer this
 finding is protecting already exist, checkably, in the field* — a specification at a stated
 status, a client at a citable ref — *or is it a guess about what might someday be wanted?* The
-first is this rule; the second is exactly what `CLAUDE.md`'s anti-over-engineering principle
-already forbids, and this rule does not create an exception to it. A survey that cannot name
-the concrete consumer it is protecting against has not earned a shape change.
+first is this rule; the second is over-engineering — **build only what the present work
+requires, and do not design for a requirement nobody has yet** — and this rule does not create
+an exception to it. A survey that cannot name the concrete consumer it is protecting against
+has not earned a shape change.
+
+**That test is stated here rather than cited** because the citation it replaced pointed at
+`CLAUDE.md`, which in this repository is the single line `@AGENTS.md` — so for anyone who
+clones, the limit on this rule resolved to nothing. `.claude/rules/evidence-and-citation.md` §4
+is the standard, and a rule file violating it is the worst place for the breach to sit.
 
 **Recognize the shape at the moment a new layer is being scoped, not after its first type
 ships.** The trigger is the same one this rule already states: a decision about whether a shape
