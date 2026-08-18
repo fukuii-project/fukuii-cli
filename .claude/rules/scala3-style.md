@@ -10,10 +10,19 @@ sources on **2026-08-06** — the `given` import rule and opaque-type scope
 transparency against the Scala 3 Book (`scala/docs.scala-lang` @ commit
 `43833274`, 2026-07-10, an untagged repository), and `given` finality, the
 alias-to-lazy-val analogy and the recursive-lazy-val behavior against the Scala 3
-reference at tag **`3.3.8`**, which is the version `build.sbt` pins. Also
-measured against this repository the same day: `build.sbt` declares **no logging,
-metrics, actor or effect dependency** — which is what the logging section and its
-deferral rest on. **Re-derive that rather than trusting this sentence**, with
+reference at tag **`3.3.8`**, which is the version `build.sbt` pins.
+
+**"Enum cases: an inferred binding widens to the enum type" is dated
+separately, 2026-08-17**, and is the one section here confirmed by *running*
+the compiler: the reference passage was read at the same tag, and every shape
+in its table was then compiled with `scala3-compiler_3` at 3.3.8, with a
+known-good and a known-bad calibration and a non-enum control. Where the rest
+of this file reasons from the reference, that section measured the reference's
+claim and its own boundaries.
+
+Also measured against this repository on **2026-08-06**: `build.sbt` declares
+**no logging, metrics, actor or effect dependency** — which is what the
+logging section and its deferral rest on. **Re-derive that rather than trusting this sentence**, with
 `grep -nE 'slf4j|logback|log4j|micrometer|pekko|cats-effect|zio' build.sbt`; a
 declared dependency list is exactly the thing that changes without anyone
 re-reading a rule header.
@@ -280,6 +289,117 @@ surfaces far from the code that caused it.
 > project's prior implementation. **The language mechanism above is verified;
 > the incident is inherited.** Verify the exact pinned form against the compiler
 > when the first such instance is written, since it has not been compiled here.
+
+---
+
+## Enum cases: an inferred binding widens to the enum type
+
+**An enum case constructor application has the case's own type only where a more
+specific type is expected. Bind it to a definition that declares no type —
+`val`, `var`, `lazy val`, or `def` — and the inferred type is the *enum*, not the
+case.** So a value written as `Namespace.Standalone(...)` arrives at a parameter
+of type `Namespace.Standalone` as a `Namespace`, and does not conform.
+
+**Verified**, Scala 3 reference, *Algebraic Data Types*, at tag `3.3.8`
+(`docs/_docs/reference/enums/adts.md`): "the type of a enum case constructor
+application will be widened to the underlying enum type, unless a more specific
+type is expected. This is a subtle difference with respect to normal case
+classes. The classes making up the cases do exist, and can be unveiled, either by
+constructing them directly with a `new`, or by explicitly providing an expected
+type."
+
+**Measured 2026-08-17** against `scala3-compiler_3` at **3.3.8**, the version
+`build.sbt` pins — each shape compiled on its own, every `Namespace` row against
+this repository's own type. Two rows cannot be: the one-case row needs a
+one-case enum, and the control is a hand-written `sealed trait` plus
+`final case class` of the same shape, which does not widen. This is the one
+claim in this file confirmed by running the compiler rather than by reading the
+reference alone.
+
+**If you re-verify it, read the type off a conformance error and not off a
+discard.** Assigning the binding into a `Unit` to make the compiler print
+`Discarded non-Unit value of type X` looks like the cheaper instrument and is not
+a calibrated one: measured the same day, it reported for a `val` and stayed
+**silent** for a `var`, a `lazy val` and a `def` in the same file — silence that
+is indistinguishable from "no widening". Pass the binding to something that
+requires the case type instead; [E007] then names both types every time, and the
+form that compiles is the negative control.
+
+*"Unless a more specific type is expected"* is the whole rule; the rows are its
+instances, and the rule is what to carry. It is a property of `enum` and not of
+any one type — `Namespace` is only where this repository met it.
+
+| Shape | Type it gets |
+|---|---|
+| `val ns = Namespace.Standalone(...)` — likewise `var`, `lazy val`, and a `def` with no declared result type | **`Namespace`** — widened |
+| `List(Namespace.Standalone(...), ...)` with no declared element type | **`List[Namespace]`** — and `List` is invariant, so no subtyping recovers it |
+| A one-case enum, same shape | **widened** too; the case count is irrelevant |
+| `update(Namespace.Standalone(...))` — applied straight into a parameter of the case type | `Namespace.Standalone` |
+| `Namespace.Coupled(id, seam, mode, Namespace.Standalone(...))` — an argument whose parameter is the case type | `Namespace.Standalone` |
+| `val ns: Namespace.Standalone = Namespace.Standalone(...)` | `Namespace.Standalone` |
+| `val ns = new Namespace.Standalone(...)` | `Namespace.Standalone` |
+| `case s: Namespace.Standalone => ...` — a pattern-match binding | `Namespace.Standalone` |
+| `coupled.companion`, where the field is *declared* `Namespace.Standalone` | `Namespace.Standalone` |
+| The same shape as `sealed trait` + `final case class` — the **control** | `Namespace.Standalone`; no widening |
+
+### The tell, which matters more than the remedy
+
+**The compiler never says "widened", and it never points at the binding.** What
+you get is an ordinary conformance error at the *use* site:
+
+```
+-- [E007] Type Mismatch Error: ...
+  |                 Found:    (stateNs : org.fukuii.storage.Namespace)
+  |                 Required: org.fukuii.storage.Namespace.Standalone
+```
+
+**The signature is that `Found` and `Required` differ only by a trailing case
+name.** An ordinary type error puts two unrelated types on those two lines; this
+one puts a type and its own member, and that is what identifies it.
+
+Three properties make it cost more than the error suggests:
+
+- **The error is not where the defect is.** The binding that lost the type
+  compiled without complaint, and may be in another file — a fixture at the top
+  of a spec, a `private val` in a companion.
+- **`-explain` adds nothing.** Measured the same day: it prints the conformance
+  attempt (`Namespace <: Namespace.Standalone = false`) and never the word
+  *widened*.
+- **The instinct is to suspect the signature.** A parameter typed to one case
+  looks over-narrow when a value that *was* that case will not go in, so the
+  reflex is to relax it — see below.
+
+**A binding that never needs the case type will not report anything**, which is
+why the trap is intermittent rather than systematic: three un-ascribed bindings
+can sit beside an ascribed one and be perfectly correct, because they only ever
+call members the enum itself has.
+
+### The remedies
+
+1. **Ascribe the binding** — `val ns: Namespace.Standalone = Namespace.Standalone(...)`.
+   The form to reach for at a handful of sites. Its cost is repeating the name.
+2. **A companion factory carrying an explicit result type**, when a case type is
+   wanted at more than a handful of sites. Every call site is then narrow with no
+   ascription anywhere:
+
+   ```scala
+   object Namespace:
+     def standalone(id: NamespaceId, seam: Seam, mode: WriteMode): Namespace.Standalone =
+       Namespace.Standalone(id, seam, mode)
+   ```
+3. **`new`.** It works and it is the reference's own demonstration, but it reads
+   as a mistake in Scala 3 code where `new` is otherwise rare. Prefer 1 or 2.
+
+### Do not widen the signature to make the error go away
+
+**Where an operation takes a case type rather than the enum, that parameter is
+usually carrying an invariant, and relaxing it deletes the invariant to silence a
+type error.** `modules/storage` is the standing instance and
+`KeyValueStore.scala` is its authority: `update` and `updateAt` accept only
+`Namespace.Standalone` and `admit` only `Namespace.Coupled`, which is what makes
+a write to a coupled namespace with no value for its companion **unwritable**
+rather than merely rejected at run time. Widen those parameters and nothing fails
+— the property simply stops existing, with no test to notice.
 
 ---
 
