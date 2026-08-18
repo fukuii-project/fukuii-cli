@@ -13,14 +13,15 @@ corrected the claimed absence of a per-fork validator switch, which was
 withdrawn — the switch exists. **Everything else here was not re-opened by
 that audit** and rests on the originating pass alone.
 
-**Read the audit's hit rate as the evidence about that remainder, because it
-is the only evidence there is: it examined four mechanism protocols and
-corrected a claim in every one.** So the un-audited majority of this file is
-neither known-wrong nor known-right — it is un-re-derived, at a base rate
-this repository has now measured and found non-trivial. Named residuals
-carrying that standing here: the `RoundState` claims and the besu
-`SegmentIdentifier` claim. **Re-derive one before relying on it; this header
-has not done that for you.**
+**Four claims were re-derived and four were corrected. How those four were
+selected is not recorded, so that rate does not estimate the error rate of
+what was not re-opened** — an audit that targeted claims it already doubted
+returns four-of-four against a near-clean remainder, and one drawing at
+random does not. **So the un-audited majority of this file is neither
+known-wrong nor known-right. It is un-re-derived, at an unknown rate.**
+Named residuals carrying that standing here: the `RoundState` claims and the
+besu `SegmentIdentifier` claim. **Re-derive one before relying on it; this
+header has not done that for you.**
 
 **The contrast with `.claude/protocols/consensus-pow.md` and
 `.claude/protocols/consensus-pos.md` survives the downgrade, and it

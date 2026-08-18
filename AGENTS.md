@@ -603,7 +603,7 @@ rule holds the trap. `dead-code-review.md` is the worked case: its hazard, that 
 `given` can have zero textual references and still be live, is stated in
 `.claude/rules/evidence-and-citation.md` §3, which loads every session.
 
-**The consensus protocols are delivered by a charter body instead, and that is a
+**The consensus protocols are instructed by a charter body instead, and that is a
 second mechanism rather than a gap in the first.** Their facts are needed only by
 a consensus task, every consensus task routes to `forge`, and a charter body
 loads when its agent is dispatched — so `forge`'s charter is what instructs the
