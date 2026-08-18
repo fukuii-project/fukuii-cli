@@ -19,7 +19,8 @@ class LeafOrderingPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
   private def hexBytes(hex: String): Bytes = Bytes.fromHex(hex).toOption.get
 
   private val layout = Layout(RepresentationId("hash-keyed"), Set.empty)
-  private val namespace: Namespace.Standalone = Namespace.Standalone(NamespaceId("state"), Seam.State, WriteMode.Mutable)
+  private val namespace: Namespace.Standalone =
+    Namespace.Standalone(NamespaceId("state"), Seam.State, WriteMode.Mutable)
   private val version = Version(Hash.fromBytesTruncating(IArray.empty))
 
   private val cases = Table(

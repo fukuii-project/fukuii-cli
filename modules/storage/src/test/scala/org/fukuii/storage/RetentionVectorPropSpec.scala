@@ -12,6 +12,9 @@ class RetentionVectorPropSpec extends AnyPropSpec with TableDrivenPropertyChecks
 
   property("RetentionVector.Archive is Unbounded on every category") {
     forAll(categories) { category =>
-      assert(RetentionVector.Archive(category) == RetentionBound.Unbounded, category.toString + " must be unbounded under archive")
+      assert(
+        RetentionVector.Archive(category) == RetentionBound.Unbounded,
+        category.toString + " must be unbounded under archive"
+      )
     }
   }

@@ -75,13 +75,13 @@ object Namespace:
   extension (namespace: Namespace)
 
     def id: NamespaceId = namespace match
-      case Standalone(id, _, _)    => id
-      case Coupled(id, _, _, _)    => id
+      case Standalone(id, _, _) => id
+      case Coupled(id, _, _, _) => id
 
     def seam: Seam = namespace match
-      case Standalone(_, seam, _)    => seam
-      case Coupled(_, seam, _, _)    => seam
+      case Standalone(_, seam, _) => seam
+      case Coupled(_, seam, _, _) => seam
 
     def writeMode: WriteMode = namespace match
-      case Standalone(_, _, writeMode)    => writeMode
-      case Coupled(_, _, writeMode, _)    => writeMode
+      case Standalone(_, _, writeMode) => writeMode
+      case Coupled(_, _, writeMode, _) => writeMode

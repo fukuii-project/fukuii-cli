@@ -4,7 +4,8 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class LayoutSpec extends AnyFlatSpec:
 
-  private val layout = Layout(RepresentationId("hash-keyed"), Set(NamespaceId("chain-header"), NamespaceId("total-difficulty")))
+  private val layout =
+    Layout(RepresentationId("hash-keyed"), Set(NamespaceId("chain-header"), NamespaceId("total-difficulty")))
 
   "RepresentationId" should "round-trip a label through .label" in
     assert(RepresentationId("hash-keyed").label == "hash-keyed", "the label must survive the wrapper")
@@ -13,4 +14,7 @@ class LayoutSpec extends AnyFlatSpec:
     assert(layout.representation.label == "hash-keyed", "representation must be readable")
 
   it should "expose the chain-data namespace set it was constructed with" in
-    assert(layout.chainDataNamespaces == Set(NamespaceId("chain-header"), NamespaceId("total-difficulty")), "the namespace set must be exact")
+    assert(
+      layout.chainDataNamespaces == Set(NamespaceId("chain-header"), NamespaceId("total-difficulty")),
+      "the namespace set must be exact"
+    )

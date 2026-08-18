@@ -19,6 +19,17 @@ import scala.util.Using
   * make and no passing test that could exercise it without itself failing to
   * compile. It is verified by this file compiling with `admit` as the only
   * operation that accepts a [[Namespace.Coupled]] value.
+  *
+  * ==What IS tested, and why it is a different guarantee==
+  *
+  * A *different* [[Namespace.Standalone]] value carrying the same
+  * [[NamespaceId]] as an already-admitted [[Namespace.Coupled]] namespace
+  * type-checks as an ordinary `update` argument — the signature above stops
+  * the [[Namespace.Coupled]] value itself, never a same-id alias of it. That
+  * half of the admission invariant is enforced at run time by
+  * [[InMemoryKeyValueStore]]'s shape registry, and the "the admission
+  * invariant" tests below exercise it directly, in both directions and
+  * against a legitimate reuse that must not throw.
   */
 class InMemoryKeyValueStoreSpec extends AnyFlatSpec:
 
@@ -84,20 +95,36 @@ class InMemoryKeyValueStoreSpec extends AnyFlatSpec:
     assert(store.get(stateNs, keyA).isEmpty, "versioned and unversioned entries are separate keyspaces")
   }
 
+  it should "make a write readable through getAt at the version it was written to" in {
+    val store = new InMemoryKeyValueStore(layout)
+    store.updateAt(stateNs, version, Nil, Seq(keyA -> valueA))
+    assert(
+      store.getAt(stateNs, version, keyA).contains(valueA),
+      "a write must be readable back at the version it targeted"
+    )
+  }
+
   "admit" should "write the primary value, readable through the primary namespace" in {
     val store = new InMemoryKeyValueStore(layout)
-    val companion: Namespace.Standalone = Namespace.Standalone(NamespaceId("total-difficulty"), Seam.ChainData, WriteMode.Mutable)
-    val header: Namespace.Coupled = Namespace.Coupled(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable, companion)
+    val companion: Namespace.Standalone =
+      Namespace.Standalone(NamespaceId("total-difficulty"), Seam.ChainData, WriteMode.Mutable)
+    val header: Namespace.Coupled =
+      Namespace.Coupled(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable, companion)
     store.admit(header, keyA, valueA, valueB)
     assert(store.get(header, keyA).contains(valueA), "the primary value must be readable through the coupled namespace")
   }
 
   it should "write the companion value, readable through the companion namespace" in {
     val store = new InMemoryKeyValueStore(layout)
-    val companion: Namespace.Standalone = Namespace.Standalone(NamespaceId("total-difficulty"), Seam.ChainData, WriteMode.Mutable)
-    val header: Namespace.Coupled = Namespace.Coupled(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable, companion)
+    val companion: Namespace.Standalone =
+      Namespace.Standalone(NamespaceId("total-difficulty"), Seam.ChainData, WriteMode.Mutable)
+    val header: Namespace.Coupled =
+      Namespace.Coupled(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable, companion)
     store.admit(header, keyA, valueA, valueB)
-    assert(store.get(companion, keyA).contains(valueB), "the companion value must be readable through its own namespace")
+    assert(
+      store.get(companion, keyA).contains(valueB),
+      "the companion value must be readable through its own namespace"
+    )
   }
 
   "clear" should "remove every unversioned entry in the namespace" in {
@@ -130,6 +157,46 @@ class InMemoryKeyValueStoreSpec extends AnyFlatSpec:
     val store = new InMemoryKeyValueStore(layout)
     store.close()
     assertThrows[IllegalStateException](store.get(stateNs, keyA))
+  }
+
+  it should "cause a subsequent getAt to throw IllegalStateException" in {
+    val store = new InMemoryKeyValueStore(layout)
+    store.close()
+    assertThrows[IllegalStateException](store.getAt(stateNs, version, keyA))
+  }
+
+  it should "cause a subsequent update to throw IllegalStateException" in {
+    val store = new InMemoryKeyValueStore(layout)
+    store.close()
+    assertThrows[IllegalStateException](store.update(stateNs, Nil, Seq(keyA -> valueA)))
+  }
+
+  it should "cause a subsequent updateAt to throw IllegalStateException" in {
+    val store = new InMemoryKeyValueStore(layout)
+    store.close()
+    assertThrows[IllegalStateException](store.updateAt(stateNs, version, Nil, Seq(keyA -> valueA)))
+  }
+
+  it should "cause a subsequent admit to throw IllegalStateException" in {
+    val store = new InMemoryKeyValueStore(layout)
+    val companion: Namespace.Standalone =
+      Namespace.Standalone(NamespaceId("total-difficulty"), Seam.ChainData, WriteMode.Mutable)
+    val header: Namespace.Coupled =
+      Namespace.Coupled(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable, companion)
+    store.close()
+    assertThrows[IllegalStateException](store.admit(header, keyA, valueA, valueB))
+  }
+
+  it should "cause a subsequent leaves to throw IllegalStateException" in {
+    val store = new InMemoryKeyValueStore(layout)
+    store.close()
+    assertThrows[IllegalStateException](store.leaves(stateNs, version))
+  }
+
+  it should "cause a subsequent clear to throw IllegalStateException" in {
+    val store = new InMemoryKeyValueStore(layout)
+    store.close()
+    assertThrows[IllegalStateException](store.clear(stateNs))
   }
 
   it should "be idempotent" in {
@@ -170,4 +237,71 @@ class InMemoryKeyValueStoreSpec extends AnyFlatSpec:
     it.close()
     it.close()
     assert(it.isClosed, "closing twice must not throw and must leave the iterator closed")
+  }
+
+  "the admission invariant" should "reject a Standalone update whose namespace id aliases an already-Coupled namespace" in {
+    val store = new InMemoryKeyValueStore(layout)
+    val companion: Namespace.Standalone =
+      Namespace.Standalone(NamespaceId("total-difficulty"), Seam.ChainData, WriteMode.Mutable)
+    val header: Namespace.Coupled =
+      Namespace.Coupled(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable, companion)
+    store.admit(header, keyA, valueA, valueB)
+    val aliasedHeader: Namespace.Standalone =
+      Namespace.Standalone(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable)
+    assertThrows[IllegalArgumentException](store.update(aliasedHeader, Nil, Seq(keyB -> valueA)))
+  }
+
+  it should "reject a Coupled admit whose namespace id aliases an already-Standalone namespace" in {
+    val store = new InMemoryKeyValueStore(layout)
+    store.update(stateNs, Nil, Seq(keyA -> valueA))
+    val aliasedCompanion: Namespace.Standalone =
+      Namespace.Standalone(NamespaceId("total-difficulty"), Seam.ChainData, WriteMode.Mutable)
+    val aliasedState: Namespace.Coupled =
+      Namespace.Coupled(NamespaceId("state"), Seam.State, WriteMode.Mutable, aliasedCompanion)
+    assertThrows[IllegalArgumentException](store.admit(aliasedState, keyB, valueA, valueB))
+  }
+
+  it should "reject a Coupled admit that redeclares an already-registered id under a different companion" in {
+    val store = new InMemoryKeyValueStore(layout)
+    val companion: Namespace.Standalone =
+      Namespace.Standalone(NamespaceId("total-difficulty"), Seam.ChainData, WriteMode.Mutable)
+    val header: Namespace.Coupled =
+      Namespace.Coupled(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable, companion)
+    store.admit(header, keyA, valueA, valueB)
+    val otherCompanion: Namespace.Standalone =
+      Namespace.Standalone(NamespaceId("other-companion"), Seam.ChainData, WriteMode.Mutable)
+    val recoupledHeader: Namespace.Coupled =
+      Namespace.Coupled(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable, otherCompanion)
+    assertThrows[IllegalArgumentException](store.admit(recoupledHeader, keyB, valueA, valueB))
+  }
+
+  it should "not record a namespace's own shape when its companion conflicts, leaving the primary id free to reuse" in {
+    val store = new InMemoryKeyValueStore(layout)
+    val unrelated: Namespace.Standalone =
+      Namespace.Standalone(NamespaceId("unrelated"), Seam.ChainData, WriteMode.Mutable)
+    val decoyCoupled: Namespace.Coupled =
+      Namespace.Coupled(NamespaceId("total-difficulty"), Seam.ChainData, WriteMode.Mutable, unrelated)
+    store.admit(decoyCoupled, keyA, valueA, valueB)
+
+    val conflictingCompanion: Namespace.Standalone =
+      Namespace.Standalone(NamespaceId("total-difficulty"), Seam.ChainData, WriteMode.Mutable)
+    val header: Namespace.Coupled =
+      Namespace.Coupled(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable, conflictingCompanion)
+    val _ = assertThrows[IllegalArgumentException](store.admit(header, keyB, valueA, valueB))
+
+    val freshHeaderId: Namespace.Standalone =
+      Namespace.Standalone(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable)
+    store.update(freshHeaderId, Nil, Seq(keyB -> valueA))
+    assert(store.get(freshHeaderId, keyB).contains(valueA), "a failed admit must not register its primary's shape")
+  }
+
+  it should "not reject a namespace value reused with the shape it was first seen with" in {
+    val store = new InMemoryKeyValueStore(layout)
+    val companion: Namespace.Standalone =
+      Namespace.Standalone(NamespaceId("total-difficulty"), Seam.ChainData, WriteMode.Mutable)
+    val header: Namespace.Coupled =
+      Namespace.Coupled(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable, companion)
+    store.admit(header, keyA, valueA, valueB)
+    store.admit(header, keyB, valueB, valueA)
+    assert(store.get(header, keyB).contains(valueB), "reusing the same Coupled shape for the same id must not throw")
   }

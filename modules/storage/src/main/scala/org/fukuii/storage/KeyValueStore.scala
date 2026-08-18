@@ -33,14 +33,31 @@ import org.fukuii.bytes.Bytes
   * `admit` is the only operation that writes to a [[Namespace.Coupled]]
   * namespace's own keyspace, and it requires a value for the companion
   * namespace in the same call. `update` and `updateAt` accept only
-  * [[Namespace.Standalone]], so a write to a coupled namespace's primary
-  * keyspace with no value for its companion does not merely fail at run
-  * time — there is no way to write the call at all. This generalizes the
-  * requirement that a chain header must never enter the chain-header store
-  * without its total difficulty into a namespace-pairing mechanism this
-  * module can express without knowing what a header or a total difficulty
-  * is; which namespaces need the pairing is a decision for whatever layer
-  * constructs [[Namespace.Coupled]] values.
+  * [[Namespace.Standalone]], so a call passing the [[Namespace.Coupled]]
+  * value itself does not compile. That much is a property of this trait's
+  * own signatures, guaranteed for every implementation without any of them
+  * writing a line of enforcement.
+  *
+  * It is not the whole invariant. [[Namespace]] identity is by
+  * [[NamespaceId]] alone, so a *different* [[Namespace.Standalone]] value
+  * that merely carries the same id as an already-admitted
+  * [[Namespace.Coupled]] namespace type-checks as an ordinary `update`
+  * argument — the signature above stops the [[Namespace.Coupled]] value,
+  * not a same-id alias of it. An implementation that keys its storage by id
+  * alone must reject that alias itself, at run time, or a header can enter
+  * the chain-header store with no total difficulty ever written for it,
+  * silently. **Every implementation of this trait MUST reject it**: a
+  * [[NamespaceId]] is classified — [[Namespace.Standalone]], or
+  * [[Namespace.Coupled]] naming a specific companion id — on the first
+  * operation that names it, and a later operation naming the same id under
+  * a different classification must fail rather than silently proceed. See
+  * [[InMemoryKeyValueStore]]'s shape registry for the reference shape.
+  *
+  * Together these generalize the requirement that a chain header must never
+  * enter the chain-header store without its total difficulty into a
+  * namespace-pairing mechanism this module can express without knowing what
+  * a header or a total difficulty is; which namespaces need the pairing is
+  * a decision for whatever layer constructs [[Namespace.Coupled]] values.
   */
 trait KeyValueStore:
 
