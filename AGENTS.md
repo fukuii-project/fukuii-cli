@@ -274,11 +274,16 @@ warning categories to hard errors**, scoped `ThisBuild`, so `compile`, `test`
 and `testFull` all fail on a violation in that set, in main sources and test
 sources alike. That enforcement lives in the compiler step itself; read the
 enforced categories and the reasoning for each from `build.sbt` directly
-rather than from a count here. **There is still no separate `lint`, `format`,
-`typecheck` or coverage task, and no CI** — `## Code style` below says what
-the compiler's enforced set does and does not reach. Outside it, match the
-style of surrounding code by hand. Do not invent a command — one that the
-build does not define will fail and read as a broken build.
+rather than from a count here. **A formatter is wired and does NOT run as part
+of `compile`** — `scalafmtAll` formats and `scalafmtCheckAll` reports, both
+opt-in, so a green build says nothing about whether the tree is formatted. Run
+the check before calling work done; the engine version is resolved from
+`.scalafmt.conf`'s own `version` key rather than from the plugin, so read it
+there. There is no `lint`, `typecheck` or coverage task and no CI —
+`## Code style` below says what the compiler's enforced set does and does not
+reach, and outside both, match the style of surrounding code by hand. Do not
+invent a command — one that the build does not define will fail and read as a
+broken build.
 
 ## Structure
 
@@ -530,9 +535,11 @@ for how that reaches `test` and `testFull` too, and `build.sbt` itself for
 which categories and why. That set is narrower than it looks:
 `.claude/rules/scala3-style.md` § "Build configuration" names further
 prohibitions that no compiler flag in `build.sbt` reaches — those still need a
-dedicated lint plugin this repository does not have. There is still no
-formatter and no CI. Everything the compiler does not catch is checked by
-review, so it binds by being read.
+dedicated lint plugin this repository does not have. **A formatter is wired and
+reaches none of them** — it decides layout, not which constructs are permitted,
+so the two gaps are unrelated and neither closes the other. There is no CI.
+Everything neither the compiler nor the formatter catches is checked by review,
+so it binds by being read.
 
 **The rules carry the detail. They are the authority; this section is the map.**
 

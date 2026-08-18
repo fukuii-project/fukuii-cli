@@ -9,11 +9,13 @@ stated.** The gate was calibrated in both directions at the time it landed, per
 "Verifying the gate actually gates" below.
 
 **It has NOT been applied to the linter, and that window is still open.** No
-`.scalafix.conf` or `.scalafmt.conf` exists, and the prohibitions
-`.claude/rules/scala3-style.md` § "Build configuration" names — `return`,
-`null`, `asInstanceOf`, `isInstanceOf` outside a match, and the `println` family
-— are reachable by **no compiler flag**, measured against the compiler's own
-option dumps. They need a lint plugin, which is a dependency decision and is
+`.scalafix.conf` exists. **A `.scalafmt.conf` does, and it does not narrow this
+gap by a single prohibition** — a formatter decides layout, never which
+constructs are permitted, so read its arrival as leaving this window exactly as
+wide as it was. The prohibitions `.claude/rules/scala3-style.md` § "Build
+configuration" names — `return`, `null`, `asInstanceOf`, `isInstanceOf` outside
+a match, and the `println` family — are reachable by **no compiler flag**,
+measured against the compiler's own option dumps. They need a lint plugin, which is a dependency decision and is
 operator-gated. **The zero-cost argument below applies to them with full force
 and is not discharged by the compiler half.** Re-read this file at that moment;
 it is the change it was written to be applied *at*.
