@@ -5,27 +5,36 @@ import org.scalatest.prop.TableDrivenPropertyChecks
 
 /** Known-answer roots, driven over both implementations of the seam.
   *
-  * ==Where these six roots come from, and what they are not==
+  * ==Where these eight roots come from, and what they add==
   *
-  * Each appears in two places that were checked rather than assumed: the
-  * cross-client fixture corpus `ethereum/tests`, in `TrieTests/trieanyorder.json`,
-  * `TrieTests/trietest.json` and their secured counterparts; and, for the first
-  * two, go-ethereum's own `trie/trie_test.go`. The refs read are named in this
-  * phase's report.
+  * Five unsecured and three secured. Each is published in the cross-client
+  * fixture corpus `ethereum/tests`, under `TrieTests/trieanyorder.json`,
+  * `TrieTests/trietest.json` and their secured counterparts; the `dogs` and
+  * `singleItem` roots additionally appear in go-ethereum's own
+  * `trie/trie_test.go` (`ethereum/go-ethereum` @ `6bb0588ad`, 2026-08-14). The
+  * corpus ref itself is recorded in the header of `trie-vectors.txt`, where it
+  * can be checked rather than taken from here.
   *
-  * **This is not the certification.** That is a separate, later phase which runs
-  * the whole published corpus, the two-level state root from a fixture's
-  * pre-state, and a vector authored here for the case no published vector
-  * reaches. What these rows buy is that a module computing a consensus
-  * commitment does not land with its answers unchecked against anything
-  * external — six cases chosen for structural spread rather than for coverage.
+  * **Every root below also appears in that generated table, so this file is a
+  * legible subset and never independent evidence.** Two roots agreeing because
+  * one was copied from the other is not corroboration, and reading these rows as
+  * a second opinion is the one way to misuse them.
+  *
+  * What it adds is the reason. A generated table certifies mechanically and
+  * cannot say why a case is worth having; each row here was chosen for a
+  * distinct structural feature, and that is recoverable only in prose.
+  *
+  * The certification is wider and lives elsewhere: `TrieCorpusPropSpec` drives
+  * every published root, `StateRootPropSpec` drives the two-level state root
+  * from fixture pre-state, and the `authored-` rows of `trie-vectors.txt` cover
+  * the sub-32-byte root node that no published vector reaches.
   *
   * Row by row: `dogs` needs an extension above a branch above leaves;
   * `singleItem` is one leaf whose encoding passes the inline limit, so the root
   * is hashed by the ordinary rule; `smallValues` and `testy` put a terminating
   * key in a branch's own value slot; `emptyValues` reaches its root through
   * deletions, so it pins the rule that storing nothing removes a key; and the
-  * two secured rows pin that the digest, not the pre-image, is what the
+  * three secured rows pin that the digest, not the pre-image, is what the
   * structure is built over.
   */
 class TrieVectorPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
