@@ -290,7 +290,7 @@ build does not define will fail and read as a broken build.
 | `.sdkmanrc`, `.jvmopts`, `.gitattributes`, `.gitignore` | The JDK, JVM, line-ending and private/public-gate pins — see `## Setup` and `## Security` |
 | `.claude/agents/` | This repository's own domain specialists — the directory listing is authoritative, not this row |
 | `.claude/rules/` | Standards that load on their own. **Some are path-scoped and fire on a matching read; the rest carry no `paths:` and load every session** — read each file's own opening for which, since a roster here would go stale on the next rule added. `## Code style` maps the ones governing Scala |
-| `.claude/protocols/` | Operating discipline that does not auto-load — see `## Protocols` |
+| `.claude/protocols/` | Two kinds, neither of which auto-loads: operating discipline, and consensus domain facts — see `## Protocols` |
 | `.claude/hooks/` | The hook scripts and their own tests; `settings.json` states which are actually registered |
 | `.claude/settings.json` | Hook registrations and the read-deny list — see `## Boundaries` item 4 |
 | `.github/copilot-instructions.md`, `.github/assets/` | Copilot's self-contained instructions, and the logo `README.md` renders |
@@ -573,9 +573,13 @@ nor carried into `src/`.
 
 ## Protocols
 
-`.claude/protocols/` holds this repository's own operating discipline — each one
-a moment, an actor, and a trigger. **The directory listing is authoritative, not
-this table.**
+`.claude/protocols/` holds two kinds of file. **Operating discipline** — each one
+a moment, an actor, and a trigger. And **consensus domain facts**, which are not
+discipline at all: they are what a consensus task must know, held here because
+this directory is what a charter body can point at. **A fact file belongs here,
+and the majority of the directory is now fact files** — do not read the
+discipline half as a membership test. **The directory listing is authoritative,
+not this table.**
 
 **These do NOT load automatically. `.claude/rules/` does; this directory does
 not**, so nothing puts a protocol in front of you at the moment it applies. Read
@@ -586,12 +590,77 @@ the one that matches before you act, not the ones you happen to remember.
 | `dead-code-review.md` | Before deleting code that looks unused |
 | `warning-ratchet.md` | Configuring a lint or warning category — the window closes once code exists |
 | `scope-boundary.md` | A scoped task that appears to need work outside its scope |
+| `consensus-pow.md` | Before acting on a proof-of-work consensus change — that family's domain facts |
+| `consensus-pos.md` | Before acting on a proof-of-stake consensus change — that family's domain facts |
+| `consensus-clique.md` | Before acting on anything Clique-shaped — that mechanism's surveyed facts |
+| `consensus-aura.md` | Before acting on anything AuRa-shaped — that mechanism's surveyed facts |
+| `consensus-qbft.md` | Before acting on anything QBFT-shaped — read with `consensus-ibft2.md` |
+| `consensus-ibft2.md` | Before acting on anything IBFT2-shaped — read with `consensus-qbft.md` |
 
 **Where a protocol carries a fact you cannot afford to miss, that fact is also
 in a rule that loads on its own** — so the protocol holds the procedure and the
 rule holds the trap. `dead-code-review.md` is the worked case: its hazard, that a
 `given` can have zero textual references and still be live, is stated in
 `.claude/rules/evidence-and-citation.md` §3, which loads every session.
+
+**The consensus protocols are delivered by a charter body instead, and that is a
+second mechanism rather than a gap in the first.** Their facts are needed only by
+a consensus task, every consensus task routes to `forge`, and a charter body
+loads when its agent is dispatched — so `forge`'s charter is what instructs the
+read, and it is written to make that instruction unmissable. Putting those facts
+in a rule would charge every session that never touches consensus for them.
+**The cost of the mechanism is that it depends on one document**: if `forge`'s
+charter stops naming a protocol, that protocol goes dark with nothing reporting
+it. **That cost scales with the count**, and the count is no longer two.
+
+**Two kinds sit among them, and only one is keyed to a network fukuii runs.** A
+**family** protocol covers a family of networks this project runs. A
+**mechanism** protocol covers one consensus mechanism, written from a survey of
+production clients rather than from anything on the roadmap — **it commits this
+project to implementing nothing**, and must not be read as scheduling work. Each
+file says which it is, and states its own evidence weight, at its own head.
+
+**They also differ in how far their facts can be trusted, which is why each
+carries a header saying so.** The two family protocols inherited their domain
+facts from this project's prior implementation and open with a `currency:` header
+declaring every one unverified. The mechanism protocols open with a
+`provenance:` header instead: their facts came from a dedicated conformance pass
+and were re-verified with calibrated controls. **Do not carry either header's
+wording onto the other kind** — the whole point of the difference is that a
+reader can tell them apart at a glance.
+
+### Adding a mechanism protocol takes three edits, and `forge` may perform none of them
+
+**The files assert well that the set is open. This is the part that is not
+self-evident from reading them**, and it is live rather than hypothetical:
+`besu/consensus/ibftlegacy/` exists, is unsurveyed, and whoever surveys it
+arrives here.
+
+**The next mechanism** needs **all three**, and the first alone accomplishes
+nothing. **No count is written here, deliberately** — the previous wording said
+*a seventh*, which counted the six protocol files rather than the mechanisms
+among them, and the roster carries the distinction on its face: a mechanism
+protocol opens with a `provenance:` header, a family protocol with a
+`currency:` one. **Derive it from the headers if you need it**, the same way
+`.claude/agents/forge.md` stopped reporting how far its own list had grown:
+
+1. **The protocol file** under `.claude/protocols/`, written to the shape the
+   existing mechanism protocols use — its own `provenance:` header, its own
+   evidence weight, its own statement that the set stays open. **Never folded
+   into an existing file**: the fold hides the divergence that justified the
+   survey.
+2. **A line in `.claude/agents/forge.md` § "Read the protocol before you act"**,
+   because a charter body is the only thing that delivers this directory. A file
+   nothing names goes dark with nothing reporting it.
+3. **A row in the table above**, so a reader who never dispatches `forge` can
+   still see it exists.
+
+**The actor is not `forge`.** Its charter forbids it from writing a missing
+protocol — so **the one agent guaranteed to notice the gap is the one that may
+not close it**, and that is deliberate rather than an oversight. `forge` reports
+the gap as a finding; **the driving thread commissions the work and owns all
+three edits landing together.** Two of three is the failure mode this arrangement
+produces, and it is silent.
 
 ## Branching
 

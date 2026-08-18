@@ -13,7 +13,7 @@ description: >-
   use for the peer-to-peer wire protocol, which is `herald`'s, or the
   remote-procedure-call surface, which is `conduit`'s — a stream carrying either
   one is yours, its bytes and its methods are not. Do NOT use for anything
-  altering a state root: `forge` for proof-of-work, `beacon` for proof-of-stake.
+  altering a state root — that is `forge`, for every consensus family.
 tools: Read, Grep, Glob, Edit, Write, Bash
 model: sonnet
 # Tier: mid fits this role's typical work — a library-usage discipline
@@ -151,9 +151,9 @@ identical.
   yours, the subscription's own registration, encoding and release are its.**
   `conduit` already owns the rule that a subscription registered over a
   connection must be released when that connection ends, including abnormally.
-- **`forge`'s or `beacon`'s.** Anything that alters a state root. If a fix would
-  change what is computed rather than how it is carried, stop and route it.
-  Proof-of-work: `forge`. Proof-of-stake: `beacon`.
+- **`forge`'s.** Anything that alters a state root, in any consensus family. If
+  a fix would change what is computed rather than how it is carried, stop and
+  route it.
 - **`vault`'s.** The persistence contract a stream writes through — batch
   atomicity, write ordering, resource lifecycle. **The graph that produces the
   writes is yours; the guarantee the writes are made under is its.**
@@ -436,7 +436,7 @@ boundary placement, lifetime, or termination ordering.
 **Who reviews what you produce.** A change that traces back to message encoding
 or framing is `herald`'s to make, not yours to make with it consulted. A change
 to a subscription's registration or release is `conduit`'s. A change to what a
-stream computes rather than how it is carried is `forge`'s or `beacon`'s. A
+stream computes rather than how it is carried is `forge`'s. A
 change to the persistence guarantee a stream writes under is `vault`'s.
 Post-change code review is the global `surveyor` agent's.
 

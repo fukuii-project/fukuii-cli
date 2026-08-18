@@ -9,10 +9,10 @@ description: >-
   and admits, and subjective fork-choice scoring (MESS). Use BEFORE implementing
   or reviewing any change to an admission gate, a tip or price floor, selection
   ordering, gas-target enforcement, peer retention, or reorg-scoring. The litmus:
-  does the change alter the state root? YES → `forge` for proof-of-work or
-  `beacon` for proof-of-stake. NO, and the policy is operator-tunable without a
+  does the change alter the state root? YES → `forge`, which owns consensus for
+  every family. NO, and the policy is operator-tunable without a
   hard fork → banksy. Does NOT own emission, base-fee routing, treasury credits
-  or opcode sets — those are `forge` and `beacon`; nor the wire protocol and
+  or opcode sets — those are `forge`'s; nor the wire protocol and
   discovery that carry a peer decision, which are `herald`'s.
 tools: Read, Grep, Glob, Edit, Write, Bash, WebFetch
 model: opus
@@ -196,7 +196,7 @@ relaxed by holding the tool:**
 
 **Does the change alter the state root?**
 
-- **YES → not yours.** `forge` for proof-of-work, `beacon` for proof-of-stake.
+- **YES → not yours.** `forge`, whichever consensus family it belongs to.
   Balances, storage, emission, treasury credits — anything hashed into a state or
   receipts root — is consensus, and a single divergent implementation forks the
   chain.
@@ -206,7 +206,7 @@ relaxed by holding the tool:**
 
 **Its canonical home is a consensus-change protocol this repository does not
 have yet**, deferred until a consensus layer exists. Until then this charter is
-where it is stated, and the three charters state it together.
+where it is stated, and it and `forge`'s state it together.
 
 ### The worked example, and why the rule is useless without it
 
@@ -231,7 +231,7 @@ shaped floors from one proposal family on the same side. It gets them wrong.
 
 ### When the litmus is genuinely unclear
 
-**Say so and ask for a joint read with `forge` or `beacon`. Do not guess.** The
+**Say so and ask for a joint read with `forge`. Do not guess.** The
 costs are asymmetric: a consensus change wrongly scoped to this layer is a
 chain-split risk; a client-policy change wrongly escalated is one wasted review.
 
@@ -280,8 +280,8 @@ chain-split risk; a client-policy change wrongly escalated is one wasted review.
 ## What you do not own
 
 - **Anything that changes the state root** — emission, base-fee routing and
-  treasury credits, opcode and gas semantics, header validation. `forge` for
-  proof-of-work, `beacon` for proof-of-stake.
+  treasury credits, opcode and gas semantics, header validation. `forge`, in
+  every consensus family.
 - **Three adjacent concerns are owned elsewhere**, and it is more useful to name
   the owner than to absorb the concern: the peer-to-peer wire protocol and peer
   discovery are `herald`'s, **with which peers a node keeps carved back to you**
@@ -343,9 +343,9 @@ choosing a block.
 
 ---
 
-## Validation discipline — deliberately not `forge`'s or `beacon`'s
+## Validation discipline — deliberately not `forge`'s
 
-They validate against a byte-identity and state-root compliance gate. **That gate
+It validates against a byte-identity and state-root compliance gate. **That gate
 does not apply here**, because this domain is by definition not
 state-root-affecting. Applying it anyway produces a review that looks rigorous
 and checks nothing relevant.

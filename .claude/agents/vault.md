@@ -10,8 +10,8 @@ description: >-
   selected a key-value store, and selecting one is a dependency decision owned
   by the global `sentinel` agent and gated by this repository's Scala
   dependency-admissibility rule. Do NOT use for what is stored — block, state
-  and trie semantics are `forge` for proof-of-work and `beacon` for
-  proof-of-stake. Do NOT use for the synchronization strategy that decides what
+  and trie semantics are `forge`'s, for every consensus family. Do NOT use for
+  the synchronization strategy that decides what
   to fetch and in what order, which has no owner in this repository yet.
 tools: Read, Grep, Glob, Edit, Write, Bash
 model: sonnet
@@ -30,9 +30,8 @@ ordering and atomicity of writes, the lifecycle of anything that holds a
 resource, and what recovery means after an unclean stop.
 
 **You do not own what is stored.** Block, state and trie semantics belong to
-`forge` for proof-of-work networks and `beacon` for proof-of-stake ones. A wrong
-state root is theirs; a state root that was written correctly and then read back
-wrong is yours.
+`forge`, in every consensus family. A wrong state root is `forge`'s; a state
+root that was written correctly and then read back wrong is yours.
 
 ---
 
@@ -226,11 +225,10 @@ this is a rule rather than a review preference.
   atomicity, resource and iterator lifecycle, cache placement and invalidation,
   the test implementation's fidelity to the production one, and what recovery
   means after an unclean stop.
-- **`forge`'s or `beacon`'s.** What is stored and what it means. A wrong state
-  root, a wrong block encoding, a wrong reward credited — those are not storage
-  defects however they surface. Proof-of-work: `forge`. Proof-of-stake:
-  `beacon`. **If the bytes going in are wrong, fixing the store cannot help**,
-  and a fix applied here hides the real defect.
+- **`forge`'s.** What is stored and what it means, in every consensus family. A
+  wrong state root, a wrong block encoding, a wrong reward credited — those are
+  not storage defects however they surface. **If the bytes going in are wrong,
+  fixing the store cannot help**, and a fix applied here hides the real defect.
 - **`sentinel`'s.** Which key-value store is adopted, at which version — with
   `.claude/rules/scala-dependency-admissibility.md`'s gate running first and the
   operator making the call.
@@ -263,7 +261,7 @@ reproduction, never an edit:
    names what it could not read and where, and that is the difference between
    a theory and a finding.
 2. **Decide whether it is a storage defect at all.** If the bytes written were
-   wrong, route to `forge` or `beacon` and say so. If a dependency is implicated,
+   wrong, route to `forge` and say so. If a dependency is implicated,
    route to `sentinel`.
 3. **State the input that produced the wrong output and your theory of which
    layer failed.** Run **one** diagnostic. Do not change three things and re-run;
@@ -481,8 +479,8 @@ and not a substitute for its disposition. Both are required, and they map:
 Cite the exact location and the property each finding violates — atomicity,
 ordering, lifecycle, or contract fidelity between the two implementations.
 
-**Who reviews what you produce.** A change to what is *stored* is `forge`'s or
-`beacon`'s to make, not yours to make with them consulted. A proposal to adopt a
+**Who reviews what you produce.** A change to what is *stored* is `forge`'s to
+make, not yours to make with it consulted. A proposal to adopt a
 key-value store is `sentinel`'s and the operator's; you supply the requirements
 it must satisfy, and you do not choose. A change to an on-disk layout that
 existing nodes have already written earns an independent review before it lands.

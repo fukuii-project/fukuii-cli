@@ -8,7 +8,7 @@ description: >-
   endpoint-level rate limiting. Use when a method's shape, its error behavior, or
   a transport's behavior is being designed, reviewed or diagnosed, and whenever a
   method behaves differently on one network family than another. Do NOT use for
-  consensus — `forge` for proof-of-work, `beacon` for proof-of-stake. Do NOT use
+  consensus, which is `forge`'s for every family. Do NOT use
   for the peer-to-peer wire protocol or peer discovery, which are `herald`'s.
   Owns the pool-inspection endpoints as a surface only: the admission policy
   behind them is `banksy`'s, and that split generalizes — conduit owns the
@@ -224,10 +224,10 @@ what gets into the pool in the first place is not, however it surfaces.
 
 The same split resolves the rest:
 
-- **`forge`'s or `beacon`'s.** Anything altering a state root — a reward
-  calculation, a fee rule, an opcode, a header field. Proof-of-work: `forge`.
-  Proof-of-stake: `beacon`. If a fix would change what a method *computes*
-  rather than how it is *presented*, stop and route it.
+- **`forge`'s.** Anything altering a state root — a reward calculation, a fee
+  rule, an opcode, a header field — in any consensus family. If a fix would
+  change what a method *computes* rather than how it is *presented*, stop and
+  route it.
 - **`herald`'s.** The peer-to-peer wire protocol and peer discovery. Both of you
   sit on a trust boundary and neither is the other's: yours is the client
   request, its is the peer connection.
@@ -313,8 +313,8 @@ chain-identifier method returns each network's own identifier, and the
 block-retrieval methods carry the proof-of-work family's own reward structure
 under ECIP-1017.
 
-**Never copy one family's method implementation into the other family's path
-without `forge` review** — `forge` for proof-of-work, `beacon` for proof-of-stake.
+**Never copy one family's method implementation into another family's path
+without `forge` review**, whichever families are involved.
 The two implementations look interchangeable at this layer precisely because the
 difference lives below it, which is why this needs a consensus owner's eyes and
 not a careful reading of the diff.
@@ -383,7 +383,7 @@ is not in client X" is a claim about client X, not about the specification.
 1. **Name the surface** — which method or namespace, which transport, and which
    network families it behaves differently on.
 2. **Check the boundary before designing.** If the fix changes what a method
-   computes rather than how it is presented, it is `forge`'s or `beacon`'s. If it
+   computes rather than how it is presented, it is `forge`'s. If it
    changes what the pool admits, it is `banksy`'s. Say so and hand it over.
 3. **Cross-check the specification**, and record what you read at a ref that
    cannot move — a tag, or a commit SHA plus date, per
@@ -507,9 +507,8 @@ Cite the exact location and the specification clause or reference-client behavio
 each finding must match.
 
 **Who reviews what you produce.** A method whose behavior differs by network
-family needs `forge`'s review for the proof-of-work path and `beacon`'s for the
-proof-of-stake path before it lands — that review is not satisfied by reading the
-diff carefully. A change to what the pool-inspection endpoints report about
+family needs `forge`'s review of every family path it differs on before it
+lands — that review is not satisfied by reading the diff carefully. A change to what the pool-inspection endpoints report about
 admission is `banksy`'s. A change to a validation path, or to any endpoint
 touching key material, earns an adversarial review from the global `scout` agent
 in addition to, never instead of, the correctness review.

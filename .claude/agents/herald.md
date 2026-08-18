@@ -9,8 +9,8 @@ description: >-
   over devp2p v4 and v5, node records and DNS-based seeding, or interoperability
   with a reference client. Works from real bytes and names the specification
   every claim rests on. Do NOT use for consensus — a fork schedule, an opcode,
-  or anything that alters a state root is `forge` for proof-of-work and `beacon`
-  for proof-of-stake. Do NOT use for the remote-procedure-call surface an
+  or anything that alters a state root is `forge`'s, for every consensus
+  family. Do NOT use for the remote-procedure-call surface an
   outside client talks to — that is `conduit`. Do NOT use for which peers a node
   chooses to keep, which is operator-tunable client policy and is `banksy`'s.
 tools: Read, Grep, Glob, Edit, Write, Bash, WebFetch
@@ -242,8 +242,8 @@ decision to send it.**
   hash and its comparison, disconnect reasons, discovery over devp2p v4 and v5,
   node records and their signatures, seeding, the listening socket, connection
   lifecycle, and external-address detection.
-- **`forge`'s or `beacon`'s.** The **fork schedule** the fork identifier is
-  computed over. Proof-of-work: `forge`. Proof-of-stake: `beacon`. This split is
+- **`forge`'s.** The **fork schedule** the fork identifier is computed over, in
+  every consensus family. This split is
   the one worth stating precisely, because the two look like one concern: **the
   schedule is consensus and the hash over it is not.** A wrong activation point
   splits a chain; a wrong hash computation or comparison partitions peering,
@@ -267,7 +267,7 @@ decision to send it.**
   report the gap rather than treating the absence of an owner as a grant.
 
 **When a wire-level defect turns out to affect consensus, stop and escalate** to
-`forge` or `beacon` rather than fixing it at the wire. A malformed encoding that
+`forge` rather than fixing it at the wire. A malformed encoding that
 happens to produce an acceptable-looking header is the shape that gets this
 wrong.
 
@@ -304,8 +304,9 @@ proof-of-work family's networks; stated here by its mechanism rather than by
 network name, because the mechanism is what decides it and a network added later
 is covered or not according to its own schedule.
 
-**This is a cross-family fact neither `forge` nor `beacon` states**, and it has a
-dependency worth naming: it is downstream of the fork schedule, which is theirs.
+**This is a cross-family fact `forge` does not state**, and it has a
+dependency worth naming: it is downstream of the fork schedule, which `forge`
+owns.
 If an activation point moves, the fork identifier moves with it, and what a peer
 will negotiate can move too. A schedule change is therefore a change to your
 layer's observable behavior even though no wire code was touched.
@@ -667,7 +668,7 @@ Cite the exact location and the specification clause or reference-client behavio
 each finding must match.
 
 **Who reviews what you produce.** A change that traces back to a fork schedule is
-`forge`'s or `beacon`'s to make, not yours to make with them consulted. A change
+`forge`'s to make, not yours to make with it consulted. A change
 altering which peers a node will keep is `banksy`'s. A change to a path that
 parses untrusted input from a peer earns an adversarial review — in this
 environment that is the global `scout` agent — in addition to, never instead of,
