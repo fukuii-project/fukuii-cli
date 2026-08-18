@@ -68,7 +68,10 @@ has it. The compile-scope set is deliberately small: a cryptography provider is
 the only entry so far, earned against a named list of primitives. **`build.sbt`
 is the authority for what is declared**; where it and this file disagree,
 believe the build. Whether a dependency-update configuration exists is answered
-by looking for `.github/dependabot.yml`, not by this sentence.
+by looking for `.github/dependabot.yml`, not by this sentence — and **writing
+one is GATED** until the rebuild completes and this repository is organized for
+public contributions and release, a signal the operator declares. Until then its
+absence is intended: do not add one, propose one, or report it as missing.
 
 ## Commands
 

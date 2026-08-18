@@ -114,13 +114,21 @@ it fetches `build.sbt` at the repository root as a required file. Coverage has
 a real limit, though: GitHub's own wording is *"This applies to version
 updates, not security updates,"* so a configured `sbt` entry opens scheduled
 pull requests for newer upstream releases but does not plug into Dependabot's
-advisory-triggered security-update path the way some other ecosystems do. So an
-entry for this manifest is both warranted and expressible, and **writing it is
-an operator decision rather than a capability this repository lacks** — a live
-config starts opening pull requests on the next scheduled run, which is
-outward-facing and never inferred. The security half stays uncovered by
-Dependabot whenever such an entry exists, and falls to the ecosystem's own
-tooling.
+advisory-triggered security-update path the way some other ecosystems do.
+
+**So an entry for this manifest is expressible, and it is GATED — not merely
+undecided.** The operator has deferred it until the rebuild completes and this
+repository is organized for public contributions and release, which is the same
+signal `## Branching` names and is declared by the operator alone. **Until that
+is declared: do not write one, do not propose one as ready work, and do not
+report its absence as drift or as a finding.** A live config starts opening pull
+requests on the next scheduled run — outward-facing, against a release process
+that does not exist yet and a branch policy explicitly not in effect.
+
+**Do not reduce this back to "it is the operator's call."** That framing is true,
+omits the gate, and reads as unblocked — which is why sessions kept resurfacing
+this as available work. The security half stays uncovered by Dependabot whenever
+such an entry does eventually exist, and falls to the ecosystem's own tooling.
 
 [Scala Steward](https://github.com/scala-steward-org/scala-steward) no longer
 covers this surface *instead of* Dependabot — that framing depended on
@@ -128,8 +136,10 @@ Dependabot having nothing to offer sbt at all, and it now does. Scala Steward
 is complementary at most: a separate, general-purpose version-bump mechanism
 that would overlap with a configured `sbt` entry on routine updates rather
 than substitute for one, and it does not close the gap Dependabot's own sbt
-support explicitly leaves open — the security-update half. Adopting either
-mechanism, and any CI either needs, remains this repository's own future work.
+support explicitly leaves open — the security-update half. **Adopting either
+mechanism, and any CI either needs, sits behind the same gate** — this is
+recorded so the reasoning survives until the gate opens, never as a backlog item
+to pick up.
 
 ## Setup
 
