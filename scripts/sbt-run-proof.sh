@@ -67,10 +67,47 @@ case "$mode" in
   honest)   touch "$tmp/target/out/jvm/scala-3.3.8/proj/classes" ;;
   metabuild) touch "$tmp/target/out/jvm/scala-3.8.4/proj-build/classes" ;;
   hollow)   : ;;
+  # A formatter check that really ran says so. sbt's output is redirected into
+  # the log by the wrapper, so this line is what guard 4 reads.
+  fmt_reports) echo "scalafmt: Checking 7 Scala sources ($tmp/modules/storage)..." ;;
+  # A formatter check answered entirely from a warm cache: exit 0, silence.
+  # This is the shape measured against sbt-scalafmt 2.6.2 and is the subject.
+  fmt_silent)  : ;;
 esac
 exit 0
 STUB
   chmod +x "$tmp/bin/sbt"
+}
+
+# Guard 4 needs to inspect the tree AFTER the run, which arm() cannot do
+# because it removes the tmpdir. It also seeds a cache directory, so that the
+# PREVENT half has something to remove and the arm can prove it was removed.
+fmt_arm() { # fmt_arm <label> <mode> <want-exit> <want-cache: gone|kept> <tasks...>
+  local label=$1 mode=$2 want=$3 want_cache=$4; shift 4
+  local tmp rc out cache cache_state
+  tmp=$(mktemp -d) || return 1
+  build_tree "$tmp"
+  make_stub_sbt "$tmp" "$mode"
+  # The real layout, measured in this repository: the plugin keeps its cache in
+  # the task's own streams directory, one per project per configuration.
+  cache="$tmp/target/out/jvm/scala-3.3.8/proj/streams/compile/scalafmtCheck"
+  mkdir -p "$cache/_global"
+  printf 'stale cache entry\n' >"$cache/_global/out"
+
+  out=$(PATH="$tmp/bin:$PATH" bash "$tmp/scripts/sbt-run.sh" proof "$@" 2>&1)
+  rc=$?
+  if [ -d "$cache" ]; then cache_state=kept; else cache_state=gone; fi
+
+  echo "--- $label"
+  echo "    stub sbt mode : $mode"
+  echo "    tasks         : $*"
+  echo "    $out"
+  echo "    exit  : $rc (expected $want)"
+  echo "    cache : $cache_state (expected $want_cache)"
+  [ "$rc" != "$want" ] && echo "    *** UNEXPECTED EXIT ***"
+  [ "$cache_state" != "$want_cache" ] && echo "    *** UNEXPECTED CACHE STATE ***"
+  rm -rf "$tmp"
+  [ "$rc" = "$want" ] && [ "$cache_state" = "$want_cache" ]
 }
 
 arm() { # arm <label> <mode> <tasks...> ; expected exit in WANT
@@ -136,6 +173,38 @@ echo
 echo "--- ARM 10: a task merely CONTAINING the word project. MUST NOT reject."
 echo "    Near-miss control: a rejection keyed on a substring would fire here."
 arm "projectInfo" honest 0 projectInfo; g2d=$?
+
+echo
+echo "###### GUARD 4 ######"
+echo "    sbt-scalafmt caches its check on LAST-MODIFIED TIME, not on content,"
+echo "    so a file edited with its mtime preserved is never re-read and the"
+echo "    task exits 0 in silence. Measured against 2.6.2 on 2026-08-18; the"
+echo "    wrapper's header carries the four arms and their controls."
+echo
+echo "--- ARM 11: a scalafmt CHECK that exits 0 reporting nothing. MUST be 97."
+echo "    This is the defect itself. An exit code of 0 says nothing FAILED; it"
+echo "    does not say anything was CHECKED."
+fmt_arm "silent check" fmt_silent 97 gone storage/scalafmtCheckAll; g4a=$?
+
+echo
+echo "--- ARM 12: the same check, reporting that it read files. MUST be 0."
+echo "    Without this the guard could be satisfied by refusing everything."
+fmt_arm "reporting check" fmt_reports 0 gone storage/scalafmtCheckAll; g4b=$?
+
+echo
+echo "--- ARM 13: a NON-scalafmt task, silent, exit 0. MUST stay 0."
+echo "    Near-miss control: a detect half keyed on silence alone rather than"
+echo "    on the task list would fire on every ordinary build in this repo."
+echo "    The cache must also survive, since nothing asked for a format."
+fmt_arm "compile, silent" fmt_silent 0 kept compile; g4c=$?
+
+echo
+echo "--- ARM 14: scalafmtAll -- a FORMAT task, not a check. MUST stay 0."
+echo "    It rewrites files rather than reporting on them, so it prints no"
+echo "    'Checking' line even when it works. Failing it would make the guard"
+echo "    fire on a task that is behaving correctly. The cache is still"
+echo "    cleared, because the mtime-keyed cache misleads a format run too."
+fmt_arm "format-only task" fmt_silent 0 gone storage/scalafmtAll; g4d=$?
 
 echo
 echo "###### GUARD 1 ######"
@@ -310,16 +379,21 @@ echo
 if [ "$g3a" = 0 ] && [ "$g3b" = 0 ] && [ "$g3c" = 0 ] && [ "$g3d" = 0 ] \
   && [ "$g2a" = 0 ] && [ "$g2b" = 0 ] && [ "$g2c" = 0 ] && [ "$g2d" = 0 ] \
   && [ "$g1a" = 0 ] && [ "$g1b" = 0 ] && [ "$g1c" = 0 ] && [ "$g1d" = 0 ] \
-  && [ "$g1e" = 0 ] && [ "$g1f" = 0 ]; then
+  && [ "$g1e" = 0 ] && [ "$g1f" = 0 ] \
+  && [ "$g4a" = 0 ] && [ "$g4b" = 0 ] && [ "$g4c" = 0 ] && [ "$g4d" = 0 ]; then
   echo "PROOF HOLDS: guard 3 reports 97 on a hollow run and on a metabuild-only"
   echo "advance and stays silent otherwise; guard 2 refuses both project-id"
   echo "forms and passes module-scoped syntax and a near-miss task name;"
   echo "guard 1 kills a stale server, spares a fresh one, spares a bystander"
   echo "whose name merely contains the socket path, refuses a regex and a"
   echo "metacharacter-carrying path outright, and refuses to signal a process"
-  echo "that is not a JVM."
+  echo "that is not a JVM; and guard 4 clears the formatter's mtime-keyed cache,"
+  echo "reports 97 for a check that exits 0 having read nothing, passes one that"
+  echo "reports its work, and leaves an ordinary build and a format-only task"
+  echo "alone."
   exit 0
 fi
 echo "PROOF DOES NOT HOLD (g3: $g3a $g3b $g3c $g3d / g2: $g2a $g2b $g2c $g2d"
-echo "                     / g1: $g1a $g1b $g1c $g1d $g1e $g1f)"
+echo "                     / g1: $g1a $g1b $g1c $g1d $g1e $g1f"
+echo "                     / g4: $g4a $g4b $g4c $g4d)"
 exit 1

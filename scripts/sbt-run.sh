@@ -81,6 +81,43 @@
 #
 #   The ported `modules/*/target/scala-*/...` half is DROPPED: measured here it
 #   matches nothing, and a dead path in a guard reads as coverage.
+#
+# GUARD 4 -- a formatter check answered from a cache keyed on mtime.
+#   MEASURED HERE, 2026-08-18, against sbt-scalafmt 2.6.2, four arms in one
+#   clone. The plugin's check cache is keyed on LAST-MODIFIED TIME, not on
+#   content, so a file whose content changed while its mtime was preserved is
+#   never re-read:
+#
+#     populate the cache                        -> exit 0, 2 "Checking" lines
+#     mtime moved, content identical            -> exit 0, re-checked  (control)
+#     REAL VIOLATION, original mtime restored   -> exit 0, 0 "Checking" lines
+#     same violation, mtime free                -> exit 1              (control)
+#
+#   The third arm is the defect and the fourth is what rules out the easy
+#   explanation: the seeded violation is one scalafmt genuinely rejects, so the
+#   pass in arm three is the cache hiding it rather than the file being clean.
+#   `cp -p`, `rsync -a`, `tar -x` and an archive restore all preserve mtime;
+#   a git checkout does not, which is why ordinary git work never shows this.
+#
+#   TWO HALVES, because either alone is insufficient.
+#
+#   PREVENT: remove the plugin's own stream caches before sbt runs, so the
+#   check is always full. Measured in the same clone: with the caches cleared
+#   the violation arm 3 hid becomes exit 1. This is scoped to directories NAMED
+#   for the plugin underneath target/ -- never a broad sweep of target/, for
+#   the reason guard 3(a) already records.
+#
+#   DETECT: with the caches cleared, a check that really ran MUST report at
+#   least one "scalafmt: Checking" line. If it exits 0 having reported none,
+#   the prevention has stopped working -- the plugin moved its cache, or the
+#   task name stopped being recognised -- and the pass is unearned. That is
+#   reported as 97, the same hollow-success code guard 3 uses.
+#
+#   The detect half is deliberately allowed to FALSE-FIRE onto 97 if a future
+#   scalafmt task reports progress in words this does not recognise. 97 says
+#   "this was not confirmed to have checked anything", which is the honest
+#   claim; silently reporting 0 would be the dangerous direction, and is the
+#   whole failure this guard exists to close.
 set -uo pipefail
 
 if [ "$#" -lt 2 ]; then
@@ -285,6 +322,31 @@ if [ "$HAS_CLEAN" -eq 1 ]; then
   BASELINE=${BASELINE:-0}
 fi
 
+# ─────────────────────────── Guard 4, prevent ───────────────────────────
+# Any scalafmt task at all, formatting or checking: the cache that hides a
+# preserved-mtime edit is the same one either way.
+HAS_SCALAFMT=0
+HAS_SCALAFMT_CHECK=0
+if printf '%s' "$*" | grep -qE '(^|;|[[:space:]]|/)scalafmt'; then
+  HAS_SCALAFMT=1
+fi
+if printf '%s' "$*" | grep -qE '(^|;|[[:space:]]|/)scalafmt[A-Za-z]*Check'; then
+  HAS_SCALAFMT_CHECK=1
+fi
+
+if [ "$HAS_SCALAFMT" -eq 1 ] && [ -d "$REPO_ROOT/target" ]; then
+  # Named directories only, underneath target/, which is entirely generated.
+  # -prune so the search does not descend into a cache it is about to remove.
+  CLEARED=$(find "$REPO_ROOT/target" -type d -name 'scalafmt*' -prune -print 2>/dev/null | wc -l)
+  find "$REPO_ROOT/target" -type d -name 'scalafmt*' -prune -print0 2>/dev/null |
+    xargs -0 -r rm -rf
+  {
+    printf '## scalafmt cache guard: removed %s cached task directory(ies) so\n' "$CLEARED"
+    printf '## the check reads every file. The plugin caches on mtime, not on\n'
+    printf '## content, so a preserved-mtime edit is invisible to a warm cache.\n\n'
+  } >>"$LOG_FILE"
+fi
+
 sbt -no-colors -Dsbt.supershell=false "$@" >>"$LOG_FILE" 2>&1
 SBT_EXIT=$?
 
@@ -298,6 +360,24 @@ if [ "$HAS_CLEAN" -eq 1 ] && [ "$SBT_EXIT" -eq 0 ]; then
       printf '## after=%s).\n' "$AFTER"
       printf '## A clean followed by a real compile always writes something new there.\n'
       printf '## Treat this as a stale server or a swallowed command, NOT as a pass.\n'
+    } >>"$LOG_FILE"
+    SBT_EXIT=97
+  fi
+fi
+
+# ─────────────────────────── Guard 4, detect ───────────────────────────
+# The caches were cleared above, so a check that ran reports progress. Silence
+# plus exit 0 means it did not run -- not that it found nothing.
+if [ "$HAS_SCALAFMT_CHECK" -eq 1 ] && [ "$SBT_EXIT" -eq 0 ]; then
+  if ! grep -q 'scalafmt: Checking' "$LOG_FILE"; then
+    {
+      printf '\n## HOLLOW SUCCESS: a scalafmt check task exited 0 without reporting\n'
+      printf '## that it checked anything. Its caches were cleared before this run,\n'
+      printf '## so a check that really ran prints at least one "scalafmt: Checking"\n'
+      printf '## line. Reporting none means the cache clear no longer reaches where\n'
+      printf '## the plugin keeps its state, or the task did not run at all.\n'
+      printf '## An exit code of 0 says nothing FAILED. It does not say anything was\n'
+      printf '## CHECKED, and those are different claims.\n'
     } >>"$LOG_FILE"
     SBT_EXIT=97
   fi

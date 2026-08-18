@@ -289,7 +289,22 @@ of `compile`** — `scalafmtAll` formats and `scalafmtCheckAll` reports, both
 opt-in, so a green build says nothing about whether the tree is formatted. Run
 the check before calling work done; the engine version is resolved from
 `.scalafmt.conf`'s own `version` key rather than from the plugin, so read it
-there. There is no `lint`, `typecheck` or coverage task and no CI —
+there.
+
+**And run it through `scripts/sbt-run.sh`, because a bare `sbt scalafmtCheckAll`
+can pass a file it never read.** Measured against sbt-scalafmt 2.6.2 on
+2026-08-18: the plugin's check cache is keyed on a file's **last-modified time,
+not its content**, so an edit that preserves mtime is invisible to a warm cache
+and the task exits 0 in silence. A real violation was planted this way and
+passed; the same violation with mtime free failed, which is what rules out the
+file simply being clean. `cp -p`, `rsync -a`, `tar -x` and an archive restore
+all preserve mtime — a `git checkout` does not, which is why ordinary git work
+never shows this. The wrapper's guard 4 clears the plugin's caches before the
+task and reports **97** if a check then exits 0 having reported reading nothing;
+`scripts/sbt-run-proof.sh` drives both halves. **The bare command is not
+equivalent, and its green is weaker than it looks.**
+
+There is no `lint`, `typecheck` or coverage task and no CI —
 `## Code style` below says what the compiler's enforced set does and does not
 reach, and outside both, match the style of surrounding code by hand. Do not
 invent a command — one that the build does not define will fail and read as a
