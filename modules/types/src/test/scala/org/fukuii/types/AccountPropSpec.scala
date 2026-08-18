@@ -19,12 +19,21 @@ import org.scalatest.prop.TableDrivenPropertyChecks
   * every expectation here** rather than this project's reading of a formula.
   * The resource names the repository.
   *
-  * The field *values* are not invented either. Rows labelled `corpus-` carry
-  * real published accounts lifted from fixture pre-state; only accounts with
-  * empty storage are taken, because any other storage root needs the trie. The
+  * The field *values* have two provenances and the label says which. Rows
+  * labelled `corpus-` carry real published accounts lifted from fixture
+  * pre-state, each located in the corpora the resource names. Rows labelled
+  * `authored-` are constructed here and published nowhere: the table walks
+  * nonce and balance byte-widths, and no corpus supplies an account at some of
+  * them — a chain account does not carry nonce 2^64-1. Only accounts with empty
+  * storage are taken, because any other storage root needs the trie. The
   * empty-trie root and the empty-code hash are derived from first principles at
   * generation — keccak of RLP of the empty string, and keccak of the empty
   * string — never recalled.
+  *
+  * Keeping the two apart is the point rather than bookkeeping: six rows once
+  * carried constructed values under a `corpus-` label, and nothing in a passing
+  * suite could show it, because a vector that is wrong about where it came from
+  * still encodes correctly.
   *
   * ==What the table is selected for==
   *
