@@ -31,11 +31,16 @@ import scala.collection.mutable
   * by that digest.
   *
   * @param storageTrieFor
-  *   builds the storage trie for an address. Where those tries' bytes live —
-  *   one keyspace per account, or one shared keyspace under a prefix — is a
-  *   representation choice this type admits rather than makes. It is called at
-  *   most once per address; the result is retained, because a storage trie that
-  *   was rebuilt between calls would silently lose writes.
+  *   builds the storage trie for an address, and MUST return an empty one every
+  *   time it is called. Where those tries' bytes live — one keyspace per
+  *   account, or one shared keyspace under a prefix — is a representation choice
+  *   this type admits rather than makes. The result is retained, because a
+  *   storage trie rebuilt between ordinary calls would silently lose writes;
+  *   [[destroyAccount]] drops that memo deliberately, so this is called again
+  *   after a destruction and the emptiness requirement is what makes that
+  *   destruction take effect. An implementation returning a view over entries
+  *   already in the store does not satisfy it, and destroying an account through
+  *   one would commit to the storage that was supposed to be gone.
   */
 final class StateTrie(
     accounts: Trie,
@@ -133,23 +138,75 @@ final class StateTrie(
     * The account's storage trie is left as it is, and [[storageTries]] goes on
     * holding it — so writing the same address again reads its storage root back
     * through that retained trie and commits to the destroyed account's storage
-    * rather than to the empty root. Reclaiming the trie's bytes is a retention
-    * decision, but evicting the memo is not: it is what a destroy-then-recreate
-    * sequence requires, and this operation does not do it.
+    * rather than to the empty root. That is what [[destroyAccount]] is for. The
+    * two are kept apart because removing a leaf and destroying an account are
+    * different operations, which is the separation the executable specification
+    * draws between `set_account(..., None)` and `destroy_account`.
     */
   def deleteAccount(address: Address): Unit = accounts.delete(addressKey(address))
+
+  /** Destroys the account at `address`: its storage first, then its leaf.
+    *
+    * ==Dropping the memo is the whole mechanism, and it is the field's==
+    *
+    * No implementation surveyed asks a trie to erase itself. The executable
+    * specification pops the address out of its storage-trie map
+    * (`apply_changes_to_state`, `state._storage_tries.pop(address, None)`) and
+    * excludes it from the copy the root is computed over; go-ethereum moves the
+    * object into `stateObjectsDestruct`; besu raises `storageWasCleared` and
+    * treats the account as fresh; ethrex carries `removed_storage` beside
+    * `removed`. Each drops a handle and lets the next write start from nothing.
+    *
+    * Eviction works here for the same reason, and rests on [[storageTrieFor]]
+    * returning an empty trie — see the requirement on that parameter, which this
+    * operation is what makes load-bearing. Reclaiming the destroyed trie's bytes
+    * is a separate retention decision and is deliberately not done here.
+    *
+    * Storage goes first so that writes applied after a destruction land in the
+    * new trie rather than the old one, which is the order the specification's
+    * `destroy_account` uses.
+    */
+  def destroyAccount(address: Address): Unit =
+    // The evicted trie is the thing being discarded, so its handle is bound away
+    // rather than dropped: `remove` answers with it, and the ratchet treats an
+    // unused non-Unit value as an error.
+    val _ = storageTries.remove(address)
+    accounts.delete(addressKey(address))
 
   def stateRoot: Hash = accounts.root
 
   /** Stores `contents` under its own digest and returns that digest, which is
     * what an account carries as its code hash.
+    *
+    * The empty code is never stored, matching the executable specification's
+    * `store_code`, which guards the write with `if code_hash != EMPTY_CODE_HASH`.
+    * Storing it would put an entry under [[StateTrie.EmptyCodeHash]] on whichever
+    * nodes happened to make this call and not on the others, so two nodes holding
+    * identical state would answer [[getCode]] differently — a difference arising
+    * from write history rather than from state.
     */
   def putCode(contents: Bytes): Hash =
     val digest = Keccak256.hash(contents.toIArray)
-    store.update(code, Nil, Seq(Bytes.fromIArray(digest.toBytes) -> contents))
+    if digest != StateTrie.EmptyCodeHash then store.update(code, Nil, Seq(Bytes.fromIArray(digest.toBytes) -> contents))
     digest
 
-  def getCode(digest: Hash): Option[Bytes] = store.get(code, Bytes.fromIArray(digest.toBytes))
+  /** The code under `digest`, where an account with no code answers with the
+    * empty string rather than with absence.
+    *
+    * `Some(empty)` is "no code" and `None` is "the code this digest names is
+    * missing", which are different answers and only the second is a fault.
+    * Answering the empty case here is what makes the lookup total without storing
+    * anything — see [[putCode]], which declines to store it. besu's `getCode`
+    * takes the same shape, returning `Optional.of(Bytes.EMPTY)` on the empty
+    * hash, so the existing signature carries the distinction unchanged.
+    *
+    * Whether a `None` later becomes an error or an empty is the caller's
+    * decision and the field splits on it; answering the empty case here
+    * forecloses neither.
+    */
+  def getCode(digest: Hash): Option[Bytes] =
+    if digest == StateTrie.EmptyCodeHash then Some(Bytes.Empty)
+    else store.get(code, Bytes.fromIArray(digest.toBytes))
 
   private def addressKey(address: Address): Bytes = Bytes.fromIArray(address.toBytes)
 

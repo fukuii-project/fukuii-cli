@@ -193,3 +193,101 @@ class StateTrieSpec extends AnyFlatSpec:
     )
     assertThrows[IllegalArgumentException](state.storageRoot(address(1)))
   }
+
+  private def codeNamespace(): Namespace.Standalone = TrieFixtures.namespace("code")
+
+  /** A state whose store and code namespace stay in the test's hands, so that
+    * "nothing was stored" can be asked of the store rather than inferred from a
+    * lookup that is now total and would answer the same either way.
+    */
+  private def observableState(): (StateTrie, KeyValueStore, Namespace.Standalone) =
+    val store: KeyValueStore = TrieFixtures.store()
+    val accounts = new StoredNodeTrie(Securing.Secured, store, TrieFixtures.namespace("state-nodes"))
+    val codeNs = codeNamespace()
+    val state = new StateTrie(
+      accounts,
+      owner => new StoredNodeTrie(Securing.Secured, store, TrieFixtures.namespace("storage-" + owner.toHex)),
+      store,
+      codeNs
+    )
+    (state, store, codeNs)
+
+  "destroyAccount" should "remove the account leaf" in {
+    val state = newState()
+    writeAccount(state, address(1), 7)
+    state.destroyAccount(address(1))
+    assert(state.getAccount(address(1)).toOption.flatten.isEmpty, "the destroyed account is gone from the trie")
+  }
+
+  it should "answer a storage read with absence" in {
+    val state = newState()
+    state.putStorage(address(1), slot(1), TrieFixtures.bytesOf("ff"))
+    state.destroyAccount(address(1))
+    assert(
+      state.getStorage(address(1), slot(1)).isEmpty,
+      "a read after destruction sees nothing, rather than the value the destroyed account held"
+    )
+  }
+
+  it should "return the storage to the empty root" in {
+    val state = newState()
+    state.putStorage(address(1), slot(1), TrieFixtures.bytesOf("ff"))
+    state.destroyAccount(address(1))
+    assert(state.storageRoot(address(1)) == Trie.EmptyRoot, "destroyed storage commits to the empty trie")
+  }
+
+  it should "keep a write applied after it out of the destroyed storage" in {
+    val untouched = newState()
+    untouched.putStorage(address(1), slot(2), TrieFixtures.bytesOf("ee"))
+    val expected = untouched.storageRoot(address(1))
+    val state = newState()
+    state.putStorage(address(1), slot(1), TrieFixtures.bytesOf("ff"))
+    state.destroyAccount(address(1))
+    state.putStorage(address(1), slot(2), TrieFixtures.bytesOf("ee"))
+    assert(
+      state.storageRoot(address(1)) == expected,
+      "storage is cleared before later writes land, so the account commits to those writes alone"
+    )
+  }
+
+  "deleteAccount" should "leave the storage trie in place" in {
+    val state = newState()
+    state.putStorage(address(1), slot(1), TrieFixtures.bytesOf("ff"))
+    val before = state.storageRoot(address(1))
+    state.deleteAccount(address(1))
+    assert(
+      state.storageRoot(address(1)) == before,
+      "the leaf primitive touches the leaf alone, which is what makes it distinct from destroyAccount"
+    )
+  }
+
+  "putCode" should "answer the empty-code hash for empty contents" in {
+    val state = newState()
+    assert(state.putCode(Bytes.Empty) == StateTrie.EmptyCodeHash, "the empty code hashes to the published digest")
+  }
+
+  it should "store nothing for empty contents" in {
+    val (state, store, codeNs) = observableState()
+    val digest = state.putCode(Bytes.Empty)
+    assert(
+      store.get(codeNs, Bytes.fromIArray(digest.toBytes)).isEmpty,
+      "the empty code is never written, so two nodes with identical state cannot answer getCode differently"
+    )
+  }
+
+  "getCode" should "answer the empty code rather than absence for the empty-code hash" in {
+    val state = newState()
+    assert(
+      state.getCode(StateTrie.EmptyCodeHash).contains(Bytes.Empty),
+      "an account with no code has empty code, which is not the same as its code being missing"
+    )
+  }
+
+  it should "answer absence for a digest nothing stored" in {
+    val state = newState()
+    val absent = Keccak256.hash(IArray[Byte](1, 2, 3))
+    assert(
+      state.getCode(absent).isEmpty,
+      "missing code stays distinguishable from empty code, and only the first is a fault"
+    )
+  }
