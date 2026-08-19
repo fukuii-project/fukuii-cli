@@ -42,6 +42,30 @@ gets missed:
 support something is a structural decision exactly as much as a recommendation
 to build it, and it is the one that feels like it needs no evidence.
 
+## The order to read them in, because "the field" is not a flat set
+
+**`reference-corpus.md` § "Reading order" is the statement; this is the pointer, because that file
+does not auto-load and this one does.**
+
+**Read proof-of-stake Ethereum first.** It is the leading EVM network and where EVM development
+happens — proposals land, get implemented and get exercised there before anywhere else, and
+**Ethereum Classic historically lags it.** A design derived from Classic first is derived from the
+downstream copy and inherits the lag. The order is: the executable specification, then
+`go-ethereum` as the largest production client, then `besu` as the largest production **JVM** client
+— whose *shape* transfers most directly to a Scala client — **then** Ethereum Classic as the
+downstream addition.
+
+**One client exists only because of this order and is easy to miss.**
+**`ethereum/go-ethereum-pow` @ `v1.10.26` is go-ethereum while it still ran proof-of-work**, frozen
+deliberately. **Current `go-ethereum` cannot answer a proof-of-work question at all** — ethash was
+removed in 2023 and `master` retains only shims — so a proof-of-work survey that reads `go-ethereum`
+and concludes anything about proof-of-work has read the wrong tree. Read it as a **peer** of
+`core-geth`, not a footnote: it ran the largest proof-of-work EVM network in production for years.
+
+**This orders the reading, not the authority.** A value Ethereum Classic adjusts is the ECIP's, and a
+mechanism it alone specifies is the ECIP's alone. What the order governs is the default path for what
+the families *share*, which is most of the EVM.
+
 ## Why the field, and not just the specification
 
 The specification says what the bytes are. **The clients say what goes wrong**,

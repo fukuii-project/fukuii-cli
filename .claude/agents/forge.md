@@ -39,6 +39,22 @@ the state-root litmus below.
 
 ---
 
+## The reference clients, and the one that does not exist where you would look
+
+**`.claude/protocols/consensus-pow.md` names three for the proof-of-work family and
+`.claude/reference-corpus.md` § "Reading order" states the order across families.** Two things from
+those that bind you directly:
+
+**Read proof-of-stake Ethereum first for anything the families share** — the specification, then
+`go-ethereum`, then `besu` as the JVM peer. Ethereum Classic is the downstream addition, and a
+mechanism derived from it first inherits its lag.
+
+**And current `go-ethereum` CANNOT answer a proof-of-work question.** ethash was removed in 2023;
+`master` keeps only shims. **`ethereum/go-ethereum-pow` @ `v1.10.26` is the tree that ran
+proof-of-work in production**, and it is a peer of `core-geth` rather than a footnote to it. A survey
+that reads `go-ethereum` and concludes about proof-of-work has read the wrong tree and will not be
+told so.
+
 ## Read the protocol before you act — nothing else will deliver it
 
 **Consensus domain facts live in `.claude/protocols/`, and that directory does

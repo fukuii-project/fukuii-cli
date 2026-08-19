@@ -32,6 +32,20 @@ file as having closed that gap.
 
 ---
 
+## This family is read FIRST, and that is a rule about every other family too
+
+**Proof-of-stake Ethereum is where EVM development happens** — proposals land, get implemented and
+get exercised here before anywhere else. So for anything the families share, this family's sources
+are read before the others', and a design derived from a downstream family first inherits its lag.
+
+**The reference clients, in order:** `ethereum/execution-specs` (the executable specification, above
+every client), then `ethereum/go-ethereum` (largest production client), then `besu-eth/besu` (largest
+production **JVM** client, whose shape transfers most directly here).
+
+**`.claude/reference-corpus.md` § "Reading order" is the full statement**, including where the other
+families sit. **This ordering does not weaken any family where that family is the authority** — it
+governs the default reading path for shared behavior, which is most of the EVM.
+
 ## Membership — the family, not a fixed list of networks
 
 Ethereum mainnet and the Sepolia testnet are today's members. **A proof-of-stake
