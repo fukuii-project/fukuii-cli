@@ -33,6 +33,8 @@ class StateTrieSpec extends AnyFlatSpec:
 
   private def wei(amount: Long): UInt256 = UInt256.fromLong(amount).toOption.get
 
+  private def slot(number: Long): UInt256 = UInt256.fromLong(number).toOption.get
+
   private def writeAccount(state: StateTrie, owner: Address, balance: Long): Unit =
     state.putAccount(owner, UInt64.Zero, wei(balance), StateTrie.EmptyCodeHash)
 
@@ -47,16 +49,16 @@ class StateTrieSpec extends AnyFlatSpec:
 
   "a storage write" should "change that account's storage root" in {
     val state = newState()
-    val before = state.storage(address(1)).root
-    state.storage(address(1)).put(TrieFixtures.bytesOf("01"), TrieFixtures.bytesOf("ff"))
-    assert(state.storage(address(1)).root != before, "a storage trie commits to its own contents")
+    val before = state.storageRoot(address(1))
+    state.putStorage(address(1), slot(1), TrieFixtures.bytesOf("ff"))
+    assert(state.storageRoot(address(1)) != before, "a storage trie commits to its own contents")
   }
 
   it should "reach the state root once the account leaf is rewritten" in {
     val state = newState()
     writeAccount(state, address(1), 7)
     val before = state.stateRoot
-    state.storage(address(1)).put(TrieFixtures.bytesOf("01"), TrieFixtures.bytesOf("ff"))
+    state.putStorage(address(1), slot(1), TrieFixtures.bytesOf("ff"))
     writeAccount(state, address(1), 7)
     assert(state.stateRoot != before, "the account leaf embeds the storage root, so the state root is two-level")
   }
@@ -65,7 +67,7 @@ class StateTrieSpec extends AnyFlatSpec:
     val state = newState()
     writeAccount(state, address(1), 7)
     val before = state.stateRoot
-    state.storage(address(1)).put(TrieFixtures.bytesOf("01"), TrieFixtures.bytesOf("ff"))
+    state.putStorage(address(1), slot(1), TrieFixtures.bytesOf("ff"))
     assert(
       state.stateRoot == before,
       "the state root commits to the storage root that was read when the leaf was written, which is why the write order is structural"
@@ -74,17 +76,26 @@ class StateTrieSpec extends AnyFlatSpec:
 
   "storage" should "return the same trie for one address rather than rebuilding it" in {
     val state = newState()
-    state.storage(address(1)).put(TrieFixtures.bytesOf("01"), TrieFixtures.bytesOf("ff"))
+    state.putStorage(address(1), slot(1), TrieFixtures.bytesOf("ff"))
     assert(
-      state.storage(address(1)).get(TrieFixtures.bytesOf("01")).contains(TrieFixtures.bytesOf("ff")),
+      state.getStorage(address(1), slot(1)).contains(TrieFixtures.bytesOf("ff")),
       "a rebuilt storage trie would silently lose writes"
     )
   }
 
   it should "keep two accounts' storage apart" in {
     val state = newState()
-    state.storage(address(1)).put(TrieFixtures.bytesOf("01"), TrieFixtures.bytesOf("ff"))
-    assert(state.storage(address(2)).get(TrieFixtures.bytesOf("01")).isEmpty, "one account's slot is not another's")
+    state.putStorage(address(1), slot(1), TrieFixtures.bytesOf("ff"))
+    assert(state.getStorage(address(2), slot(1)).isEmpty, "one account's slot is not another's")
+  }
+
+  it should "secure a slot at its full width, so a narrow slot number is not a different key" in {
+    val state = newState()
+    state.putStorage(address(1), slot(1), TrieFixtures.bytesOf("ff"))
+    assert(
+      state.getStorage(address(1), slot(1)).contains(TrieFixtures.bytesOf("ff")),
+      "a slot number is a 256-bit word, and the width it is secured at is not the caller's to choose"
+    )
   }
 
   "getAccount" should "return the account that was written" in {
@@ -162,5 +173,5 @@ class StateTrieSpec extends AnyFlatSpec:
       store,
       TrieFixtures.namespace("code")
     )
-    assertThrows[IllegalArgumentException](state.storage(address(1)))
+    assertThrows[IllegalArgumentException](state.storageRoot(address(1)))
   }

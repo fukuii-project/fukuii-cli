@@ -59,6 +59,18 @@ enum TrieError:
     */
   case InvalidChildReference(width: Int)
 
+  /** An extension node consuming no nibbles. No conforming encoder emits one —
+    * an extension exists to consume a shared prefix, and a zero-length prefix is
+    * a branch — and accepting one would admit a node the traversals cannot make
+    * progress through: descending it consumes nothing, so a chain of them does
+    * not terminate.
+    *
+    * Every surveyed client accepts this shape, so refusing it is a deliberate
+    * departure. It is safe against history because no conforming writer can have
+    * produced such a node, and it cannot change a root for the same reason.
+    */
+  case EmptyExtensionSegment
+
   /** A child embedded in its parent whose own encoding reaches the inline
     * limit. Such a node must be referenced by hash, so the parent is not the
     * encoding any conforming implementation would have produced for its

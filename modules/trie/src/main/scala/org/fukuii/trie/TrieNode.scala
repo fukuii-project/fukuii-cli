@@ -137,6 +137,13 @@ object TrieNode:
     * An embedded node whose own encoding reaches [[InlineLimit]] is rejected:
     * [[cap]] cannot produce one, so a parent carrying one commits to a shape no
     * conforming implementation would have written for the same contents.
+    *
+    * The width is measured on the item as received and before it is decoded,
+    * which is what bounds the descent: a nesting level costs at least two bytes,
+    * so a child under the limit nests only a few levels further. Measuring the
+    * re-encoded node instead would decode the whole subtree before it could
+    * reject it, and would leave this rejection resting on `modules/rlp`
+    * refusing non-canonical input rather than on anything stated here.
     */
   def refFromRlp(item: RlpItem): Either[TrieError, NodeRef] = item match
     case RlpItem.Bytes(payload) =>
@@ -146,11 +153,9 @@ object TrieNode:
           case Right(hash) => Right(NodeRef.Hashed(hash))
           case Left(_)     => Left(TrieError.InvalidChildReference(payload.length))
     case embedded: RlpItem.Sequence =>
-      fromRlp(embedded).flatMap { node =>
-        val width = encode(node).length
-        if width < InlineLimit then Right(NodeRef.Inline(node))
-        else Left(TrieError.OversizedInlineNode(width))
-      }
+      val width = Rlp.encode(embedded).length
+      if width >= InlineLimit then Left(TrieError.OversizedInlineNode(width))
+      else fromRlp(embedded).map(NodeRef.Inline.apply)
 
   private def shortNodeFromRlp(path: RlpItem, payload: RlpItem): Either[TrieError, TrieNode] = path match
     case _: RlpItem.Sequence    => Left(TrieError.NotANodeStructure)
@@ -160,6 +165,7 @@ object TrieNode:
           payload match
             case RlpItem.Bytes(value) => Right(LeafNode(nibbles, Bytes.fromIArray(value)))
             case _: RlpItem.Sequence  => Left(TrieError.NotANodeStructure)
+        else if nibbles.isEmpty then Left(TrieError.EmptyExtensionSegment)
         else refFromRlp(payload).map(ExtensionNode(nibbles, _))
       }
 

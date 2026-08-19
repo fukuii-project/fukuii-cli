@@ -51,8 +51,15 @@ final class StateTrie(
 
   private val storageTries: mutable.Map[Address, Trie] = mutable.Map.empty
 
-  /** This account's storage trie, created on first use and retained after. */
-  def storage(address: Address): Trie =
+  /** This account's storage trie, created on first use and retained after.
+    *
+    * Private because a storage key is a slot number and the trie is byte-keyed:
+    * a slot handed over at its minimal width secures a different pre-image and
+    * commits to a different storage root, and therefore a different state root.
+    * The typed operations below are the surface, and they take [[UInt256]] so
+    * that width is not a thing a caller can get wrong.
+    */
+  private def storage(address: Address): Trie =
     storageTries.getOrElseUpdate(
       address, {
         val built = storageTrieFor(address)
@@ -63,6 +70,21 @@ final class StateTrie(
         built
       }
     )
+
+  /** Writes `value` to `slot` of this account's storage.
+    *
+    * The slot is left-padded to a whole word before it is secured, because a
+    * slot number is a 256-bit word and the trie hashes exactly the bytes it is
+    * handed.
+    */
+  def putStorage(address: Address, slot: UInt256, value: Bytes): Unit =
+    storage(address).put(slotKey(slot), value)
+
+  def getStorage(address: Address, slot: UInt256): Option[Bytes] =
+    storage(address).get(slotKey(slot))
+
+  /** The root this account's storage trie currently commits to. */
+  def storageRoot(address: Address): Hash = storage(address).root
 
   /** Writes the account at `address`, taking its storage root from its own
     * storage trie rather than from the caller. See the two-level note on this
@@ -101,6 +123,8 @@ final class StateTrie(
   def getCode(digest: Hash): Option[Bytes] = store.get(code, Bytes.fromIArray(digest.toBytes))
 
   private def addressKey(address: Address): Bytes = Bytes.fromIArray(address.toBytes)
+
+  private def slotKey(slot: UInt256): Bytes = Bytes.fromIArray(slot.toBytes)
 
 object StateTrie:
 

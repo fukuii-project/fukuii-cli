@@ -101,9 +101,8 @@ class StateRootPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     * no row here carries one.
     */
   private def writeStorage(state: StateTrie, account: AccountRow): Unit =
-    val storage = state.storage(account.address)
     account.slots.foreach { slot =>
-      storage.put(Bytes.fromIArray(slot.key.toBytes), Bytes.fromIArray(RlpCodec.encodeTo(slot.value)))
+      state.putStorage(account.address, slot.key, Bytes.fromIArray(RlpCodec.encodeTo(slot.value)))
     }
 
   private def build(state: StateTrie, vector: StateVector): StateTrie =

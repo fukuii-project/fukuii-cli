@@ -61,12 +61,16 @@ class TrieNodeSpec extends AnyFlatSpec:
     assert(TrieNode.cap(Some(large)) == NodeRef.Hashed(Keccak256.hash(encoded)), "a long node is referenced by digest")
   }
 
+  private def isInline(ref: NodeRef): Boolean = ref match
+    case _: NodeRef.Inline => true
+    case _                 => false
+
   it should "switch from embedding to hashing exactly at the inline limit" in {
     val boundary = (1 to 40).map(size => LeafNode(nibbles(1), repeated(0xaa, size))).map { node =>
       (TrieNode.encode(node).length, TrieNode.cap(Some(node)))
     }
     assert(
-      boundary.forall((width, ref) => (width < TrieNode.InlineLimit) == ref.isInstanceOf[NodeRef.Inline]),
+      boundary.forall((width, ref) => (width < TrieNode.InlineLimit) == isInline(ref)),
       "the rule is on the encoded width and nothing else"
     )
   }
@@ -123,6 +127,31 @@ class TrieNodeSpec extends AnyFlatSpec:
     assert(TrieNode.fromRlp(branch) == Left(TrieError.InvalidChildReference(31)), "a 31-byte string names nothing")
   }
 
+  it should "reject an embedded child whose encoding is exactly the inline limit" in {
+    val exact = (1 to 40)
+      .map(size => LeafNode(nibbles(1), repeated(0xaa, size)))
+      .find(node => TrieNode.encode(node).length == TrieNode.InlineLimit)
+      .getOrElse(fail("no leaf in the swept range encodes to exactly the inline limit"))
+    val branch = RlpItem.Sequence(
+      Vector.fill(16)(RlpItem.Bytes(IArray.empty[Byte])).updated(0, TrieNode.toRlp(exact)) :+
+        RlpItem.Bytes(IArray.empty[Byte])
+    )
+    assert(
+      TrieNode.fromRlp(branch) == Left(TrieError.OversizedInlineNode(TrieNode.InlineLimit)),
+      "the rule embeds strictly under the limit, so a child at the limit is referenced by digest and never embedded"
+    )
+  }
+
+  it should "reject an extension node that consumes no nibbles" in {
+    val extension = RlpItem.Sequence(
+      Vector(RlpItem.Bytes(IArray(0x00.toByte)), RlpItem.Bytes(IArray.fill(32)(0x11.toByte)))
+    )
+    assert(
+      TrieNode.fromRlp(extension) == Left(TrieError.EmptyExtensionSegment),
+      "an extension consumes a shared prefix, and descending one that consumes nothing makes no progress"
+    )
+  }
+
   it should "reject an embedded child whose own encoding reaches the inline limit" in {
     val oversized = TrieNode.toRlp(LeafNode(nibbles(1), repeated(0xaa, 40)))
     val branch = RlpItem.Sequence(
@@ -156,7 +185,10 @@ class TrieNodeSpec extends AnyFlatSpec:
       Nibbles.fromBytes(IArray(0x20.toByte)) -> bytesOf("02")
     )
     assert(
-      TrieNode.patricialize(entries, 0).exists(_.isInstanceOf[BranchNode]),
+      TrieNode.patricialize(entries, 0).exists {
+        case _: BranchNode => true
+        case _             => false
+      },
       "divergence at nibble zero is a branch"
     )
   }
@@ -166,7 +198,13 @@ class TrieNodeSpec extends AnyFlatSpec:
       Nibbles.fromBytes(IArray(0x11.toByte)) -> bytesOf("01"),
       Nibbles.fromBytes(IArray(0x12.toByte)) -> bytesOf("02")
     )
-    assert(TrieNode.patricialize(entries, 0).exists(_.isInstanceOf[ExtensionNode]), "a shared prefix is an extension")
+    assert(
+      TrieNode.patricialize(entries, 0).exists {
+        case _: ExtensionNode => true
+        case _                => false
+      },
+      "a shared prefix is an extension"
+    )
   }
 
   it should "put a key that terminates at a branch into that branch's value slot" in {
