@@ -76,6 +76,17 @@ final class StateTrie(
     * The slot is left-padded to a whole word before it is secured, because a
     * slot number is a 256-bit word and the trie hashes exactly the bytes it is
     * handed.
+    *
+    * ==A zero-valued slot is omitted by the caller, never detected here==
+    *
+    * `value` is opaque bytes, so this seam cannot tell a zero word from any
+    * other value: the zero word's RLP is `0x80`, which is non-empty and so
+    * stores a leaf where the storage trie must hold no key at all. That rule
+    * belongs to a layer writing storage from typed values, which does not exist
+    * yet — the executable specification places it in the same position,
+    * deleting on a zero word before any encoding happens. Typing `value` here
+    * is what would move it, and until something writes storage from typed
+    * words there is nothing at this seam to enforce.
     */
   def putStorage(address: Address, slot: UInt256, value: Bytes): Unit =
     storage(address).put(slotKey(slot), value)
@@ -104,9 +115,14 @@ final class StateTrie(
           .map(TrieError.MalformedAccount.apply)
           .map(Some.apply)
 
-  /** Removes the account leaf. The account's storage trie is left as it is:
-    * nothing outside the state trie references it once the leaf is gone, and
-    * reclaiming it is a retention decision rather than part of the write.
+  /** Removes the account leaf, and nothing else.
+    *
+    * The account's storage trie is left as it is, and [[storageTries]] goes on
+    * holding it — so writing the same address again reads its storage root back
+    * through that retained trie and commits to the destroyed account's storage
+    * rather than to the empty root. Reclaiming the trie's bytes is a retention
+    * decision, but evicting the memo is not: it is what a destroy-then-recreate
+    * sequence requires, and this operation does not do it.
     */
   def deleteAccount(address: Address): Unit = accounts.delete(addressKey(address))
 
