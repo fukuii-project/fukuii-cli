@@ -3,7 +3,7 @@ package org.fukuii.trie
 import org.fukuii.bytes.{Address, Bytes, Hash, UInt256, UInt64}
 import org.fukuii.crypto.Keccak256
 import org.fukuii.rlp.RlpCodec
-import org.fukuii.storage.{KeyValueStore, Namespace}
+import org.fukuii.storage.{KeyValueStore, Namespace, Seam}
 import org.fukuii.types.Account
 
 import scala.collection.mutable
@@ -47,6 +47,19 @@ final class StateTrie(
   require(
     accounts.securing == Securing.Secured,
     "the account trie is secured, or the state root commits to a different structure"
+  )
+
+  // Code is state, so a code namespace tagged as chain data is a
+  // misclassification this class can name and the store cannot: `modules/storage`
+  // assigns no meaning to a namespace's tags and defers agreement between two
+  // values sharing an id, so nothing below catches it and it would survive to
+  // the first persistent backend, where the two seams are retained under
+  // independent policies. WriteMode is deliberately not checked here — which
+  // mode a content-addressed keyspace takes is the declaring layer's decision,
+  // and this class has no ground to overrule it.
+  require(
+    code.seam == Seam.State,
+    "the code namespace belongs to the state seam, or it is retained under the wrong policy"
   )
 
   private val storageTries: mutable.Map[Address, Trie] = mutable.Map.empty

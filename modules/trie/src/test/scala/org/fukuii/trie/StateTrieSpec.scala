@@ -2,7 +2,7 @@ package org.fukuii.trie
 
 import org.fukuii.bytes.{Address, Bytes, Hash, UInt256, UInt64}
 import org.fukuii.crypto.Keccak256
-import org.fukuii.storage.KeyValueStore
+import org.fukuii.storage.{KeyValueStore, Namespace, NamespaceId, Seam, WriteMode}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** The two-level composition: the account trie, a storage trie per account, and
@@ -155,6 +155,14 @@ class StateTrieSpec extends AnyFlatSpec:
 
   "EmptyCodeHash" should "be the published digest of the empty byte string" in
     assert(StateTrie.EmptyCodeHash.toHex == publishedEmptyCodeHash, "an account with no code carries a real digest")
+
+  "a StateTrie" should "refuse a code namespace tagged as chain data" in {
+    val store: KeyValueStore = TrieFixtures.store()
+    val accounts = new StoredNodeTrie(Securing.Secured, store, TrieFixtures.namespace("state-nodes"))
+    val misfiled: Namespace.Standalone =
+      Namespace.Standalone(NamespaceId("code"), Seam.ChainData, WriteMode.Mutable)
+    assertThrows[IllegalArgumentException](new StateTrie(accounts, _ => accounts, store, misfiled))
+  }
 
   "a StateTrie" should "refuse an account trie that is not secured" in {
     val store: KeyValueStore = TrieFixtures.store()
