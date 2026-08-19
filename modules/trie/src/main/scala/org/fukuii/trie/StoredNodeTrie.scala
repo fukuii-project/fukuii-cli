@@ -246,9 +246,14 @@ final class StoredNodeTrie(
         // sorts before what extends it, so the branch's own value is emitted
         // before its children rather than after.
         if value.nonEmpty then emit(out, prefix, value)
+        // The occupancy test is here rather than inside the recursive call
+        // because the child's prefix is an ARGUMENT: written the other way it is
+        // built for all sixteen slots and discarded by the fourteen or so that
+        // hold nothing. Descending an empty slot is already a no-op, so this
+        // changes what is allocated and never what is emitted.
         var index = 0
         while index < TrieNode.ChildCount do
-          collect(subnodes(index), prefix ++ Nibbles.single(index), out)
+          if subnodes(index) != NodeRef.Empty then collect(subnodes(index), prefix ++ Nibbles.single(index), out)
           index += 1
 
   private def emit(
