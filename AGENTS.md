@@ -536,6 +536,14 @@ vector-table row of the assignment above is for.
 **Deterministic across machines.** No dependence on wall-clock time, filesystem
 ordering, locale, or an available port.
 
+**A recursive grep from the repository root does NOT see this project's own records.**
+`grep -r` skips gitignored paths here, and the roadmap, the section plans and the session
+records all live under a gitignored directory. So a sweep for a stale claim, a wrong value
+or an old phrasing will report zero while the claim sits in the very files that govern the
+work. **Name the files directly, or use `git grep` for tracked text and a direct path list
+for the rest** — and calibrate any sweep against a token you know is present, because the
+failure returns a clean zero rather than an error.
+
 **A `val` declared BELOW a test registration is rejected, and the error names the wrong line.**
 Scala 3's initialization checker treats a field referenced by an already-registered
 test body as read-before-init, and the message points at the **first test in the
