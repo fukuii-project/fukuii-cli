@@ -318,6 +318,38 @@ class InMemoryKeyValueStoreSpec extends AnyFlatSpec:
     assert(store.get(freshHeaderId, keyB).contains(valueA), "a failed admit must not register its primary's shape")
   }
 
+  it should "not let a read classify an id, so a later admit on it still succeeds" in {
+    val store = new InMemoryKeyValueStore(layout)
+    val probe: Namespace.Standalone =
+      Namespace.Standalone(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable)
+    // The probe's RESULT is irrelevant and deliberately not asserted on -- what
+    // the test pins is that performing the read at all records nothing.
+    val _ = store.get(probe, keyA)
+
+    val companion: Namespace.Standalone =
+      Namespace.Standalone(NamespaceId("total-difficulty"), Seam.ChainData, WriteMode.Mutable)
+    val header: Namespace.Coupled =
+      Namespace.Coupled(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable, companion)
+    store.admit(header, keyA, valueA, valueB)
+    assert(
+      store.get(header, keyA).contains(valueA),
+      "a read that recorded a classification would fail the admit that was correct, not the probe that was wrong"
+    )
+  }
+
+  it should "still reject a read whose shape disagrees with a classification already established" in {
+    val store = new InMemoryKeyValueStore(layout)
+    val companion: Namespace.Standalone =
+      Namespace.Standalone(NamespaceId("total-difficulty"), Seam.ChainData, WriteMode.Mutable)
+    val header: Namespace.Coupled =
+      Namespace.Coupled(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable, companion)
+    store.admit(header, keyA, valueA, valueB)
+
+    val alias: Namespace.Standalone =
+      Namespace.Standalone(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable)
+    val _ = assertThrows[IllegalArgumentException](store.get(alias, keyA))
+  }
+
   it should "not reject a namespace value reused with the shape it was first seen with" in {
     val store = new InMemoryKeyValueStore(layout)
     val companion: Namespace.Standalone =

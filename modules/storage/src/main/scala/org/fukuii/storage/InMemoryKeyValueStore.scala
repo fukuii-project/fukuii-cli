@@ -34,10 +34,17 @@ import scala.collection.mutable
   * ==The shape registry==
   *
   * A [[NamespaceId]] is classified — [[Namespace.Standalone]], or
-  * [[Namespace.Coupled]] naming a specific companion id — the first time any
-  * operation is given a [[Namespace]] carrying it, and every later operation
-  * naming the same id must agree or the call throws
-  * `IllegalArgumentException` rather than proceeding.
+  * [[Namespace.Coupled]] naming a specific companion id — by the first
+  * operation that WRITES through it, and every later operation naming the
+  * same id must agree or the call throws `IllegalArgumentException` rather
+  * than proceeding.
+  *
+  * Reading, iterating and clearing check that agreement and do not establish
+  * it. They cannot: a classification exists to stop a write from entering a
+  * coupled keyspace without its companion, and a read that establishes one
+  * would decide that question on behalf of a caller that wrote nothing —
+  * turning a probe into a permanent commitment and failing the later
+  * legitimate `admit` instead of the probe that was wrong.
   *
   * This is the run-time half of [[KeyValueStore]]'s admission invariant.
   * [[KeyValueStore]]'s signatures alone stop a [[Namespace.Coupled]] value
@@ -137,12 +144,12 @@ final class InMemoryKeyValueStore(val layout: Layout) extends KeyValueStore:
 
   def get(namespace: Namespace, key: Bytes): Option[Bytes] =
     requireOpen()
-    registerShape(namespace)
+    requireShapeAgreement(namespace)
     unversioned.get(namespace.id).flatMap(_.get(key))
 
   def getAt(namespace: Namespace, version: Version, key: Bytes): Option[Bytes] =
     requireOpen()
-    registerShape(namespace)
+    requireShapeAgreement(namespace)
     versioned.get((namespace.id, version)).flatMap(_.get(key))
 
   def update(namespace: Namespace.Standalone, removals: Iterable[Bytes], upserts: Iterable[(Bytes, Bytes)]): Unit =
@@ -175,7 +182,7 @@ final class InMemoryKeyValueStore(val layout: Layout) extends KeyValueStore:
 
   def leaves(namespace: Namespace, version: Version): LeafIterator =
     requireOpen()
-    registerShape(namespace)
+    requireShapeAgreement(namespace)
     val snapshot = versioned.get((namespace.id, version)).map(_.toVector).getOrElse(Vector.empty)
     val ordered = snapshot.sortWith((x, y) => lessThan(x._1, y._1))
 
@@ -199,7 +206,7 @@ final class InMemoryKeyValueStore(val layout: Layout) extends KeyValueStore:
 
   def clear(namespace: Namespace): Unit =
     requireOpen()
-    registerShape(namespace)
+    requireShapeAgreement(namespace)
     val _ = unversioned.remove(namespace.id)
     val staleVersions = versioned.keys.filter((id, _) => id == namespace.id).toVector
     staleVersions.foreach(versioned.remove)

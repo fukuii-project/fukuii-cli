@@ -48,10 +48,39 @@ import org.fukuii.bytes.Bytes
   * the chain-header store with no total difficulty ever written for it,
   * silently. **Every implementation of this trait MUST reject it**: a
   * [[NamespaceId]] is classified — [[Namespace.Standalone]], or
-  * [[Namespace.Coupled]] naming a specific companion id — on the first
-  * operation that names it, and a later operation naming the same id under
-  * a different classification must fail rather than silently proceed. See
-  * [[InMemoryKeyValueStore]]'s shape registry for the reference shape.
+  * [[Namespace.Coupled]] naming a specific companion id — by the first
+  * operation that WRITES through it, and a later operation naming the same
+  * id under a different classification must fail rather than silently
+  * proceed. See [[InMemoryKeyValueStore]]'s shape registry for the reference
+  * shape.
+  *
+  * '''Classification is established by writes and only checked by reads''',
+  * and the asymmetry is required rather than an implementation's liberty. A
+  * read that established one would answer, on behalf of a caller that wrote
+  * nothing, the question of whether an id is coupled — so a startup probe
+  * against an unclassified id would fix it as standalone and the later,
+  * correct `admit` would be the call that failed. The diagnostic would then
+  * name the write that was right instead of the read that was wrong. Reads,
+  * `leaves` and `clear` therefore check agreement and record nothing;
+  * `update`, `updateAt` and `admit` record.
+  *
+  * ==Where the pairing stops, which is not where a reader expects==
+  *
+  * The invariant above governs '''admission''', and nothing here governs
+  * removal. A [[Namespace.Coupled]] namespace's companion is an ordinary
+  * [[Namespace.Standalone]] value, so `clear` empties it and `update` removes
+  * single keys from it, both legitimately and neither disturbing any
+  * classification — leaving entries admitted through `admit` with no
+  * companion value, which is the state `admit` exists to make unreachable.
+  * The same applies in reverse to `clear` on the coupled namespace itself.
+  *
+  * '''So the pairing makes a half-written entry unwritable and does not make
+  * it undeletable.''' That is a real limit, stated because the admission
+  * invariant reads as though it were total. Closing it needs an operation
+  * that retracts both halves together, which is the removal-side counterpart
+  * of `admit`; nothing here prunes yet, so that operation would have no
+  * caller and is deliberately not built. Until it exists, a caller that
+  * removes from one half of a coupled pair is responsible for the other.
   *
   * Together these generalize the requirement that a chain header must never
   * enter the chain-header store without its total difficulty into a
