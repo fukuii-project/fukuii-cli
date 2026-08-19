@@ -275,6 +275,23 @@ This TASTy file was produced by a more recent, forwards incompatible release.
 
 The gate bites exactly as claimed, and the error names the producing compiler.
 
+## Transitive footprint is a selection criterion, not an afterthought
+
+**Count the repositories a candidate adds, not just the artifacts.** They are different numbers and
+only one of them is a cost. Four circe artifacts are one upstream repository; two cats artifacts are
+one more. The current declared set is 11 artifacts on the classpath collapsing to 6 repositories.
+
+**Weigh that footprint when candidates are otherwise equal.** A library that drags a runtime in to do
+a small job is paying for it in every direction — Gate 0 surface to walk, advisories to track,
+sources to keep, and a larger blast radius if it ever has to be removed. A worked instance: `zio-json`
+cleared Gate 0 at every node checked and was still deprioritized, because it pulls the full ZIO
+runtime and Magnolia as compile-scope dependencies to read JSON; `jsoniter-scala`'s zero non-test
+transitives counted the other way.
+
+**This is where transitive sprawl is controlled** — at the adoption decision, by the agent making it.
+It cannot be controlled by where the resulting clones are filed, and a rule that tries to is solving
+the wrong problem.
+
 ## Where the reasoning lives
 
 **Everything this gate needs is stated above.** Two bodies of reasoning sit

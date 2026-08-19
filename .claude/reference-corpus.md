@@ -540,6 +540,25 @@ library is declared, its row becomes admissible then.
 | `sbt/zinc` | [sbt/zinc](https://github.com/sbt/zinc) | a release tag | Incremental-compilation behavior underneath sbt |
 | `scalatest/scalatest` | [scalatest/scalatest](https://github.com/scalatest/scalatest) | a release tag | Test-framework behavior at a named release: style artifacts, deprecations, what each artifact pulls transitively |
 
+| `circe/circe` | [circe/circe](https://github.com/circe/circe) | `v0.14.16` | **Declared.** JSON parsing at `% Test` in the `evm` module, for reading the fixture corpora. One repository serves four of the artifacts on the classpath — `circe-core`, `circe-parser`, `circe-jawn`, `circe-numbers` |
+| `typelevel/cats` | [typelevel/cats](https://github.com/typelevel/cats) | `v2.13.0` | **TRANSITIVE — on the classpath via circe, not independently selected.** No decision here chose it, and its presence records no preference for it. Cloned because it is code this project compiles against and may have to read |
+| `typelevel/jawn` | [typelevel/jawn](https://github.com/typelevel/jawn) | `v1.7.0` | **TRANSITIVE — on the classpath via circe, not independently selected.** The resolved version is the patched one for CVE-2026-59990 and CVE-2026-61814, neither of which OSV or NVD carried as of 2026-08-19. **The advisory is the authority for that; this clone is corroboration, not the citation** |
+
+**Two of those rows are marked TRANSITIVE and the marking is load-bearing.** A row in this table
+otherwise reads as *declared*, which for `cats` and `jawn` would be false — nothing here chose them,
+circe did, and they leave when it does. The alternative placement was the candidate area, and it is
+worse: that area means *under consideration*, which is equally false and additionally forbids citing
+anything in it. **The honest state is "arrived, not chosen, and not optional", and the column is
+where that gets said** rather than the directory.
+
+**A sprawling transitive closure is a signal about the DEPENDENCY, not a filing problem.** Deciding
+where clones live cannot control it; `sentinel` already can, and does — it deprioritized `zio-json`
+for dragging the full ZIO runtime and Magnolia to do a JSON read, and counted jsoniter-scala's
+zero-transitive footprint in its favor. **If a candidate would add many repositories, that belongs in
+the adoption decision, not in a rule about directories.** Measured for the current set: 11 artifacts
+on the classpath collapse to 6 upstream repositories, of which 2 are transitive, costing 80M against
+a 42G corpus.
+
 **Cite these by tag.** Every row in this table is a tagged repository, so the
 weaker branch-plus-commit form is not needed and should not be used — and a row
 whose upstream carried no tags would not belong here, because a toolchain
