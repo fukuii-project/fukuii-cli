@@ -106,6 +106,7 @@ the next time a layer lands.
 | ScalaTest | **3.2.20**, `Test` scope only | `build.sbt` |
 | ScalaCheck | **1.19.x**, with the `scalacheck-1-19` bridge, `Test` scope only | `build.sbt` |
 | BouncyCastle | **1.85** (`bcprov-jdk18on`), compile scope | `build.sbt` |
+| circe | **0.14.16** (`circe-core`, `circe-parser`), `Test` scope, **`evm` module only** | `build.sbt` |
 | Pekko | **1.6.x** (1.6.0) — *decided, not yet declared, and it does NOT reach the foundation layer* | — |
 
 **Scala is on the LTS line, and that is line membership rather than a version
@@ -129,6 +130,15 @@ answering: what problem does this solve, why this over the alternatives, why
 this version, and what would change the answer. A dependency with no present
 need is not an entry** — do not add one because another project has it, or
 because an older build did.
+
+**circe is scoped to one module on purpose, and the table records that because the
+scope is the decision.** It sits on `evm`'s own settings rather than in the shared
+test-dependency sequence, which every module receives — only the EVM reads JSON, and a
+dependency with no present need is not an entry. Its transitive `jawn-parser` resolves to
+the version patched for the two advisories `project/build.properties` already documents
+against sbt's own vendored copy; **that file's observation that neither is findable by a
+coordinate-keyed scan turns out to hold even for a direct query on the affected
+artifact**, which was measured when circe was adopted.
 
 **`build.sbt` is the authority for what is declared, and this table is a
 summary that ages.** Where they disagree, believe the build. The compile-scope
