@@ -66,12 +66,12 @@ final class StoredNodeTrie(
 
   def put(key: Bytes, value: Bytes): Unit =
     if value.isEmpty then delete(key)
-    else rootRef = persist(insert(resolve(rootRef), pathOf(key), value))
+    else rootRef = persistRoot(insert(resolve(rootRef), pathOf(key), value))
 
   def delete(key: Bytes): Unit =
     rootRef = remove(resolve(rootRef), pathOf(key)) match
       case None       => NodeRef.Empty
-      case Some(node) => persist(node)
+      case Some(node) => persistRoot(node)
 
   def leaves: LeafIterator =
     val collected = Vector.newBuilder[(Bytes, Bytes)]
@@ -109,6 +109,44 @@ final class StoredNodeTrie(
     * inline rule does not embed it. An embedded node needs no write: it travels
     * inside whatever parent references it.
     */
+  /** [[persist]], plus the exception the root node needs.
+    *
+    * [[TrieNode.cap]] embeds any node encoding shorter than
+    * [[TrieNode.InlineLimit]], and an embedded node is not written to the store.
+    * That is right for a child, whose parent carries it whole, and wrong for the
+    * root, which nothing carries: [[root]] publishes its digest regardless, so
+    * without this the trie advertises a commitment its own store cannot resolve
+    * and [[load]] throws on a digest the trie itself handed out. The advertised
+    * digest is correct either way — this is a retrievability defect, not a
+    * wrong root.
+    *
+    * Every implementation with a hash-keyed node store writes the short root,
+    * and they split on where the exception lives. go-ethereum, core-geth and
+    * nethermind couple it to hashing: forcing the root's hash is what makes the
+    * writer store it, because the writer's test is whether the node carries one.
+    * besu keeps a uniform "store it when it is at least 32 bytes" rule and adds
+    * an explicit post-commit root fixup. fukuii already has besu's structure —
+    * the hashing exception lives in [[TrieNode.rootHash]] while the writer
+    * consults `cap`, which has no notion of a root — so it takes besu's fixup
+    * rather than go-ethereum's coupling.
+    *
+    * A secured trie cannot reach this: its key is a 32-byte digest, so the path
+    * alone compacts to 33 bytes and every root is over the limit. The exposure
+    * is unsecured tries with both a short key and a short value, which is what
+    * the transaction and receipt tries would be if their values were not large.
+    */
+  private def persistRoot(node: TrieNode): NodeRef =
+    val ref = persist(node)
+    ref match
+      case NodeRef.Hashed(_) => ()
+      case embedded          =>
+        store.update(
+          nodes,
+          Nil,
+          Seq(Bytes.fromIArray(TrieNode.rootHash(embedded).toBytes) -> Bytes.fromIArray(TrieNode.encode(node)))
+        )
+    ref
+
   private def persist(node: TrieNode): NodeRef =
     TrieNode.cap(Some(node)) match
       case NodeRef.Hashed(hash) =>
