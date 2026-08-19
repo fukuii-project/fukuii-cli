@@ -721,6 +721,7 @@ the one that matches before you act, not the ones you happen to remember.
 | `scope-boundary.md` | A scoped task that appears to need work outside its scope |
 | `consensus-pow.md` | Before acting on a proof-of-work consensus change — that family's domain facts |
 | `consensus-pos.md` | Before acting on a proof-of-stake consensus change — that family's domain facts |
+| `consensus-poa.md` | Before standing up a private network — that family's scope, and why it is a prerequisite rather than a target |
 | `consensus-clique.md` | Before acting on anything Clique-shaped — that mechanism's surveyed facts |
 | `consensus-aura.md` | Before acting on anything AuRa-shaped — that mechanism's surveyed facts |
 | `consensus-qbft.md` | Before acting on anything QBFT-shaped — read with `consensus-ibft2.md` |

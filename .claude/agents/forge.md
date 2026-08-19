@@ -47,6 +47,12 @@ this one. So nothing puts those facts in front of you at the moment they apply,
 and **this charter is the only thing that will** — its body is delivered when
 you are dispatched, and it is spending that delivery here.
 
+**A third family protocol landed 2026-08-19: `consensus-poa.md`.** It is thin by
+design and settles nothing about any mechanism — it records only that private
+proof-of-authority networks became a scheduled family rather than four surveyed
+mechanisms, what such a network is *for*, and which client carries which engine.
+The mechanism detail stays in the four mechanism protocols.
+
 **Two kinds of protocol sit there, and the difference decides which you need.**
 A **family** protocol covers a family of networks fukuii runs, keyed to the
 networks. A **mechanism** protocol covers one consensus mechanism, keyed to the
