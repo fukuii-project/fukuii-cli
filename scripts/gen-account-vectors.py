@@ -124,12 +124,15 @@ def corpus_ref(path: pathlib.Path) -> str:
 
 
 def unhex(s):
+    # Odd-length hex is REFUSED rather than left-padded. Every caller here is a
+    # byte string -- code, an address, a state root -- never a quantity, and
+    # those go through as_int. Padding a byte string shifts every byte and so
+    # changes the digest computed over it, which for `code` means publishing a
+    # code_hash taken over bytes no fixture contained. bytes.fromhex raises on
+    # odd length, which is the behavior wanted, so the branch is simply absent.
     if s is None:
         return b""
-    s = s[2:] if s.startswith("0x") else s
-    if len(s) % 2:
-        s = "0" + s
-    return bytes.fromhex(s)
+    return bytes.fromhex(s[2:] if s.startswith("0x") else s)
 
 
 def as_int(s) -> int:
@@ -149,6 +152,7 @@ candidates = collections.defaultdict(list)
 scanned = 0
 skipped_storage = 0
 skipped_range = 0
+skipped_malformed = 0
 
 for corpus in CORPORA:
     tag = corpus.name
@@ -178,6 +182,12 @@ for corpus in CORPORA:
                     code = unhex(acct.get("code", "0x"))
                     values = [as_int(v) for v in storage.values()]
                 except (ValueError, TypeError):
+                    # Counted rather than dropped in silence. `scanned` counts
+                    # accounts this script could actually read, so a malformed
+                    # one must not inflate it -- but an account that vanishes
+                    # from every counter is exactly the blind instrument this
+                    # file's own header warns about.
+                    skipped_malformed += 1
                     continue
                 scanned += 1
                 if any(v != 0 for v in values):
@@ -286,6 +296,9 @@ lines += [
     "# storage entries are all zero counts as empty: a zero slot is absent from",
     "# the trie, so its root is the empty root.",
     f"# {skipped_range} account(s) were skipped for a nonce or balance out of range.",
+    f"# {skipped_malformed} account(s) held a field this script could not parse and",
+    "# were skipped. That figure is reported because an account dropped by a parse",
+    "# guard and counted nowhere is indistinguishable from one that never existed.",
     "#",
     "# The empty root and the empty code hash are derived here from first",
     "# principles -- the digest of the RLP of the empty byte string, and the",

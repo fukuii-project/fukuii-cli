@@ -81,6 +81,25 @@ def corpus_ref(path: pathlib.Path) -> str:
         return "UNKNOWN -- not a git checkout, so this table's provenance is unverified"
 
 
+def spec_ref(module) -> str:
+    """The revision of the executable specification that GATED this table.
+
+    Recorded because naming the gate without a ref is not a citation: the gate
+    is what makes a row evidence rather than transcription, and the corpus
+    release a table draws its DATA from is a different ref from the checkout
+    whose code did the gating. Those two can legitimately differ, and a header
+    naming only the first reads as though one ref covered both.
+    """
+    try:
+        here = pathlib.Path(module.__file__).resolve()
+    except (AttributeError, TypeError):
+        return "UNKNOWN -- the gate module has no file, so this table's gate is unattributable"
+    for parent in here.parents:
+        if (parent / ".git").exists():
+            return corpus_ref(parent)
+    return "UNKNOWN -- the gate module is not in a git checkout, so its revision is unrecorded"
+
+
 # ---------------------------------------------------------------------------
 # A minimal RLP encoder and keccak, independent of both the specification and
 # the implementation under test. Used only to derive the authored rows a second
@@ -368,6 +387,10 @@ lines = [
     "#              being written: the executable specification's own trie was",
     "#              driven over the same decoded entries and required to",
     "#              reproduce that published root.",
+    f"#              gate revision: ethereum/execution-specs @ {spec_ref(mpt)}",
+    "#              The corpus ref above and this one are separate refs and",
+    "#              need not match: one supplies the data, the other the code",
+    "#              that gated it.",
     "#",
     "#   authored-*  NO PUBLISHED VECTOR REACHES THIS CASE. A node whose RLP",
     "#              encoding is under 32 bytes is embedded in its parent; the",

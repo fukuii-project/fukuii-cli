@@ -54,6 +54,7 @@ its last block's header, and it is not attempted here.
 import collections
 import json
 import pathlib
+import subprocess
 import sys
 
 if len(sys.argv) != 3:
@@ -111,13 +112,49 @@ def release_id(path: pathlib.Path) -> str:
     return "UNKNOWN"
 
 
+def spec_ref(module) -> str:
+    """The revision of the executable specification that GATED this table.
+
+    Recorded because naming the gate without a ref is not a citation: the gate
+    is what makes a row evidence rather than transcription, and the fixture
+    RELEASE a table draws its data from is a different ref from the checkout
+    whose code did the gating. Those two legitimately differ -- this script's
+    own gate module postdates some releases it can read -- so a header naming
+    only the release reads as though one ref covered both, and a reader
+    reconciling them finds a module that was not in it.
+    """
+    try:
+        here = pathlib.Path(module.__file__).resolve()
+    except (AttributeError, TypeError):
+        return "UNKNOWN -- the gate module has no file, so this table's gate is unattributable"
+    for parent in here.parents:
+        if not (parent / ".git").exists():
+            continue
+        try:
+            sha = subprocess.run(
+                ["git", "-C", str(parent), "rev-parse", "HEAD"],
+                capture_output=True, text=True, check=True,
+            ).stdout.strip()
+            date = subprocess.run(
+                ["git", "-C", str(parent), "log", "-1", "--format=%ad", "--date=short"],
+                capture_output=True, text=True, check=True,
+            ).stdout.strip()
+            return f"{sha} ({date})"
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return "UNKNOWN -- the gate checkout did not answer git, so its revision is unrecorded"
+    return "UNKNOWN -- the gate module is not in a git checkout, so its revision is unrecorded"
+
+
 def unhex(s):
+    # Odd-length hex is REFUSED rather than left-padded. Every caller here is a
+    # byte string -- code, an address, a state root -- never a quantity, and
+    # those go through as_int. Padding a byte string shifts every byte and so
+    # changes the digest computed over it, which for `code` means publishing a
+    # code_hash taken over bytes no fixture contained. bytes.fromhex raises on
+    # odd length, which is the behavior wanted, so the branch is simply absent.
     if s is None:
         return b""
-    s = s[2:] if s.startswith("0x") else s
-    if len(s) % 2:
-        s = "0" + s
-    return bytes.fromhex(s)
+    return bytes.fromhex(s[2:] if s.startswith("0x") else s)
 
 
 def as_int(s) -> int:
@@ -150,7 +187,12 @@ scanned = 0
 # pass 2 can take the RICHEST in each bucket rather than the first one seen.
 candidates = []
 for path in sorted(ROOT.glob("**/*.json")):
-    fork = None
+    # A STRING rather than None, and that is load-bearing twice over. The shape
+    # tuple below leads with this value and the candidate list is sorted, so a
+    # tree mixing paths that carry `for_` with paths that do not would compare
+    # None against str and abort the whole run. And this value reaches the row
+    # label, where a None prints as the literal "None-".
+    fork = "unknown-fork"
     for part in path.parts:
         if part.startswith("for_"):
             fork = part[4:]
@@ -159,11 +201,17 @@ for path in sorted(ROOT.glob("**/*.json")):
         data = json.loads(path.read_text())
     except Exception:
         continue
+    if not isinstance(data, dict):
+        continue
     for name, case in data.items():
+        if not isinstance(case, dict):
+            continue
         if "pre" not in case or "genesisBlockHeader" not in case:
             continue
         scanned += 1
         pre = case["pre"]
+        if not isinstance(pre, dict):
+            continue
         # Corpus-wide, over every scanned case rather than the selected ones.
         # The dropped count below is scoped to this table and is 0 whenever no
         # selected case happens to carry one -- which is equally what a corpus
@@ -298,6 +346,10 @@ lines = [
     "# state (ethereum.state_mpt) and its computed state root required to equal",
     "# the published one before the row was written. Rows are emitted only on",
     "# agreement.",
+    f"#   gate revision: ethereum/execution-specs @ {spec_ref(S)}",
+    "#   The gate's ref is NOT the release named above and need not be: that",
+    "#   release supplies the DATA, this checkout supplied the CODE that gated",
+    "#   it. Naming only one of them reads as though a single ref covered both.",
     "#",
     "# WHY TWO LEVELS IS A SEPARATE BAR: a flat trie vector drives one trie over",
     "# opaque bytes. A state root roots each account's storage trie FIRST,",
