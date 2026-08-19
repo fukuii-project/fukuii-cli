@@ -214,11 +214,16 @@ def row(label, nonce, balance, root, code_hash):
     return f"{label} {nonce} {balance} {root.hex()} {code_hash.hex()} {encoded.hex()}"
 
 
-authored = [
-    row("empty-account", 0, 0, EMPTY_ROOT, EMPTY_CODE_HASH),
-    row("nonce-only", 1, 0, EMPTY_ROOT, EMPTY_CODE_HASH),
-    row("balance-only", 0, 1, EMPTY_ROOT, EMPTY_CODE_HASH),
-    row("max-nonce-max-balance", MAX_NONCE, MAX_BALANCE, EMPTY_ROOT, EMPTY_CODE_HASH),
+# The four rows written here rather than drawn from a bucket. The prefix states
+# where the VALUES are published, never how the row got here -- two of these four
+# are also real published accounts, so they are corpus rows under the rule the
+# emitted header declares, even though this script constructs them. Labelling
+# them by construction instead would assert something false about two of them.
+fixed = [
+    row("authored-empty-account", 0, 0, EMPTY_ROOT, EMPTY_CODE_HASH),
+    row("corpus-nonce-only", 1, 0, EMPTY_ROOT, EMPTY_CODE_HASH),
+    row("corpus-balance-only", 0, 1, EMPTY_ROOT, EMPTY_CODE_HASH),
+    row("authored-max-nonce-max-balance", MAX_NONCE, MAX_BALANCE, EMPTY_ROOT, EMPTY_CODE_HASH),
 ]
 
 ordered = sorted(
@@ -230,6 +235,18 @@ corpus_rows = [
     row(f"corpus-{kind}", nonce, balance, EMPTY_ROOT, code_hash)
     for (kind, _nl, _bl), (_tag, _rel, _name, _addr, nonce, balance, code_hash) in ordered
 ]
+
+# Counted from the rows actually emitted rather than from the lists they came
+# from, and the rule this script prints is enforced before it prints it: the
+# label rule and the artifact drifted apart once already, when the spec gained a
+# prefix guard the generator did not implement, and nothing failed until someone
+# ran the other half.
+emitted = fixed + corpus_rows
+authored_count = sum(1 for r in emitted if r.startswith("authored-"))
+corpus_count = sum(1 for r in emitted if r.startswith("corpus-"))
+if authored_count + corpus_count != len(emitted):
+    unlabelled = [r.split(" ", 1)[0] for r in emitted if not r.startswith(("authored-", "corpus-"))]
+    raise SystemExit(f"row(s) carrying neither prefix, which the spec rejects: {unlabelled}")
 
 lines = [
     "# Account vectors: <label> <nonce> <balance> <storageRoot> <codeHash> <rlp>",
@@ -274,12 +291,30 @@ lines += [
     "# principles -- the digest of the RLP of the empty byte string, and the",
     "# digest of no bytes -- never recalled.",
     "#",
-    f"# {len(authored)} authored row(s) and {len(corpus_rows)} corpus row(s), from {scanned} accounts.",
+    "# EVERY ROW CARRIES ONE OF TWO PREFIXES, and the spec enforces the rule and",
+    "# both counts. corpus- means the field values are published in a corpus named",
+    "# above and a lookup can confirm it; authored- means they are published in",
+    "# neither. The prefix is about the VALUES, not about which half of this script",
+    "# wrote the row -- so a row constructed here whose values are also published is",
+    "# a corpus row.",
+    "#",
+    "# THIS GENERATOR DOES NOT EMIT THE AUTHORED BUCKET ROWS, and a table written",
+    "# from its output alone will fail the spec's count property until they are put",
+    "# back. They fill byte-width buckets NO corpus supplies -- which is why they",
+    "# exist and why nothing here can find them -- and their values were chosen by",
+    "# hand. Regenerating is therefore a starting point and not a replacement.",
+    "#",
+    f"# {authored_count} authored row(s) and {corpus_count} corpus row(s), from {scanned} accounts.",
 ]
 
-OUT.write_text("\n".join(lines + authored + corpus_rows) + "\n")
+OUT.write_text("\n".join(lines + fixed + corpus_rows) + "\n")
 print(
-    f"wrote {len(authored)} authored + {len(corpus_rows)} corpus rows -> {OUT}",
+    f"wrote {authored_count} authored + {corpus_count} corpus rows -> {OUT}",
+    file=sys.stderr,
+)
+print(
+    "  NOTE: the authored bucket rows are not emitted -- re-add them, or the "
+    "count property fails",
     file=sys.stderr,
 )
 for tag, n in sorted(per_corpus.items()):
