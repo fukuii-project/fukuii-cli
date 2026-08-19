@@ -576,6 +576,21 @@ work. **Name the files directly, or use `git grep` for tracked text and a direct
 for the rest** — and calibrate any sweep against a token you know is present, because the
 failure returns a clean zero rather than an error.
 
+**An environment variable does NOT reach a task running in an already-detached sbt
+server, and the failure is silent.** The server inherits the environment of the shell
+that started it, so a variable exported later is invisible to every task it runs —
+including the test JVM. Measured 2026-08-19: a suite gated on `FUKUII_FIXTURE_ROOT`
+reported `Total number of tests run: 0` beside `canceled 12`, **with exit 0**, because
+the server had started forty minutes before the variable existed. This is the
+hollow-success family again, arriving through a door none of `sbt-run.sh`'s four guards
+watches. **Do not configure a task through the environment.** Use a file the task reads
+at the moment it needs the value, and gitignore it if it is machine-local.
+
+**A canceled ScalaTest test is excluded from sbt's `Total number of tests run`.**
+Measured in the same run: `0` run beside `12` canceled. So a suite that cancels does not
+perturb the expected-total ratchet — which is convenient and is also why the zero above
+was so quiet.
+
 **A `val` or `def` declared BELOW a test registration is a HARD ERROR, not a style
 preference, and its diagnostic names neither the field nor the ordering.**
 Scala 3's initialization checker treats a field referenced by an already-registered

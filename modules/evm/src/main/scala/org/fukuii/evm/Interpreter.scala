@@ -803,11 +803,28 @@ object Interpreter:
     * create path a provable no-op, which is why no trie-level storage wipe
     * exists. **A reversal needs that operation built first.**
     *
-    * Reversing trigger: a published fixture expecting a creation over an
-    * account holding storage, with a zero count and no code, to succeed; or
-    * ECIP-1121 settling the question the other way for the proof-of-work
-    * family, in which case this becomes configuration rather than a constant --
-    * which the baseline-plus-deltas seam already admits.
+    * ==The published corpus was consulted, and it CONFIRMS this==
+    *
+    * The reversing trigger below is not merely unfired. **The fixture it names
+    * exists and expects the opposite** -- that is, it expects the refusal.
+    * `state_tests/for_frontier/paris/eip7610_create_collision/initcollision/`
+    * ships 18 cases, every one `fork_Frontier`, from a specification test whose
+    * reference is `EIPS/eip-7610.md` and which is marked `valid_from("Frontier")`
+    * (its `CREATE2` variant is separately gated to Constantinople, so the
+    * CREATE-opcode form genuinely runs from this fork). Its `non-empty-balance`
+    * parametrization is exactly the residue shape -- zero count, no code, a
+    * storage slot set -- and it expects the account byte-identical afterwards
+    * with the sender charged the whole gas limit.
+    *
+    * **The nine CREATE-opcode cases execute here and agree.** So this is not a
+    * defensible reading of a split field; it is the answer the published corpus
+    * requires at this fork.
+    *
+    * Reversing trigger, accordingly narrowed: **ECIP-1121 settling the question
+    * the other way for the proof-of-work family**, in which case this becomes
+    * configuration rather than a constant -- which the baseline-plus-deltas seam
+    * already admits. A fixture reversal is no longer a live trigger, the
+    * published fixture having landed on this side.
     */
   private def deployableAt(world: WorldState, address: Address): Boolean =
     world.nonceOf(address) == UInt64.Zero && world.codeOf(address).isEmpty && !world.hasStorage(address)
