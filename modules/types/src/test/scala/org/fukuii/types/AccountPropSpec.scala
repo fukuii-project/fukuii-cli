@@ -37,10 +37,17 @@ import org.scalatest.prop.TableDrivenPropertyChecks
   *
   * ==What the table is selected for==
   *
-  * Encoding shape, not volume. Rows cover the distinct combinations of
-  * nonce byte-width, balance byte-width, and whether the account has code —
-  * which is what varies the octets. Sampling 535,051 pre-state accounts by
-  * position instead would have certified the zero-balance shape dozens of times.
+  * Encoding shape, not volume. Rows cover the distinct combinations of nonce
+  * byte-width, balance byte-width, and whether the account has code — which is
+  * what varies the octets. Sampling the corpora by position instead would draw
+  * overwhelmingly from the shapes they happen to be full of and would certify
+  * the same narrow widths repeatedly, which is why the table is selected rather
+  * than sampled.
+  *
+  * A figure once stood in that last sentence, naming a population of pre-state
+  * accounts. It matched no population of either corpus under any definition
+  * that was tried, and nothing in the tree derived it, so it could be neither
+  * reproduced nor corrected — only removed. The argument never needed it.
   */
 class AccountPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
@@ -68,10 +75,35 @@ class AccountPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
   private val accounts = Table(("vector"), vectors*)
 
+  /** Every row states where its field values are published, and a row that
+    * states nothing is the failure this file has had twice. Counted rather than
+    * merely pattern-matched, because a regeneration that dropped the authored
+    * rows entirely would still satisfy a rule about the rows that remained.
+    */
+  private val AuthoredVectorCount: Int = 8
+
+  private val CorpusVectorCount: Int = 51
+
+  property("every row carries a provenance label") {
+    assert(
+      vectors.forall(v => v.label.startsWith("corpus-") || v.label.startsWith("authored-")),
+      "an unlabelled row claims no provenance and cannot be checked against either corpus"
+    )
+  }
+
+  property("the labelled populations are the sizes this table was certified at") {
+    val authored = vectors.count(_.label.startsWith("authored-"))
+    val corpus = vectors.count(_.label.startsWith("corpus-"))
+    assert(
+      authored == AuthoredVectorCount && corpus == CorpusVectorCount,
+      s"authored=$authored corpus=$corpus: a regeneration that silently drops the authored rows leaves the widths no corpus supplies uncovered"
+    )
+  }
+
   property("the table covers both account kinds and the scalar extremes") {
     val labels = vectors.map(_.label).toSet
     assert(
-      labels.contains("empty-account") && labels.contains("max-nonce-max-balance")
+      labels.contains("authored-empty-account") && labels.contains("authored-max-nonce-max-balance")
         && labels.exists(_.endsWith("contract")) && labels.exists(_.endsWith("externally-owned")),
       "an empty account, both extremes, and both kinds"
     )
