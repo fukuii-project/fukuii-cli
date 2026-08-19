@@ -578,13 +578,22 @@ vector-table row of the assignment above is for.
 **Deterministic across machines.** No dependence on wall-clock time, filesystem
 ordering, locale, or an available port.
 
-**A recursive grep from the repository root does NOT see this project's own records.**
-`grep -r` skips gitignored paths here, and the roadmap, the section plans and the session
-records all live under a gitignored directory. So a sweep for a stale claim, a wrong value
-or an old phrasing will report zero while the claim sits in the very files that govern the
-work. **Name the files directly, or use `git grep` for tracked text and a direct path list
-for the rest** — and calibrate any sweep against a token you know is present, because the
-failure returns a clean zero rather than an error.
+**A recursive grep from the repository root does NOT see this project's own records —
+and the CAUSE is not what it looks like.** `grep` here is a **shell function** from the
+Claude Code shell snapshot that dispatches to `ugrep --ignore-files`; GNU `grep -r` has no
+such behavior. So a sweep for a stale claim reports zero while the claim sits in the very
+files that govern the work — the roadmap, the plans, the session records, all under a
+gitignored directory.
+
+**Two things defeat it, and an earlier version of this note named neither**, leaving readers
+to believe gitignored content was simply unreachable:
+
+- **Name the ignored directory as the start path** — `grep -rl PATTERN .local/` finds them.
+- **Call the real binary** — `/bin/grep -rl PATTERN . --exclude-dir=.git`.
+
+Measured 2026-08-19 for one token: shell-function `grep -r` from the root found **1**,
+`/bin/grep -r` found **14**, the explicit-path form found **10**. **Calibrate any sweep
+against a token you know is present**, because the failure returns a clean zero.
 
 **A genuine `clean` + full run can finish in seconds with NO `compiling` lines at all,
 and it looks exactly like a stale-server no-op.** A long-lived detached sbt server is
