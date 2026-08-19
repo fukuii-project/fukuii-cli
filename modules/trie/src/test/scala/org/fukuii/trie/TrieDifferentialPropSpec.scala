@@ -92,58 +92,98 @@ class TrieDifferentialPropSpec extends AnyPropSpec with ScalaCheckPropertyChecks
     }
     trie
 
-  private def pair(
+  /** Every unordered pair drawn from [[TrieFixtures.implementations]], each
+    * member built for `securing` and driven through `operations`.
+    *
+    * A pairing over the fixture rather than a hardcoded two, because the defect
+    * class this file exists to catch is the one a NEW implementation
+    * introduces — and a hardcoded pair is silent in exactly that case. A third
+    * implementation is covered by adding it to the fixture, not by hand-writing
+    * pairings here.
+    */
+  private def pairs(
       securing: Securing,
       operations: List[(Bytes, Option[Bytes])]
-  ): (Trie, Trie) =
-    (
-      apply(TrieFixtures.storedNode(securing), operations),
-      apply(TrieFixtures.derivedNode(securing), operations)
+  ): Vector[((String, Trie), (String, Trie))] =
+    TrieFixtures.implementations
+      .map((name, build) => (name, apply(build(securing), operations)))
+      .combinations(2)
+      .map(chosen => (chosen(0), chosen(1)))
+      .toVector
+
+  /** The first pair failing `agree`, named, or nothing. Returns the NAMES so a
+    * failure says which two disagreed rather than only that some two did.
+    */
+  private def disagreement(
+      candidates: Vector[((String, Trie), (String, Trie))]
+  )(agree: (Trie, Trie) => Boolean): Option[String] =
+    candidates.collectFirst {
+      case ((leftName, left), (rightName, right)) if !agree(left, right) => s"$leftName and $rightName"
+    }
+
+  // Every property below sweeps `pairs`, and a sweep over an empty collection
+  // passes without comparing anything -- so this file could report five green
+  // properties while testing nothing at all if the fixture ever held fewer than
+  // two implementations. That is the failure the generalization introduced and
+  // this is what forecloses it.
+  property("the fixture supplies at least one pair to compare, or every property below is vacuous") {
+    assert(
+      pairs(Securing.Unsecured, Nil).nonEmpty,
+      "a differential suite with nothing to differentiate reports green over no comparison"
     )
-
-  property("both implementations commit to the same root after an unsecured sequence") {
-    forAll(operationsGen) { (operations: List[(Bytes, Option[Bytes])]) =>
-      val (stored, derived) = pair(Securing.Unsecured, operations)
-      assert(stored.root == derived.root, "a commitment that differs between two implementations is a chain split")
-    }
   }
 
-  property("both implementations commit to the same root after a secured sequence") {
+  property("every pair of implementations commits to the same root after an unsecured sequence") {
     forAll(operationsGen) { (operations: List[(Bytes, Option[Bytes])]) =>
-      val (stored, derived) = pair(Securing.Secured, operations)
-      assert(stored.root == derived.root, "securing must not change which implementation is right")
-    }
-  }
-
-  property("both implementations answer every touched key identically") {
-    forAll(operationsGen) { (operations: List[(Bytes, Option[Bytes])]) =>
-      val (stored, derived) = pair(Securing.Unsecured, operations)
+      val differing = disagreement(pairs(Securing.Unsecured, operations))(_.root == _.root)
       assert(
-        operations.map(_._1).distinct.forall(key => stored.get(key) == derived.get(key)),
-        "the two implementations must agree on presence and on value"
+        differing.isEmpty,
+        s"a commitment differing between implementations is a chain split: ${differing.getOrElse("")}"
       )
     }
   }
 
-  property("both implementations present the same ordered leaf view") {
+  property("every pair of implementations commits to the same root after a secured sequence") {
     forAll(operationsGen) { (operations: List[(Bytes, Option[Bytes])]) =>
-      val (stored, derived) = pair(Securing.Secured, operations)
-      val fromStored = Using.resource(stored.leaves)(_.toVector)
-      val fromDerived = Using.resource(derived.leaves)(_.toVector)
-      assert(fromStored == fromDerived, "the ordered leaf view must not depend on which implementation produced it")
+      val differing = disagreement(pairs(Securing.Secured, operations))(_.root == _.root)
+      assert(differing.isEmpty, s"securing must not change which implementation is right: ${differing.getOrElse("")}")
     }
   }
 
-  property("removing every key written returns both implementations to the empty root") {
+  property("every pair of implementations answers every touched key identically") {
     forAll(operationsGen) { (operations: List[(Bytes, Option[Bytes])]) =>
-      val (stored, derived) = pair(Securing.Unsecured, operations)
-      operations.map(_._1).distinct.foreach { key =>
-        stored.delete(key)
-        derived.delete(key)
+      val keys = operations.map(_._1).distinct
+      val differing = disagreement(pairs(Securing.Unsecured, operations)) { (left, right) =>
+        keys.forall(key => left.get(key) == right.get(key))
+      }
+      assert(differing.isEmpty, s"implementations must agree on presence and on value: ${differing.getOrElse("")}")
+    }
+  }
+
+  property("every pair of implementations presents the same ordered leaf view") {
+    forAll(operationsGen) { (operations: List[(Bytes, Option[Bytes])]) =>
+      val differing = disagreement(pairs(Securing.Secured, operations)) { (left, right) =>
+        Using.resource(left.leaves)(_.toVector) == Using.resource(right.leaves)(_.toVector)
       }
       assert(
-        stored.root == Trie.EmptyRoot && derived.root == Trie.EmptyRoot,
-        "an emptied trie must leave no structure behind in either implementation"
+        differing.isEmpty,
+        s"the ordered leaf view must not depend on which implementation produced it: ${differing.getOrElse("")}"
+      )
+    }
+  }
+
+  property("removing every key written returns every implementation to the empty root") {
+    forAll(operationsGen) { (operations: List[(Bytes, Option[Bytes])]) =>
+      val keys = operations.map(_._1).distinct
+      val emptied = TrieFixtures.implementations.map { (name, build) =>
+        val trie = apply(build(Securing.Unsecured), operations)
+        keys.foreach(trie.delete)
+        (name, trie)
+      }
+      val leftBehind = emptied.collectFirst { case (name, trie) if trie.root != Trie.EmptyRoot => name }
+      assert(
+        leftBehind.isEmpty,
+        s"an emptied trie must leave no structure behind: ${leftBehind.getOrElse("")}"
       )
     }
   }
