@@ -93,21 +93,37 @@ enum TrieError:
     *     null-slot case, `decodeExtension` carries none, and the child falls
     *     to a fixed-width read that rejects a zero-length payload.
     *     '''besu-etc''' @ `eb4248c997` is identical.
-    *   - '''go-ethereum''' @ `6bb0588ad` cannot refuse it: one `decodeRef` in
+    *   - '''go-ethereum''' @ `6bb0588ad` accepts it: one `decodeRef` in
     *     `trie/node.go` serves both the single-child and the sixteen-slot
-    *     position and never learns which caller it is answering.
-    *     '''core-geth''' @ `4185df450` inherits that shape unchanged.
+    *     position. '''core-geth''' @ `4185df450` and '''erigon''' @
+    *     `7125aa1e84` inherit that shape.
+    *   - '''nethermind''' @ `c35ce1b1ab`, '''ethrex''' @ `2367dc810` and
+    *     '''alloy-trie''' @ `v0.9.4` accept it too, and each reaches that
+    *     answer through its own mechanism rather than by inheriting one.
     *   - '''execution-specs''' @ `ccaaaba58` has no trie-node decoder at all,
     *     so the executable specification does not decide this one.
     *
-    * '''A decoder that cannot see its caller cannot enforce a caller-dependent
-    * rule''', which is why the decode is split by position here rather than
-    * given a flag — the split is what makes the distinction expressible.
+    * '''So the field is one refusal against six acceptances, and permissiveness
+    * is convergent rather than inherited.''' Three of the six are independent
+    * implementations that arrived at it separately, which makes this a wider
+    * departure than a decoder-sharing story would suggest, and is the reason
+    * the survey is recorded here rather than summarized.
     *
-    * The choice is the same one [[EmptyExtensionSegment]] and
+    * '''What decides it is not the count.''' Two sources establish that no
+    * conforming writer can emit the shape: the executable specification's
+    * `patricialize` reaches its extension branch only with a non-empty entry
+    * set, so the position can never receive an absent subtree; and go-ethereum,
+    * which accepts the shape on decode, marks the corresponding branch of its
+    * own extension encoder ''theoretically impossible to happen''. A client
+    * that accepts a shape it cannot write is evidence about its decoder, not
+    * about the shape.
+    *
+    * The choice is therefore the same one [[EmptyExtensionSegment]] and
     * [[OversizedInlineNode]] already make: safe against history because no
     * conforming writer emits the shape, and unable to change a root for the
-    * same reason.
+    * same reason. Splitting the decode by position rather than adding a flag
+    * is what makes the distinction expressible at all — a decoder that cannot
+    * see its caller cannot enforce a caller-dependent rule.
     */
   case EmptyExtensionChild
 
