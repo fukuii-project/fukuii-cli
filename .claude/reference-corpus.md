@@ -238,7 +238,41 @@ client. A citation naming only the repository is unusable. The former
 | `paradigmxyz/reth` | [paradigmxyz/reth](https://github.com/paradigmxyz/reth) | `main` | **Framework structure** — node-types and fork-condition types |
 | `lambdaclass/ethrex` | [lambdaclass/ethrex](https://github.com/lambdaclass/ethrex) | `main` | **Framework structure** — a recent ground-up client, useful as a second reading of the same seams |
 | `bluealloy/revm` | [bluealloy/revm](https://github.com/bluealloy/revm) | `main` | **A dependency of a client above, not a client.** Cloned because reading that client alone answers some questions wrongly: its transaction validation, including the chain-identifier check, lives here rather than in its own tree. Authoritative for nothing on its own — cite it as what the depending client executes |
+| `ethereum/go-ethereum-pow` | [ethereum/go-ethereum](https://github.com/ethereum/go-ethereum) | **`v1.10.26`, detached — frozen deliberately** | **go-ethereum as it was while it ran proof-of-work mainnet.** The same upstream as the row above at a different ref, kept as a separate checkout because the name is the signal: reading `master` and taking it for proof-of-work geth is the mistake this entry exists to prevent. `v1.10.26` is the last release of the pre-Merge 1.10 line and the most patched; `consensus/ethash/{sealer,consensus}.go` are both present, and `dde2da0ef` — *"all: remove ethash pow"*, 2023-05-03, first released in v1.12.0 — is verified **not** an ancestor. Being behind `master` is correct and permanent. **Authoritative for proof-of-work behavior that current geth no longer contains** |
 | `besu-eth/besu-native` | [besu-eth/besu-native](https://github.com/besu-eth/besu-native) | `main` | **The native backends behind besu's precompiles, not a client and not a word type** — `arithmetic`, `blake2bf`, `gnark`, `secp256k1`, `secp256r1`, `boringssl`, `constantine`. Authoritative for how a JVM client binds a native precompile implementation and for what each backend actually covers, which the depending client's own tree does not show. Everything here is Byzantium-or-later except `secp256k1`, so it bears on no Frontier precompile. **Its artifacts are not on Maven Central**, which is why reading the source is the only way to answer a question about them |
+
+### Reading order: proof-of-stake Ethereum first, Ethereum Classic as the downstream addition
+
+**This is a sequencing rule, not a ranking of importance, and getting it backwards produces work that
+is subtly behind the field.** Recorded 2026-08-19 after an agent building a family-neutral seam read
+the proof-of-work family first, because that is this project's marquee area, and reached the other
+protocols only after committing.
+
+**Read the proof-of-stake Ethereum side first.** It is the leading EVM network and it is where EVM
+development actually happens — new proposals land, get implemented and get exercised there before
+anywhere else. **Ethereum Classic historically lags it**, so a design derived from ETC first is
+derived from the downstream copy and inherits its lag.
+
+1. **`ethereum/execution-specs`** — the executable specification, and the structural authority above
+   every client.
+2. **`ethereum/go-ethereum`** — the largest production client. Read it before either core-geth for any
+   question the two families share.
+3. **`besu-eth/besu`** — the largest production JVM client, and therefore the one whose *shape* this
+   project can most directly learn from. Weight it accordingly on structure, not only on behavior.
+
+**Then Ethereum Classic, as additive and downstream** — what it adjusts, and what it alone specifies:
+
+4. **`ethereumclassic/core-geth`** — ETC's production client. Authoritative for what ETC actually runs.
+5. **`besu-eth/besu-etc`** — a reference build, not a mainstream client, and the standing caveat
+   applies: its agreement with besu is usually besu's code rather than an ETC decision.
+6. **`ethereum/go-ethereum-pow`** @ `v1.10.26` — **geth while it still ran proof-of-work.** A great
+   deal of ETC's proof-of-work behavior has its clearest expression here, in the client that ran it in
+   production, and current `master` no longer contains that code at all.
+
+**The ordering does not weaken ETC's authority where ETC is the authority.** A value ETC adjusts is
+governed by the ECIP and a mechanism only ETC specifies is governed by ETC alone; those are unchanged.
+What the ordering fixes is the *default reading path* for anything the two families share, which is
+most of the EVM.
 
 **The framework-structure rows are a deliberate carve-out and are routinely
 over-read in both directions.** A modern client is **not** an authority for an

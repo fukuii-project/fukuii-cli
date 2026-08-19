@@ -129,6 +129,24 @@ merely newer. Check that before anything else about a candidate; see
 `.claude/rules/scala-dependency-admissibility.md`, which also explains why the
 artifact coordinate alone cannot answer it.
 
+**Read proof-of-stake Ethereum first, and Ethereum Classic as the downstream
+addition.** ETH is the leading EVM network and where EVM development happens;
+proposals land, get implemented and get exercised there first, and **ETC
+historically lags it**, so a design derived from ETC first inherits that lag. The
+order is the executable specification, then `go-ethereum` as the largest
+production client, then `besu` as the largest production JVM client — whose
+*shape* is the most directly transferable here. **Then** ETC as additive:
+`core-geth` for what ETC runs, `besu-etc` as a reference build rather than a
+mainstream client, and **`go-ethereum-pow` at `v1.10.26` — geth while it still ran
+proof-of-work**, which is where much of ETC's proof-of-work behavior has its
+clearest expression and which current `master` no longer contains at all.
+
+**This does not weaken ETC's authority where ETC is the authority.** A value ETC
+adjusts is the ECIP's, and a mechanism only ETC specifies is ETC's alone. The
+order governs the default reading path for what the two families *share*, which is
+most of the EVM. `.claude/reference-corpus.md` § "Reading order" carries the full
+statement and the reason it was written.
+
 **The reference repositories this project cites are listed in
 `.claude/reference-corpus.md`** — a manifest of public URLs and refs, so the
 reference corpus can be rebuilt and a protocol claim checked against the same
