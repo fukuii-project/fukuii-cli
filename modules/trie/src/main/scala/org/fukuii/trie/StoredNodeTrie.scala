@@ -19,6 +19,12 @@ import scala.collection.mutable
   * code are worth comparing — a shared helper would make them agree for reasons
   * that say nothing about either.
   *
+  * Read that as the narrow claim it is. Both still route through [[TrieNode]]'s
+  * encoding, inline rule and root rule, so their agreement is evidence about
+  * tree topology and about nothing below it. A defect shared by both would be
+  * caught by the vectors checked against externally published roots, never by
+  * comparing these two to each other.
+  *
   * ==The node keyspace is content-addressed and therefore unversioned==
   *
   * A node's digest is a function of its contents, so two snapshots that share a

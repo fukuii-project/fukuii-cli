@@ -136,6 +136,13 @@ object Nibbles:
     * high bit set, and a non-zero low nibble on an even-length path. Both are
     * unreachable from [[Nibbles.toCompact]], so accepting them would let this
     * trie hold a node no conforming implementation would have written.
+    *
+    * Refusing the second of those is a departure from every client surveyed,
+    * which all ignore that nibble. It is recorded as a departure rather than
+    * left to be rediscovered, and it is safe in the direction that matters: a
+    * non-canonical flag byte is a distinct byte string with a distinct digest,
+    * so no trie a conforming writer built can contain one and refusing it
+    * cannot change a root.
     */
   def fromCompact(compact: IArray[Byte]): Either[TrieError, (Nibbles, Boolean)] =
     if compact.isEmpty then Left(TrieError.EmptyCompactPath)

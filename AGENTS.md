@@ -27,10 +27,12 @@ behind a shared execution engine and a pluggable consensus module, rather than
 a client forked and adapted per chain. Today that spans proof-of-work networks
 (Ethereum Classic mainnet, Mordor) and proof-of-stake networks (Ethereum
 mainnet, Sepolia). This is a from-scratch rebuild carrying no code from any
-prior implementation, and it started from a pinned toolchain. The foundation
-layer now exists under `modules/`, and the typed-value layer above it — the
-domain values every higher layer speaks, and the canonical encodings a block
-hash is computed over.
+prior implementation, and it started from a pinned toolchain. The layers built
+so far sit under `modules/`, rising from the foundation through the typed
+values every higher layer speaks to the commitments a block header carries —
+**read which ones from the tree rather than from this sentence, with the command
+below.** A prose roster of the built set is the same stale artifact as a
+written one, and this sentence has already outlived two layers landing.
 
 **`modules/` holds a directory per PLANNED layer, most of them empty, and that
 is deliberate.** Git does not track an empty directory, so a placeholder is
@@ -664,9 +666,13 @@ reader can tell them apart at a glance.
 ### Adding a mechanism protocol takes three edits, and `forge` may perform none of them
 
 **The files assert well that the set is open. This is the part that is not
-self-evident from reading them**, and it is live rather than hypothetical:
-`besu/consensus/ibftlegacy/` exists, is unsurveyed, and whoever surveys it
-arrives here.
+self-evident from reading them**, and it is live rather than hypothetical: a
+mechanism with no protocol here is one directory away in the reference corpus,
+and whoever surveys it arrives at this procedure. **Which mechanisms are
+unsurveyed is a reading of the corpus against the `provenance:` headers in
+`.claude/protocols/`, not a list to keep here** — a named directory with a
+present-tense "is unsurveyed" beside it goes false the moment someone surveys
+it, and nothing re-reads this page when they do.
 
 **The next mechanism** needs **all three**, and the first alone accomplishes
 nothing. **No count is written here, deliberately** — the previous wording said

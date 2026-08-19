@@ -32,9 +32,10 @@ client per chain.** A shared execution engine sits underneath, with consensus
 handled by a pluggable module per family, and it targets proof-of-work
 networks (Ethereum Classic mainnet, Mordor) and proof-of-stake networks
 (Ethereum mainnet, Sepolia) today. It carries no code from any earlier
-implementation. The foundation layer exists under `modules/`, and above it the
-typed-value layer — the domain values every higher layer speaks, and the
-canonical encodings a block hash is computed over. `modules/` holds a directory
+implementation. The layers built so far sit under `modules/`, rising from the
+foundation through the typed values every higher layer speaks to the
+commitments a block header carries — read which ones from the tree rather than
+from this sentence, with the command below. `modules/` holds a directory
 per PLANNED layer with most still empty — so read the BUILT set with
 `git ls-files 'modules/*'`, never with `ls modules/`, which mixes the two and
 reads as though the whole client existed.
@@ -98,8 +99,13 @@ under whatever JDK the shell happens to provide.
 warning categories to hard errors**, scoped so `compile`, `test` and `testFull`
 all fail on a violation in that set, in main and test sources alike. Read the
 enforced categories and the reasoning for each from `build.sbt` itself, which is
-where both are stated. **There is still no separate `lint`, `format`,
-`typecheck` or coverage task, and no CI.** The compiler's set is also narrower
+where both are stated. **A formatter is wired and does NOT run as part of
+`compile`** — `scalafmtAll` formats and `scalafmtCheckAll` reports, both
+opt-in, so a green build says nothing about whether the tree is formatted.
+Run it through `scripts/sbt-run.sh`: the plugin's check cache is keyed on a
+file's modification time rather than its content, so a bare invocation can pass
+a file it never read. **There is still no separate `lint`, `typecheck` or
+coverage task, and no CI.** The compiler's set is also narrower
 than it looks: it does not reach prohibitions on `return`, `null`,
 `asInstanceOf`, `isInstanceOf` outside a match, or the `println` family, none of
 which any compiler flag can enforce — those need a lint plugin this repository
@@ -183,10 +189,12 @@ stated here: the set changes only when that file changes.
 **That set is narrower than it looks.** The repo-local rule
 `.claude/rules/scala3-style.md` § "Build configuration" names further
 prohibitions no compiler flag reaches — those need a dedicated lint plugin
-this repository does not have. **There is still no formatter, no separate
-`lint` or `typecheck` task, and no CI.** Everything the compiler does not
-catch is checked by review; match the style of surrounding code by hand where
-no rule covers it.
+this repository does not have. **A formatter is wired and reaches none of
+them** — it decides layout, not which constructs are permitted, so the two gaps
+are unrelated and neither closes the other. **There is still no separate `lint`
+or `typecheck` task, and no CI.** Everything neither the compiler nor the
+formatter catches is checked by review; match the style of surrounding code by
+hand where no rule covers it.
 
 **Comments explain why, never what.** Code already says what it does; a
 comment that narrates it restates it and then rots independently. **Build
