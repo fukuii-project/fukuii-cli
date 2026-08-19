@@ -41,8 +41,8 @@ class TrieDifferentialPropSpec extends AnyPropSpec with ScalaCheckPropertyChecks
 
   private val byteGen: Gen[Byte] = Gen.choose(0, 255).map(_.toByte)
 
-  /** Short keys over a five-symbol alphabet, so that prefixes collide constantly
-    * and one key is frequently a strict prefix of another.
+  /** Short keys over a small alphabet, so that prefixes collide constantly and
+    * one key is frequently a strict prefix of another.
     *
     * Real trie keys are 32 bytes and effectively never collide, which is exactly
     * the distribution that never exercises a branch collapse or a terminating
@@ -50,11 +50,20 @@ class TrieDifferentialPropSpec extends AnyPropSpec with ScalaCheckPropertyChecks
     * reduce a branch to one entry and force the merge back into the nibble above
     * it, which is where an incremental implementation and a derived one can
     * disagree.
+    *
+    * The alphabet is also chosen so its nibbles cover all sixteen child slots —
+    * an alphabet tuned only for collisions can leave most of a branch's slots
+    * unvisited, and a slot no property ever reaches is a slot no property
+    * defends. Both halves are load-bearing: widening it far enough to stop the
+    * collisions would retain the coverage and lose the collapse, which is the
+    * failure this generator was rebuilt once to fix.
     */
   private val keyGen: Gen[Bytes] =
     Gen
       .choose(1, 3)
-      .flatMap(length => Gen.listOfN(length, Gen.oneOf(0x00, 0x01, 0x10, 0x11, 0xf0).map(_.toByte)))
+      .flatMap(length =>
+        Gen.listOfN(length, Gen.oneOf(0x00, 0x11, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef).map(_.toByte))
+      )
       .map(bytes => Bytes.fromIArray(IArray.from(bytes)))
 
   private val valueGen: Gen[Bytes] = Gen
