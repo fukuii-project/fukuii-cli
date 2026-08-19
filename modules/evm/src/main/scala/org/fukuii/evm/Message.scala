@@ -33,7 +33,17 @@ import org.fukuii.bytes.{Address, Bytes}
   *   rides here rather than on the frame because it is settled by whoever asked
   *   for the invocation and never moves while it runs, which is the same reason
   *   the caller and the value do. The operations that nest refuse rather than
-  *   exceed [[Stack.Limit]], and the specification carries it in the same place.
+  *   exceed [[Stack.Limit]].
+  *
+  *   **That reuse is this implementation's, NOT the specification's**, and an
+  *   earlier version of this sentence claimed otherwise. The specification keeps
+  *   two: a bare `1024` in `vm/stack.py` bounding the operand stack, and a named
+  *   `STACK_DEPTH_LIMIT` in `vm/interpreter.py` bounding nesting -- different
+  *   modules. go-ethereum likewise names `StackLimit` and `CallCreateDepth`
+  *   separately. Both values are 1024 at this fork, so nothing diverges today;
+  *   **a fork or a network moving one would silently move the other**, which is
+  *   the shared-name hazard `.claude/rules/nomenclature.md` describes, applied
+  *   to a constant rather than to a type.
   */
 final case class Message(
     caller: Address,

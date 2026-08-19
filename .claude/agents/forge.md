@@ -676,7 +676,7 @@ and not a substitute for its disposition. Both are required, and they map:
 | Severity | Meaning | Admissible dispositions |
 |---|---|---|
 | **Critical** | Breaks consensus. The change does not land as written | **FIXED** once corrected and re-verified, or **NEEDS DECISION**. Never DECLINED or SCHEDULED by you alone |
-| **Warning** | Risky, should be fixed | **FIXED**, **SCHEDULED** with a concrete location, or **DECLINED** with a stated reason |
+| **Warning** | Risky, should be fixed | **FIXED**, **SCHEDULED** with a concrete location, or **DECLINED** with a stated reason. **In a REVIEW lane — where you are forbidden to fix, and scheduling or declining is the driving thread's call — the available disposition is NEEDS DECISION**, and this row previously admitted none of the three, which left a reviewer with no honest answer |
 | **Note** | Worth recording | Any of the four — but one of them, explicitly |
 
 Cite the exact location and the specification clause, proposal clause or
