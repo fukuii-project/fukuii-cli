@@ -624,6 +624,15 @@ so it binds by being read.
 | `.claude/rules/comment-content.md` | What a comment is for, and what must never appear in one | on a `.scala` read |
 | `.claude/rules/reference-first.md` | **What must be consulted before a structural recommendation is formed** — the production clients, and how to survey them without lying to yourself | **every session** |
 
+**A `paths:`-scoped rule fires on the Read TOOL's path match, and not on `cat`.** Opening a
+`.scala` file through a shell command — `cat`, `sed -n`, `tail -n +1`, `head` — loads the
+file's contents and loads **none of the three rules above**. So an agent working under an
+operating mode that prefers shell reads writes Scala with `nomenclature.md`,
+`scala3-style.md` and `comment-content.md` silently absent, and nothing reports their
+absence. **Read a `.scala` file with the Read tool when the rules matter, or open the three
+explicitly before writing Scala.** Observed 2026-08-19 by an agent that had read the whole
+EVM module through the shell and had to fetch all three afterwards.
+
 **The `Loads` column is the point of the table, not decoration.** The first
 three fire when Scala is opened and therefore **not during design discussion**,
 which is exactly when structure, placement and naming are decided. That gap is
