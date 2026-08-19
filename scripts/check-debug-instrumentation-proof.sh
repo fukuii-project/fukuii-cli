@@ -149,11 +149,38 @@ fi
 rm -f "$MUTANT"
 
 echo
-if [ "$a1" = 0 ] && [ "$a2" = 0 ] && [ "$a3" = 0 ] && [ "$a4" = 0 ] && [ "$a5" = 0 ] && [ "$a6" = 0 ]; then
+echo "###### ARM 7 — an UNTRACKED violation. The gate runs before a commit. #####"
+# This arm exists because the gate did NOT hold here until 2026-08-19. It derived
+# its file list from `git ls-files`, which lists tracked files only -- and this
+# check runs before a task is declared done, which is before committing. New work
+# was therefore invisible to it, and the file-count discriminator did not notice,
+# because the tracked count is non-zero on its own.
+#
+# The arm is built from the known-GOOD fixture so that the tracked half is clean:
+# a hit here can only have come from the untracked file, which is what makes the
+# arm discriminating rather than merely passing.
+UNTRACKED_TMP=$(build_repo "$GOOD_DIR") || exit 1
+printf 'object Untracked { println("planted") }\n' > "$UNTRACKED_TMP/Untracked.scala"
+u_out=$("$CHECK" "$UNTRACKED_TMP" 2>&1); u_rc=$?
+u_scanned=$(printf '%s' "$u_out" | sed -n 's/^scanned: \([0-9]*\).*/\1/p')
+if [ "$u_rc" = 1 ] && printf '%s' "$u_out" | grep -q 'Untracked.scala'; then
+  echo "  arm 7 OK   -- untracked violation reported (exit 1, scanned $u_scanned)"
+  a7=0
+else
+  echo "  arm 7 FAIL -- untracked violation NOT reported (exit $u_rc, scanned $u_scanned)"
+  echo "               the gate is blind to files that have not been committed,"
+  echo "               which is every file at the moment this check is meant to run"
+  a7=1
+fi
+rm -rf "$UNTRACKED_TMP"
+
+echo
+if [ "$a1" = 0 ] && [ "$a2" = 0 ] && [ "$a3" = 0 ] && [ "$a4" = 0 ] && [ "$a5" = 0 ] && [ "$a6" = 0 ] && [ "$a7" = 0 ]; then
   echo "PROOF HOLDS: fails on known-bad, passes on known-good, reports exit 2"
-  echo "for an empty scan and for a non-repo, names every fixture case, and a"
-  echo "plausible regression is caught. No arm touched this repository."
+  echo "for an empty scan and for a non-repo, names every fixture case, catches a"
+  echo "plausible regression, and SEES AN UNTRACKED FILE. No arm touched this"
+  echo "repository."
   exit 0
 fi
-echo "PROOF DOES NOT HOLD (arm1=$a1 arm2=$a2 arm3=$a3 arm4=$a4 arm5=$a5 arm6=$a6)."
+echo "PROOF DOES NOT HOLD (arm1=$a1 arm2=$a2 arm3=$a3 arm4=$a4 arm5=$a5 arm6=$a6 arm7=$a7)."
 exit 1

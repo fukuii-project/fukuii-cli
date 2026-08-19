@@ -22,13 +22,31 @@
 # that reads as success. Only counting the scanned files separates them, and a
 # script can do that where a pipeline cannot.
 #
-# WHAT IT SCANS. Every TRACKED *.scala file, discovered with `git ls-files`.
+# WHAT IT SCANS. Every *.scala file git knows about that is not ignored --
+# TRACKED and UNTRACKED-BUT-NOT-IGNORED both.
 # Deliberately not a hardcoded path such as src/main: the layout MOVES -- this
 # repository's sources began under src/ and now live under modules/*/src/ --
 # and a check naming a path that no longer exists matches nothing and reports
-# clean forever. `git ls-files` follows the layout wherever it goes, and it cannot
-# descend into untracked reference material and report another project's code
-# as a finding.
+# clean forever. Deriving from git follows the layout wherever it goes, and the
+# --exclude-standard filter still keeps it out of ignored reference material, so
+# it cannot report another project's code as a finding.
+#
+# WHY THE UNTRACKED HALF, ADDED 2026-08-19. `git ls-files` alone lists tracked
+# files only, and THIS GATE RUNS BEFORE A TASK IS DECLARED DONE -- which is
+# before committing. So an author's new files are still untracked and the gate
+# walked straight past them. Measured during a phase that added ten files: it
+# scanned 128 and reported clean about 138.
+#
+# The file-count discriminator below does NOT catch that. It asserts the scanned
+# count is non-zero, and the tracked count is comfortably non-zero, so the check
+# passed having proved nothing about the new code -- the "reports clean forever"
+# failure this comment already warned about, reached without the layout moving
+# at all.
+#
+# Worth recording how it survived: the rule that documents this gate
+# (.claude/rules/scala3-style.md) was corrected first, and THIS SCRIPT WAS NOT,
+# so for a while the prose and the instrument disagreed and each looked right on
+# its own. A gate stated in two places has to be fixed in both.
 #
 # THE CHECK IS TEXTUAL, AND THAT IS A DELIBERATE LIMIT. A comment or a string
 # containing one of these words is reported as a hit. There is no attempt to
@@ -56,10 +74,10 @@ git rev-parse --git-dir >/dev/null 2>&1 || {
 # visible deletion, and so the known-bad fixture can carry a case per pattern.
 PATTERNS='println|System\.out\.print|System\.err\.print|printStackTrace|[A-Z][A-Z0-9_]*-DEBUG|TEMP DEBUG'
 
-mapfile -t FILES < <(git ls-files '*.scala')
+mapfile -t FILES < <( { git ls-files '*.scala'; git ls-files --others --exclude-standard '*.scala'; } | sort -u )
 SCANNED=${#FILES[@]}
 
-echo "scanned: $SCANNED tracked .scala file(s)"
+echo "scanned: $SCANNED .scala file(s), tracked and untracked-not-ignored"
 
 # THE DISCRIMINATOR. An empty list is not a pass. Nothing was examined, so the
 # run carries no information about the tree, and reporting 0 would hand the
