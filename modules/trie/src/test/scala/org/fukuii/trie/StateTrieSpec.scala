@@ -111,12 +111,22 @@ class StateTrieSpec extends AnyFlatSpec:
     assert(newState().getAccount(address(9)) == Right(None), "an absent account is absence, not an error")
 
   it should "report a leaf that is not an account encoding" in {
-    val state = newState()
-    writeAccount(state, address(1), 7)
-    assert(
-      state.getAccount(address(2)) == Right(None),
-      "an unwritten address decodes to nothing rather than to a malformed account"
+    val store: KeyValueStore = TrieFixtures.store()
+    val accounts = new StoredNodeTrie(Securing.Secured, store, TrieFixtures.namespace("state-nodes"))
+    val state = new StateTrie(
+      accounts,
+      owner => new StoredNodeTrie(Securing.Secured, store, TrieFixtures.namespace("storage-" + owner.toHex)),
+      store,
+      TrieFixtures.namespace("code")
     )
+    // Written through the account trie directly. StateTrie's own writer cannot
+    // produce a leaf that is not an account, which is exactly why reaching this
+    // branch takes a write that goes past it.
+    accounts.put(Bytes.fromIArray(address(2).toBytes), Bytes.fromIArray(IArray(0x01.toByte)))
+    val reachedDecodeFailure = state.getAccount(address(2)) match
+      case Left(TrieError.MalformedAccount(_)) => true
+      case _                                   => false
+    assert(reachedDecodeFailure, "a leaf that is not an account encoding is an error, never an absence")
   }
 
   "deleteAccount" should "return the state root to empty once the last account is gone" in {
