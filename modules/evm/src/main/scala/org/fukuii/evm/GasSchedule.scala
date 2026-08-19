@@ -33,6 +33,14 @@ package org.fukuii.evm
   * Reversing trigger: the first proposal that prices one of those operations
   * apart from the tier it currently shares.
   *
+  * ==A refund is a price too, and is repriced the same way==
+  *
+  * [[refundStorageClear]] is not a charge, but it is a number a proposal
+  * changes and it is settled against the same transaction the charges are, so
+  * it belongs with them rather than as a constant at the one site that earns
+  * it. The specification groups it the same way, under its own heading in the
+  * same table of costs.
+  *
   * ==Memory expansion is deliberately absent==
   *
   * [[GasCost]] owns the cost of holding memory, and its two parameters live
@@ -53,6 +61,7 @@ final case class GasSchedule(
     storageLoad: BigInt,
     storageSet: BigInt,
     storageReset: BigInt,
+    refundStorageClear: BigInt,
     callBase: BigInt,
     createBase: BigInt,
     expBase: BigInt,
@@ -88,6 +97,7 @@ object GasSchedule:
     storageLoad = BigInt(50),
     storageSet = BigInt(20000),
     storageReset = BigInt(5000),
+    refundStorageClear = BigInt(15000),
     callBase = BigInt(40),
     createBase = BigInt(32000),
     expBase = BigInt(10),

@@ -370,12 +370,32 @@ lazy val trie = (project in file("modules/trie"))
     libraryDependencies ++= testDeps
   )
 
-// L3 -- the EVM. It depends on `bytes` alone, because P2 builds the machine's
-// word and that converts at its boundary to raw bytes and to nothing else yet.
-// Edges to `types`, `trie` and `storage` arrive with the phases that need them,
-// rather than being declared now against a future.
+// L3 -- the EVM.
+//
+// The edges beyond `bytes` arrive here with the phase that needs them, which is
+// the world-state seam, and each is used by a type in this module rather than
+// declared against one that might be:
+//
+//   bytes   the machine's word converts at its boundary to raw bytes, and an
+//           address, a digest and a 256-bit quantity are what the seam speaks
+//   rlp     a storage value is stored as the RLP of its minimal form, so the
+//           codec is what the seam encodes and decodes through rather than an
+//           accessory to it
+//   types   an account is what the state trie answers with, and a balance and a
+//           code hash are read off it
+//   trie    the state a root is computed over, which the seam's one production
+//           implementation is written against
+//
+// The interface stays on this side of the seam, which is what both surveyed
+// clients do -- go-ethereum declares `StateDB` inside `core/vm` and lets
+// `core/state` satisfy it, and besu keeps `WorldUpdater` inside its `evm`
+// module. So the edge is one-way and a second implementation costs nothing.
+//
+// `storage` is deliberately still absent: nothing here names a namespace or a
+// key/value store, and it arrives transitively for the tests that build a state
+// trie rather than being declared for a type this module does not have.
 lazy val evm = (project in file("modules/evm"))
-  .dependsOn(bytes)
+  .dependsOn(bytes, rlp, types, trie)
   .settings(
     name := "fukuii-evm",
     libraryDependencies ++= testDeps

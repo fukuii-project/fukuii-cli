@@ -1,6 +1,6 @@
 package org.fukuii.evm
 
-import org.fukuii.bytes.Bytes
+import org.fukuii.bytes.{Address, Bytes}
 
 /** Runs a program against a frame, one operation at a time.
   *
@@ -32,14 +32,19 @@ import org.fukuii.bytes.Bytes
 object Interpreter:
 
   /** Runs until the program stops, halts, or meets something unbuilt. */
-  def run(frame: Frame, table: OpcodeTable, schedule: GasSchedule): Either[Unsupported, Outcome] =
+  def run(
+      frame: Frame,
+      table: OpcodeTable,
+      schedule: GasSchedule,
+      environment: Environment
+  ): Either[Unsupported, Outcome] =
     var fault: Option[Fault] = None
     while fault.isEmpty && frame.running && frame.pc < frame.code.length do
       val code = frame.code.byteAt(frame.pc)
       table.operationAt(code) match
         case None            => fault = Some(Fault.Exceptional(Halt.InvalidOpcode(code)))
         case Some(operation) =>
-          step(frame, operation, schedule) match
+          step(frame, operation, schedule, environment) match
             case Left(met) => fault = Some(met)
             case Right(()) => ()
     fault match
@@ -60,7 +65,12 @@ object Interpreter:
     case Exceptional(halt: Halt)
     case NotBuilt(opcode: Opcode)
 
-  private def step(frame: Frame, operation: Operation, schedule: GasSchedule): Either[Fault, Unit] =
+  private def step(
+      frame: Frame,
+      operation: Operation,
+      schedule: GasSchedule,
+      environment: Environment
+  ): Either[Fault, Unit] =
     operation.opcode match
 
       case Opcode.Stop =>
@@ -215,6 +225,119 @@ object Interpreter:
           yield advance(frame)
         }
 
+      // ── What this invocation is ────────────────────────────────────────────
+
+      case Opcode.Address   => pushing(frame, operation)(wordOf(frame.message.currentTarget))
+      case Opcode.Caller    => pushing(frame, operation)(wordOf(frame.message.caller))
+      case Opcode.CallValue => pushing(frame, operation)(frame.message.value)
+
+      // ── What the transaction and the block are ─────────────────────────────
+
+      case Opcode.Origin     => pushing(frame, operation)(wordOf(environment.transaction.origin))
+      case Opcode.GasPrice   => pushing(frame, operation)(Word(environment.transaction.gasPrice))
+      case Opcode.Coinbase   => pushing(frame, operation)(wordOf(environment.block.coinbase))
+      case Opcode.Timestamp  => pushing(frame, operation)(Word(environment.block.timestamp))
+      case Opcode.Number     => pushing(frame, operation)(Word(environment.block.number))
+      case Opcode.Difficulty => pushing(frame, operation)(Word(environment.block.difficulty))
+      case Opcode.GasLimit   => pushing(frame, operation)(Word(environment.block.gasLimit))
+
+      case Opcode.BlockHash =>
+        priced(operation) { gas =>
+          for
+            requested <- frame.stack.pop()
+            _ <- frame.charge(gas)
+            _ <- frame.stack.push(blockHashFor(environment, requested))
+          yield advance(frame)
+        }
+
+      // ── The input this invocation was called with ──────────────────────────
+
+      case Opcode.CallDataLoad =>
+        priced(operation) { gas =>
+          for
+            offset <- frame.stack.pop()
+            _ <- frame.charge(gas)
+            _ <- frame.stack.push(Word.fromBytes(bufferRead(frame.message.data, offset.toBigInt, Word.Width)))
+          yield advance(frame)
+        }
+
+      case Opcode.CallDataSize =>
+        pushing(frame, operation)(Word(BigInt(frame.message.data.length)))
+
+      case Opcode.CallDataCopy =>
+        exceptional(copyInto(frame, schedule.veryLow, schedule)(frame.message.data))
+
+      // ── The code this invocation is running ────────────────────────────────
+
+      case Opcode.CodeSize =>
+        pushing(frame, operation)(Word(BigInt(frame.code.length)))
+
+      case Opcode.CodeCopy =>
+        exceptional(copyInto(frame, schedule.veryLow, schedule)(frame.code.bytes))
+
+      // ── Another account ────────────────────────────────────────────────────
+
+      case Opcode.Balance =>
+        priced(operation) { gas =>
+          for
+            operand <- frame.stack.pop()
+            _ <- frame.charge(gas)
+            _ <- frame.stack.push(environment.world.balanceOf(addressOf(operand)))
+          yield advance(frame)
+        }
+
+      case Opcode.ExtCodeSize =>
+        priced(operation) { gas =>
+          for
+            operand <- frame.stack.pop()
+            _ <- frame.charge(gas)
+            _ <- frame.stack.push(Word(BigInt(environment.world.codeOf(addressOf(operand)).length)))
+          yield advance(frame)
+        }
+
+      // The account is taken before the three operands every copying operation
+      // shares, so it is popped here and the rest is the shared shape. Its code
+      // is read inside that shape, which is after the charge -- the order the
+      // specification puts it in, and the one that keeps an unaffordable copy
+      // from reaching the state seam at all.
+      case Opcode.ExtCodeCopy =>
+        exceptional(
+          for
+            operand <- frame.stack.pop()
+            copied <- copyInto(frame, schedule.externalBase, schedule)(
+              environment.world.codeOf(addressOf(operand))
+            )
+          yield copied
+        )
+
+      // ── Storage ────────────────────────────────────────────────────────────
+
+      case Opcode.SLoad =>
+        priced(operation) { gas =>
+          for
+            slot <- frame.stack.pop()
+            _ <- frame.charge(gas)
+            _ <- frame.stack.push(environment.world.storageAt(frame.message.currentTarget, slot))
+          yield advance(frame)
+        }
+
+      // Priced from what the slot already holds, so the read comes before the
+      // charge and the charge before the write. Setting a slot that held
+      // nothing is the expensive case; every other combination, including
+      // clearing one, is the cheaper one.
+      case Opcode.SStore =>
+        exceptional(
+          for
+            slot <- frame.stack.pop()
+            value <- frame.stack.pop()
+            held = environment.world.storageAt(frame.message.currentTarget, slot)
+            _ = refundIfCleared(frame, schedule, held, value)
+            _ <- frame.charge(if held.isZero && !value.isZero then schedule.storageSet else schedule.storageReset)
+          yield
+            environment.world.setStorage(frame.message.currentTarget, slot, value)
+            advance(frame)
+        )
+
       case unbuilt => Left(Fault.NotBuilt(unbuilt))
 
   /** Runs `body` with the operation's settled price, or reports that this build
@@ -261,8 +384,13 @@ object Interpreter:
       yield advance(frame)
     }
 
-  /** An operation that takes nothing and answers with one value read from the
-    * frame, where the value is settled before the charge is made.
+  /** An operation that takes nothing and answers with one value.
+    *
+    * The value is read after the charge is made, which is the specification's
+    * order. It is invisible for every operation using this, because none of
+    * them reads anything the charge changes -- `GAS` is the one that does, and
+    * it is written out separately for that reason rather than being made to fit
+    * here.
     */
   private def pushing(frame: Frame, operation: Operation)(value: => Word): Either[Fault, Unit] =
     priced(operation) { gas =>
@@ -273,6 +401,96 @@ object Interpreter:
     }
 
   private def advance(frame: Frame): Unit = frame.pc += 1
+
+  /** The low twenty bytes of an operand, which is how every operation naming an
+    * account reads one off the stack. A word is wider than an address and the
+    * specification masks rather than refusing, so an operand with rubbish above
+    * the twentieth byte names an ordinary account.
+    */
+  private def addressOf(operand: Word): Address =
+    Address.fromBytesTruncating(operand.toBytes.toIArray)
+
+  private def wordOf(address: Address): Word =
+    Word.fromBytes(Bytes.fromIArray(address.toBytes))
+
+  /** The hash of an earlier block, and zero outside the window this fork
+    * allows.
+    *
+    * The comparison is made at arbitrary precision. An operand near the top of
+    * the range would wrap if the window were added to it in a machine word, and
+    * the window would then admit a block that must answer zero.
+    */
+  private def blockHashFor(environment: Environment, requested: Word): Word =
+    val wanted = requested.toBigInt
+    val current = environment.block.number
+    if wanted < current && current <= wanted + BlockHashReach then
+      Word.fromBytes(Bytes.fromIArray(environment.blockHashAt(wanted).toBytes))
+    else Word.Zero
+
+  /** How far back a block hash can be read. */
+  private val BlockHashReach: BigInt = BigInt(256)
+
+  private def refundIfCleared(frame: Frame, schedule: GasSchedule, held: Word, value: Word): Unit =
+    if value.isZero && !held.isZero then frame.refundCounter += schedule.refundStorageClear
+
+  /** The shape every copying operation shares: three operands, a price in whole
+    * words of the amount copied, and a source that is read only once the copy
+    * has been paid for.
+    *
+    * `source` is by name for that last reason. Reading an account's code is a
+    * state lookup, and doing it before the charge would let an operation that
+    * cannot afford to run still reach the state seam.
+    */
+  private def copyInto(frame: Frame, base: BigInt, schedule: GasSchedule)(
+      source: => Bytes
+  ): Either[Halt, Unit] =
+    for
+      memoryStart <- frame.stack.pop()
+      sourceStart <- frame.stack.pop()
+      size <- frame.stack.pop()
+      start <- copyCharge(frame, base, schedule, memoryStart, size)
+    yield
+      if !size.isZero then frame.memory.write(start, bufferRead(source, sourceStart.toBigInt, size.toBigInt.toInt))
+      advance(frame)
+
+  /** Charges a copy and grows memory for it, answering where the copy lands.
+    *
+    * A copy of nothing pays the settled part and no more: the specification
+    * skips the extension outright for a zero size, so a zero-length copy at an
+    * offset no memory could reach is affordable rather than being charged for
+    * memory it never touches.
+    */
+  private def copyCharge(
+      frame: Frame,
+      base: BigInt,
+      schedule: GasSchedule,
+      offset: Word,
+      size: Word
+  ): Either[Halt, Int] =
+    val words = (size.toBigInt + Word.Width - 1) / Word.Width
+    val settled = base + schedule.copyPerWord * words
+    if size.isZero then frame.charge(settled).map(_ => 0)
+    else expand(frame, settled, offset, size.toBigInt)
+
+  /** `size` bytes of `source` from `start`, zero-filled where it runs out.
+    *
+    * Reading past the end is not a fault: the specification pads rather than
+    * refusing, so a read wholly beyond the source is a run of zeros. `start` is
+    * a full-width operand and stays arbitrary precision until it is known to
+    * be inside the source, because narrowing it first is how a huge offset
+    * would come to read from a small one.
+    */
+  private def bufferRead(source: Bytes, start: BigInt, size: Int): Bytes =
+    val raw = source.toIArray
+    val out = new Array[Byte](size)
+    if start < BigInt(raw.length) then
+      val from = start.toInt
+      val available = math.min(size, raw.length - from)
+      var i = 0
+      while i < available do
+        out(i) = raw(from + i)
+        i += 1
+    Bytes.fromIArray(IArray.unsafeFromArray(out))
 
   private def flag(condition: Boolean): Word = if condition then Word.One else Word.Zero
 

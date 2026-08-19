@@ -16,11 +16,29 @@ class InterpreterSpec extends AnyFlatSpec:
   private val table = OpcodeTable.baseline(schedule)
 
   private def frameOf(gas: Int, program: Int*): Frame =
-    new Frame(Code(Bytes.fromArray(program.map(_.toByte).toArray)), BigInt(gas))
+    new Frame(EvmFixtures.message(), Code(Bytes.fromArray(program.map(_.toByte).toArray)), BigInt(gas))
 
   private def exec(gas: Int, program: Int*): (Frame, Either[Unsupported, Outcome]) =
-    val frame = frameOf(gas, program*)
-    (frame, Interpreter.run(frame, table, schedule))
+    execFor(EvmFixtures.message(), EvmFixtures.environment(), gas, program*)
+
+  private def execIn(
+      environment: Environment,
+      gas: Int,
+      program: Int*
+  ): (Frame, Either[Unsupported, Outcome]) =
+    execFor(EvmFixtures.message(), environment, gas, program*)
+
+  private def execFor(
+      message: Message,
+      environment: Environment,
+      gas: Int,
+      program: Int*
+  ): (Frame, Either[Unsupported, Outcome]) =
+    val frame = new Frame(message, Code(Bytes.fromArray(program.map(_.toByte).toArray)), BigInt(gas))
+    (frame, Interpreter.run(frame, table, schedule, environment))
+
+  private def wordOfAddress(byte: Int): Word =
+    Word.fromBytes(Bytes.fromIArray(EvmFixtures.address(byte).toBytes))
 
   private def w(value: Int): Word = Word(BigInt(value))
 
@@ -33,27 +51,6 @@ class InterpreterSpec extends AnyFlatSpec:
   // adding an operation to the table without an implementation fails it too.
   private val notYetBuilt: Set[Opcode] = Set(
     Opcode.Keccak256,
-    Opcode.Address,
-    Opcode.Balance,
-    Opcode.Origin,
-    Opcode.Caller,
-    Opcode.CallValue,
-    Opcode.CallDataLoad,
-    Opcode.CallDataSize,
-    Opcode.CallDataCopy,
-    Opcode.CodeSize,
-    Opcode.CodeCopy,
-    Opcode.GasPrice,
-    Opcode.ExtCodeSize,
-    Opcode.ExtCodeCopy,
-    Opcode.BlockHash,
-    Opcode.Coinbase,
-    Opcode.Timestamp,
-    Opcode.Number,
-    Opcode.Difficulty,
-    Opcode.GasLimit,
-    Opcode.SLoad,
-    Opcode.SStore,
     Opcode.Log0,
     Opcode.Log1,
     Opcode.Log2,
@@ -273,15 +270,332 @@ class InterpreterSpec extends AnyFlatSpec:
     )
 
   "an operation this build cannot run" should "not be reported as a halt" in {
-    val (_, outcome) = exec(1000000, Opcode.SLoad.code)
-    assert(outcome == Left(Unsupported(Opcode.SLoad)), "a halt is a result a chain reaches, and this is not one")
+    val (_, outcome) = exec(1000000, Opcode.Keccak256.code)
+    assert(outcome == Left(Unsupported(Opcode.Keccak256)), "a halt is a result a chain reaches, and this is not one")
   }
 
   "a table that has had an operation removed" should "treat its byte as naming none" in {
     val frame = frameOf(100, 0xff)
     assert(
-      Interpreter.run(frame, table.removing(Opcode.SelfDestruct), schedule) ==
+      Interpreter.run(frame, table.removing(Opcode.SelfDestruct), schedule, EvmFixtures.environment()) ==
         Right(Outcome.Halted(Halt.InvalidOpcode(0xff))),
       "a removed operation behaves exactly as an undefined byte, which is what scroll-tech/go-ethereum records at its own removal"
     )
+  }
+
+  "ADDRESS" should "report the account this invocation runs as" in {
+    val (frame, _) = exec(100, 0x30)
+    assert(frame.stack.peek(0) == Right(wordOfAddress(0x22)), "the target it runs as, not the one that called it")
+  }
+
+  it should "cost the base tier" in {
+    val (frame, _) = exec(100, 0x30)
+    assert(frame.gasLeft == BigInt(100 - 2), "every operation that only reads context is priced at the base tier")
+  }
+
+  "CALLER" should "report the account that called this invocation" in {
+    val (frame, _) = exec(100, 0x33)
+    assert(frame.stack.peek(0) == Right(wordOfAddress(0x11)), "the caller is the message's, not the transaction's")
+  }
+
+  "CALLVALUE" should "report the value sent with this invocation" in {
+    val (frame, _) = execFor(EvmFixtures.message(value = w(9)), EvmFixtures.environment(), 100, 0x34)
+    assert(frame.stack.peek(0) == Right(w(9)), "the value rides on the message")
+  }
+
+  "ORIGIN" should "report the account that signed the transaction" in {
+    val (frame, _) = exec(100, 0x32)
+    assert(frame.stack.peek(0) == Right(wordOfAddress(0x99)), "the origin is the transaction's and outlives a frame")
+  }
+
+  "GASPRICE" should "report the price the transaction pays" in {
+    val (frame, _) = exec(100, 0x3a)
+    assert(frame.stack.peek(0) == Right(w(7)), "the price is fixed for the whole transaction")
+  }
+
+  "COINBASE" should "report the block's beneficiary" in {
+    val (frame, _) = exec(100, 0x41)
+    assert(frame.stack.peek(0) == Right(wordOfAddress(0xcc)), "the beneficiary of the block this runs in")
+  }
+
+  "TIMESTAMP" should "report the block's own time" in {
+    val (frame, _) = exec(100, 0x42)
+    assert(frame.stack.peek(0) == Right(Word(BigInt(1234567890))), "the block's time, not the current one")
+  }
+
+  "NUMBER" should "report the block's height" in {
+    val (frame, _) = exec(100, 0x43)
+    assert(frame.stack.peek(0) == Right(Word(BigInt(1000))), "the height of the block this runs in")
+  }
+
+  "DIFFICULTY" should "report the block's difficulty" in {
+    val (frame, _) = exec(100, 0x44)
+    assert(frame.stack.peek(0) == Right(Word(BigInt(0x0100))), "the difficulty of the block this runs in")
+  }
+
+  "GASLIMIT" should "report the block's gas limit" in {
+    val (frame, _) = exec(100, 0x45)
+    assert(frame.stack.peek(0) == Right(Word(BigInt(3141592))), "the block's limit, not the frame's remaining gas")
+  }
+
+  "BLOCKHASH" should "answer with the hash of a block inside the window" in {
+    val (frame, _) = exec(100, 0x61, 0x03, 0xe7, 0x40)
+    assert(
+      frame.stack.peek(0) == Right(Word.fromBytes(Bytes.fromIArray(EvmFixtures.blockHashAt(BigInt(999)).toBytes))),
+      "the block one back from the one being executed is inside the window"
+    )
+  }
+
+  it should "answer with the hash of the oldest block the window reaches" in {
+    val (frame, _) = exec(100, 0x61, 0x02, 0xe8, 0x40)
+    assert(
+      frame.stack.peek(0) == Right(Word.fromBytes(Bytes.fromIArray(EvmFixtures.blockHashAt(BigInt(744)).toBytes))),
+      "256 blocks back is the last one the window admits, and the boundary is inclusive"
+    )
+  }
+
+  it should "answer zero one block beyond the window" in {
+    val (frame, _) = exec(100, 0x61, 0x02, 0xe7, 0x40)
+    assert(frame.stack.peek(0) == Right(Word.Zero), "257 blocks back is outside the window and is not an error")
+  }
+
+  it should "answer zero for the block being executed" in {
+    val (frame, _) = exec(100, 0x61, 0x03, 0xe8, 0x40)
+    assert(frame.stack.peek(0) == Right(Word.Zero), "a block whose execution has not finished has no hash to give")
+  }
+
+  it should "answer zero for a number no chain could reach" in {
+    val (frame, _) = exec(1000, (0x7f +: Seq.fill(32)(0xff)) :+ 0x40*)
+    assert(
+      frame.stack.peek(0) == Right(Word.Zero),
+      "the window is compared at full precision, so an operand near the top of the range cannot wrap into it"
+    )
+  }
+
+  it should "cost twenty" in {
+    val (frame, _) = exec(100, 0x61, 0x03, 0xe7, 0x40)
+    assert(frame.gasLeft == BigInt(100 - 3 - 20), "a push at 3 and a block-hash lookup at 20")
+  }
+
+  "CALLDATALOAD" should "read a whole word from the input" in {
+    val data = EvmFixtures.bytesOf("00" * 31 + "2a")
+    val (frame, _) = execFor(EvmFixtures.message(data = data), EvmFixtures.environment(), 100, 0x60, 0x00, 0x35)
+    assert(frame.stack.peek(0) == Right(w(42)), "the word is read big-endian from the offset given")
+  }
+
+  it should "zero-fill where the input runs out" in {
+    val data = EvmFixtures.bytesOf("ff")
+    val (frame, _) = execFor(EvmFixtures.message(data = data), EvmFixtures.environment(), 100, 0x60, 0x00, 0x35)
+    assert(
+      frame.stack.peek(0) == Right(Word(BigInt(0xff) << 248)),
+      "reading past the input pads rather than failing, so a one-byte input is a word with one byte in it"
+    )
+  }
+
+  "CALLDATASIZE" should "report the length of the input" in {
+    val data = EvmFixtures.bytesOf("aabbcc")
+    val (frame, _) = execFor(EvmFixtures.message(data = data), EvmFixtures.environment(), 100, 0x36)
+    assert(frame.stack.peek(0) == Right(w(3)), "the length in bytes, not in words")
+  }
+
+  "CALLDATACOPY" should "copy the input into memory" in {
+    val data = EvmFixtures.bytesOf("aabbccdd")
+    val (frame, _) =
+      execFor(
+        EvmFixtures.message(data = data),
+        EvmFixtures.environment(),
+        100,
+        0x60,
+        0x04,
+        0x60,
+        0x00,
+        0x60,
+        0x00,
+        0x37
+      )
+    assert(frame.memory.read(0, 4) == data, "the operands are memory offset, input offset and size, in that order")
+  }
+
+  it should "zero-fill where the input runs out" in {
+    val data = EvmFixtures.bytesOf("aabb")
+    val (frame, _) =
+      execFor(
+        EvmFixtures.message(data = data),
+        EvmFixtures.environment(),
+        100,
+        0x60,
+        0x04,
+        0x60,
+        0x00,
+        0x60,
+        0x00,
+        0x37
+      )
+    assert(
+      frame.memory.read(0, 4) == EvmFixtures.bytesOf("aabb0000"),
+      "a copy longer than the input is padded rather than refused"
+    )
+  }
+
+  it should "charge the settled part, the whole words copied, and the memory taken" in {
+    val data = EvmFixtures.bytesOf("aabbccdd")
+    val (frame, _) =
+      execFor(
+        EvmFixtures.message(data = data),
+        EvmFixtures.environment(),
+        100,
+        0x60,
+        0x04,
+        0x60,
+        0x00,
+        0x60,
+        0x00,
+        0x37
+      )
+    assert(
+      frame.gasLeft == BigInt(100 - 9 - 3 - 3 - 3),
+      "three pushes at 3, then a base of 3, one word at 3, and one word of memory at 3"
+    )
+  }
+
+  it should "charge no memory at all for a copy of nothing" in {
+    val (_, outcome) =
+      exec(100, (0x60 +: Seq(0x00, 0x60, 0x00, 0x7f)) ++ Seq.fill(32)(0xff) :+ 0x37*)
+    assert(
+      outcome == Right(Outcome.Stopped(BigInt(100 - 3 - 3 - 3 - 3), Bytes.Empty)),
+      "a zero-length copy skips the extension entirely, so an offset no memory could reach stays affordable"
+    )
+  }
+
+  "CODESIZE" should "report the length of the code being run" in {
+    val (frame, _) = exec(100, 0x38)
+    assert(frame.stack.peek(0) == Right(w(1)), "the running code, which here is the single byte of this program")
+  }
+
+  "CODECOPY" should "copy the running code into memory" in {
+    val (frame, _) = exec(100, 0x60, 0x04, 0x60, 0x00, 0x60, 0x00, 0x39)
+    assert(
+      frame.memory.read(0, 4) == EvmFixtures.bytesOf("60046000"),
+      "the code copied is this program's own bytes, operands included"
+    )
+  }
+
+  "BALANCE" should "report the balance of the account named" in {
+    val world = new EvmFixtures.MapWorldState
+    world.balances(EvmFixtures.address(0x05)) = w(1234)
+    val (frame, _) = execIn(EvmFixtures.environment(world), 100, (0x73 +: Seq.fill(20)(0x05)) :+ 0x31*)
+    assert(frame.stack.peek(0) == Right(w(1234)), "the balance is read for the account the operand names")
+  }
+
+  it should "report zero for an account that does not exist" in {
+    val (frame, _) = execIn(EvmFixtures.environment(), 100, (0x73 +: Seq.fill(20)(0x07)) :+ 0x31*)
+    assert(
+      frame.stack.peek(0) == Right(Word.Zero),
+      "an account that was never written has a zero balance, not an error"
+    )
+  }
+
+  it should "read only the low twenty bytes of its operand" in {
+    val world = new EvmFixtures.MapWorldState
+    world.balances(EvmFixtures.address(0x05)) = w(1234)
+    val operand = Seq.fill(12)(0xff) ++ Seq.fill(20)(0x05)
+    val (frame, _) = execIn(EvmFixtures.environment(world), 100, (0x7f +: operand) :+ 0x31*)
+    assert(frame.stack.peek(0) == Right(w(1234)), "an operand wider than an address is masked rather than refused")
+  }
+
+  "EXTCODESIZE" should "report the length of another account's code" in {
+    val world = new EvmFixtures.MapWorldState
+    world.codes(EvmFixtures.address(0x05)) = EvmFixtures.bytesOf("6001")
+    val (frame, _) = execIn(EvmFixtures.environment(world), 100, (0x73 +: Seq.fill(20)(0x05)) :+ 0x3b*)
+    assert(frame.stack.peek(0) == Right(w(2)), "the length of the code the account carries")
+  }
+
+  it should "report zero for an account with no code" in {
+    val (frame, _) = execIn(EvmFixtures.environment(), 100, (0x73 +: Seq.fill(20)(0x05)) :+ 0x3b*)
+    assert(frame.stack.peek(0) == Right(Word.Zero), "no code and no account answer alike, and neither is an error")
+  }
+
+  "EXTCODECOPY" should "copy another account's code into memory" in {
+    val world = new EvmFixtures.MapWorldState
+    world.codes(EvmFixtures.address(0x05)) = EvmFixtures.bytesOf("6001")
+    val program = Seq(0x60, 0x02, 0x60, 0x00, 0x60, 0x00, 0x73) ++ Seq.fill(20)(0x05) :+ 0x3c
+    val (frame, _) = execIn(EvmFixtures.environment(world), 100, program*)
+    assert(
+      frame.memory.read(0, 2) == EvmFixtures.bytesOf("6001"),
+      "the account is taken first and the three copying operands after it"
+    )
+  }
+
+  it should "charge the external base rather than the very low tier" in {
+    val world = new EvmFixtures.MapWorldState
+    world.codes(EvmFixtures.address(0x05)) = EvmFixtures.bytesOf("6001")
+    val program = Seq(0x60, 0x02, 0x60, 0x00, 0x60, 0x00, 0x73) ++ Seq.fill(20)(0x05) :+ 0x3c
+    val (frame, _) = execIn(EvmFixtures.environment(world), 100, program*)
+    assert(
+      frame.gasLeft == BigInt(100 - 9 - 3 - 20 - 3 - 3),
+      "four pushes, then a base of 20 rather than 3, one word copied at 3, and one word of memory at 3"
+    )
+  }
+
+  "SLOAD" should "answer zero for a slot never written" in {
+    val (frame, _) = execIn(EvmFixtures.environment(), 100, 0x60, 0x01, 0x54)
+    assert(frame.stack.peek(0) == Right(Word.Zero), "an unwritten slot holds zero rather than nothing")
+  }
+
+  it should "cost fifty" in {
+    val (frame, _) = execIn(EvmFixtures.environment(), 100, 0x60, 0x01, 0x54)
+    assert(frame.gasLeft == BigInt(100 - 3 - 50), "a push at 3 and a storage read at 50")
+  }
+
+  it should "answer with what SSTORE wrote" in {
+    val (frame, _) = execIn(EvmFixtures.environment(), 30000, 0x60, 0x2a, 0x60, 0x01, 0x55, 0x60, 0x01, 0x54)
+    assert(frame.stack.peek(0) == Right(w(42)), "a read after a write in the same invocation sees the write")
+  }
+
+  "SSTORE" should "write under the account this invocation runs as" in {
+    val world = new EvmFixtures.MapWorldState
+    val _ = execIn(EvmFixtures.environment(world), 30000, 0x60, 0x2a, 0x60, 0x01, 0x55)
+    assert(
+      world.slots.get((EvmFixtures.address(0x22), w(1))).contains(w(42)),
+      "storage belongs to the target it runs as, never to the caller"
+    )
+  }
+
+  it should "cost the setting price when the slot held nothing" in {
+    val (frame, _) = execIn(EvmFixtures.environment(), 30000, 0x60, 0x2a, 0x60, 0x01, 0x55)
+    assert(frame.gasLeft == BigInt(30000 - 3 - 3 - 20000), "taking a slot from zero to a value is the expensive case")
+  }
+
+  it should "cost the resetting price when the slot already held a value" in {
+    val (frame, _) =
+      execIn(EvmFixtures.environment(), 30000, 0x60, 0x2a, 0x60, 0x01, 0x55, 0x60, 0x2b, 0x60, 0x01, 0x55)
+    assert(
+      frame.gasLeft == BigInt(30000 - 3 - 3 - 20000 - 3 - 3 - 5000),
+      "only a slot that held zero costs the setting price"
+    )
+  }
+
+  it should "cost the resetting price when the slot is cleared" in {
+    val (frame, _) =
+      execIn(EvmFixtures.environment(), 30000, 0x60, 0x2a, 0x60, 0x01, 0x55, 0x60, 0x00, 0x60, 0x01, 0x55)
+    assert(
+      frame.gasLeft == BigInt(30000 - 3 - 3 - 20000 - 3 - 3 - 5000),
+      "clearing is charged the resetting price and earns its refund separately"
+    )
+  }
+
+  it should "earn a refund for clearing a slot that held a value" in {
+    val (frame, _) =
+      execIn(EvmFixtures.environment(), 30000, 0x60, 0x2a, 0x60, 0x01, 0x55, 0x60, 0x00, 0x60, 0x01, 0x55)
+    assert(frame.refundCounter == BigInt(15000), "the refund is counted on the frame and never returned to its gas")
+  }
+
+  it should "earn no refund for writing a value" in {
+    val (frame, _) = execIn(EvmFixtures.environment(), 30000, 0x60, 0x2a, 0x60, 0x01, 0x55)
+    assert(frame.refundCounter == BigInt(0), "only clearing a slot that held something earns anything back")
+  }
+
+  it should "earn no refund for clearing a slot that already held nothing" in {
+    val (frame, _) = execIn(EvmFixtures.environment(), 30000, 0x60, 0x00, 0x60, 0x01, 0x55)
+    assert(frame.refundCounter == BigInt(0), "there was nothing to clear, so nothing is given back")
   }
