@@ -90,8 +90,18 @@ object PrecompileSet:
       )
       .adding(Identity, Precompile.identity(schedule.precompileIdentityBase, schedule.precompileIdentityPerWord))
 
-  /** The address a single low byte names, which is how the field writes these:
-    * a precompile sits at the low end of the space and everything above it is
+  /** The address a low number names, which is how the field writes these: a
+    * precompile sits at the low end of the space and everything above it is
     * zero.
+    *
+    * The whole number is read rather than its low byte, and the difference is
+    * not academic -- a later proposal places one at an address two bytes wide.
+    * A helper narrowing to a byte would answer the ZERO address for it, which
+    * is a live account rather than an error, and a misplaced precompile is the
+    * one mistake in this layer that compiles, runs, answers, and is found only
+    * when two chains disagree.
     */
-  private def addressOf(low: Int): Address = Address.fromBytesTruncating(IArray(low.toByte))
+  private def addressOf(low: Int): Address =
+    Address.fromBytesTruncating(
+      IArray((low >>> 24).toByte, (low >>> 16).toByte, (low >>> 8).toByte, low.toByte)
+    )
