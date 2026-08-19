@@ -265,9 +265,12 @@ derived from the downstream copy and inherits its lag.
 4. **`ethereumclassic/core-geth`** — ETC's production client. Authoritative for what ETC actually runs.
 5. **`besu-eth/besu-etc`** — a reference build, not a mainstream client, and the standing caveat
    applies: its agreement with besu is usually besu's code rather than an ETC decision.
-6. **`ethereum/go-ethereum-pow`** @ `v1.10.26` — **geth while it still ran proof-of-work.** A great
-   deal of ETC's proof-of-work behavior has its clearest expression here, in the client that ran it in
-   production, and current `master` no longer contains that code at all.
+6. **`ethereum/go-ethereum-pow`** @ `v1.10.26` — **geth while it still ran proof-of-work.** Listed
+   here for sequencing, and **do not read its position as its weight**: this is *Ethereum's* client,
+   not a Classic one, and it ran the largest proof-of-work EVM network in production for years. For a
+   proof-of-work mechanism it is a **peer of core-geth**, frequently the clearest expression of the
+   behavior, and current `master` no longer contains that code at all.
+   `.claude/protocols/consensus-pow.md` names it alongside the other two for exactly that reason.
 
 **The ordering does not weaken ETC's authority where ETC is the authority.** A value ETC adjusts is
 governed by the ECIP and a mechanism only ETC specifies is governed by ETC alone; those are unchanged.

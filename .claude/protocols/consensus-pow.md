@@ -31,6 +31,30 @@ file as having closed that gap.
 
 ---
 
+## The reference clients for this family — three, and one of them is not obvious
+
+**The header above requires every fact here to be checked against a specification, a proposal, or a
+reference client, and until 2026-08-19 it named none.** These are the three, and they are not
+interchangeable.
+
+| Client | Standing for proof-of-work |
+|---|---|
+| **`ethereumclassic/core-geth`** | **What Ethereum Classic actually runs.** Authoritative for what the network does, which is not always what a specification says it should. Note the corpus clone and the work tree at `repos/core-geth` share a last path component and are different trees at different dates |
+| **`ethereum/go-ethereum-pow`** @ `v1.10.26` | **go-ethereum while it still ran proof-of-work, and it is production-grade at a scale nothing else here matches** — it ran the largest proof-of-work EVM network in production for years. **Current `go-ethereum` cannot serve this role**: `dde2da0ef` removed ethash on 2023-05-03, first shipped in v1.12.0, and `master` retains only shims. Frozen deliberately; being behind is correct |
+| **`besu-eth/besu-etc`** @ `eb4248c997` | A **reference build, not a mainstream client** — the standing caveat in `.claude/rules/evidence-and-citation.md` applies, and its agreement with besu is usually besu's code rather than an Ethereum Classic decision. Its value here is JVM *shape* |
+
+**Read `go-ethereum-pow` as a peer of core-geth, not as a footnote to it.** It is the proof-of-work
+implementation with the largest production history in the ecosystem, and for a mechanism the two
+families share it is frequently the clearest expression of the behavior — clearer than the client
+that inherited it downstream.
+
+**Where they disagree, the ECIP governs anything Ethereum Classic adjusts or specifies alone**, and
+that is unchanged by any of the above. What these three settle is behavior, not policy.
+
+**Reading order across families is `.claude/reference-corpus.md` § "Reading order"** — proof-of-stake
+Ethereum is read first for anything the families share, because that is where EVM development
+happens and this family historically lags it. That ordering does not apply *within* this table.
+
 ## Membership — the family, not a fixed list of networks
 
 Ethereum Classic mainnet and the Mordor testnet are today's members. **A
