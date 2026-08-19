@@ -140,3 +140,95 @@ class StateTrieWorldStateSpec extends AnyFlatSpec:
       "a leaf naming the root its storage had beforehand commits the account to storage it no longer has"
     )
   }
+
+  "a transaction count" should "be read from the account trie" in {
+    val state = EvmFixtures.stateTrie()
+    state.putAccount(owner, UInt64.fromBits(3L), wei(0), state.putCode(Bytes.Empty))
+    assert(over(state).nonceOf(owner) == UInt64.fromBits(3L), "the count the account leaf carries")
+  }
+
+  it should "be zero where no account exists" in
+    assert(over(EvmFixtures.stateTrie()).nonceOf(stranger) == UInt64.Zero, "the empty account has never sent anything")
+
+  "an account this state holds" should "be reported as existing" in {
+    val state = EvmFixtures.stateTrie()
+    account(state, owner, 0, Bytes.Empty)
+    assert(over(state).accountExists(owner), "a message call to it costs less than one to an address never used")
+  }
+
+  it should "be reported as absent where the trie holds no leaf" in
+    assert(
+      !over(EvmFixtures.stateTrie()).accountExists(stranger),
+      "existence is the one read that does not answer as the empty account"
+    )
+
+  "an account with a slot set" should "be reported as having storage" in {
+    val state = EvmFixtures.stateTrie()
+    account(state, owner, 0, Bytes.Empty)
+    over(state).setStorage(owner, EvmFixtures.word(1), EvmFixtures.word(42))
+    assert(over(state).hasStorage(owner), "a creation refuses an address holding storage")
+  }
+
+  it should "be reported as having none once the slot is cleared" in {
+    val state = EvmFixtures.stateTrie()
+    account(state, owner, 0, Bytes.Empty)
+    over(state).setStorage(owner, EvmFixtures.word(1), EvmFixtures.word(42))
+    over(state).setStorage(owner, EvmFixtures.word(1), Word.Zero)
+    assert(!over(state).hasStorage(owner), "the cleared slot left the trie holding no key at all")
+  }
+
+  "a balance written" should "be read back" in {
+    val state = EvmFixtures.stateTrie()
+    over(state).setBalance(owner, EvmFixtures.word(1234))
+    assert(over(state).balanceOf(owner) == EvmFixtures.word(1234), "what a transfer wrote is what a reader sees")
+  }
+
+  it should "bring an account into being where none existed" in {
+    val state = EvmFixtures.stateTrie()
+    over(state).setBalance(stranger, EvmFixtures.word(1))
+    assert(
+      over(state).accountExists(stranger),
+      "the specification writes through the empty account rather than failing"
+    )
+  }
+
+  it should "leave the other fields as they were" in {
+    val state = EvmFixtures.stateTrie()
+    state.putAccount(owner, UInt64.fromBits(3L), wei(0), state.putCode(EvmFixtures.bytesOf("6001")))
+    over(state).setBalance(owner, EvmFixtures.word(1234))
+    assert(over(state).nonceOf(owner) == UInt64.fromBits(3L), "one field written is one field changed")
+  }
+
+  "a transaction count written" should "be read back" in {
+    val state = EvmFixtures.stateTrie()
+    over(state).setNonce(owner, UInt64.fromBits(3L))
+    assert(over(state).nonceOf(owner) == UInt64.fromBits(3L), "what a creation wrote is what a reader sees")
+  }
+
+  "code written" should "be read back" in {
+    val state = EvmFixtures.stateTrie()
+    over(state).setCode(owner, EvmFixtures.bytesOf("6001"))
+    assert(over(state).codeOf(owner) == EvmFixtures.bytesOf("6001"), "what a deployment wrote is what a reader sees")
+  }
+
+  it should "be stored under its own digest" in {
+    val state = EvmFixtures.stateTrie()
+    over(state).setCode(owner, EvmFixtures.bytesOf("6001"))
+    assert(
+      state.getCode(state.putCode(EvmFixtures.bytesOf("6001"))).contains(EvmFixtures.bytesOf("6001")),
+      "an account names its code by digest, so the bytes have to be reachable by it"
+    )
+  }
+
+  "a touch" should "bring an account into being" in {
+    val state = EvmFixtures.stateTrie()
+    over(state).touch(stranger)
+    assert(over(state).accountExists(stranger), "an invocation is given the account it runs as before its code runs")
+  }
+
+  it should "leave an account that already exists as it was" in {
+    val state = EvmFixtures.stateTrie()
+    state.putAccount(owner, UInt64.fromBits(3L), wei(1234), state.putCode(Bytes.Empty))
+    over(state).touch(owner)
+    assert(over(state).balanceOf(owner) == EvmFixtures.word(1234), "a touch says nothing about what the account holds")
+  }

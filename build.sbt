@@ -385,6 +385,9 @@ lazy val trie = (project in file("modules/trie"))
 //           code hash are read off it
 //   trie    the state a root is computed over, which the seam's one production
 //           implementation is written against
+//   crypto  an account created by running code is named by a digest of its
+//           creator and that creator's transaction count, and one operation
+//           answers with the digest of a region of memory
 //
 // The interface stays on this side of the seam, which is what both surveyed
 // clients do -- go-ethereum declares `StateDB` inside `core/vm` and lets
@@ -395,7 +398,7 @@ lazy val trie = (project in file("modules/trie"))
 // key/value store, and it arrives transitively for the tests that build a state
 // trie rather than being declared for a type this module does not have.
 lazy val evm = (project in file("modules/evm"))
-  .dependsOn(bytes, rlp, types, trie)
+  .dependsOn(bytes, rlp, crypto, types, trie)
   .settings(
     name := "fukuii-evm",
     libraryDependencies ++= testDeps

@@ -40,11 +40,15 @@ enum Outcome:
   *
   * go-ethereum forbids the same condition earlier, by refusing to construct a
   * table whose entries have no implementation. That is the stronger form and it
-  * is available only to a machine that is complete; until this one is, the
-  * condition is reported at the point it is met.
+  * is available only to a machine that is complete; this one is complete for the
+  * operations it defines, and the condition that outlives that is narrower:
+  * every operation runs, and a table can still ask for one to be priced in a
+  * way this build does not price it. A chain configuration produces the table,
+  * so that is a reachable disagreement between the table and the machine rather
+  * than a gap waiting to be filled.
   *
-  * Reversing trigger: the last operation in the table gains an implementation,
-  * at which point nothing can construct this and it is deleted along with the
-  * result type that carries it.
+  * Reversing trigger: the table and the machine can no longer disagree about
+  * how an operation is priced -- at which point nothing can construct this and
+  * it is deleted along with the result type that carries it.
   */
 final case class Unsupported(opcode: Opcode)

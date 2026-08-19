@@ -1,6 +1,6 @@
 package org.fukuii.evm
 
-import org.fukuii.bytes.{Address, Bytes, Hash}
+import org.fukuii.bytes.{Address, Bytes, Hash, UInt64}
 import org.fukuii.storage.{
   InMemoryKeyValueStore,
   KeyValueStore,
@@ -38,20 +38,43 @@ object EvmFixtures:
     * contract and not a shortcut -- turning it into a removal is the trie
     * implementation's job, and a double that did it here would agree with the
     * real one for the wrong reason.
+    *
+    * Existence is tracked separately from the field maps, because a written
+    * field and an account brought into being with no fields written are both
+    * accounts and only the first would show in a map of values.
     */
   final class MapWorldState extends WorldState:
 
     val balances: mutable.Map[Address, Word] = mutable.Map.empty
+    val nonces: mutable.Map[Address, UInt64] = mutable.Map.empty
     val codes: mutable.Map[Address, Bytes] = mutable.Map.empty
     val slots: mutable.Map[(Address, Word), Word] = mutable.Map.empty
+    val present: mutable.Set[Address] = mutable.Set.empty
 
     def balanceOf(address: Address): Word = balances.getOrElse(address, Word.Zero)
 
+    def nonceOf(address: Address): UInt64 = nonces.getOrElse(address, UInt64.Zero)
+
     def codeOf(address: Address): Bytes = codes.getOrElse(address, Bytes.Empty)
+
+    def accountExists(address: Address): Boolean =
+      present.contains(address) || balances.contains(address) || nonces.contains(address) ||
+        codes.contains(address)
+
+    def hasStorage(address: Address): Boolean = slots.keysIterator.exists(_._1 == address)
 
     def storageAt(address: Address, slot: Word): Word = slots.getOrElse((address, slot), Word.Zero)
 
     def setStorage(address: Address, slot: Word, value: Word): Unit = slots((address, slot)) = value
+
+    def setBalance(address: Address, value: Word): Unit = balances(address) = value
+
+    def setNonce(address: Address, value: UInt64): Unit = nonces(address) = value
+
+    def setCode(address: Address, code: Bytes): Unit = codes(address) = code
+
+    def touch(address: Address): Unit =
+      val _ = present.add(address)
 
   def store(): KeyValueStore = new InMemoryKeyValueStore(Layout(RepresentationId("evm-spec"), Set.empty))
 
@@ -89,8 +112,15 @@ object EvmFixtures:
     */
   def blockHashAt(number: BigInt): Hash = hash(number.toInt & 0xff)
 
+  /** An environment over `world`, journaled, because that is what the machine
+    * requires and what production supplies.
+    *
+    * A test reading a write back reads it through the environment's own world
+    * state rather than out of the map beneath, since a write is held by the
+    * journal until something commits it.
+    */
   def environment(
       world: WorldState = new MapWorldState,
       inBlock: BlockContext = block,
       ofTransaction: TransactionContext = transaction
-  ): Environment = new Environment(world, blockHashAt, inBlock, ofTransaction)
+  ): Environment = new Environment(new JournaledWorldState(world), blockHashAt, inBlock, ofTransaction)

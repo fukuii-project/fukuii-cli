@@ -1,6 +1,6 @@
 package org.fukuii.evm
 
-import org.fukuii.bytes.{Address, Bytes}
+import org.fukuii.bytes.{Address, Bytes, UInt64}
 
 import scala.collection.mutable
 
@@ -17,42 +17,79 @@ import scala.collection.mutable
   * nested one. go-ethereum reaches the same place through a journal it rewinds
   * to a marked point.
   *
-  * That is why this is not waiting on nested invocations to exist: a frame that
-  * halts has to be undone whether or not anything called it, and a seam whose
-  * writes had already reached the trie would have nothing left to undo.
+  * ==What is held back, and what a snapshot has to cover==
   *
-  * ==What this covers, and what widens it==
+  * Every write the seam admits: storage, balance, nonce, code, and the bare
+  * existence an account gains by being touched. A snapshot that covered only
+  * some of them would restore an invocation to a state it never occupied --
+  * which is worse than not restoring at all, because it would still look
+  * consistent.
   *
-  * Storage writes, which are the only writes the operations built against this
-  * seam can make. Balance, nonce and code writes arrive with value transfer and
-  * contract creation, and each is a field on this journal rather than a change
-  * to its shape.
+  * ==The machine's environment names this type rather than [[WorldState]]==
   *
-  * ==Nothing here takes the snapshot==
-  *
-  * [[snapshot]] and [[restore]] are the mechanism; deciding when an invocation
-  * begins and whether it ended in error belongs to whatever drives invocations,
-  * which does not exist yet. Until it does, a caller running a frame that can
-  * halt is what stands between a failed invocation and a state root that
-  * commits to its writes.
+  * Not an oversight: every invocation of this fork must be undoable, so a view
+  * with no way to undo cannot run one. The base beneath is any `WorldState`, so
+  * what varies -- a trie, a test double, a view at an earlier block -- varies
+  * where it should.
   */
 final class JournaledWorldState(base: WorldState) extends WorldState:
 
-  private val pending: mutable.LinkedHashMap[(Address, Word), Word] = mutable.LinkedHashMap.empty
+  private val storage: mutable.LinkedHashMap[(Address, Word), Word] = mutable.LinkedHashMap.empty
+  private val balances: mutable.LinkedHashMap[Address, Word] = mutable.LinkedHashMap.empty
+  private val nonces: mutable.LinkedHashMap[Address, UInt64] = mutable.LinkedHashMap.empty
+  private val codes: mutable.LinkedHashMap[Address, Bytes] = mutable.LinkedHashMap.empty
+  private val brought: mutable.LinkedHashSet[Address] = mutable.LinkedHashSet.empty
 
-  def balanceOf(address: Address): Word = base.balanceOf(address)
+  def balanceOf(address: Address): Word = balances.getOrElse(address, base.balanceOf(address))
 
-  def codeOf(address: Address): Bytes = base.codeOf(address)
+  def nonceOf(address: Address): UInt64 = nonces.getOrElse(address, base.nonceOf(address))
+
+  def codeOf(address: Address): Bytes = codes.getOrElse(address, base.codeOf(address))
+
+  def accountExists(address: Address): Boolean = brought.contains(address) || base.accountExists(address)
+
+  /** Any pending write to `address`'s storage answers true, whatever it wrote.
+    *
+    * That includes a pending zero, and it is the specification's own reading:
+    * its `account_has_storage` tests the address's pending map for emptiness
+    * and never the values in it.
+    */
+  def hasStorage(address: Address): Boolean =
+    storage.keysIterator.exists(_._1 == address) || base.hasStorage(address)
 
   def storageAt(address: Address, slot: Word): Word =
-    pending.getOrElse((address, slot), base.storageAt(address, slot))
+    storage.getOrElse((address, slot), base.storageAt(address, slot))
 
   def setStorage(address: Address, slot: Word, value: Word): Unit =
-    pending((address, slot)) = value
+    storage((address, slot)) = value
+
+  def setBalance(address: Address, value: Word): Unit =
+    bringIntoBeing(address)
+    balances(address) = value
+
+  def setNonce(address: Address, value: UInt64): Unit =
+    bringIntoBeing(address)
+    nonces(address) = value
+
+  def setCode(address: Address, code: Bytes): Unit =
+    bringIntoBeing(address)
+    codes(address) = code
+
+  def touch(address: Address): Unit = bringIntoBeing(address)
+
+  private def bringIntoBeing(address: Address): Unit =
+    if !base.accountExists(address) then
+      val _ = brought.add(address)
 
   /** What this has written so far, in a form [[restore]] can put back. */
   def snapshot(): JournaledWorldState.Snapshot =
-    new JournaledWorldState.Snapshot(pending.toMap)
+    new JournaledWorldState.Snapshot(
+      storage.toMap,
+      balances.toMap,
+      nonces.toMap,
+      codes.toMap,
+      brought.toSet
+    )
 
   /** Returns the held writes to what they were when `taken` was made.
     *
@@ -61,21 +98,42 @@ final class JournaledWorldState(base: WorldState) extends WorldState:
     * restore is the one the failed invocation never saw.
     */
   def restore(taken: JournaledWorldState.Snapshot): Unit =
-    pending.clear()
-    pending ++= taken.writes
+    storage.clear()
+    val _ = storage ++= taken.storage
+    balances.clear()
+    val _ = balances ++= taken.balances
+    nonces.clear()
+    val _ = nonces ++= taken.nonces
+    codes.clear()
+    val _ = codes ++= taken.codes
+    brought.clear()
+    val _ = brought ++= taken.brought
 
   /** Passes every held write down to the state beneath and stops holding them.
     *
     * A zero is passed down as a zero, because the layer below is where a zero
     * becomes an absence -- see [[StateTrieWorldState]].
     *
-    * The order writes are passed in is not a property anything below depends
-    * on: a trie commits to the mapping it ends up holding and not to the order
-    * it was built in.
+    * Storage goes first, and that ordering is load-bearing rather than tidy: an
+    * implementation over a two-level trie reads an account's storage root at
+    * the moment it writes the account, so an account written before its own
+    * storage commits to the root the storage had beforehand.
+    *
+    * Within each kind the order is not a property anything below depends on: a
+    * trie commits to the mapping it ends up holding and not to the order it was
+    * built in.
     */
   def commit(): Unit =
-    pending.foreach((slot, value) => base.setStorage(slot._1, slot._2, value))
-    pending.clear()
+    storage.foreach((slot, value) => base.setStorage(slot._1, slot._2, value))
+    brought.foreach(base.touch)
+    codes.foreach((address, code) => base.setCode(address, code))
+    nonces.foreach((address, value) => base.setNonce(address, value))
+    balances.foreach((address, value) => base.setBalance(address, value))
+    storage.clear()
+    balances.clear()
+    nonces.clear()
+    codes.clear()
+    brought.clear()
 
 object JournaledWorldState:
 
@@ -85,4 +143,10 @@ object JournaledWorldState:
     * which keeps a snapshot from becoming a second way to ask what storage
     * holds.
     */
-  final class Snapshot private[evm] (private[evm] val writes: Map[(Address, Word), Word])
+  final class Snapshot private[evm] (
+      private[evm] val storage: Map[(Address, Word), Word],
+      private[evm] val balances: Map[Address, Word],
+      private[evm] val nonces: Map[Address, UInt64],
+      private[evm] val codes: Map[Address, Bytes],
+      private[evm] val brought: Set[Address]
+  )

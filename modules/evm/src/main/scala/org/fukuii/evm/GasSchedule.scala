@@ -35,11 +35,20 @@ package org.fukuii.evm
   *
   * ==A refund is a price too, and is repriced the same way==
   *
-  * [[refundStorageClear]] is not a charge, but it is a number a proposal
-  * changes and it is settled against the same transaction the charges are, so
-  * it belongs with them rather than as a constant at the one site that earns
-  * it. The specification groups it the same way, under its own heading in the
-  * same table of costs.
+  * [[refundStorageClear]] and [[refundSelfDestruct]] are not charges, but each
+  * is a number a proposal changes and each is settled against the same
+  * transaction the charges are, so they belong with them rather than as
+  * constants at the sites that earn them. The specification groups them the
+  * same way, under their own heading in the same table of costs.
+  *
+  * ==A message call's price is four numbers, not one==
+  *
+  * [[callBase]] is what the operation costs before anything about its
+  * destination is known; [[newAccount]] is added where this state has never
+  * held the account being called; [[callValue]] is added where anything is sent;
+  * and [[callStipend]] is given back to the callee out of that last charge, so
+  * that an account paid something always has enough gas to notice. They are
+  * separate fields because proposals have moved them separately.
   *
   * ==Memory expansion is deliberately absent==
   *
@@ -62,8 +71,13 @@ final case class GasSchedule(
     storageSet: BigInt,
     storageReset: BigInt,
     refundStorageClear: BigInt,
+    refundSelfDestruct: BigInt,
     callBase: BigInt,
+    callValue: BigInt,
+    callStipend: BigInt,
+    newAccount: BigInt,
     createBase: BigInt,
+    codeDepositPerByte: BigInt,
     expBase: BigInt,
     expPerByte: BigInt,
     keccak256Base: BigInt,
@@ -98,8 +112,13 @@ object GasSchedule:
     storageSet = BigInt(20000),
     storageReset = BigInt(5000),
     refundStorageClear = BigInt(15000),
+    refundSelfDestruct = BigInt(24000),
     callBase = BigInt(40),
+    callValue = BigInt(9000),
+    callStipend = BigInt(2300),
+    newAccount = BigInt(25000),
     createBase = BigInt(32000),
+    codeDepositPerByte = BigInt(200),
     expBase = BigInt(10),
     expPerByte = BigInt(10),
     keccak256Base = BigInt(30),

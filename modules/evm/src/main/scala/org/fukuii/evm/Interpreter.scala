@@ -1,8 +1,19 @@
 package org.fukuii.evm
 
-import org.fukuii.bytes.{Address, Bytes}
+import org.fukuii.bytes.{Address, Bytes, Hash, UInt64}
+import org.fukuii.crypto.Keccak256
+import org.fukuii.types.Log
 
-/** Runs a program against a frame, one operation at a time.
+/** Runs one invocation, and the operations it is made of.
+  *
+  * ==An invocation is more than its loop==
+  *
+  * Running the code is the middle of it. Around that sit the account being
+  * brought into being, the value being moved, and -- where anything goes wrong
+  * -- all of it being undone. Those are here rather than at each call site
+  * because the operations that start a nested invocation call straight back
+  * into this, so a caller that assembled them itself would be assembling them
+  * once per operation.
   *
   * ==Nothing here asks which network or which fork==
   *
@@ -31,8 +42,64 @@ import org.fukuii.bytes.{Address, Bytes}
   */
 object Interpreter:
 
-  /** Runs until the program stops, halts, or meets something unbuilt. */
+  /** Runs one invocation: gives it the account it runs as, moves any value it
+    * carries, executes its code, and undoes all of that if it does not end
+    * normally.
+    *
+    * ==The undo is the reason this is not just the loop==
+    *
+    * At this fork an invocation that halts leaves no trace, and that has to be
+    * true of the outermost invocation as much as of a nested one -- the
+    * specification takes its snapshot inside the one function both paths go
+    * through, and go-ethereum marks its journal in the same place. A caller that
+    * ran the loop directly and reverted afterwards would be re-implementing this
+    * once per call site, and would have to get the ordering right each time: the
+    * snapshot is taken before the account is brought into being, so a failed
+    * invocation does not leave one behind.
+    *
+    * An entry the table admits and this build cannot run is undone too. It is
+    * not a chain outcome, so nothing above can incorporate it, and leaving a
+    * half-written world behind would make it look like one.
+    */
   def run(
+      frame: Frame,
+      table: OpcodeTable,
+      schedule: GasSchedule,
+      environment: Environment
+  ): Either[Unsupported, Outcome] =
+    if frame.message.depth > Stack.Limit then
+      frame.gasLeft = BigInt(0)
+      Right(Outcome.Halted(Halt.StackDepthLimit))
+    else
+      val world = environment.world
+      val taken = world.snapshot()
+      world.touch(frame.message.currentTarget)
+      transfer(world, frame.message)
+      val result = execute(frame, table, schedule, environment)
+      result match
+        case Right(Outcome.Stopped(_, _)) => ()
+        case _                            => world.restore(taken)
+      result
+
+  /** Moves an invocation's value from its caller to the account it runs as.
+    *
+    * The caller's balance was checked by whichever operation asked for the
+    * invocation, so a shortfall here is a caller that did not check rather than
+    * a state a chain can reach -- and the machine's word wraps, so an unchecked
+    * subtraction would turn a shortfall into an enormous balance rather than
+    * into a failure.
+    */
+  private def transfer(world: JournaledWorldState, message: Message): Unit =
+    if !message.value.isZero then
+      val available = world.balanceOf(message.caller)
+      if available.toBigInt < message.value.toBigInt then
+        throw new IllegalStateException(
+          "an invocation was started carrying more value than its caller holds, from " + message.caller.toHex
+        )
+      world.setBalance(message.caller, available.sub(message.value))
+      world.setBalance(message.currentTarget, world.balanceOf(message.currentTarget).add(message.value))
+
+  private def execute(
       frame: Frame,
       table: OpcodeTable,
       schedule: GasSchedule,
@@ -44,7 +111,7 @@ object Interpreter:
       table.operationAt(code) match
         case None            => fault = Some(Fault.Exceptional(Halt.InvalidOpcode(code)))
         case Some(operation) =>
-          step(frame, operation, schedule, environment) match
+          step(frame, operation, table, schedule, environment) match
             case Left(met) => fault = Some(met)
             case Right(()) => ()
     fault match
@@ -68,6 +135,7 @@ object Interpreter:
   private def step(
       frame: Frame,
       operation: Operation,
+      table: OpcodeTable,
       schedule: GasSchedule,
       environment: Environment
   ): Either[Fault, Unit] =
@@ -338,7 +406,372 @@ object Interpreter:
             advance(frame)
         )
 
+      // ── The digest of a region of memory ───────────────────────────────────
+
+      case Opcode.Keccak256 =>
+        exceptional(
+          for
+            offset <- frame.stack.pop()
+            size <- frame.stack.pop()
+            settled = schedule.keccak256Base + schedule.keccak256PerWord * wholeWords(size)
+            _ <- reach(frame, settled, (offset, size))
+            digest = Keccak256.hash(regionOf(frame, offset, size).toIArray)
+            _ <- frame.stack.push(Word.fromBytes(Bytes.fromIArray(digest.toBytes)))
+          yield advance(frame)
+        )
+
+      // ── What the invocation emitted ────────────────────────────────────────
+
+      // The topics sit below the region on the stack, so they are taken after
+      // it, and the count comes from which operation this is rather than from
+      // an operand.
+      case emitting if emitting.code >= Opcode.Log0.code && emitting.code <= Opcode.Log4.code =>
+        val topicCount = emitting.code - Opcode.Log0.code
+        exceptional(
+          for
+            offset <- frame.stack.pop()
+            size <- frame.stack.pop()
+            topics <- takeTopics(frame, topicCount)
+            settled = schedule.logBase + schedule.logDataPerByte * size.toBigInt +
+              schedule.logTopic * topicCount
+            _ <- reach(frame, settled, (offset, size))
+          yield
+            frame.logs = frame.logs :+ Log(frame.message.currentTarget, topics, regionOf(frame, offset, size))
+            advance(frame)
+        )
+
+      // ── Ending this invocation with something to hand back ─────────────────
+
+      // The program counter is left where it is. The specification says so
+      // explicitly, and nothing reads it afterwards because the invocation has
+      // ended -- but a counter moved past the end of the code would make a
+      // resumed frame start somewhere it never reached.
+      case Opcode.Return =>
+        exceptional(
+          for
+            offset <- frame.stack.pop()
+            size <- frame.stack.pop()
+            _ <- reach(frame, schedule.zero, (offset, size))
+          yield
+            frame.output = regionOf(frame, offset, size)
+            frame.running = false
+        )
+
+      // ── Ending this invocation and giving its balance away ─────────────────
+
+      // The registration is what the transaction acts on later; nothing is
+      // removed here. Until the transaction ends the account still answers
+      // reads and still runs when called, which is why registering and
+      // destroying are separate acts in the specification too.
+      case Opcode.SelfDestruct =>
+        priced(operation) { gas =>
+          for
+            operand <- frame.stack.pop()
+            beneficiary = addressOf(operand)
+            originator = frame.message.currentTarget
+            _ = if !frame.alreadyRegistered(originator) then frame.refundCounter += schedule.refundSelfDestruct
+            _ <- frame.charge(gas)
+          yield
+            val world = environment.world
+            // Both balances are read before either is written, so an account
+            // naming itself as the beneficiary ends with nothing rather than
+            // with twice what it had.
+            val beneficiaryHeld = world.balanceOf(beneficiary)
+            val originatorHeld = world.balanceOf(originator)
+            world.setBalance(beneficiary, beneficiaryHeld.add(originatorHeld))
+            world.setBalance(originator, Word.Zero)
+            frame.accountsToDelete = frame.accountsToDelete + originator
+            frame.running = false
+        }
+
+      // ── Invocations this one starts ────────────────────────────────────────
+
+      case Opcode.Create   => create(frame, table, schedule, environment)
+      case Opcode.Call     => messageCall(frame, table, schedule, environment, CallForm.ToTheAccountNamed)
+      case Opcode.CallCode => messageCall(frame, table, schedule, environment, CallForm.WithTheNamedAccountsCode)
+
       case unbuilt => Left(Fault.NotBuilt(unbuilt))
+
+  /** Which account a message call runs as, and whose code it runs.
+    *
+    * The two forms differ in exactly this and nothing else, so they share one
+    * implementation and the difference is a value rather than a duplicated
+    * body. Both take the account to borrow code from off the stack.
+    */
+  private enum CallForm:
+
+    /** The account named on the stack runs, under its own storage. */
+    case ToTheAccountNamed
+
+    /** This account runs, under its own storage, using the named account's
+      * code.
+      */
+    case WithTheNamedAccountsCode
+
+  /** Starts a nested invocation of another account's code.
+    *
+    * ==The price is settled before the destination is looked at==
+    *
+    * Everything the caller pays -- the settled part, the surcharge for an
+    * account this state has never held, the surcharge for sending anything, and
+    * the whole of the gas being forwarded -- is charged in one go, before any
+    * balance is read. What the callee receives is that forwarded gas plus a
+    * stipend where value was sent, which comes out of the surcharge the caller
+    * already paid rather than out of the caller's remaining gas.
+    *
+    * ==A nested invocation that fails costs the caller everything it forwarded==
+    *
+    * There is no cheap failure at this fork, so a callee that halts returns no
+    * gas and the caller learns of it only from the zero this pushes. The two
+    * refusals that happen before the callee starts -- too little balance, and
+    * too deeply nested -- are different: they hand the forwarded gas straight
+    * back, because nothing ran.
+    */
+  private def messageCall(
+      frame: Frame,
+      table: OpcodeTable,
+      schedule: GasSchedule,
+      environment: Environment,
+      form: CallForm
+  ): Either[Fault, Unit] =
+    val world = environment.world
+    val taken =
+      for
+        requested <- frame.stack.pop()
+        named <- frame.stack.pop()
+        value <- frame.stack.pop()
+        inputOffset <- frame.stack.pop()
+        inputSize <- frame.stack.pop()
+        outputOffset <- frame.stack.pop()
+        outputSize <- frame.stack.pop()
+        codeAddress = addressOf(named)
+        runsAs = form match
+          case CallForm.ToTheAccountNamed        => codeAddress
+          case CallForm.WithTheNamedAccountsCode => frame.message.currentTarget
+        settled = schedule.callBase + requested.toBigInt +
+          (if world.accountExists(runsAs) then BigInt(0) else schedule.newAccount) +
+          (if value.isZero then BigInt(0) else schedule.callValue)
+        _ <- reach(frame, settled, (inputOffset, inputSize), (outputOffset, outputSize))
+      yield
+        val forwarded = requested.toBigInt + (if value.isZero then BigInt(0) else schedule.callStipend)
+        val input = regionOf(frame, inputOffset, inputSize)
+        (codeAddress, runsAs, value, forwarded, input, outputOffset, outputSize)
+
+    taken match
+      case Left(halt) => Left(Fault.Exceptional(halt))
+      case Right((codeAddress, runsAs, value, forwarded, input, outputOffset, outputSize)) =>
+        if world.balanceOf(frame.message.currentTarget).toBigInt < value.toBigInt ||
+          frame.message.depth + 1 > Stack.Limit
+        then
+          frame.gasLeft += forwarded
+          exceptional(frame.stack.push(Word.Zero).map(_ => advance(frame)))
+        else
+          val nested = new Frame(
+            Message(frame.message.currentTarget, runsAs, value, input, frame.message.depth + 1),
+            Code(world.codeOf(codeAddress)),
+            forwarded,
+            frame.registeredSoFar
+          )
+          run(nested, table, schedule, environment) match
+            case Left(unsupported) => Left(Fault.NotBuilt(unsupported.opcode))
+            case Right(outcome)    =>
+              val answer = outcome match
+                case Outcome.Stopped(gasLeft, output) =>
+                  incorporate(frame, nested, gasLeft)
+                  writeBack(frame, outputOffset, outputSize, output)
+                  Word.One
+                case Outcome.Halted(_) => Word.Zero
+              exceptional(frame.stack.push(answer).map(_ => advance(frame)))
+
+  /** Starts a nested invocation that deploys a new account's code.
+    *
+    * ==Three ways this ends without running anything, and they differ in gas==
+    *
+    * A creator that cannot cover the endowment, one whose transaction count has
+    * no room to grow, and a nesting one level too deep all hand the forwarded
+    * gas straight back. A destination that is not free to deploy over does not:
+    * it consumes everything forwarded and still increments the creator's count,
+    * which is the specification's own asymmetry rather than an oversight here.
+    *
+    * ==The address is settled before the code runs==
+    *
+    * It comes from the creator and the count it holds now, so the code being
+    * deployed can read its own address and nothing can move it.
+    */
+  private def create(
+      frame: Frame,
+      table: OpcodeTable,
+      schedule: GasSchedule,
+      environment: Environment
+  ): Either[Fault, Unit] =
+    val world = environment.world
+    val taken =
+      for
+        endowment <- frame.stack.pop()
+        offset <- frame.stack.pop()
+        size <- frame.stack.pop()
+        _ <- reach(frame, schedule.createBase, (offset, size))
+      yield (endowment, regionOf(frame, offset, size))
+
+    taken match
+      case Left(halt)                   => Left(Fault.Exceptional(halt))
+      case Right((endowment, initCode)) =>
+        // Everything left is forwarded, so the creator holds nothing while the
+        // deployment runs and is given back only what the deployment did not
+        // spend.
+        val forwarded = frame.gasLeft
+        frame.gasLeft = BigInt(0)
+        val creator = frame.message.currentTarget
+        val count = world.nonceOf(creator)
+        val target = ContractAddress.of(creator, count)
+        if world.balanceOf(creator).toBigInt < endowment.toBigInt ||
+          count == UInt64.MaxValue ||
+          frame.message.depth + 1 > Stack.Limit
+        then
+          frame.gasLeft += forwarded
+          exceptional(frame.stack.push(Word.Zero).map(_ => advance(frame)))
+        else if !deployableAt(world, target) then
+          // The count still rises. A destination that is not free to deploy
+          // over consumes the creator's next address as surely as one that is.
+          world.setNonce(creator, UInt64.fromBits(count.toBits + 1))
+          exceptional(frame.stack.push(Word.Zero).map(_ => advance(frame)))
+        else
+          world.setNonce(creator, UInt64.fromBits(count.toBits + 1))
+          val nested = new Frame(
+            Message(creator, target, endowment, Bytes.Empty, frame.message.depth + 1),
+            Code(initCode),
+            forwarded,
+            frame.registeredSoFar
+          )
+          deploy(nested, table, schedule, environment) match
+            case Left(unsupported) => Left(Fault.NotBuilt(unsupported.opcode))
+            case Right(outcome)    =>
+              val answer = outcome match
+                case Outcome.Stopped(gasLeft, _) =>
+                  incorporate(frame, nested, gasLeft)
+                  wordOf(target)
+                case Outcome.Halted(_) => Word.Zero
+              exceptional(frame.stack.push(answer).map(_ => advance(frame)))
+
+  /** Runs a deployment and stores whatever it returned as the new account's
+    * code.
+    *
+    * ==Failing to pay for the code is not a failure at this fork==
+    *
+    * A deployment that returns more code than its remaining gas can pay to store
+    * still SUCCEEDS: it keeps that gas, deploys nothing, and the creating
+    * operation is told the address as though code had been stored. Both sources
+    * are explicit about it -- the specification catches the charge and empties
+    * the output rather than recording an error, and go-ethereum carries the same
+    * behavior behind a check for the later proposal that reverses it. An
+    * account left behind with no code is the visible consequence, and it is the
+    * correct one here.
+    *
+    * ==No second snapshot is taken here, and that is a property rather than an
+    * omission==
+    *
+    * The specification wraps this path in its own snapshot as well, with a
+    * storage clear between the two. That clear cannot do anything under the
+    * rule applied by [[deployableAt]], which refuses to deploy over an account
+    * holding storage at all -- so nothing happens between the two snapshots and
+    * the outer one restores exactly what the inner one already did. The code
+    * stored below sits outside both, which is what keeps a successful
+    * deployment's code from being undone.
+    */
+  private def deploy(
+      nested: Frame,
+      table: OpcodeTable,
+      schedule: GasSchedule,
+      environment: Environment
+  ): Either[Unsupported, Outcome] =
+    run(nested, table, schedule, environment).map {
+      case Outcome.Stopped(_, code) =>
+        nested.charge(schedule.codeDepositPerByte * BigInt(code.length)) match
+          case Left(_) =>
+            nested.output = Bytes.Empty
+            Outcome.Stopped(nested.gasLeft, Bytes.Empty)
+          case Right(()) =>
+            environment.world.setCode(nested.message.currentTarget, code)
+            Outcome.Stopped(nested.gasLeft, code)
+      case halted => halted
+    }
+
+  /** Whether a creation may deploy at `address`.
+    *
+    * ==The two authorities disagree about the third condition==
+    *
+    * A transaction count of zero and no code are required by both. The
+    * executable specification at `ccaaaba58` adds a third -- `account_deployable`
+    * in `frontier/state_tracker.py` refuses an address holding any storage --
+    * and go-ethereum at `6bb0588ad` does not: `core/vm/evm.go` tests the count
+    * and the code hash only, and its storage condition
+    * (`isEIP7610RejectedAccount`) short-circuits to false before EIP-158 and
+    * then applies to an enumerated set of addresses rather than to the rule.
+    *
+    * The specification's reading is followed because it is what the corpus this
+    * layer is certified against is generated from, and because refusing is the
+    * safer direction: the alternative deploys over storage that is still there.
+    *
+    * Reversing trigger: a published fixture that a creation over an account
+    * holding storage, with a zero count and no code, is expected to succeed.
+    */
+  private def deployableAt(world: WorldState, address: Address): Boolean =
+    world.nonceOf(address) == UInt64.Zero && world.codeOf(address).isEmpty && !world.hasStorage(address)
+
+  /** Takes what a nested invocation earned into the invocation that started it.
+    *
+    * Only a nested invocation that ended normally reaches this. One that halted
+    * has nothing to give: its gas is gone, and its logs, its refunds and its
+    * registrations are discarded along with the state it wrote.
+    */
+  private def incorporate(frame: Frame, nested: Frame, gasLeft: BigInt): Unit =
+    frame.gasLeft += gasLeft
+    frame.logs = frame.logs ++ nested.logs
+    frame.refundCounter += nested.refundCounter
+    frame.accountsToDelete = frame.accountsToDelete | nested.accountsToDelete
+
+  /** Copies as much of what a nested invocation returned as the caller made
+    * room for, and no more.
+    *
+    * The caller names the room when it makes the call and has already paid to
+    * hold it, so a longer answer is truncated rather than refused and a shorter
+    * one leaves the rest of that room as it was.
+    */
+  private def writeBack(frame: Frame, offset: Word, size: Word, output: Bytes): Unit =
+    val room = if size.toBigInt > BigInt(output.length) then output.length else size.toBigInt.toInt
+    if room > 0 then frame.memory.write(startOf(offset, size), Bytes.fromIArray(output.toIArray.take(room)))
+
+  /** Takes `count` topics off the stack, in the order the operation lists them.
+    */
+  private def takeTopics(frame: Frame, count: Int): Either[Halt, Vector[Hash]] =
+    var taken: Either[Halt, Vector[Hash]] = Right(Vector.empty)
+    var remaining = count
+    while remaining > 0 && taken.isRight do
+      taken = for
+        soFar <- taken
+        topic <- frame.stack.pop()
+      yield soFar :+ Hash.fromBytesTruncating(topic.toBytes.toIArray)
+      remaining -= 1
+    taken
+
+  /** How many whole words `size` bytes occupy, which is the unit the digest and
+    * the copying operations are priced in.
+    */
+  private def wholeWords(size: Word): BigInt = (size.toBigInt + Word.Width - 1) / Word.Width
+
+  /** The bytes of one region of memory, read after it has been paid for. */
+  private def regionOf(frame: Frame, offset: Word, size: Word): Bytes =
+    if size.isZero then Bytes.Empty else frame.memory.read(startOf(offset, size), size.toBigInt.toInt)
+
+  /** Where a region begins, as an index.
+    *
+    * A region of no bytes begins nowhere and is never read, so its offset is
+    * not narrowed -- an empty region at an offset no memory could reach is
+    * legitimate and costs nothing, and narrowing it would be arithmetic on a
+    * number that does not fit.
+    */
+  private def startOf(offset: Word, size: Word): Int =
+    if size.isZero then 0 else offset.toBigInt.toInt
 
   /** Runs `body` with the operation's settled price, or reports that this build
     * cannot run the entry.
@@ -514,18 +947,41 @@ object Interpreter:
 
   /** Charges `base` plus what it costs to reach `offset + size` bytes of
     * memory, grows to it, and answers the offset as an index.
-    *
-    * The bound is not a policy: memory is indexed by `Int`, and reaching past
-    * that costs more gas than any schedule can express, so it is refused as
-    * unaffordable rather than as too large.
     */
   private def expand(frame: Frame, base: BigInt, offset: Word, size: BigInt): Either[Halt, Int] =
-    val reach = offset.toBigInt + size
+    val extent = Word(size)
+    reach(frame, base, (offset, extent)).map(_ => startOf(offset, extent))
+
+  /** Charges `settled` plus what it costs to hold every one of `regions`, and
+    * grows memory far enough for all of them.
+    *
+    * ==A region of no bytes costs nothing, whatever offset it names==
+    *
+    * The specification skips an empty region outright rather than measuring it,
+    * so a zero-length read at an offset no memory could reach is affordable.
+    * Charging it would make an operation that touches nothing unaffordable.
+    *
+    * ==Several regions cost what the furthest of them costs==
+    *
+    * The specification charges them one at a time, each against the size the
+    * one before it left, which sums to the cost of reaching the furthest and
+    * nothing for the rest. Taking the furthest directly is that sum, and is
+    * independent of the order the regions are given in -- which the operations
+    * with two of them rely on, since the answer is written at an offset the
+    * caller chose and may sit either side of the input.
+    *
+    * ==The bound is not a policy==
+    *
+    * Memory is indexed by `Int`, and reaching past that costs more gas than any
+    * schedule can express, so it is refused as unaffordable rather than as too
+    * large.
+    */
+  private def reach(frame: Frame, settled: BigInt, regions: (Word, Word)*): Either[Halt, Unit] =
+    val furthest =
+      regions.filterNot(_._2.isZero).map(region => region._1.toBigInt + region._2.toBigInt).foldLeft(BigInt(0))(_ max _)
     for
-      _ <- frame.charge(base + GasCost.expansion(BigInt(frame.memory.size), reach))
-      start <- if reach > MaxReach then Left(Halt.OutOfGas) else Right((reach - size).toInt)
-    yield
-      frame.memory.ensure(reach.toInt)
-      start
+      _ <- frame.charge(settled + GasCost.expansion(BigInt(frame.memory.size), furthest))
+      _ <- if furthest > MaxReach then Left(Halt.OutOfGas) else Right(())
+    yield frame.memory.ensure(furthest.toInt)
 
   private val MaxReach: BigInt = BigInt(Int.MaxValue - Word.Width)

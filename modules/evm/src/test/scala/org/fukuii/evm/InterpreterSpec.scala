@@ -1,6 +1,6 @@
 package org.fukuii.evm
 
-import org.fukuii.bytes.Bytes
+import org.fukuii.bytes.{Bytes, Hash}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** The loop, the charging, and the ends execution can reach.
@@ -42,26 +42,23 @@ class InterpreterSpec extends AnyFlatSpec:
 
   private def w(value: Int): Word = Word(BigInt(value))
 
+  private def topicOf(value: Int): Hash = Hash.fromBytesTruncating(w(value).toBytes.toIArray)
+
+  // Produced outside this project by two independent Keccak implementations
+  // agreeing, rather than by the one under test.
+  private val EmptyDigest = "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+
+  private val WordOfFortyTwoDigest = "beced09521047d05b8960b7e7bcc1d1292cf3e4b2a6b63f48335cbde5f7545d2"
+
   // PUSH1 0x03, PUSH1 0x05, then the operation under test.
   private def afterBinary(gas: Int, operation: Int): (Frame, Either[Unsupported, Outcome]) =
     exec(gas, 0x60, 0x03, 0x60, 0x05, operation)
 
-  // The operations this build does not yet run, named rather than counted, so
-  // that implementing one fails this test until it is taken off the list and
-  // adding an operation to the table without an implementation fails it too.
-  private val notYetBuilt: Set[Opcode] = Set(
-    Opcode.Keccak256,
-    Opcode.Log0,
-    Opcode.Log1,
-    Opcode.Log2,
-    Opcode.Log3,
-    Opcode.Log4,
-    Opcode.Create,
-    Opcode.Call,
-    Opcode.CallCode,
-    Opcode.Return,
-    Opcode.SelfDestruct
-  )
+  // The operations this build does not run, named rather than counted. The set
+  // is empty and stays a set: adding an operation to the table without an
+  // implementation fails this, and so does an implementation that quietly stops
+  // running.
+  private val notYetBuilt: Set[Opcode] = Set.empty
 
   private def cannotRun(opcode: Opcode): Boolean =
     val (_, outcome) = exec(1000000, opcode.code)
@@ -263,15 +260,23 @@ class InterpreterSpec extends AnyFlatSpec:
     )
   }
 
-  "the operations this build cannot run" should "be exactly the ones reaching a later phase" in
+  "the operations this build cannot run" should "be none of them" in
     assert(
       Opcode.values.filter(cannotRun).toSet == notYetBuilt,
       "an operation that quietly stopped running would otherwise look like one that was never built"
     )
 
-  "an operation this build cannot run" should "not be reported as a halt" in {
-    val (_, outcome) = exec(1000000, Opcode.Keccak256.code)
-    assert(outcome == Left(Unsupported(Opcode.Keccak256)), "a halt is a result a chain reaches, and this is not one")
+  // An entry saying its operation works out its own price, where the operation
+  // is one this build prices from the table, is a table this build cannot run.
+  // It is the condition that outlives every operation being implemented, and it
+  // is reachable because a chain configuration produces the table.
+  "a table entry priced against what this build expects" should "not be reported as a halt" in {
+    val frame = frameOf(1000000, 0x60, 0x03, 0x60, 0x05, 0x01)
+    val mismatched = table.adding(Operation(Opcode.Add, Cost.Computed))
+    assert(
+      Interpreter.run(frame, mismatched, schedule, EvmFixtures.environment()) == Left(Unsupported(Opcode.Add)),
+      "a halt is a result a chain reaches, and this is not one"
+    )
   }
 
   "a table that has had an operation removed" should "treat its byte as naming none" in {
@@ -299,7 +304,9 @@ class InterpreterSpec extends AnyFlatSpec:
   }
 
   "CALLVALUE" should "report the value sent with this invocation" in {
-    val (frame, _) = execFor(EvmFixtures.message(value = w(9)), EvmFixtures.environment(), 100, 0x34)
+    val funded = new EvmFixtures.MapWorldState
+    funded.balances(EvmFixtures.address(0x11)) = w(9)
+    val (frame, _) = execFor(EvmFixtures.message(value = w(9)), EvmFixtures.environment(funded), 100, 0x34)
     assert(frame.stack.peek(0) == Right(w(9)), "the value rides on the message")
   }
 
@@ -553,10 +560,10 @@ class InterpreterSpec extends AnyFlatSpec:
   }
 
   "SSTORE" should "write under the account this invocation runs as" in {
-    val world = new EvmFixtures.MapWorldState
-    val _ = execIn(EvmFixtures.environment(world), 30000, 0x60, 0x2a, 0x60, 0x01, 0x55)
+    val environment = EvmFixtures.environment()
+    val _ = execIn(environment, 30000, 0x60, 0x2a, 0x60, 0x01, 0x55)
     assert(
-      world.slots.get((EvmFixtures.address(0x22), w(1))).contains(w(42)),
+      environment.world.storageAt(EvmFixtures.address(0x22), w(1)) == w(42),
       "storage belongs to the target it runs as, never to the caller"
     )
   }
@@ -598,4 +605,138 @@ class InterpreterSpec extends AnyFlatSpec:
   it should "earn no refund for clearing a slot that already held nothing" in {
     val (frame, _) = execIn(EvmFixtures.environment(), 30000, 0x60, 0x00, 0x60, 0x01, 0x55)
     assert(frame.refundCounter == BigInt(0), "there was nothing to clear, so nothing is given back")
+  }
+
+  // ── The digest of a region of memory ─────────────────────────────────────
+
+  "KECCAK256" should "answer with the digest of an empty region" in {
+    val (frame, _) = exec(100, 0x60, 0x00, 0x60, 0x00, 0x20)
+    assert(
+      frame.stack.peek(0) == Right(Word.fromBytes(EvmFixtures.bytesOf(EmptyDigest))),
+      "a region of no bytes is the empty input, not an absent one"
+    )
+  }
+
+  it should "cost the settled part alone where nothing is read" in {
+    val (frame, _) = exec(100, 0x60, 0x00, 0x60, 0x00, 0x20)
+    assert(
+      frame.gasLeft == BigInt(100 - 3 - 3 - 30),
+      "two pushes at 3 and the settled part at 30, with no word to hash"
+    )
+  }
+
+  it should "answer with the digest of the bytes the region holds" in {
+    val (frame, _) = exec(100, 0x60, 0x2a, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0x20)
+    assert(
+      frame.stack.peek(0) == Right(Word.fromBytes(EvmFixtures.bytesOf(WordOfFortyTwoDigest))),
+      "the region read is the one the operands name"
+    )
+  }
+
+  it should "cost a word of hashing and a word of memory" in {
+    val (frame, _) = exec(100, 0x60, 0x20, 0x60, 0x00, 0x20)
+    assert(
+      frame.gasLeft == BigInt(100 - 3 - 3 - 30 - 6 - 3),
+      "two pushes at 3, a settled 30, one word hashed at 6, and one word of memory at 3"
+    )
+  }
+
+  // ── What the invocation emitted ──────────────────────────────────────────
+
+  "LOG0" should "emit an entry under the account this invocation runs as" in {
+    val (frame, _) = exec(1000, 0x60, 0x00, 0x60, 0x00, 0xa0)
+    assert(
+      frame.logs.map(_.address) == Vector(EvmFixtures.address(0x22)),
+      "a log belongs to the account it runs as, never to the caller"
+    )
+  }
+
+  it should "emit no topics" in {
+    val (frame, _) = exec(1000, 0x60, 0x00, 0x60, 0x00, 0xa0)
+    assert(frame.logs.head.topics.isEmpty, "the count comes from which operation this is")
+  }
+
+  it should "cost the settled part" in {
+    val (frame, _) = exec(1000, 0x60, 0x00, 0x60, 0x00, 0xa0)
+    assert(frame.gasLeft == BigInt(1000 - 3 - 3 - 375), "two pushes at 3 and a settled 375")
+  }
+
+  it should "carry the bytes the region holds" in {
+    val (frame, _) = exec(1000, 0x60, 0x2a, 0x60, 0x00, 0x53, 0x60, 0x01, 0x60, 0x00, 0xa0)
+    assert(frame.logs.head.data == EvmFixtures.bytesOf("2a"), "the data is read from memory, not from the stack")
+  }
+
+  it should "charge for every byte carried" in {
+    val (frame, _) = exec(1000, 0x60, 0x2a, 0x60, 0x00, 0x53, 0x60, 0x01, 0x60, 0x00, 0xa0)
+    assert(
+      frame.gasLeft == BigInt(1000 - 3 - 3 - 3 - 3 - 3 - 3 - 375 - 8),
+      "the store costs three pushes and a word of memory, and the entry costs 375 plus 8 for its one byte"
+    )
+  }
+
+  "LOG1" should "take its topic from below the region on the stack" in {
+    val (frame, _) = exec(1000, 0x60, 0x07, 0x60, 0x00, 0x60, 0x00, 0xa1)
+    assert(
+      frame.logs.head.topics == Seq(topicOf(7)),
+      "the region is taken first and the topics after it"
+    )
+  }
+
+  it should "cost one topic more than an entry with none" in {
+    val (frame, _) = exec(1000, 0x60, 0x07, 0x60, 0x00, 0x60, 0x00, 0xa1)
+    assert(frame.gasLeft == BigInt(1000 - 3 - 3 - 3 - 375 - 375), "three pushes at 3, a settled 375, one topic at 375")
+  }
+
+  "LOG4" should "take four topics in the order the stack lists them" in {
+    val program =
+      Seq(0x60, 0x04, 0x60, 0x03, 0x60, 0x02, 0x60, 0x01, 0x60, 0x00, 0x60, 0x00, 0xa4)
+    val (frame, _) = exec(4000, program*)
+    assert(
+      frame.logs.head.topics == Seq(topicOf(1), topicOf(2), topicOf(3), topicOf(4)),
+      "the first topic is the one nearest the top of the stack"
+    )
+  }
+
+  it should "cost four topics" in {
+    val program =
+      Seq(0x60, 0x04, 0x60, 0x03, 0x60, 0x02, 0x60, 0x01, 0x60, 0x00, 0x60, 0x00, 0xa4)
+    val (frame, _) = exec(4000, program*)
+    assert(
+      frame.gasLeft == BigInt(4000 - 6 * 3 - 375 - 4 * 375),
+      "six pushes at 3, a settled 375, and four topics at 375 each"
+    )
+  }
+
+  "several entries" should "be kept in the order they were emitted" in {
+    val program = Seq(0x60, 0x01, 0x60, 0x00, 0xa0, 0x60, 0x00, 0x60, 0x00, 0xa0)
+    val (frame, _) = exec(4000, program*)
+    assert(
+      frame.logs.map(_.data.length) == Vector(1, 0),
+      "a receipt lists entries in the order they happened, so the order is part of the record"
+    )
+  }
+
+  // ── Ending this invocation with something to hand back ───────────────────
+
+  "RETURN" should "hand back the bytes the region holds" in {
+    val (_, outcome) = exec(100, 0x60, 0x2a, 0x60, 0x00, 0x53, 0x60, 0x01, 0x60, 0x00, 0xf3)
+    assert(
+      outcome == Right(Outcome.Stopped(BigInt(100 - 3 - 3 - 3 - 3 - 3 - 3), EvmFixtures.bytesOf("2a"))),
+      "the answer is read from memory and the operation itself has no settled price"
+    )
+  }
+
+  it should "end execution before the rest of the code runs" in {
+    val (frame, _) = exec(100, 0x60, 0x00, 0x60, 0x00, 0xf3, 0x60, 0x01)
+    assert(frame.stack.isEmpty, "the PUSH after RETURN never ran")
+  }
+
+  it should "leave the program counter where it stood" in {
+    val (frame, _) = exec(100, 0x60, 0x00, 0x60, 0x00, 0xf3, 0x60, 0x01)
+    assert(frame.pc == 4, "the specification does not move it, and a counter past the end would resume nowhere")
+  }
+
+  it should "hand back nothing where the region is empty" in {
+    val (_, outcome) = exec(100, 0x60, 0x00, 0x60, 0x00, 0xf3)
+    assert(outcome == Right(Outcome.Stopped(BigInt(100 - 3 - 3), Bytes.Empty)), "an empty answer is not a missing one")
   }

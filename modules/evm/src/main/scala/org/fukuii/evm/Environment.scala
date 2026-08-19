@@ -46,6 +46,11 @@ final case class TransactionContext(origin: Address, gasPrice: BigInt)
   * machine calls rather than values it reads, and comparing two environments is
   * not an operation anything needs.
   *
+  * @param world
+  *   the state the invocation reads and writes, named as the journal rather
+  *   than as [[WorldState]] because an invocation that halts has to leave no
+  *   trace and a view with no way to undo cannot run one. What varies -- a
+  *   trie, a test double, a view at an earlier block -- varies underneath it.
   * @param blockHashAt
   *   the hash of an earlier block by number. It is asked only for a number the
   *   operation has already found to be inside the window the fork allows, so it
@@ -53,7 +58,7 @@ final case class TransactionContext(origin: Address, gasPrice: BigInt)
   *   arrange. go-ethereum's lookup carries the same contract.
   */
 final class Environment(
-    val world: WorldState,
+    val world: JournaledWorldState,
     val blockHashAt: BigInt => Hash,
     val block: BlockContext,
     val transaction: TransactionContext

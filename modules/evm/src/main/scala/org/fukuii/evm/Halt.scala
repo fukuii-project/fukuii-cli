@@ -14,9 +14,8 @@ package org.fukuii.evm
   *
   * The set is exactly the seven `ExceptionalHalt` subclasses of
   * `forks/frontier/vm/exceptions.py` at `ccaaaba58`, counted there rather than
-  * recalled. Two of them cannot arise until a later phase builds the operation
-  * that raises them, and they are declared now because the set is the
-  * specification's rather than this phase's.
+  * recalled. One of them is unreachable from any operation, and is declared
+  * because the set is the specification's rather than this machine's.
   */
 enum Halt:
 
@@ -37,8 +36,18 @@ enum Halt:
   /** A jump to a position that is not a `JUMPDEST`. */
   case InvalidJumpDestination
 
-  /** A call or create nested deeper than the machine permits. */
+  /** An invocation nested deeper than the machine permits.
+    *
+    * The operations that nest refuse rather than exceed the limit, so this is
+    * the guard behind them rather than the one they use, and a caller reaching
+    * it has built a frame no operation would have.
+    */
   case StackDepthLimit
 
-  /** A create whose destination address is already in use. */
+  /** A create whose destination address is already in use.
+    *
+    * Not reachable from `CREATE`, which answers zero rather than halting. The
+    * specification raises this for a creating TRANSACTION instead, which is a
+    * layer above this one.
+    */
   case AddressCollision

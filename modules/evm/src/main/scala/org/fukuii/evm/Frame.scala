@@ -1,6 +1,7 @@
 package org.fukuii.evm
 
-import org.fukuii.bytes.Bytes
+import org.fukuii.bytes.{Address, Bytes}
+import org.fukuii.types.Log
 
 /** One invocation's working state: where it is, what it holds, and what it has
   * left to spend.
@@ -25,7 +26,12 @@ import org.fukuii.bytes.Bytes
   * overspend, and an overspent frame is indistinguishable afterwards from one
   * that was affordable.
   */
-final class Frame(val message: Message, val code: Code, initialGas: BigInt):
+final class Frame(
+    val message: Message,
+    val code: Code,
+    initialGas: BigInt,
+    val registeredByAncestors: Set[Address] = Set.empty
+):
 
   /** The position of the instruction about to run. */
   var pc: Int = 0
@@ -56,6 +62,24 @@ final class Frame(val message: Message, val code: Code, initialGas: BigInt):
     */
   var output: Bytes = Bytes.Empty
 
+  /** What this invocation has emitted, oldest first.
+    *
+    * Order is part of the record rather than an artifact: a receipt lists logs
+    * in the order they were emitted, and a nested invocation's are spliced in
+    * where its call sits among its caller's.
+    */
+  var logs: Vector[Log] = Vector.empty
+
+  /** The accounts this invocation has registered for destruction.
+    *
+    * Registration is all that happens here. The removal itself belongs to
+    * whatever ends the transaction, because a registered account goes on
+    * answering reads -- and goes on being callable -- until then, and because a
+    * registration inside an invocation that later fails is discarded with the
+    * rest of its writes.
+    */
+  var accountsToDelete: Set[Address] = Set.empty
+
   val stack: Stack = new Stack
 
   val memory: Memory = new Memory
@@ -71,3 +95,20 @@ final class Frame(val message: Message, val code: Code, initialGas: BigInt):
     else
       gasLeft -= amount
       Right(())
+
+  /** Whether `address` is already registered for destruction by this invocation
+    * or by one it is nested inside.
+    *
+    * The registration a destruction earns is paid once per account per
+    * transaction, so the question spans the whole chain of callers rather than
+    * this frame. Ancestors' registrations arrive as a value at construction
+    * because a caller is suspended while its callee runs, so the set it would
+    * be asked for cannot change in the meantime.
+    */
+  def alreadyRegistered(address: Address): Boolean =
+    accountsToDelete.contains(address) || registeredByAncestors.contains(address)
+
+  /** Everything registered for destruction that a nested invocation must treat
+    * as already paid for.
+    */
+  def registeredSoFar: Set[Address] = accountsToDelete | registeredByAncestors

@@ -56,6 +56,9 @@ final class StateTrieWorldState(state: StateTrie) extends WorldState:
   def balanceOf(address: Address): Word =
     accountAt(address).fold(Word.Zero)(account => Word(account.balance.toBigInt))
 
+  def nonceOf(address: Address): UInt64 =
+    accountAt(address).fold(UInt64.Zero)(_.nonce)
+
   def codeOf(address: Address): Bytes =
     accountAt(address).fold(Bytes.Empty) { account =>
       state
@@ -66,6 +69,10 @@ final class StateTrieWorldState(state: StateTrie) extends WorldState:
           )
         )
     }
+
+  def accountExists(address: Address): Boolean = accountAt(address).isDefined
+
+  def hasStorage(address: Address): Boolean = state.storageRoot(address) != Trie.EmptyRoot
 
   def storageAt(address: Address, slot: Word): Word =
     state.getStorage(address, quantity(slot)) match
@@ -84,8 +91,32 @@ final class StateTrieWorldState(state: StateTrie) extends WorldState:
   def setStorage(address: Address, slot: Word, value: Word): Unit =
     if value.isZero then state.deleteStorage(address, quantity(slot))
     else state.putStorage(address, quantity(slot), Bytes.fromIArray(RlpCodec.encodeTo(quantity(value))))
-    val account = accountAt(address).getOrElse(EmptyAccount)
-    state.putAccount(address, account.nonce, account.balance, account.codeHash)
+    rewriteAccount(address, identity)
+
+  def setBalance(address: Address, value: Word): Unit =
+    rewriteAccount(address, _.copy(balance = quantity(value)))
+
+  def setNonce(address: Address, value: UInt64): Unit =
+    rewriteAccount(address, _.copy(nonce = value))
+
+  def setCode(address: Address, code: Bytes): Unit =
+    val digest = state.putCode(code)
+    rewriteAccount(address, _.copy(codeHash = digest))
+
+  def touch(address: Address): Unit =
+    if !accountExists(address) then rewriteAccount(address, identity)
+
+  /** Writes `address`'s account with `change` applied, over the empty account
+    * where none exists yet.
+    *
+    * The storage root is not carried through `change`: the trie takes it from
+    * the account's own storage trie as it writes, which is what keeps a leaf
+    * from committing to a root its storage no longer has.
+    */
+  private def rewriteAccount(address: Address, change: Account => Account): Unit =
+    val current = accountAt(address).getOrElse(EmptyAccount)
+    val updated = change(current)
+    state.putAccount(address, updated.nonce, updated.balance, updated.codeHash)
 
   private val EmptyAccount: Account =
     Account(UInt64.Zero, UInt256.Zero, Trie.EmptyRoot, StateTrie.EmptyCodeHash)
