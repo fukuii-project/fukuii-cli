@@ -586,6 +586,20 @@ work. **Name the files directly, or use `git grep` for tracked text and a direct
 for the rest** — and calibrate any sweep against a token you know is present, because the
 failure returns a clean zero rather than an error.
 
+**A genuine `clean` + full run can finish in seconds with NO `compiling` lines at all,
+and it looks exactly like a stale-server no-op.** A long-lived detached sbt server is
+reused as a thin client, so there is no JVM start and no compiler classload, and the
+progress text a reader expects never appears. Measured 2026-08-19: `clean testFull`
+across 7 modules and 839 tests in **4 seconds**, zero `compiling` lines — and it was
+real.
+
+**The wrapper's guard 3 gets this right because it compares mtimes rather than reading
+the log**, which is why it returned 0 and not 97. **A human skimming the log cannot tell
+the two apart.** The forensic that settles it: check mtimes on the compile outputs
+(`target/out/jvm/scala-3.3.8/fukuii-*/classes`) and confirm every `.class` falls inside
+the run's own window. Nothing surviving from before the invocation means `clean` was not
+a no-op. Recorded so the next validator does not re-derive it.
+
 **An environment variable does NOT reach a task running in an already-detached sbt
 server, and the failure is silent.** The server inherits the environment of the shell
 that started it, so a variable exported later is invisible to every task it runs —
