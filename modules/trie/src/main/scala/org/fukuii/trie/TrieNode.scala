@@ -138,12 +138,19 @@ object TrieNode:
     * [[cap]] cannot produce one, so a parent carrying one commits to a shape no
     * conforming implementation would have written for the same contents.
     *
-    * The width is measured on the item as received and before it is decoded,
-    * which is what bounds the descent: a nesting level costs at least two bytes,
-    * so a child under the limit nests only a few levels further. Measuring the
-    * re-encoded node instead would decode the whole subtree before it could
-    * reject it, and would leave this rejection resting on `modules/rlp`
-    * refusing non-canonical input rather than on anything stated here.
+    * The width is measured before the child is turned into a node, which is what
+    * bounds this recursion: a nesting level costs at least two bytes, so a child
+    * under the limit nests only a few levels further, and an oversized one is
+    * refused without the subtree below it ever being walked. Measuring the
+    * decoded node instead would walk and re-encode that subtree at every level
+    * on the way back up only to discard it.
+    *
+    * What it measures is the re-encoding of the item as received, and that equals
+    * the received width only because [[org.fukuii.rlp.Rlp.decode]] refuses every
+    * non-canonical spelling. **That dependency is real and lives in another
+    * module**: relax any of those rejections and this rule silently starts
+    * measuring bytes no peer sent. Nothing here enforces it and no test in this
+    * module covers it.
     */
   def refFromRlp(item: RlpItem): Either[TrieError, NodeRef] = item match
     case RlpItem.Bytes(payload) =>
