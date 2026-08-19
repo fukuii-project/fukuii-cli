@@ -100,14 +100,29 @@ final class StateTrie(
     * `value` is opaque bytes, so this seam cannot tell a zero word from any
     * other value: the zero word's RLP is `0x80`, which is non-empty and so
     * stores a leaf where the storage trie must hold no key at all. That rule
-    * belongs to a layer writing storage from typed values, which does not exist
-    * yet — the executable specification places it in the same position,
-    * deleting on a zero word before any encoding happens. Typing `value` here
-    * is what would move it, and until something writes storage from typed
-    * words there is nothing at this seam to enforce.
+    * belongs to whichever layer writes storage from typed values, and the
+    * executable specification places it in the same position — its `trie_set`
+    * deletes the key when the value equals the trie's default, which for a
+    * storage trie is zero. [[deleteStorage]] is the half of this seam that
+    * rule needs, and a caller holding a typed zero calls it instead of this.
     */
   def putStorage(address: Address, slot: UInt256, value: Bytes): Unit =
     storage(address).put(slotKey(slot), value)
+
+  /** Removes `slot` from this account's storage, and nothing else.
+    *
+    * The pair to [[putStorage]] rather than a mode of it, for the reason
+    * [[deleteAccount]] is not a mode of [[putAccount]]: writing and removing
+    * are different operations on a trie, and a seam that folded them together
+    * would have to inspect a value it holds as opaque bytes to tell which one
+    * was meant.
+    *
+    * Removing a slot that holds nothing is not an error and leaves the storage
+    * root where it was, which is what lets a caller apply the zero rule without
+    * first reading the slot back.
+    */
+  def deleteStorage(address: Address, slot: UInt256): Unit =
+    storage(address).delete(slotKey(slot))
 
   def getStorage(address: Address, slot: UInt256): Option[Bytes] =
     storage(address).get(slotKey(slot))

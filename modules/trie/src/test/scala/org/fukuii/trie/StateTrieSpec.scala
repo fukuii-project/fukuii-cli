@@ -291,3 +291,40 @@ class StateTrieSpec extends AnyFlatSpec:
       "missing code stays distinguishable from empty code, and only the first is a fault"
     )
   }
+
+  "deleteStorage" should "remove the slot's key" in {
+    val state = newState()
+    state.putStorage(address(1), slot(1), TrieFixtures.bytesOf("ff"))
+    state.deleteStorage(address(1), slot(1))
+    assert(state.getStorage(address(1), slot(1)).isEmpty, "a removed slot holds no key rather than a zero value")
+  }
+
+  it should "return a storage trie holding nothing else to the empty root" in {
+    val state = newState()
+    state.putStorage(address(1), slot(1), TrieFixtures.bytesOf("ff"))
+    state.deleteStorage(address(1), slot(1))
+    assert(
+      state.storageRoot(address(1)) == Trie.EmptyRoot,
+      "the root a caller applying the zero rule ends at has to be the one an account with no storage carries"
+    )
+  }
+
+  it should "leave the other slots alone" in {
+    val state = newState()
+    state.putStorage(address(1), slot(1), TrieFixtures.bytesOf("ff"))
+    state.putStorage(address(1), slot(2), TrieFixtures.bytesOf("ee"))
+    state.deleteStorage(address(1), slot(1))
+    assert(
+      state.getStorage(address(1), slot(2)).contains(TrieFixtures.bytesOf("ee")),
+      "removing one slot is not removing the account's storage"
+    )
+  }
+
+  it should "be silent about a slot that holds nothing" in {
+    val state = newState()
+    state.deleteStorage(address(1), slot(1))
+    assert(
+      state.storageRoot(address(1)) == Trie.EmptyRoot,
+      "a caller applying the zero rule writes zero without first reading the slot back, so this is the ordinary case"
+    )
+  }
