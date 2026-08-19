@@ -81,16 +81,33 @@ enum TrieError:
     * inserting through such a node builds an extension above a leaf where the
     * trie's definition gives one merged leaf.
     *
-    * The field is split here rather than unanimous. Of the decoders surveyed
-    * for this rule, besu refuses it — its branch decode has an explicit
-    * null-slot case and its extension decode has none, so the child falls to a
-    * fixed-width read that rejects a zero-length payload — while go-ethereum
-    * and the implementations sharing its `decodeRef` cannot refuse it, because
-    * one function serves both positions and never learns which caller it is
-    * answering. Refusing is therefore a choice, and it is the same one
-    * [[EmptyExtensionSegment]] and [[OversizedInlineNode]] already make: safe
-    * against history because no conforming writer emits the shape, and unable
-    * to change a root for the same reason.
+    * ==The field is split here rather than unanimous==
+    *
+    * Refusing is a choice, so the survey it rests on is named rather than
+    * summarized. Each was read from that project's source at the revision
+    * given, because a decoder's behavior is not recoverable from its
+    * documentation:
+    *
+    *   - '''besu''' @ `c2addd9424` refuses it, and structurally rather than by
+    *     an explicit check: `StoredNodeFactory.decodeBranch` carries a
+    *     null-slot case, `decodeExtension` carries none, and the child falls
+    *     to a fixed-width read that rejects a zero-length payload.
+    *     '''besu-etc''' @ `eb4248c997` is identical.
+    *   - '''go-ethereum''' @ `6bb0588ad` cannot refuse it: one `decodeRef` in
+    *     `trie/node.go` serves both the single-child and the sixteen-slot
+    *     position and never learns which caller it is answering.
+    *     '''core-geth''' @ `4185df450` inherits that shape unchanged.
+    *   - '''execution-specs''' @ `ccaaaba58` has no trie-node decoder at all,
+    *     so the executable specification does not decide this one.
+    *
+    * '''A decoder that cannot see its caller cannot enforce a caller-dependent
+    * rule''', which is why the decode is split by position here rather than
+    * given a flag — the split is what makes the distinction expressible.
+    *
+    * The choice is the same one [[EmptyExtensionSegment]] and
+    * [[OversizedInlineNode]] already make: safe against history because no
+    * conforming writer emits the shape, and unable to change a root for the
+    * same reason.
     */
   case EmptyExtensionChild
 
