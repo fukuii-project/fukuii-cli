@@ -17,10 +17,11 @@ import org.fukuii.types.Log
   *
   * ==Nothing here asks which network or which fork==
   *
-  * The operations that exist and what they cost arrive as an [[OpcodeTable]]
-  * and a [[GasSchedule]]. That is the whole of the configuration seam: a
-  * network is a pair of those values, not a branch in this file, and a network
-  * named anywhere below would mean the seam had been crossed.
+  * The operations that exist, what they cost, and which addresses answer
+  * natively arrive as an [[OpcodeTable]], a [[GasSchedule]] and a
+  * [[PrecompileSet]]. That is the whole of the configuration seam: a network is
+  * those three values, not a branch in this file, and a network named anywhere
+  * below would mean the seam had been crossed.
   *
   * ==The loop ends three ways and only two of them are results==
   *
@@ -60,11 +61,21 @@ object Interpreter:
     * An entry the table admits and this build cannot run is undone too. It is
     * not a chain outcome, so nothing above can incorporate it, and leaving a
     * half-written world behind would make it look like one.
+    *
+    * ==A precompile replaces the loop and nothing around it==
+    *
+    * The account is still brought into being, the value is still moved, and a
+    * failure is still undone -- the branch sits exactly where the loop would
+    * have run, which is where both sources put it. Putting it in the operation
+    * that starts a nested invocation instead would have left the outermost one
+    * unable to reach a precompile at all, and a transaction sent straight to
+    * one is the ordinary way it is used.
     */
   def run(
       frame: Frame,
       table: OpcodeTable,
       schedule: GasSchedule,
+      precompiles: PrecompileSet,
       environment: Environment
   ): Either[Unsupported, Outcome] =
     if frame.message.depth > Stack.Limit then
@@ -75,11 +86,30 @@ object Interpreter:
       val taken = world.snapshot()
       world.touch(frame.message.currentTarget)
       transfer(world, frame.message)
-      val result = execute(frame, table, schedule, environment)
+      val result = frame.message.codeAddress.flatMap(precompiles.at) match
+        case Some(precompile) => Right(runNatively(frame, precompile))
+        case None             => execute(frame, table, schedule, precompiles, environment)
       result match
         case Right(Outcome.Stopped(_, _)) => ()
         case _                            => world.restore(taken)
       result
+
+  /** Charges for a precompile and runs it, or halts because it cannot be paid
+    * for.
+    *
+    * The charge comes first, so an invocation that cannot afford the answer
+    * never computes it. A shortfall is an ordinary exceptional halt and keeps
+    * nothing, which is the same rule [[execute]] applies to an operation that
+    * cannot pay.
+    */
+  private def runNatively(frame: Frame, precompile: Precompile): Outcome =
+    frame.charge(precompile.gasFor(frame.message.data)) match
+      case Left(halt) =>
+        frame.gasLeft = BigInt(0)
+        Outcome.Halted(halt)
+      case Right(()) =>
+        frame.output = precompile.run(frame.message.data)
+        Outcome.Stopped(frame.gasLeft, frame.output)
 
   /** Moves an invocation's value from its caller to the account it runs as.
     *
@@ -103,6 +133,7 @@ object Interpreter:
       frame: Frame,
       table: OpcodeTable,
       schedule: GasSchedule,
+      precompiles: PrecompileSet,
       environment: Environment
   ): Either[Unsupported, Outcome] =
     var fault: Option[Fault] = None
@@ -111,7 +142,7 @@ object Interpreter:
       table.operationAt(code) match
         case None            => fault = Some(Fault.Exceptional(Halt.InvalidOpcode(code)))
         case Some(operation) =>
-          step(frame, operation, table, schedule, environment) match
+          step(frame, operation, table, schedule, precompiles, environment) match
             case Left(met) => fault = Some(met)
             case Right(()) => ()
     fault match
@@ -137,6 +168,7 @@ object Interpreter:
       operation: Operation,
       table: OpcodeTable,
       schedule: GasSchedule,
+      precompiles: PrecompileSet,
       environment: Environment
   ): Either[Fault, Unit] =
     operation.opcode match
@@ -486,9 +518,10 @@ object Interpreter:
 
       // ── Invocations this one starts ────────────────────────────────────────
 
-      case Opcode.Create   => create(frame, table, schedule, environment)
-      case Opcode.Call     => messageCall(frame, table, schedule, environment, CallForm.ToTheAccountNamed)
-      case Opcode.CallCode => messageCall(frame, table, schedule, environment, CallForm.WithTheNamedAccountsCode)
+      case Opcode.Create   => create(frame, table, schedule, precompiles, environment)
+      case Opcode.Call     => messageCall(frame, table, schedule, precompiles, environment, CallForm.ToTheAccountNamed)
+      case Opcode.CallCode =>
+        messageCall(frame, table, schedule, precompiles, environment, CallForm.WithTheNamedAccountsCode)
 
       case unbuilt => Left(Fault.NotBuilt(unbuilt))
 
@@ -531,6 +564,7 @@ object Interpreter:
       frame: Frame,
       table: OpcodeTable,
       schedule: GasSchedule,
+      precompiles: PrecompileSet,
       environment: Environment,
       form: CallForm
   ): Either[Fault, Unit] =
@@ -567,12 +601,12 @@ object Interpreter:
           exceptional(frame.stack.push(Word.Zero).map(_ => advance(frame)))
         else
           val nested = new Frame(
-            Message(frame.message.currentTarget, runsAs, value, input, frame.message.depth + 1),
+            Message(frame.message.currentTarget, runsAs, Some(codeAddress), value, input, frame.message.depth + 1),
             Code(world.codeOf(codeAddress)),
             forwarded,
             frame.registeredSoFar
           )
-          run(nested, table, schedule, environment) match
+          run(nested, table, schedule, precompiles, environment) match
             case Left(unsupported) => Left(Fault.NotBuilt(unsupported.opcode))
             case Right(outcome)    =>
               val answer = outcome match
@@ -602,6 +636,7 @@ object Interpreter:
       frame: Frame,
       table: OpcodeTable,
       schedule: GasSchedule,
+      precompiles: PrecompileSet,
       environment: Environment
   ): Either[Fault, Unit] =
     val world = environment.world
@@ -638,12 +673,12 @@ object Interpreter:
         else
           world.setNonce(creator, UInt64.fromBits(count.toBits + 1))
           val nested = new Frame(
-            Message(creator, target, endowment, Bytes.Empty, frame.message.depth + 1),
+            Message(creator, target, None, endowment, Bytes.Empty, frame.message.depth + 1),
             Code(initCode),
             forwarded,
             frame.registeredSoFar
           )
-          deploy(nested, table, schedule, environment) match
+          deploy(nested, table, schedule, precompiles, environment) match
             case Left(unsupported) => Left(Fault.NotBuilt(unsupported.opcode))
             case Right(outcome)    =>
               val answer = outcome match
@@ -682,9 +717,10 @@ object Interpreter:
       nested: Frame,
       table: OpcodeTable,
       schedule: GasSchedule,
+      precompiles: PrecompileSet,
       environment: Environment
   ): Either[Unsupported, Outcome] =
-    run(nested, table, schedule, environment).map {
+    run(nested, table, schedule, precompiles, environment).map {
       case Outcome.Stopped(_, code) =>
         nested.charge(schedule.codeDepositPerByte * BigInt(code.length)) match
           case Left(_) =>

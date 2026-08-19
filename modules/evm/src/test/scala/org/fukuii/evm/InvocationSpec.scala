@@ -98,7 +98,7 @@ class InvocationSpec extends AnyFlatSpec:
       message: Message = EvmFixtures.message()
   ): (Frame, Either[Unsupported, Outcome]) =
     val frame = new Frame(message, Code(Bytes.fromArray(program.map(_.toByte).toArray)), BigInt(gas))
-    (frame, Interpreter.run(frame, table, schedule, environment))
+    (frame, Interpreter.run(frame, table, schedule, EvmFixtures.precompiles, environment))
 
   // ── What an invocation is given, and what it leaves behind ───────────────
 

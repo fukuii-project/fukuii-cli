@@ -55,6 +55,14 @@ package org.fukuii.evm
   * [[GasCost]] owns the cost of holding memory, and its two parameters live
   * there with the function they parameterize. Repeating them here would give
   * one price two homes, which is how the two come to disagree.
+  *
+  * ==A precompile's price is a price, and belongs here rather than with it==
+  *
+  * Both sources keep them beside every other charge -- the specification under
+  * its own heading in the same table of costs, go-ethereum in the same file of
+  * protocol parameters -- and a network reprices one the way it reprices
+  * anything else. [[PrecompileSet.baseline]] reads them from here into the
+  * entries it builds, exactly as [[OpcodeTable.baseline]] does.
   */
 final case class GasSchedule(
     base: BigInt,
@@ -85,7 +93,14 @@ final case class GasSchedule(
     copyPerWord: BigInt,
     logBase: BigInt,
     logDataPerByte: BigInt,
-    logTopic: BigInt
+    logTopic: BigInt,
+    precompileEcRecover: BigInt,
+    precompileSha256Base: BigInt,
+    precompileSha256PerWord: BigInt,
+    precompileRipemd160Base: BigInt,
+    precompileRipemd160PerWord: BigInt,
+    precompileIdentityBase: BigInt,
+    precompileIdentityPerWord: BigInt
 )
 
 object GasSchedule:
@@ -126,5 +141,12 @@ object GasSchedule:
     copyPerWord = BigInt(3),
     logBase = BigInt(375),
     logDataPerByte = BigInt(8),
-    logTopic = BigInt(375)
+    logTopic = BigInt(375),
+    precompileEcRecover = BigInt(3000),
+    precompileSha256Base = BigInt(60),
+    precompileSha256PerWord = BigInt(12),
+    precompileRipemd160Base = BigInt(600),
+    precompileRipemd160PerWord = BigInt(120),
+    precompileIdentityBase = BigInt(15),
+    precompileIdentityPerWord = BigInt(3)
   )

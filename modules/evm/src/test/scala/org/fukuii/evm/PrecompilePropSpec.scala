@@ -1,0 +1,239 @@
+package org.fukuii.evm
+
+import java.nio.charset.StandardCharsets.UTF_8
+import org.fukuii.bytes.Bytes
+import org.scalatest.propspec.AnyPropSpec
+import org.scalatest.prop.TableDrivenPropertyChecks
+
+/** The four precompiles against other implementations' published vectors.
+  *
+  * The sibling [[PrecompileSpec]] covers each one's contract stated as a
+  * behavior — what it charges, what it pads, what it does with an input that
+  * makes no sense. This file is the corpora, and its value is that none of the
+  * values in it were derived here.
+  *
+  * ==Where each table comes from==
+  *
+  *   - `ecrecover`, first five rows: go-ethereum
+  *     `core/vm/testdata/precompiles/ecRecover.json` @ `ethereum/go-ethereum,
+  *     6bb0588ad`, names and all.
+  *   - `ecrecover`, remaining rows: besu
+  *     `evm/src/test/java/org/hyperledger/besu/evm/precompile/ECRECPrecompiledContractTest.java`
+  *     @ `besu-eth/besu, c2addd9424`, whose expectation is a bare address that
+  *     its assertion widens into a word — recorded widened here, since that is
+  *     what the precompile answers. No row is shared between the two, so they
+  *     are two corpora rather than one copied twice.
+  *   - `ripemd160`: nethermind
+  *     `src/Nethermind/Nethermind.Core.Test/RipemdTests.cs` @
+  *     `NethermindEth/nethermind, c35ce1b1ab`, already in the padded form the
+  *     precompile answers with. Each was recomputed with `openssl
+  *     dgst -ripemd160` and agreed.
+  *   - `sha256`: computed on this machine by `sha256sum` (GNU coreutils), and
+  *     cross-checked in process against the JDK's provider by
+  *     [[org.fukuii.crypto.Sha256PropSpec]].
+  *
+  * ==The three `InvalidHighV` rows are the ones that earn their place==
+  *
+  * Each carries a `v` whose LOW BYTE is 27 or 28 and whose word is not, and the
+  * third differs from a valid `v` by one bit in a byte nothing reads by
+  * accident. An implementation taking `v` from the low byte alone passes every
+  * other row here and fails these.
+  */
+class PrecompilePropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
+
+  private val schedule = GasSchedule.Baseline
+  private val precompiles = PrecompileSet.baseline(schedule)
+
+  private def of(address: org.fukuii.bytes.Address): Precompile = precompiles.at(address).get
+
+  private def bytes(hex: String): Bytes = EvmFixtures.bytesOf(hex)
+
+  private def ascii(s: String): Bytes = Bytes.fromArray(s.getBytes(UTF_8))
+
+  private def filling(size: Int): Bytes = Bytes.fromArray(new Array[Byte](size))
+
+  private val recoveries = Table(
+    ("name", "input", "expectedHex"),
+    (
+      "geth CallEcrecoverUnrecoverableKey",
+      "a8b53bdf3306a35a7103ab5504a0c9b492295564b6202b1942a84ef300107281" +
+        "000000000000000000000000000000000000000000000000000000000000001b" +
+        "307835653165303366353363653138623737326363623030393366663731663366" +
+        "3533663563373562373464636233316138356161386238383932623465386211" +
+        "22334455667788991011121314151617181920212223242526272829303132",
+      ""
+    ),
+    (
+      "geth ValidKey",
+      "18c547e4f7b0f325ad1e56f57e26c745b09a3e503d86e00e5255ff7f715d3d1c" +
+        "000000000000000000000000000000000000000000000000000000000000001c" +
+        "73b1693892219d736caba55bdb67216e485557ea6b6af75f37096c9aa6a5a75f" +
+        "eeb940b1d03b21e36b0e47e79769f095fe2ab855bd91e3a38756b7d75a9c4549",
+      "000000000000000000000000a94f5374fce5edbc8e2a8697c15331677e6ebf0b"
+    ),
+    (
+      "geth InvalidHighV-bits-1",
+      "18c547e4f7b0f325ad1e56f57e26c745b09a3e503d86e00e5255ff7f715d3d1c" +
+        "100000000000000000000000000000000000000000000000000000000000001c" +
+        "73b1693892219d736caba55bdb67216e485557ea6b6af75f37096c9aa6a5a75f" +
+        "eeb940b1d03b21e36b0e47e79769f095fe2ab855bd91e3a38756b7d75a9c4549",
+      ""
+    ),
+    (
+      "geth InvalidHighV-bits-2",
+      "18c547e4f7b0f325ad1e56f57e26c745b09a3e503d86e00e5255ff7f715d3d1c" +
+        "000000000000000000000000000000000000001000000000000000000000001c" +
+        "73b1693892219d736caba55bdb67216e485557ea6b6af75f37096c9aa6a5a75f" +
+        "eeb940b1d03b21e36b0e47e79769f095fe2ab855bd91e3a38756b7d75a9c4549",
+      ""
+    ),
+    (
+      "geth InvalidHighV-bits-3",
+      "18c547e4f7b0f325ad1e56f57e26c745b09a3e503d86e00e5255ff7f715d3d1c" +
+        "000000000000000000000000000000000000001000000000000000000000011c" +
+        "73b1693892219d736caba55bdb67216e485557ea6b6af75f37096c9aa6a5a75f" +
+        "eeb940b1d03b21e36b0e47e79769f095fe2ab855bd91e3a38756b7d75a9c4549",
+      ""
+    ),
+    (
+      "besu unrecoverable",
+      "acb1c19ac0832320815b5e886c6b73ad7d6177853d44b026f2a7a9e11bb899fc" +
+        "000000000000000000000000000000000000000000000000000000000000001c" +
+        "89ea49159b334f9aebbf54481b69d000d285baa341899db355a4030f6838394e" +
+        "540e9f9fa17bef441e32d98d5f4554cfefdc6a56101352e4b92efafd0d9646e8",
+      ""
+    ),
+    (
+      "besu 1",
+      "0049872459827432342344987245982743234234498724598274323423429943" +
+        "000000000000000000000000000000000000000000000000000000000000001b" +
+        "e8359c341771db7f9ea3a662a1741d27775ce277961470028e054ed3285aab8e" +
+        "31f63eaac35c4e6178abbc2a1073040ac9bbb0b67f2bc89a2e9593ba9abe8c53",
+      "0000000000000000000000000c65a9d9ffc02c7c99e36e32ce0f950c7804ceda"
+    ),
+    (
+      "besu 2",
+      "82f3df49d3645876de6313df2bbe9fbce593f21341a7b03acdb9423bc171fcc9" +
+        "000000000000000000000000000000000000000000000000000000000000001c" +
+        "ba13918f50da910f2d55a7ea64cf716ba31dad91856f45908dde900530377d8a" +
+        "112d60f36900d18eb8f9d3b4f85a697b545085614509e3520e4b762e35d0d6bd",
+      "000000000000000000000000c6e93f4c1920eaeaa1e699f76a7a8c18e3056074"
+    ),
+    (
+      "besu 3",
+      "0fcdd8f8c550589cbae6183bc40713beb8d11898a201d13d6d5e40bc9ebf221d" +
+        "000000000000000000000000000000000000000000000000000000000000001c" +
+        "3824317158d005cbe49614fa05798ea00f2ca9db302a5e92d55bcaecd33d33da" +
+        "3c7de48ebec95be7b5111a7812febed1421f839d4d480c98501b78666aefdcd3",
+      "000000000000000000000000fe26206ad0a5897a478dd046c56164553adaea20"
+    ),
+    (
+      "besu 4",
+      "eb9a6731fa269c24c2535aa00a4b31d7117a2791188120c71aacd97664d1cc16" +
+        "000000000000000000000000000000000000000000000000000000000000001c" +
+        "707c68dd904de055d735f9e5c4dfba46296ad38ff6ba8f0e5e3f4ae83243b84a" +
+        "5b1920d628abc74e4f3a09449011a9664ab9885f74fdc7628d417599207bde74",
+      "00000000000000000000000039c0f4fbcd41581d5b440a7c9f964b903037e09e"
+    ),
+    (
+      "besu 5",
+      "f3ae1d9176371dd31accd73bb6bbaee561a041f5ac291a548880e1abe7b19e38" +
+        "000000000000000000000000000000000000000000000000000000000000001b" +
+        "116bd86d971b70ed540dc7c13756a99ff17644ed433781a3ffcc7359541d02fc" +
+        "4a2358ffc21682ece870e633cc8537f04be4ff75a142ecd35a951fc95fd1de57",
+      "00000000000000000000000064849cfbf0353f2c80e2a1e558982f7c4738d9f1"
+    )
+  )
+
+  private val digests = Table(
+    ("input", "sha256Hex", "ripemd160Hex"),
+    (
+      "",
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "0000000000000000000000009c1185a5c5e9fc54612808977ee8f548b2258d31"
+    ),
+    (
+      "abc",
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+      "0000000000000000000000008eb208f7e05d987a9b044a8e98c6b087f15a0bfc"
+    ),
+    (
+      "message digest",
+      "f7846f55cf23e14eebeab5b4e1550cad5b509e3348fbc4efa3a1413d393cb650",
+      "0000000000000000000000005d0689ef49d2fae572b881b123a85ffa21595f36"
+    ),
+    (
+      "abcdefghijklmnopqrstuvwxyz",
+      "71c480df93d6ae2f1efad1447c66c9525e316218cf51fc8d9ed832f2daf18b73",
+      "000000000000000000000000f71c27109c692c1b56bbdceb5b9d2865b3708dbc"
+    )
+  )
+
+  /** The three per-word prices, checked against a partial word rather than a
+    * whole one — an implementation dividing without rounding up prices a
+    * three-byte input at zero words and passes every whole-word case.
+    */
+  private val perWordPrices = Table(
+    ("bytes", "sha256Gas", "ripemd160Gas", "identityGas"),
+    (0, 60, 600, 15),
+    (1, 72, 720, 18),
+    (31, 72, 720, 18),
+    (32, 72, 720, 18),
+    (33, 84, 840, 21),
+    (64, 84, 840, 21),
+    (65, 96, 960, 24)
+  )
+
+  property("ecrecover answers what go-ethereum and besu publish") {
+    forAll(recoveries) { (name: String, input: String, expectedHex: String) =>
+      assert(of(PrecompileSet.EcRecover).run(bytes(input)).toHex == expectedHex, name)
+    }
+  }
+
+  property("ecrecover charges the same for every one of them") {
+    forAll(recoveries) { (name: String, input: String, _: String) =>
+      assert(of(PrecompileSet.EcRecover).gasFor(bytes(input)) == BigInt(3000), "flat price for " + name)
+    }
+  }
+
+  property("sha256 answers the digest, unpadded") {
+    forAll(digests) { (input: String, sha256Hex: String, _: String) =>
+      assert(of(PrecompileSet.Sha256).run(ascii(input)).toHex == sha256Hex, "sha256 of " + input)
+    }
+  }
+
+  property("ripemd160 answers the digest in the low end of a word") {
+    forAll(digests) { (input: String, _: String, ripemd160Hex: String) =>
+      assert(of(PrecompileSet.Ripemd160).run(ascii(input)).toHex == ripemd160Hex, "ripemd160 of " + input)
+    }
+  }
+
+  property("identity answers exactly what it was given") {
+    forAll(digests) { (input: String, _: String, _: String) =>
+      assert(of(PrecompileSet.Identity).run(ascii(input)) == ascii(input), "identity of " + input)
+    }
+  }
+
+  property("sha256 charges its base plus one per started word") {
+    forAll(perWordPrices) { (size: Int, sha256Gas: Int, _: Int, _: Int) =>
+      assert(of(PrecompileSet.Sha256).gasFor(filling(size)) == BigInt(sha256Gas), "sha256 over " + size + " bytes")
+    }
+  }
+
+  property("ripemd160 charges its base plus one per started word") {
+    forAll(perWordPrices) { (size: Int, _: Int, ripemd160Gas: Int, _: Int) =>
+      assert(
+        of(PrecompileSet.Ripemd160).gasFor(filling(size)) == BigInt(ripemd160Gas),
+        "ripemd160 over " + size + " bytes"
+      )
+    }
+  }
+
+  property("identity charges its base plus one per started word") {
+    forAll(perWordPrices) { (size: Int, _: Int, _: Int, identityGas: Int) =>
+      assert(
+        of(PrecompileSet.Identity).gasFor(filling(size)) == BigInt(identityGas),
+        "identity over " + size + " bytes"
+      )
+    }
+  }

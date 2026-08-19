@@ -15,6 +15,15 @@ import org.fukuii.bytes.{Address, Bytes}
   * same name, and keeping it now costs a field rather than a later correction
   * at every site that reads one.
   *
+  * @param codeAddress
+  *   the account whose code this invocation runs, which is not always the one
+  *   it runs AS: the form that borrows another account's code names one here
+  *   and the other above. **This is what a precompile is looked up by**, so an
+  *   operation setting it to the account being run as would silently stop the
+  *   borrowing form from ever reaching one -- and both sources are explicit
+  *   that it does reach one. Nothing for a creation, whose code belongs to no
+  *   account yet, and that absence is what keeps a creation from running a
+  *   precompile however its address falls out.
   * @param data
   *   the input the invocation was called with, which the `CALLDATA` operations
   *   read. Reading past its end is not an error -- the specification pads with
@@ -29,6 +38,7 @@ import org.fukuii.bytes.{Address, Bytes}
 final case class Message(
     caller: Address,
     currentTarget: Address,
+    codeAddress: Option[Address],
     value: Word,
     data: Bytes,
     depth: Int = 0

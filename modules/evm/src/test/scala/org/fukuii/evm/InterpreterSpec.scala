@@ -35,7 +35,7 @@ class InterpreterSpec extends AnyFlatSpec:
       program: Int*
   ): (Frame, Either[Unsupported, Outcome]) =
     val frame = new Frame(message, Code(Bytes.fromArray(program.map(_.toByte).toArray)), BigInt(gas))
-    (frame, Interpreter.run(frame, table, schedule, environment))
+    (frame, Interpreter.run(frame, table, schedule, EvmFixtures.precompiles, environment))
 
   private def wordOfAddress(byte: Int): Word =
     Word.fromBytes(Bytes.fromIArray(EvmFixtures.address(byte).toBytes))
@@ -274,7 +274,9 @@ class InterpreterSpec extends AnyFlatSpec:
     val frame = frameOf(1000000, 0x60, 0x03, 0x60, 0x05, 0x01)
     val mismatched = table.adding(Operation(Opcode.Add, Cost.Computed))
     assert(
-      Interpreter.run(frame, mismatched, schedule, EvmFixtures.environment()) == Left(Unsupported(Opcode.Add)),
+      Interpreter.run(frame, mismatched, schedule, EvmFixtures.precompiles, EvmFixtures.environment()) == Left(
+        Unsupported(Opcode.Add)
+      ),
       "a halt is a result a chain reaches, and this is not one"
     )
   }
@@ -282,7 +284,13 @@ class InterpreterSpec extends AnyFlatSpec:
   "a table that has had an operation removed" should "treat its byte as naming none" in {
     val frame = frameOf(100, 0xff)
     assert(
-      Interpreter.run(frame, table.removing(Opcode.SelfDestruct), schedule, EvmFixtures.environment()) ==
+      Interpreter.run(
+        frame,
+        table.removing(Opcode.SelfDestruct),
+        schedule,
+        EvmFixtures.precompiles,
+        EvmFixtures.environment()
+      ) ==
         Right(Outcome.Halted(Halt.InvalidOpcode(0xff))),
       "a removed operation behaves exactly as an undefined byte, which is what scroll-tech/go-ethereum records at its own removal"
     )

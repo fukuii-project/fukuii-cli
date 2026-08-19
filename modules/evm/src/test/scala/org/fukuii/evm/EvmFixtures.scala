@@ -90,12 +90,22 @@ object EvmFixtures:
       namespace("code")
     )
 
+  /** An ordinary call: the account whose code runs is the one it runs as.
+    *
+    * A test wanting the borrowing form, or a creation, names its own code
+    * address -- those are the two shapes where the two addresses differ, and
+    * making the common one a default rather than all three keeps the difference
+    * visible at the site that needs it.
+    */
   def message(
       caller: Address = address(0x11),
       currentTarget: Address = address(0x22),
       value: Word = Word.Zero,
       data: Bytes = Bytes.Empty
-  ): Message = Message(caller, currentTarget, value, data)
+  ): Message = Message(caller, currentTarget, Some(currentTarget), value, data)
+
+  /** The precompiles the baseline schedule prices. */
+  val precompiles: PrecompileSet = PrecompileSet.baseline(GasSchedule.Baseline)
 
   val block: BlockContext = BlockContext(
     coinbase = address(0xcc),
