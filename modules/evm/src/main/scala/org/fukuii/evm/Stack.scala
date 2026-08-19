@@ -42,6 +42,22 @@ final class Stack:
     if depthFromTop < 0 || depthFromTop >= items.length then Left(Halt.StackUnderflow)
     else Right(items(items.length - 1 - depthFromTop))
 
+  /** Exchanges the top with the element `depthFromTop` places below it.
+    *
+    * A depth of zero would exchange the top with itself, which no operation
+    * asks for: the shallowest exchange the machine has names the element one
+    * below the top.
+    */
+  def swap(depthFromTop: Int): Either[Halt, Unit] =
+    if depthFromTop <= 0 || depthFromTop >= items.length then Left(Halt.StackUnderflow)
+    else
+      val top = items.length - 1
+      val other = top - depthFromTop
+      val held = items(top)
+      items(top) = items(other)
+      items(other) = held
+      Right(())
+
 object Stack:
 
   /** The specification's `len(stack) == 1024` check, and the same value its
