@@ -27,11 +27,23 @@ behind a shared execution engine and a pluggable consensus module, rather than
 a client forked and adapted per chain. **The networks named here are scope, not a
 support claim — none of them runs yet.** The near targets that shape the build
 today are proof-of-work networks (Ethereum Classic mainnet, Mordor) and
-proof-of-stake networks (Ethereum mainnet, Sepolia). The wider targets, named
-because they constrain the **seams** rather than the schedule, are the other
-EVM-equivalent networks — Optimism and the OP Stack, Polygon PoS, the
-proof-of-authority family already surveyed in `.claude/protocols/`, and private
-networks and devnets.
+proof-of-stake networks (Ethereum mainnet, Sepolia). The wider targets are staged, and each stage is
+chosen for what it unlocks rather than for prominence:
+
+| # | Stage | Why here |
+|---|---|---|
+| 1 | **Ethereum, proof-of-stake** | the leading EVM network, and where EVM development happens |
+| 2 | **Ethereum Classic, proof-of-work** | the marquee area; downstream of ETH for anything shared |
+| 3 | **Private devnets — proof-of-authority** | **a network fukuii can launch itself**, which is what makes an upgrade testable before it reaches a public testnet. A prerequisite, not a network to support |
+| 4 | **Polygon** | `bor`, with **PIPs** as its proposal series |
+| 5 | **Optimism / the OP Stack** | a **superchain**: op-geth resolves chains through a registry, so one integration reaches many networks |
+| 6 | **Further consortiums and networks** | Gnosis and similar |
+
+**Stage 3 needs no new survey**, which is the part worth knowing: `.claude/protocols/` already
+holds `consensus-clique.md`, `consensus-aura.md`, `consensus-qbft.md` and `consensus-ibft2.md`,
+each written from a production-client survey. Those four **are** the proof-of-authority layer, and
+besu — which carries clique, ibft and qbft — is its reference client as well as being the largest
+production JVM one.
 
 **Naming the wider set costs the build almost nothing and constrains the shape a
 great deal, which is why it is here rather than deferred to the section that
@@ -50,8 +62,10 @@ mostly **repricings in place**, not additions, its EIP-150 block being seven
 `constantGas` reassignments and zero insertions. It has that shape because it
 serves ETC and ETH-like chains from one binary.
 
-**zkEVMs and Arbitrum are excluded, and the exclusion is a decision rather than an
-omission.** They change the machine itself — Scroll disables `SELFDESTRUCT` in its
+**zkEVMs and Arbitrum are excluded, and stage 6 above does NOT quietly overturn that.**
+Scroll in particular is a zkEVM: admitting it is a different decision from admitting an
+EVM-equivalent network, and it needs the exclusion revisited on its own terms rather than
+folded into a list. **The exclusion is a decision rather than an omission.** They change the machine itself — Scroll disables `SELFDESTRUCT` in its
 jump table, Polygon's CDK line ships a parallel `*_zkevm.go` interpreter — so
 admitting one is a different question from admitting the networks above, and it
 has not been asked. **Do not read the wider list as licensing them.**

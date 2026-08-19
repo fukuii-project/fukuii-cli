@@ -272,6 +272,17 @@ derived from the downstream copy and inherits its lag.
    behavior, and current `master` no longer contains that code at all.
    `.claude/protocols/consensus-pow.md` names it alongside the other two for exactly that reason.
 
+**Then the networks fukuii adds after those two**, in the order they are scheduled:
+
+7. **Private devnets** — no new clone needed. `besu` (clique, ibft, qbft), `nethermind` (AuRa,
+   clique) and `go-ethereum` (clique, plus `--dev`) already carry the engines, and
+   `.claude/protocols/consensus-{clique,aura,qbft,ibft2}.md` already survey them.
+8. **`0xPolygon/bor`** and **`0xPolygon/Polygon-Improvement-Proposals`** — Polygon's client and its
+   proposal series, the latter cloned 2026-08-19.
+9. **`ethereum-optimism/op-geth`, `ethereum-optimism/specs`, `optimism/optimism`** — the OP Stack.
+   Worth more than one network: op-geth resolves chains through a superchain registry, so the seam
+   reaches every member.
+
 **The ordering does not weaken ETC's authority where ETC is the authority.** A value ETC adjusts is
 governed by the ECIP and a mechanism only ETC specifies is governed by ETC alone; those are unchanged.
 What the ordering fixes is the *default reading path* for anything the two families share, which is
