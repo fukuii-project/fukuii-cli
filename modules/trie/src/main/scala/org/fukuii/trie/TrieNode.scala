@@ -164,6 +164,23 @@ object TrieNode:
       if width >= InlineLimit then Left(TrieError.OversizedInlineNode(width))
       else fromRlp(embedded).map(NodeRef.Inline.apply)
 
+  /** The child of a node that has exactly one, where the empty reference is not
+    * a legitimate answer.
+    *
+    * [[refFromRlp]] decodes a child slot in general and admits the empty
+    * reference, which is correct for one of a branch's sixteen and wrong here:
+    * an extension exists to name a subtree, and [[cap]] produces the empty
+    * reference only for an absent one. The two positions need different
+    * decoders because a single one cannot see which caller it is answering —
+    * which is exactly why the implementations that share one decoder between
+    * both positions cannot refuse this shape.
+    */
+  def subnodeFromRlp(item: RlpItem): Either[TrieError, NodeRef] =
+    refFromRlp(item).flatMap {
+      case NodeRef.Empty => Left(TrieError.EmptyExtensionChild)
+      case named         => Right(named)
+    }
+
   private def shortNodeFromRlp(path: RlpItem, payload: RlpItem): Either[TrieError, TrieNode] = path match
     case _: RlpItem.Sequence    => Left(TrieError.NotANodeStructure)
     case RlpItem.Bytes(compact) =>
@@ -173,7 +190,7 @@ object TrieNode:
             case RlpItem.Bytes(value) => Right(LeafNode(nibbles, Bytes.fromIArray(value)))
             case _: RlpItem.Sequence  => Left(TrieError.NotANodeStructure)
         else if nibbles.isEmpty then Left(TrieError.EmptyExtensionSegment)
-        else refFromRlp(payload).map(ExtensionNode(nibbles, _))
+        else subnodeFromRlp(payload).map(ExtensionNode(nibbles, _))
       }
 
   private def branchFromRlp(items: Vector[RlpItem]): Either[TrieError, TrieNode] =

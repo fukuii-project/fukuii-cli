@@ -71,6 +71,29 @@ enum TrieError:
     */
   case EmptyExtensionSegment
 
+  /** An extension node whose single child is the empty reference. The empty
+    * reference means "no subtree", which is meaningful for one of a branch's
+    * sixteen slots and meaningless for the one child an extension exists to
+    * point at — [[TrieNode.cap]] returns it only for an absent node, so no
+    * conforming encoder can have produced this shape.
+    *
+    * Admitting it would change a root rather than merely admit a curiosity:
+    * inserting through such a node builds an extension above a leaf where the
+    * trie's definition gives one merged leaf.
+    *
+    * The field is split here rather than unanimous. Of the decoders surveyed
+    * for this rule, besu refuses it — its branch decode has an explicit
+    * null-slot case and its extension decode has none, so the child falls to a
+    * fixed-width read that rejects a zero-length payload — while go-ethereum
+    * and the implementations sharing its `decodeRef` cannot refuse it, because
+    * one function serves both positions and never learns which caller it is
+    * answering. Refusing is therefore a choice, and it is the same one
+    * [[EmptyExtensionSegment]] and [[OversizedInlineNode]] already make: safe
+    * against history because no conforming writer emits the shape, and unable
+    * to change a root for the same reason.
+    */
+  case EmptyExtensionChild
+
   /** A child embedded in its parent whose own encoding reaches the inline
     * limit. Such a node must be referenced by hash, so the parent is not the
     * encoding any conforming implementation would have produced for its

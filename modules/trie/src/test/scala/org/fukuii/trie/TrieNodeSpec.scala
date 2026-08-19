@@ -152,6 +152,26 @@ class TrieNodeSpec extends AnyFlatSpec:
     )
   }
 
+  it should "reject an extension node whose child is the empty reference" in {
+    val extension = RlpItem.Sequence(
+      Vector(RlpItem.Bytes(IArray(0x11.toByte, 0x23.toByte)), RlpItem.Bytes(IArray.empty[Byte]))
+    )
+    assert(
+      TrieNode.fromRlp(extension) == Left(TrieError.EmptyExtensionChild),
+      "cap yields the empty reference only for an absent subtree, and an extension exists to name one"
+    )
+  }
+
+  it should "still admit the empty reference in a branch slot, where it means an absent subtree" in {
+    val branch = RlpItem.Sequence(
+      Vector.fill(TrieNode.ChildCount)(RlpItem.Bytes(IArray.empty[Byte])) :+ RlpItem.Bytes(IArray(0x07.toByte))
+    )
+    assert(
+      TrieNode.fromRlp(branch) == Right(BranchNode(TrieNode.EmptyChildren, Bytes.fromIArray(IArray(0x07.toByte)))),
+      "refusing the empty child of an extension must not reach the sixteen slots where it is legitimate"
+    )
+  }
+
   it should "reject an embedded child whose own encoding reaches the inline limit" in {
     val oversized = TrieNode.toRlp(LeafNode(nibbles(1), repeated(0xaa, 40)))
     val branch = RlpItem.Sequence(
