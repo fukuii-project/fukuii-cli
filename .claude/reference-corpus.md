@@ -754,6 +754,32 @@ reason, so that nobody "fixes" them:
 
 ---
 
+## Adopting a dependency has a corpus step, and it has been skipped more than once
+
+**When a dependency is declared in the build, its source is cloned into the corpus under its own
+org — and any candidate copy of it is removed in the same pass.** Both halves, together.
+
+**This is not bookkeeping.** A declared dependency is code this project compiles against and will
+have to read: to answer what a version actually does, to check a claim about its behavior, to read
+the change between two releases. Without a clone, every such question is a network round trip or a
+guess. **And the clone must carry the tag actually resolved** — a corpus clone that cannot answer
+*"what did the version we use look like"* is not serving the purpose.
+
+**The second half is why this is written down.** A candidate copy that survives adoption leaves two
+trees of the same project, one of them arbitrary, both readable, and only one citable — and this
+file already forbids citing anything from the candidate area. That is the two-copies hazard the
+authority model warns about, arriving by neglect rather than by decision.
+
+**Measured 2026-08-19: it had been skipped for every adopted dependency.** circe had just been
+declared with no corpus clone at all; BouncyCastle and ScalaTest had corpus clones *and* stale
+candidate copies still sitting in the candidate area, one of them 771M. All three candidate copies
+were removed after verifying the corpus counterpart was present and non-empty, and circe's source —
+with `cats` and `jawn`, which its adoption puts on the classpath — was cloned.
+
+**So the step is: clone the dependency AND the transitives its adoption newly resolves.** A
+transitive is code this project runs; the fact that nobody typed its coordinate does not make it
+less present.
+
 ## What is deliberately excluded
 
 A reader reconstructing the corpus from this file will not get everything on the
