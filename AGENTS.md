@@ -24,9 +24,34 @@
 **Fukuii is an independent, ground-up Scala execution client for the EVM
 ecosystem** — one binary meant to run more than one network family, each
 behind a shared execution engine and a pluggable consensus module, rather than
-a client forked and adapted per chain. Today that spans proof-of-work networks
-(Ethereum Classic mainnet, Mordor) and proof-of-stake networks (Ethereum
-mainnet, Sepolia). This is a from-scratch rebuild carrying no code from any
+a client forked and adapted per chain. **The networks named here are scope, not a
+support claim — none of them runs yet.** The near targets that shape the build
+today are proof-of-work networks (Ethereum Classic mainnet, Mordor) and
+proof-of-stake networks (Ethereum mainnet, Sepolia). The wider targets, named
+because they constrain the **seams** rather than the schedule, are the other
+EVM-equivalent networks — Optimism and the OP Stack, Polygon PoS, the
+proof-of-authority family already surveyed in `.claude/protocols/`, and private
+networks and devnets.
+
+**Naming the wider set costs the build almost nothing and constrains the shape a
+great deal, which is why it is here rather than deferred to the section that
+first needs it.** Measured across the reference corpus: an EVM-equivalent network
+varies the opcode table, the gas schedule and the precompile set, and touches the
+interpreter nowhere else. `ethereum-optimism/op-geth` carries chain-specific
+tokens in exactly one file under `core/vm`, and that file is the precompile
+registry; `ava-labs/subnet-evm` carries none; `ronin/ronin`'s three are all added
+precompiles. **So the multi-network seam and the fork seam are one seam** — and
+the field's answer to both is per-EIP activation driven by a chain configuration
+rather than per-named-fork branching, which is what `ethereumclassic/core-geth`
+does, because it exists to serve ETC and ETH-like chains from one binary.
+
+**zkEVMs and Arbitrum are excluded, and the exclusion is a decision rather than an
+omission.** They change the machine itself — Scroll disables `SELFDESTRUCT` in its
+jump table, Polygon's CDK line ships a parallel `*_zkevm.go` interpreter — so
+admitting one is a different question from admitting the networks above, and it
+has not been asked. **Do not read the wider list as licensing them.**
+
+This is a from-scratch rebuild carrying no code from any
 prior implementation, and it started from a pinned toolchain. The layers built
 so far sit under `modules/`, rising from the foundation through the typed
 values every higher layer speaks to the commitments a block header carries —

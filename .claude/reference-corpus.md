@@ -249,6 +249,39 @@ codebase's habits.
 
 ---
 
+## Other EVM networks — evidence about what the seams must admit
+
+**Cited for SHAPE, never for a value, and listing one commits fukuii to nothing.**
+`AGENTS.md` § Overview names which of these networks are targets and which are
+excluded; **this table is where the evidence for that split lives**, so that the
+split stays checkable rather than remembered.
+
+**The split was measured, not reasoned.** The instrument counts chain-specific
+tokens *inside* `core/vm`, calibrated against stock `ethereum/go-ethereum`, which
+returns zero for every chain pattern and non-zero for `opSstore`. Re-run it before
+trusting a row; a clone moves.
+
+| Path under the corpus root | Upstream | Ref | Authoritative for |
+|---|---|---|---|
+| `ethereum-optimism/op-geth` | [ethereum-optimism/op-geth](https://github.com/ethereum-optimism/op-geth) | `optimism` | **The EVM-equivalence proof, and the sharpest one.** Chain-specific tokens appear in exactly **one** file under `core/vm` — `contracts.go`, the precompile registry keyed by fork. Everything else Optimism changes sits in `core/types` (deposit transaction, rollup cost, receipt), `core/txpool`, `core/state_transition.go` and `params/`. **So the OP seam is above the interpreter, not inside it** |
+| `ethereum-optimism/specs` | [ethereum-optimism/specs](https://github.com/ethereum-optimism/specs) | `main` | **The OP Stack specification** — deposit transactions, the L1 cost function, predeploys. The monorepo no longer carries `specs/`, so this is the only place the normative text lives. Cite this over the client for what OP *requires* |
+| `optimism/optimism` | [ethereum-optimism/optimism](https://github.com/ethereum-optimism/optimism) | `develop` | The OP Stack monorepo — `op-node`, `op-core`, end-to-end tests. **Filed under the org key `optimism`, which does not match its upstream org `ethereum-optimism`** — recorded rather than silently corrected, because a reader looking under the right org will not find it |
+| `0xPolygon/bor` | [0xPolygon/bor](https://github.com/0xPolygon/bor) | `develop` | **Polygon PoS's actual execution client.** Not to be confused with `0xPolygonHermez/cdk-erigon` below, which is the zkEVM/CDK line and a **different client** — the two are routinely conflated, and only one of them is EVM-equivalent |
+| `ava-labs/subnet-evm` | [ava-labs/subnet-evm](https://github.com/ava-labs/subnet-evm) | `master` | **The strongest EVM-equivalence reading in the set: ZERO chain-specific files under `core/vm`.** Its stateful precompiles and allowlists are registered entirely outside the interpreter, which is the shape a precompile registry has to admit |
+| `ronin/ronin` | [ronin/ronin](https://github.com/ronin/ronin) | `master` | **A proof-of-authority network as a geth fork.** Its three `core/vm` files are all *added* precompiles (`consortium_precompiled_contracts.go`) — so even a consensus-divergent network reaches the interpreter only through the registry |
+
+**Excluded from the target set, and cloned so that the exclusion stays
+checkable.** Each one changes the machine itself, which is a different decision
+from admitting the networks above — see `AGENTS.md` § Overview:
+
+| Path under the corpus root | Upstream | Ref | What it demonstrates |
+|---|---|---|---|
+| `scroll-tech/go-ethereum` | [scroll-tech/go-ethereum](https://github.com/scroll-tech/go-ethereum) | `develop` | A zkEVM that **disables an opcode**: `// SELFDESTRUCT is disabled in Scroll`, in `eips.go` and `jump_table.go`. **Evidence that an opcode table must support subtraction, not only addition** |
+| `0xPolygonHermez/cdk-erigon` | [0xPolygonHermez/cdk-erigon](https://github.com/0xPolygonHermez/cdk-erigon) | `zkevm` | Polygon's zkEVM/CDK line, which ships a **parallel interpreter** — `interpreter_zkevm.go`, `jump_table_zkevm.go`, `gas_table_zkevm.go`. Evidence that a second machine is expressible as a second table rather than a second client |
+| `OffchainLabs/nitro` | [OffchainLabs/nitro](https://github.com/OffchainLabs/nitro) | `master` | Arbitrum — ArbOS, its own gas model and system precompiles. **A different machine**, listed so nobody re-derives that it is one |
+
+---
+
 ## Ethereum consensus-layer clients
 
 Authoritative for the **consumer side of the Engine API** and for **framework
@@ -296,6 +329,7 @@ by opening `EIPS/eip-55.md` for its test vectors and getting a one-line pointer.
 | `ethereum/execution-specs` | [ethereum/execution-specs](https://github.com/ethereum/execution-specs) | a `tests@vN` tag — **not** the default branch, see below | **The executable specification, and the live source of both fixtures and fork definitions.** `src/ethereum/forks/<fork>/` carries a per-fork implementation — `blocks.py`, `transactions.py`, `bloom.py`, `fork_types.py`, `vm/` — which is a *specification* rather than an implementation of one, and therefore outranks every client row above for structure. **Runnable, and running it is how a vector gets produced** — that needs five Python packages, not the three its `Log` path suggests: `ethereum-types`, `ethereum-rlp`, `pycryptodome`, plus `spec256k1` and `cryptography`, because `blocks.py` imports `transactions.py` |
 | `ethereum/execution-specs-fixtures` | the same repository's **release assets** | the `tests@vN` tag itself | **The vectors.** Not a clone — see "The fixture release" below, which is the only entry here that `git fetch` does not refresh |
 | `ethereum/tests` | [ethereum/tests](https://github.com/ethereum/tests) | `develop` | The primary Ethereum conformance corpus **for forks up to Prague**, and **dormant** — see the currency note below |
+| `ethereum/legacytests` | [ethereum/legacytests](https://github.com/ethereum/legacytests) | `master` | **The historical corpus `ethereum/tests` points at and does not carry** — it is an uninitialized submodule there, so a clone of `ethereum/tests` alone silently lacks all of this. Two things live here and nowhere else. **`Constantinople/VMTests/` is the state-free interpreter tier the modern release dropped**, organized by opcode family (`vmArithmeticTest`, `vmBitwiseLogicOperation`, `vmPushDupSwapTest`, `vmIOandFlowOperations`, `vmSha3Test`, `vmSystemOperations`, and more) — a fixture is an `exec` block against a `pre` state with no transaction, so it certifies the machine without a state transition. **And its `GeneralStateTests` carry per-fork `post` sections reaching back to Frontier**, which the modern release's thin old-fork slices do not. Both are frozen at Constantinople pricing — read the note below before pricing anything from them |
 | `etclabscore/tests` | [etclabscore/tests](https://github.com/etclabscore/tests) | `develop` | The Ethereum corpus as core-geth consumes it |
 | `etclabscore/tests-etc` | [etclabscore/tests](https://github.com/etclabscore/tests) | `main` | **The corpus fukuii hosts** — every known ETC test in one place, and the destination for the vectors fukuii authors. Its authority is **prospective**: its current content is upstream ETC-translation work with no fukuii-authored commits, so citing it as fukuii's answer to a historical question is circular. A fukuii vector becomes authority when it is derived from the spec and cleared by a reviewer who did not author it. **Its custodial role is now deliberate — see below** |
 | `ethereum/consensus-specs` | [ethereum/consensus-specs](https://github.com/ethereum/consensus-specs) | `master` | The consensus-layer specification and its own test vectors |
