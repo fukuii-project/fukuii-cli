@@ -370,6 +370,17 @@ lazy val trie = (project in file("modules/trie"))
     libraryDependencies ++= testDeps
   )
 
+// L3 -- the EVM. It depends on `bytes` alone, because P2 builds the machine's
+// word and that converts at its boundary to raw bytes and to nothing else yet.
+// Edges to `types`, `trie` and `storage` arrive with the phases that need them,
+// rather than being declared now against a future.
+lazy val evm = (project in file("modules/evm"))
+  .dependsOn(bytes)
+  .settings(
+    name := "fukuii-evm",
+    libraryDependencies ++= testDeps
+  )
+
 // The aggregate. `aggregate` makes a task at the root fan out to every module;
 // it is NOT a dependency edge, so the root gains nothing on its classpath.
 //
@@ -378,7 +389,7 @@ lazy val trie = (project in file("modules/trie"))
 // org.fukuii:fukuii_3, so the repo name must not leak into it. Lowercase
 // because this is a Maven artifactId, not a display name.
 lazy val root = (project in file("."))
-  .aggregate(bytes, rlp, crypto, types, storage, trie)
+  .aggregate(bytes, rlp, crypto, types, storage, trie, evm)
   .settings(
     name := "fukuii",
     libraryDependencies ++= testDeps
