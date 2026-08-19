@@ -698,22 +698,80 @@ object Interpreter:
 
   /** Whether a creation may deploy at `address`.
     *
-    * ==The two authorities disagree about the third condition==
+    * **This is settled. It was surveyed across six implementations, decided by
+    * the operator, and then measured against three synced chains. Do not
+    * relitigate it from the two-client reading that used to be recorded here.**
     *
-    * A transaction count of zero and no code are required by both. The
-    * executable specification at `ccaaaba58` adds a third -- `account_deployable`
-    * in `frontier/state_tracker.py` refuses an address holding any storage --
-    * and go-ethereum at `6bb0588ad` does not: `core/vm/evm.go` tests the count
-    * and the code hash only, and its storage condition
-    * (`isEIP7610RejectedAccount`) short-circuits to false before EIP-158 and
-    * then applies to an enumerated set of addresses rather than to the rule.
+    * ==The situation==
     *
-    * The specification's reading is followed because it is what the corpus this
-    * layer is certified against is generated from, and because refusing is the
-    * safer direction: the alternative deploys over storage that is still there.
+    * An address can hold storage while having no code and a zero transaction
+    * count. Nothing in normal operation produces that; it is a historical
+    * residue from before EIP-161. When a creation targets such an address, the
+    * implementations do three different things.
     *
-    * Reversing trigger: a published fixture that a creation over an account
-    * holding storage, with a zero count and no code, is expected to succeed.
+    * ==The field, surveyed==
+    *
+    *   - **Refuse** -- the executable specification at `ccaaaba58`
+    *     (`account_deployable` in `frontier/state_tracker.py`); besu at
+    *     `c2addd9424` (`ContractCreationProcessor.java:124`, which ors
+    *     `!account.isStorageEmpty()` into the predicate); besu-etc at
+    *     `eb4248c997`; ethrex at `2367dc810` (`account.rs:114`, whose own
+    *     comment says the flag exists for exactly this collision).
+    *   - **Proceed** -- go-ethereum at `6bb0588ad` and core-geth at
+    *     `4185df450`, both testing the count and code hash only.
+    *   - **Clear, then proceed** -- nethermind at `c35ce1b1ab`
+    *     (`EvmInstructions.Create.cs:210`), wiping a dead account's storage
+    *     first.
+    *
+    * go-ethereum's `isEIP7610RejectedAccount` is **an enumerated per-chain
+    * address set, not a rule** -- its own comment says chains absent from the
+    * set are assumed to have no rejected accounts. That is viable only because
+    * the affected set cannot grow, which is the next point.
+    *
+    * ==Why the set cannot grow==
+    *
+    * EIP-161 closes it twice over: `spurious_dragon`'s `process_create_message`
+    * calls `destroy_storage` and then `increment_nonce` on the target, so any
+    * residue is wiped at creation and the new account can never again present a
+    * zero count. This fork lacks only the `increment_nonce`; the
+    * `destroy_storage` call is already in `frontier`'s own create path, whose
+    * comment calls the case "highly unlikely". So the affected addresses are
+    * those that acquired storage before Spurious Dragon, and there will be no
+    * more of them.
+    *
+    * ==What decided it: the three behaviors were measured against ETC mainnet==
+    *
+    * besu, nethermind and core-geth -- one from each of the three groups above
+    * -- have each synced ETC mainnet, peered to one another, and each imported
+    * block 24,884,770 with the hash
+    * `0x8887a9cd60877acc48331b8fcae2d3efc9644c7a6d54275dd839047c0d01b90c`. A
+    * block hash commits to the state root, so three implementations resolving
+    * this case three different ways computed the same state root, with no
+    * consensus error in any of them. **The divergence has never fired on ETC.**
+    *
+    * That is what makes refusing safe here rather than merely defensible: it
+    * would have produced core-geth's own state root for the whole of that
+    * history. It does not establish that no residue address exists -- only that
+    * nothing has targeted one in a way that mattered.
+    *
+    * ==So: refuse==
+    *
+    * Operator decision, following besu. It is also the specification's reading,
+    * which matters because the corpus this layer is certified against is
+    * generated from it, and it is the safer direction, since the alternative
+    * deploys over storage that is still present.
+    *
+    * ==Reversing this is not a one-line change==
+    *
+    * The refusal is what makes the specification's `destroy_storage` in the
+    * create path a provable no-op, which is why no trie-level storage wipe
+    * exists. **A reversal needs that operation built first.**
+    *
+    * Reversing trigger: a published fixture expecting a creation over an
+    * account holding storage, with a zero count and no code, to succeed; or
+    * ECIP-1121 settling the question the other way for the proof-of-work
+    * family, in which case this becomes configuration rather than a constant --
+    * which the baseline-plus-deltas seam already admits.
     */
   private def deployableAt(world: WorldState, address: Address): Boolean =
     world.nonceOf(address) == UInt64.Zero && world.codeOf(address).isEmpty && !world.hasStorage(address)
