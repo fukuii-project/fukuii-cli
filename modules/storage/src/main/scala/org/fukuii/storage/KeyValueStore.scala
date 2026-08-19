@@ -59,6 +59,25 @@ import org.fukuii.bytes.Bytes
   * a header or a total difficulty is; which namespaces need the pairing is
   * a decision for whatever layer constructs [[Namespace.Coupled]] values.
   */
+/** ==Ordering across seams, which no operation here can enforce==
+  *
+  * Chain data and state are separate seams and no operation spans them, so a
+  * write touching both is two calls and nothing makes them one. Cross-seam
+  * atomicity is deliberately not attempted — no surveyed client provides it
+  * either — and what stands in for it is an ordering rule:
+  *
+  * '''state is durably committed before the chain data that commits to it.'''
+  *
+  * The two directions fail differently, which is what makes the rule
+  * one-directional rather than a preference. Interrupted after state and before
+  * the header, a node holds state nothing references: garbage, discardable, and
+  * invisible to every reader. Interrupted the other way, it holds a header
+  * claiming state the node does not have, which every later read believes.
+  *
+  * This is stated here because it binds a caller rather than an implementation,
+  * and every write path built later — genesis, block import, any
+  * checkpoint-anchored sync — adopts it separately or diverges silently.
+  */
 trait KeyValueStore:
 
   /** The representation this store was constructed with. See [[Layout]]. */
@@ -86,6 +105,13 @@ trait KeyValueStore:
     * `companionValue` under the same `key` in `namespace.companion`'s
     * keyspace, as one atomic batch. The only way to admit an entry into a
     * coupled namespace — see [[Namespace.Coupled]].
+    *
+    * A namespace coupled to itself is rejected. The pairing exists so that an
+    * entry cannot be admitted without a value for its companion, and a
+    * companion that is the namespace itself is not a value for anything: the
+    * two writes would be the same keyspace and the same key, so the second
+    * would overwrite the first and the obligation would be met by discarding
+    * the thing it was protecting.
     */
   def admit(namespace: Namespace.Coupled, key: Bytes, value: Bytes, companionValue: Bytes): Unit
 

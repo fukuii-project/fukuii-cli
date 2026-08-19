@@ -104,6 +104,29 @@ class InMemoryKeyValueStoreSpec extends AnyFlatSpec:
     )
   }
 
+  it should "reject a namespace coupled to itself rather than classifying the identifier" in {
+    val store = new InMemoryKeyValueStore(layout)
+    val itself: Namespace.Standalone =
+      Namespace.Standalone(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable)
+    val selfCoupled: Namespace.Coupled =
+      Namespace.Coupled(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable, itself)
+    assertThrows[IllegalArgumentException](store.admit(selfCoupled, keyA, valueA, valueB))
+  }
+
+  it should "leave an identifier usable after refusing a self-coupled admit" in {
+    val store = new InMemoryKeyValueStore(layout)
+    val itself: Namespace.Standalone =
+      Namespace.Standalone(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable)
+    val selfCoupled: Namespace.Coupled =
+      Namespace.Coupled(NamespaceId("chain-header"), Seam.ChainData, WriteMode.Mutable, itself)
+    val _ = intercept[IllegalArgumentException](store.admit(selfCoupled, keyA, valueA, valueB))
+    store.update(itself, Nil, Seq(keyA -> valueA))
+    assert(
+      store.get(itself, keyA).contains(valueA),
+      "a call that wrote nothing must not classify the identifier it refused"
+    )
+  }
+
   "admit" should "write the primary value, readable through the primary namespace" in {
     val store = new InMemoryKeyValueStore(layout)
     val companion: Namespace.Standalone =

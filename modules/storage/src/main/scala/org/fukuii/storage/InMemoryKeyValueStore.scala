@@ -110,8 +110,14 @@ final class InMemoryKeyValueStore(val layout: Layout) extends KeyValueStore:
       removals: Iterable[Bytes],
       upserts: Iterable[(Bytes, Bytes)]
   ): Unit =
-    removals.foreach(target.remove)
-    upserts.foreach((key, value) => target.update(key, value))
+    // Both arguments are drawn before `target` is touched, because the batch is
+    // atomic for any `Iterable` and not only for a strict one: a lazy argument
+    // that throws partway would otherwise leave the map holding some of the
+    // batch, which is the state this operation promises never to produce.
+    val toRemove = removals.toVector
+    val toUpsert = upserts.toVector
+    toRemove.foreach(target.remove)
+    toUpsert.foreach((key, value) => target.update(key, value))
 
   /** Unsigned byte-lexicographic order, with the shorter of two agreeing
     * prefixes sorting first. `modules/storage` orders whatever bytes it is
@@ -156,6 +162,10 @@ final class InMemoryKeyValueStore(val layout: Layout) extends KeyValueStore:
 
   def admit(namespace: Namespace.Coupled, key: Bytes, value: Bytes, companionValue: Bytes): Unit =
     requireOpen()
+    require(
+      namespace.companion.id != namespace.id,
+      "a namespace coupled to itself has no companion to be admitted against"
+    )
     requireShapeAgreement(namespace)
     requireShapeAgreement(namespace.companion)
     registerShape(namespace)
