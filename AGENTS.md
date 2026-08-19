@@ -40,10 +40,15 @@ varies the opcode table, the gas schedule and the precompile set, and touches th
 interpreter nowhere else. `ethereum-optimism/op-geth` carries chain-specific
 tokens in exactly one file under `core/vm`, and that file is the precompile
 registry; `ava-labs/subnet-evm` carries none; `ronin/ronin`'s three are all added
-precompiles. **So the multi-network seam and the fork seam are one seam** — and
-the field's answer to both is per-EIP activation driven by a chain configuration
-rather than per-named-fork branching, which is what `ethereumclassic/core-geth`
-does, because it exists to serve ETC and ETH-like chains from one binary.
+precompiles. **So the multi-network seam and the fork seam are one seam** — and the
+field's answer to both is a **baseline plus per-proposal deltas**, driven by a
+chain configuration rather than by per-named-fork branching.
+`ethereumclassic/core-geth` is the worked case: `core/vm/jump_table.go:73`
+starts from `newBaseInstructionSet()`, commented at `:244` as *"returns Frontier
+instructions"*, then applies conditional blocks over it — and those deltas are
+mostly **repricings in place**, not additions, its EIP-150 block being seven
+`constantGas` reassignments and zero insertions. It has that shape because it
+serves ETC and ETH-like chains from one binary.
 
 **zkEVMs and Arbitrum are excluded, and the exclusion is a decision rather than an
 omission.** They change the machine itself — Scroll disables `SELFDESTRUCT` in its
@@ -530,6 +535,15 @@ vector-table row of the assignment above is for.
 
 **Deterministic across machines.** No dependence on wall-clock time, filesystem
 ordering, locale, or an available port.
+
+**A `val` declared BELOW a test registration is rejected, and the error names the wrong line.**
+Scala 3's initialization checker treats a field referenced by an already-registered
+test body as read-before-init, and the message points at the **first test in the
+class** rather than at the field. So a spec whose fixtures sit at the bottom fails
+with a diagnostic that sends you looking at a test that is fine. **Put fixtures and
+helper `val`s above the first test.** Observed 2026-08-19 by the agent building the
+interpreter specs; it cost a build cycle, which is the whole reason this is written
+down rather than left to be rediscovered.
 
 ### Before adding a spec, check whether an existing one extends
 

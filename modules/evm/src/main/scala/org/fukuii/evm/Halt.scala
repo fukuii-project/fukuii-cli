@@ -2,9 +2,9 @@ package org.fukuii.evm
 
 /** The ways execution ends other than by running off the end or stopping.
   *
-  * ==Frontier has no REVERT, and the absence is load-bearing==
+  * ==There is no cheap failure here, and the absence is load-bearing==
   *
-  * `REVERT` arrives at Byzantium. Here every member below is an *exceptional*
+  * `REVERT` is EIP-140 and this build predates it. Every member below is an *exceptional*
   * halt, and the executable specification says what that costs:
   * "the EVM has experienced an exceptional halt. This causes execution to
   * immediately end with all gas being consumed." So there is no member for a

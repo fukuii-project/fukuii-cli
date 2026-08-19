@@ -7,11 +7,15 @@ import org.fukuii.bytes.Bytes
   * ==Growing is not this type's decision==
   *
   * Expansion is charged for before it happens, and the charge is
-  * [[GasCost.expansion]]. This type therefore grows on request and never on its
-  * own: a read or write past the end is a caller error, not a silent
-  * allocation, because an allocation nobody charged for is gas the machine gave
-  * away. The specification has the same split — its `calculate_gas_extend_memory`
-  * computes the cost and the interpreter applies it before the write lands.
+  * [[GasCost.expansion]]. The specification draws the same split: its
+  * `calculate_gas_extend_memory` computes the cost and the interpreter applies
+  * it before the write lands.
+  *
+  * So this type does grow — [[write]] calls [[ensure]] — and the discipline is
+  * on the caller rather than on the type: growth here is always growth someone
+  * has already paid for, because an allocation nobody charged for is gas the
+  * machine gave away. [[read]] never grows at all and zero-fills instead, since
+  * reading past the mark reveals nothing that had to be allocated.
   */
 final class Memory:
 
