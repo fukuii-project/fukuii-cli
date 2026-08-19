@@ -75,10 +75,10 @@ object Word:
 
   def fromLong(value: Long): Word = wrap(BigInt(value))
 
-  /** Reads big-endian. Fewer than [[Width]] bytes are read as the low-order end
-    * of the word, which is how a `PUSH` of n bytes takes its value.
-    */
-  /** Reads the bytes as a magnitude, folding rather than handing them to
+  /** Reads big-endian, and fewer than [[Width]] bytes are read as the low-order
+    * end of the word -- which is how a `PUSH` of n bytes takes its value.
+    *
+    * Reads them as a magnitude, folding rather than handing them to
     * `BigInt(Array[Byte])`, which reads two's complement and would turn any
     * value with the high bit set negative. This is L0's idiom for the same
     * reason, and the fold also avoids `IArray.toArray`, which is deprecated as

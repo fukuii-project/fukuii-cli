@@ -105,10 +105,6 @@ final class StoredNodeTrie(
     case NodeRef.Empty => None
     case named         => Some(child(named))
 
-  /** Names `node` the way a parent will, writing it under its digest when the
-    * inline rule does not embed it. An embedded node needs no write: it travels
-    * inside whatever parent references it.
-    */
   /** [[persist]], plus the exception the root node needs.
     *
     * [[TrieNode.cap]] embeds any node encoding shorter than
@@ -147,6 +143,11 @@ final class StoredNodeTrie(
         )
     ref
 
+  /** Names `node` the way a parent will, writing it under its digest when the
+    * inline rule does not embed it. An embedded node needs no write: it travels
+    * inside whatever parent references it -- which is exactly why the ROOT needs
+    * [[persistRoot]], nothing referencing it.
+    */
   private def persist(node: TrieNode): NodeRef =
     TrieNode.cap(Some(node)) match
       case NodeRef.Hashed(hash) =>
