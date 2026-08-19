@@ -130,3 +130,13 @@ class StateTrieWorldStateSpec extends AnyFlatSpec:
       "a slot number is not a global key, so the same number under two accounts is two slots"
     )
   }
+
+  "an account leaf" should "commit to the storage root a write has just produced" in {
+    val state = EvmFixtures.stateTrie()
+    account(state, owner, 0, Bytes.Empty)
+    over(state).setStorage(owner, EvmFixtures.word(1), EvmFixtures.word(42))
+    assert(
+      state.getAccount(owner).toOption.flatten.map(_.storageRoot).contains(state.storageRoot(owner)),
+      "a leaf naming the root its storage had beforehand commits the account to storage it no longer has"
+    )
+  }

@@ -1,8 +1,8 @@
 package org.fukuii.evm
 
-import org.fukuii.bytes.{Address, Bytes, UInt256}
+import org.fukuii.bytes.{Address, Bytes, UInt256, UInt64}
 import org.fukuii.rlp.RlpCodec
-import org.fukuii.trie.{StateTrie, TrieError}
+import org.fukuii.trie.{StateTrie, Trie, TrieError}
 import org.fukuii.types.Account
 
 /** [[WorldState]] over the trie a state root is computed from.
@@ -22,6 +22,17 @@ import org.fukuii.types.Account
   * special case anywhere above, because the slot genuinely holds zero until it
   * reaches this point and holds nothing afterwards -- and those are the same
   * answer.
+  *
+  * ==An account leaf carries its own storage root, so a storage write rewrites
+  * it==
+  *
+  * The trie below derives an account's storage root from that account's own
+  * storage trie at the moment the account is written, which means a slot
+  * written and no account written after it leaves the leaf committing to the
+  * root the storage had beforehand. This seam has no way to hand that
+  * obligation to its caller -- nothing in [[WorldState]] writes an account --
+  * so [[setStorage]] discharges it here, and the cost is one account encoding
+  * per slot written.
   *
   * ==A value is stored as the RLP of its minimal form==
   *
@@ -73,6 +84,11 @@ final class StateTrieWorldState(state: StateTrie) extends WorldState:
   def setStorage(address: Address, slot: Word, value: Word): Unit =
     if value.isZero then state.deleteStorage(address, quantity(slot))
     else state.putStorage(address, quantity(slot), Bytes.fromIArray(RlpCodec.encodeTo(quantity(value))))
+    val account = accountAt(address).getOrElse(EmptyAccount)
+    state.putAccount(address, account.nonce, account.balance, account.codeHash)
+
+  private val EmptyAccount: Account =
+    Account(UInt64.Zero, UInt256.Zero, Trie.EmptyRoot, StateTrie.EmptyCodeHash)
 
   private def accountAt(address: Address): Option[Account] =
     state
