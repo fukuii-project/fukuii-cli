@@ -58,8 +58,8 @@ import org.fukuii.bytes.Bytes
   * namespace-pairing mechanism this module can express without knowing what
   * a header or a total difficulty is; which namespaces need the pairing is
   * a decision for whatever layer constructs [[Namespace.Coupled]] values.
-  */
-/** ==Ordering across seams, which no operation here can enforce==
+  *
+  * ==Ordering across seams, which no operation here can enforce==
   *
   * Chain data and state are separate seams and no operation spans them, so a
   * write touching both is two calls and nothing makes them one. Cross-seam
