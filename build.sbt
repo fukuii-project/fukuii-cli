@@ -248,6 +248,43 @@ lazy val scalacheckBridgeVersion = "3.2.20.0"
 // keccak, secp256k1, secp256r1 or BLAKE2F. Revisit on ordinary currency.
 lazy val bouncyCastleVersion = "1.85"
 
+// circe -- JSON, TEST SCOPE ONLY, and only where a test actually reads JSON.
+//
+// WHY AT ALL. The EVM is certified against externally published fixture corpora
+// -- ethereum/execution-specs-fixtures and ethereum/legacytests -- and every one
+// of them is JSON. Nothing in this repository could read JSON, so there was no
+// path to certification that did not either take a dependency or hand-roll a
+// parser. The hand-rolled option was assessed and declined: a scanner that
+// mishandles an escaped quote mid-string does not necessarily fail, it can
+// resync and produce a well-formed-looking tree with silently wrong values --
+// and a certification harness that misparses reports conformance it never
+// measured, which is worse than having no harness.
+//
+// GATE 0 PASSES ACROSS THE WHOLE CLOSURE, not just the named coordinates. All
+// eight artifacts circe drags in -- circe-{core,parser,jawn,numbers}, cats-core,
+// cats-kernel, jawn-parser, scalac-compat-annotation -- declare a
+// scala3-library_3 at 3.3.8 or below, inside our LTS line. Checked on two
+// instruments per artifact: the published POM's declared scala3-library_3, and
+// the TASTy header read out of the shipped bytecode. The coordinate cannot
+// answer this on its own -- every Scala 3 artifact carries the same _3 suffix.
+//
+// 0.14.16 IS THE NEWEST STABLE, AND THE METADATA WILL TELL YOU OTHERWISE.
+// Maven's own <latest> and <release> fields both report 0.15.0-M1, a milestone.
+// Anything that takes "release" literally pulls a prerelease. Published
+// 2026-06-24, so it is long past the release-age cooldown.
+//
+// AND IT CARRIES A FIX WE WANT RATHER THAN ONE WE TOLERATE. The transitive
+// jawn-parser resolves to 1.7.0, which is the patched version for CVE-2026-59990
+// (uncontrolled JSON nesting depth) and CVE-2026-61814 (quadratic parsing) --
+// both HIGH, both affecting jawn-parser 1.6.0 and below. The fixtures are deeply
+// nested JSON, so this is on-topic rather than incidental. Note that OSV and NVD
+// carry neither advisory under any lookup key as of 2026-08-19, so a scanner run
+// against a build on an older jawn reports clean; the version is right here by
+// resolution rather than by anything a scanner would have told us.
+//
+// Licenses: circe Apache-2.0, matching this project; cats and jawn MIT.
+lazy val circeVersion = "0.14.16"
+
 // Test dependencies are identical in every module, so they are defined once.
 // A per-module copy is how one module silently ends up on a different test
 // stack than its siblings.
@@ -401,7 +438,16 @@ lazy val evm = (project in file("modules/evm"))
   .dependsOn(bytes, rlp, crypto, types, trie)
   .settings(
     name := "fukuii-evm",
-    libraryDependencies ++= testDeps
+    libraryDependencies ++= testDeps,
+    // Declared HERE and not in `testDeps`, deliberately. That sequence is
+    // appended to every module, and only this one reads JSON -- a fixture
+    // corpus is certified against the EVM and nowhere else. Putting a JSON
+    // parser on `bytes`'s test classpath would be a dependency with no present
+    // need, which this project does not do.
+    libraryDependencies ++= Seq(
+      "io.circe" %% "circe-core"   % circeVersion % Test,
+      "io.circe" %% "circe-parser" % circeVersion % Test
+    )
   )
 
 // The aggregate. `aggregate` makes a task at the root fan out to every module;
