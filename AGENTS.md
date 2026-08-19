@@ -544,14 +544,21 @@ work. **Name the files directly, or use `git grep` for tracked text and a direct
 for the rest** — and calibrate any sweep against a token you know is present, because the
 failure returns a clean zero rather than an error.
 
-**A `val` declared BELOW a test registration is rejected, and the error names the wrong line.**
+**A `val` or `def` declared BELOW a test registration is a HARD ERROR, not a style
+preference, and its diagnostic names neither the field nor the ordering.**
 Scala 3's initialization checker treats a field referenced by an already-registered
 test body as read-before-init, and the message points at the **first test in the
 class** rather than at the field. So a spec whose fixtures sit at the bottom fails
-with a diagnostic that sends you looking at a test that is fine. **Put fixtures and
-helper `val`s above the first test.** Observed 2026-08-19 by the agent building the
-interpreter specs; it cost a build cycle, which is the whole reason this is written
-down rather than left to be rediscovered.
+with a diagnostic that sends you looking at a test that is fine. **Put fixtures,
+helper `def`s and table `val`s above the first test** — it reaches all three, not
+only fixtures.
+
+**Recognize it by its wording, because nothing in it suggests ordering:** roughly
+forty lines about a *"non-transitively initialized (Warm) object of type (anonymous
+class `org.scalatest.verbs.StringVerbStringInvocation`)"*. `Warm` or `Hot` beside a
+ScalaTest verb class means this and nothing else. Observed twice, 2026-08-19, by two
+different agents building specs; it cost each of them a build cycle, and the second
+one only recognized it because the first had written it down.
 
 ### Before adding a spec, check whether an existing one extends
 

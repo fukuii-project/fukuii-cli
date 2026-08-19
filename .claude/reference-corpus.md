@@ -369,6 +369,25 @@ wrong: a block's octets and its published hash are what they were. It bounds
 21 elements appears nowhere in it, while the executable spec's `amsterdam` already
 defines one of 23.
 
+### Two vector corpora that no row above points at, and both are machine-readable
+
+**A client's own test data is a published, pinned vector corpus, and this file did not say so.**
+Named after a phase that used both and reported it: they turned *"I implemented the specification"*
+into *"two independent implementations' own test data agrees"*, and one of them caught a bug class
+the implementer would not have thought to write a test for.
+
+- **`ethereum/go-ethereum` `core/vm/testdata/precompiles/*.json`** — 29 files, one per precompile,
+  each a list of `{Input, Expected, Gas, Name}` objects. Directly loadable. Its `InvalidHighV` rows
+  for `ecrecover` carry a `v` whose **low byte** is a valid recovery identifier and whose full
+  256-bit word is not — a case that passes every other vector and is exactly the input a
+  low-byte read gets wrong.
+- **`besu-eth/besu`, `evm/src/test/.../*PrecompiledContractTest.java`** — 13 files. JVM-shaped, so
+  it also shows how a JVM client structures a precompile test.
+
+**These are cited like any other client artifact: at a ref, for evidence, never adopted.** They are
+strongest as a *cross-check on an implementation already derived from the specification*, not as a
+substitute for deriving it — two clients agreeing is two implementations, not two authorities.
+
 ### The fixture release — the one entry that is not a clone
 
 **Downloaded 2026-08-15, because a clone of `execution-specs` yields no vectors at all.**

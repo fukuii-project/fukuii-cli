@@ -565,8 +565,11 @@ Run before declaring a task done, not at review time. **Derive the file list
 rather than hardcoding a source path:**
 
 ```
-git ls-files '*.scala' | wc -l      # must be > 0, or the line below proved nothing
-git ls-files '*.scala' | xargs grep -n 'println\|printStackTrace\|System\.out\|System\.err'
+scala_files () {   # tracked AND not-yet-tracked -- see the third reason below
+  { git ls-files '*.scala'; git ls-files --others --exclude-standard '*.scala'; } | sort -u
+}
+scala_files | wc -l      # must be > 0, or the line below proved nothing
+scala_files | xargs grep -n 'println\|printStackTrace\|System\.out\|System\.err'
 ```
 
 Three reasons for that shape, all load-bearing:
@@ -575,6 +578,17 @@ Three reasons for that shape, all load-bearing:
   silently: the check matches nothing and reports clean forever, which is worse
   than no check. `git ls-files` follows the layout wherever it goes, including
   before the layout exists.
+- **`git ls-files` ALONE CANNOT SEE THE FILES THIS GATE EXISTS TO CHECK, and that
+  was this gate's own defect until 2026-08-19.** It lists tracked files only. An
+  agent runs this **before declaring a task done** -- which is before committing
+  -- so its new files are still untracked and the gate walks straight past them.
+  Measured: run as written during a phase that added ten files, it scanned 128
+  and reported clean about 138. **The calibration line above does not catch it**,
+  because the tracked count is comfortably non-zero; the check passes, having
+  proved nothing about the new code. That is precisely the *"matches nothing and
+  reports clean forever"* failure the first reason names, arriving through the
+  one door the gate did not check. Hence `--others --exclude-standard`, which
+  adds untracked-but-not-ignored files and still cannot reach a gitignored one.
 - **It cannot reach outside the tracked tree.** A bare recursive grep from the
   repository root descends into untracked reference material and reports other
   projects' code as findings.
