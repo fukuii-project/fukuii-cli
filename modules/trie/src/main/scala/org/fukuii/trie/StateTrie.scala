@@ -177,9 +177,12 @@ final class StateTrie(
     * operation is what makes load-bearing. Reclaiming the destroyed trie's bytes
     * is a separate retention decision and is deliberately not done here.
     *
-    * Storage goes first so that writes applied after a destruction land in the
-    * new trie rather than the old one, which is the order the specification's
-    * `destroy_account` uses.
+    * The two statements are ordered to match the specification's
+    * `destroy_account`, which clears storage before removing the account.
+    * **They are independent here**: both are synchronous, neither reads what the
+    * other writes, and reversing them produces the identical observable state.
+    * The order is faithfulness to the specification's shape rather than a
+    * dependency -- an earlier version of this sentence implied otherwise.
     */
   def destroyAccount(address: Address): Unit =
     // The evicted trie is the thing being discarded, so its handle is bound away

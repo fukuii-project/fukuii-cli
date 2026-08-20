@@ -114,10 +114,28 @@ final class JournaledWorldState(base: WorldState) extends WorldState:
     * A zero is passed down as a zero, because the layer below is where a zero
     * becomes an absence -- see [[StateTrieWorldState]].
     *
-    * Storage goes first, and that ordering is load-bearing rather than tidy: an
-    * implementation over a two-level trie reads an account's storage root at
-    * the moment it writes the account, so an account written before its own
-    * storage commits to the root the storage had beforehand.
+    * ==The order of these loops does NOT matter, and this paragraph used to say
+    * it did==
+    *
+    * It claimed storage must go first, because a two-level implementation reads
+    * an account's storage root as it writes the account. **The real invariant is
+    * one layer down and stronger**: [[org.fukuii.trie.StateTrie.putAccount]]
+    * never accepts nor trusts a caller-supplied storage root -- it re-derives
+    * from the live storage trie on every call -- and
+    * [[StateTrieWorldState.setStorage]] rewrites the account leaf
+    * unconditionally on both its branches. So every loop below is
+    * read-current-then-write-one-field, and any order converges on the same leaf.
+    *
+    * **The field is stronger still, and settles it.** The executable
+    * specification's `Account` has no storage-root field at all -- only `nonce`,
+    * `balance` and `code_hash` -- and injects the root at encode time through a
+    * `get_storage_root` callback, so its own account and storage diffs are
+    * applied in whatever order a dict iterates. It reaches the same
+    * order-independence by never storing the value rather than by always
+    * re-deriving it.
+    *
+    * **Protecting a property that does not exist is worse than not protecting
+    * it**, because it points the next reader away from the one that does.
     *
     * Within each kind the order is not a property anything below depends on: a
     * trie commits to the mapping it ends up holding and not to the order it was
