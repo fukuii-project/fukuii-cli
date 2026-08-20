@@ -72,7 +72,14 @@ final case class FileContents(fixtures: Vector[StateFixture], withoutExpectation
 
 object StateFixture:
 
-  /** The fork whose expectations this layer is certified against. */
+  /** The fork a file is read for when the caller names none.
+    *
+    * A fixture states its expectations under a fork's name, and a file carrying
+    * none for the fork asked about yields cases counted as having no expectation
+    * rather than cases that passed. **So this is a reader's parameter, not a
+    * property of the corpus** -- the same file answers differently depending on
+    * which fork it is asked about, and the generated corpus is filled per fork.
+    */
   val Fork: String = "Frontier"
 
   /** Every executable combination in one file, and the cases that stated no
@@ -84,7 +91,7 @@ object StateFixture:
     * is named here instead, because a case that quietly disappears between the
     * corpus and the report is coverage nobody can audit.
     */
-  def decodeFile(path: String, contents: String): Either[String, FileContents] =
+  def decodeFile(path: String, contents: String, fork: String = Fork): Either[String, FileContents] =
     io.circe.parser
       .parse(contents)
       .left
@@ -94,7 +101,7 @@ object StateFixture:
           obj.toVector.foldLeft(Right(FileContents(Vector.empty, Vector.empty)): Either[String, FileContents]) {
             case (Left(error), _)          => Left(error)
             case (Right(sofar), (name, c)) =>
-              decodeCase(name, c).left.map(path + " " + name + ": " + _).map { built =>
+              decodeCase(name, c, fork).left.map(path + " " + name + ": " + _).map { built =>
                 if built.isEmpty then sofar.copy(withoutExpectation = sofar.withoutExpectation :+ name)
                 else sofar.copy(fixtures = sofar.fixtures ++ built)
               }
@@ -102,7 +109,7 @@ object StateFixture:
         }
       }
 
-  def decodeCase(name: String, json: Json): Either[String, Vector[StateFixture]] =
+  def decodeCase(name: String, json: Json, fork: String = Fork): Either[String, Vector[StateFixture]] =
     val cursor = json.hcursor
     for
       envJson <- cursor.downField("env").focus.toRight("no env")
@@ -110,7 +117,7 @@ object StateFixture:
       txJson <- cursor.downField("transaction").focus.toRight("no transaction")
       block <- blockOf(envJson)
       pre <- FixtureValues.accounts(preJson)
-      entries = cursor.downField("post").downField(Fork).values.map(_.toVector).getOrElse(Vector.empty)
+      entries = cursor.downField("post").downField(fork).values.map(_.toVector).getOrElse(Vector.empty)
       built <- entries.foldLeft(Right(Vector.empty): Either[String, Vector[StateFixture]]) {
         case (Left(error), _)      => Left(error)
         case (Right(sofar), entry) =>

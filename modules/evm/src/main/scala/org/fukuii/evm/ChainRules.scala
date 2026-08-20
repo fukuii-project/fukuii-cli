@@ -98,6 +98,25 @@ object ChainRules:
       signatureSMustBeLow = false
     )
 
+  /** The baseline with EIP-2 and EIP-7 applied.
+    *
+    * A fork name labels the composition; the proposals it is composed of carry
+    * neutral names, which is the split [[Proposals]] exists to keep. Both
+    * network families this project targets ran these two together and shared
+    * their history to this point, so one name serves both.
+    *
+    * `lazy` because [[Proposals]] is a sibling in this file: a strict value here
+    * would fix an initialisation order between two top-level objects for no
+    * reason anyone reading either would expect.
+    */
+  lazy val Homestead: ChainRules =
+    Baseline.applying(
+      Proposals.delegateCall,
+      Proposals.creationCharge,
+      Proposals.codeDepositMustSucceed,
+      Proposals.lowSignatureS
+    )
+
 /** The changes individual proposals make to the rules a chain runs.
   *
   * Named for the proposal rather than the fork that shipped it, so a network

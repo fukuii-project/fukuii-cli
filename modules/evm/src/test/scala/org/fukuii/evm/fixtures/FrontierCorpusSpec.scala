@@ -29,7 +29,8 @@ class FrontierCorpusSpec extends AnyFlatSpec:
   private val census: Map[String, CorpusCensus] = Map(
     FrontierCorpus.LegacyVmCorpus -> CorpusCensus(files = 609, cases = 609, skipped = 0),
     FrontierCorpus.LegacyStateCorpus -> CorpusCensus(files = 2394, cases = 2691, skipped = 1668),
-    FrontierCorpus.GeneratedStateCorpus -> CorpusCensus(files = 31, cases = 530, skipped = 0)
+    FrontierCorpus.GeneratedStateCorpus -> CorpusCensus(files = 31, cases = 530, skipped = 0),
+    FrontierCorpus.GeneratedHomesteadCorpus -> CorpusCensus(files = 34, cases = 545, skipped = 0)
   )
 
   private def report(corpus: String): CorpusReport =
@@ -103,5 +104,25 @@ class FrontierCorpusSpec extends AnyFlatSpec:
 
   it should "agree with every case it ran" in {
     val found = report(FrontierCorpus.GeneratedStateCorpus)
+    assert(found.diverged.isEmpty, found.describe)
+  }
+
+  FrontierCorpus.GeneratedHomesteadCorpus should "hold the files the census records" in {
+    val found = report(FrontierCorpus.GeneratedHomesteadCorpus)
+    assert(found.filesRead == expected(FrontierCorpus.GeneratedHomesteadCorpus).files, found.describe)
+  }
+
+  it should "hold the cases the census records" in {
+    val found = report(FrontierCorpus.GeneratedHomesteadCorpus)
+    assert(found.casesFound == expected(FrontierCorpus.GeneratedHomesteadCorpus).cases, found.describe)
+  }
+
+  it should "skip exactly the cases the census records" in {
+    val found = report(FrontierCorpus.GeneratedHomesteadCorpus)
+    assert(found.skipped.length == expected(FrontierCorpus.GeneratedHomesteadCorpus).skipped, found.describe)
+  }
+
+  it should "agree with every case it ran" in {
+    val found = report(FrontierCorpus.GeneratedHomesteadCorpus)
     assert(found.diverged.isEmpty, found.describe)
   }

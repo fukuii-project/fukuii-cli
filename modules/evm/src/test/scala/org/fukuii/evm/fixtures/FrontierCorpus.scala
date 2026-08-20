@@ -1,6 +1,7 @@
 package org.fukuii.evm.fixtures
 
 import java.nio.file.Path
+import org.fukuii.evm.ChainRules
 
 /** The three published corpora this fork is certified against, run once and
   * reported as counts.
@@ -34,13 +35,28 @@ object FrontierCorpus:
   /** The generated state tier, from the tests@v20.0.1 release. */
   val GeneratedStateCorpus: String = "execution-specs-fixtures state_tests/for_frontier"
 
+  /** The same tier filled for the next fork, run under that fork's rules.
+    *
+    * The corpus is partitioned per fork, so certifying against another one is a
+    * directory, a name to read expectations under, and a set of rules -- and
+    * nothing else. That it costs no more than this is the fork seam's claim
+    * about itself, tested here rather than asserted.
+    */
+  val GeneratedHomesteadCorpus: String = "execution-specs-fixtures state_tests/for_homestead"
+
   def reportFor(name: String): Option[CorpusReport] = reports.flatMap(_.find(_.corpus == name))
 
   private def assemble(root: Path): Vector[CorpusReport] =
     Vector(
       vmReport(FixtureCorpus.legacy(root).resolve("VMTests")),
       stateReport(LegacyStateCorpus, FixtureCorpus.legacy(root).resolve("GeneralStateTests")),
-      stateReport(GeneratedStateCorpus, FixtureCorpus.generated(root).resolve("state_tests/for_frontier"))
+      stateReport(GeneratedStateCorpus, FixtureCorpus.generated(root).resolve("state_tests/for_frontier")),
+      stateReport(
+        GeneratedHomesteadCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_homestead"),
+        fork = "Homestead",
+        rules = ChainRules.Homestead.copy(precompiles = VmFixtureRunner.precompiles)
+      )
     )
 
   private def vmReport(directory: Path): CorpusReport =
@@ -56,19 +72,25 @@ object FrontierCorpus:
     }
     CorpusReport(LegacyVmCorpus, files.length, outcomes)
 
-  private def stateReport(name: String, directory: Path): CorpusReport =
+  private def stateReport(
+      name: String,
+      directory: Path,
+      fork: String = StateFixture.Fork,
+      rules: ChainRules = StateFixtureRunner.Baseline
+  ): CorpusReport =
     val files = FixtureCorpus.jsonFilesUnder(directory)
     val outcomes = files.flatMap { file =>
       FixtureCorpus
         .read(file)
-        .flatMap(StateFixture.decodeFile(file.getFileName.toString, _)) match
+        .flatMap(StateFixture.decodeFile(file.getFileName.toString, _, fork)) match
         case Left(error) =>
           Vector(CaseOutcome(file.getFileName.toString, Verdict.Skipped(SkipReason.Undecodable(error))))
         case Right(contents) =>
           val skipped = contents.withoutExpectation.map { case_ =>
             CaseOutcome(case_, Verdict.Skipped(SkipReason.NoExpectationAtThisFork))
           }
-          val run = contents.fixtures.map(fixture => CaseOutcome(fixture.name, StateFixtureRunner.run(fixture)))
+          val run =
+            contents.fixtures.map(fixture => CaseOutcome(fixture.name, StateFixtureRunner.run(fixture, rules)))
           skipped ++ run
     }
     CorpusReport(name, files.length, outcomes)
