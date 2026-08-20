@@ -52,7 +52,7 @@ object CertificationCorpora:
     * the difference is thirteenfold.** Four suites carry it in their names and
     * hold 81 cases between them; the fork key is carried by 650 cases across the
     * tier, expanding to 1096 runnable combinations. The suite name under-reports
-    * because a general state test is not organised by the fork it exercises,
+    * because a general state test is not organized by the fork it exercises,
     * and the post key is what the reader dispatches on -- which is the invariant
     * to search for rather than the name.
     */
@@ -113,7 +113,7 @@ object CertificationCorpora:
     * legacy one. Two bindings would let the two drift into certifying different
     * machines under one section's name.
     */
-  private def tangerineWhistle: ChainRules =
+  private val tangerineWhistle: ChainRules =
     ChainRules.TangerineWhistle.copy(precompiles = VmFixtureRunner.precompiles)
 
   /** What running one case established, with a case that THREW recorded as a

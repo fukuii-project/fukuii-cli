@@ -103,7 +103,7 @@ SUITES=$(sum_field 'Suites: completed [0-9]+')
 # ScalaTest property rather than a quirk of ours: `testsCompletedCount` is
 # succeeded + failed, so a canceled test appears in NO total. A suite that
 # cancels therefore reports "All tests passed", exits 0, and this check used to
-# say PASS -- while the thing it cancelled out of was the only tier that
+# say PASS -- while the thing it canceled out of was the only tier that
 # certifies anything. Counting them is what makes that state nameable.
 CANCELED=$(sum_field 'canceled [0-9]+')
 CANCELED=${CANCELED:-0}

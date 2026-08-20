@@ -13,12 +13,10 @@ import org.fukuii.types.{Log, Sender, Transaction}
   *
   * ==Its own file, because it belongs to no fork==
   *
-  * It sat beside `FrontierTransaction`, which is correctly named for the fork
-  * whose intrinsic prices and admission rules it carries. This runs every fork
-  * the harness certifies, and a reader arriving at a file named for one fork
-  * finds a fork-neutral runner inside it. Splitting them was the fix rather than
-  * renaming the file: a rename would have carried this into a differently-named
-  * file and left the two sharing one, which is the actual problem.
+  * It runs every fork the harness certifies. Its sibling `FrontierTransaction`
+  * is correctly named for one, carrying that fork's intrinsic prices and its
+  * admission rules -- so the two cannot share a file without the file's name
+  * being wrong about one of them.
   */
 object StateFixtureRunner:
 
@@ -66,7 +64,7 @@ object StateFixtureRunner:
     *
     * **The legacy corpus publishes no signed bytes for any of its cases**, so
     * its stated sender stands. That is a property of that corpus, uniform
-    * across it, rather than a judgement made case by case -- and nothing
+    * across it, rather than a judgment made case by case -- and nothing
     * degrades quietly, because wherever bytes are present they settle the
     * question in both directions.
     */

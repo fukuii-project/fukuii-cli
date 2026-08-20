@@ -32,9 +32,8 @@ final case class CorpusCensus(files: Int, cases: Int, skipped: Int):
   * and one failing test is a signal every layer above already understands.
   *
   * It is checked here rather than in the shell because the shell can only read
-  * the console. Any check built on that text is coupled to how ScalaTest chooses
-  * to print, and one written against today's layout stopped firing when a reason
-  * wrapped onto a second line -- while still printing its all-clear.
+  * the console, and any check built on that text is coupled to how ScalaTest
+  * chooses to print. An assertion is coupled to nothing.
   *
   * ==Named for what it does rather than for a fork==
   *
@@ -72,6 +71,19 @@ class CertificationCorporaSpec extends AnyFlatSpec:
         " canceled case is counted by nothing -- so without this one the run would certify nothing" +
         " and report success."
     )
+
+  it should "be censused for every corpus the harness assembles" in {
+    // Without this a seventh corpus can be added, run, and have its divergences
+    // discarded: no census row means no spec block asks it anything, and the
+    // count ratchet does not move either, because the number of TESTS is
+    // unchanged. The failure is a corpus that is certified against nothing while
+    // every figure agrees.
+    val assembled = CertificationCorpora.reports
+      .getOrElse(cancel("no fixture corpus"))
+      .map(_.corpus)
+      .toSet
+    assert(assembled == census.keySet, s"assembled ${assembled.toString} against a census of ${census.keySet.toString}")
+  }
 
   private def report(corpus: String): CorpusReport =
     CertificationCorpora

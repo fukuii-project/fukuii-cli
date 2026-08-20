@@ -635,7 +635,7 @@ object Interpreter:
     // the call, and NOTHING MOVES. The specification reaches the same five by
     // giving this form its own entry point that charges a base and a request and
     // nothing else, then hands the shared path a flag saying not to move
-    // anything -- and the fifth is the one this comment used to leave out.
+    // anything.
     val inherits = form == CallForm.WithTheNamedAccountsCodeKeepingTheCaller
     val taken =
       for
