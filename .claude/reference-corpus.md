@@ -387,6 +387,71 @@ by opening `EIPS/eip-55.md` for its test vectors and getting a one-line pointer.
 | `ethereum/hive` | [ethereum/hive](https://github.com/ethereum/hive) | `master` | The cross-client integration harness — how conformance is exercised, rather than what conformance is |
 | `ethereum/yellowpaper` | [ethereum/yellowpaper](https://github.com/ethereum/yellowpaper) | `master` | The formal specification of the EVM |
 
+### Every corpus above is TIERED, and a question answered from one tier is not answered
+
+**This section exists because the same mistake has now been made three times in one working
+session** — an absence claim drawn from one tier, one directory, or one range of forks, reported as
+a claim about the corpus. Each time the material was present and the instrument could not see it.
+The rows above say which repositories exist and what each is authoritative for. **They do not say
+that each contains several independent test tiers, and that is the gap this closes.**
+
+**fukuii currently reads three tiers. There are roughly thirty-six.** Counted 2026-08-19, and stated
+as a dated reading rather than a maintained figure — re-derive with, from the corpus root:
+
+```bash
+for d in ethereum/execution-specs-fixtures/tests-v20.0.1/fixtures/*/ \
+         ethereum/tests/*/ ethereum/legacytests/Constantinople/*/ etclabscore/tests-etc/*/; do
+  n=$(find "$d" -name '*.json' 2>/dev/null | wc -l)
+  [ "$n" -gt 0 ] && printf '%-64s %6s\n' "$d" "$n"
+done
+```
+
+| Corpus | Tiers it carries | What fukuii reads |
+|---|---|---|
+| `ethereum/execution-specs-fixtures` | `state_tests`, `blockchain_tests`, `blockchain_tests_engine`, `blockchain_tests_engine_x`, `blockchain_tests_sync`, `transaction_tests` | **`state_tests/for_frontier` only** |
+| `ethereum/legacytests` (`Constantinople`) | `GeneralStateTests`, `VMTests`, `BlockchainTests` | **`GeneralStateTests` and `VMTests`; not `BlockchainTests`** |
+| `ethereum/tests` | `TransactionTests`, `BlockchainTests`, `DifficultyTests`, `RLPTests`, `TrieTests`, `PoWTests`, `EOFTests`, `GenesisTests`, `KeyStoreTests`, `BasicTests`, `ABITests`, `JSONSchema`, `src` | **nothing** |
+| `etclabscore/tests-etc` | the same tier set, plus `src-etc` | **nothing** |
+
+**Four of the unread tiers answer questions this project already has**, which is the point of writing
+the map down rather than the totals:
+
+- **`transaction_tests` and `TransactionTests`** carry transaction *validity* — the tier a question
+  about admission belongs in. A sweep of `state_tests` alone reports nothing and looks conclusive.
+- **`DifficultyTests`** is where a difficulty-adjustment change is certified, and one is armed
+  against the proof-of-work layer.
+- **`PoWTests`**, likewise, for that layer.
+- **`RLPTests` and `TrieTests`** certify layers this repository has already built and certified by
+  other means.
+
+### The three rules that would have prevented each miss
+
+**1. Name the tiers you swept, or write the smaller claim.** "No published fixture covers X" is a
+claim about every tier of every corpus. `.claude/rules/evidence-and-citation.md` §3 already requires
+this; what it could not supply is the enumeration above, so a reader had no way to know how many
+instruments a full sweep needs.
+
+**2. A fork-invariant rule is stated ONCE, at the fork whose proposal introduced it.** This is the
+non-obvious one and it is what defeated a careful sweep. Sweeping forks up to the one being built is
+the natural move and it is exactly wrong for any rule that is not fork-varying: the corpus tests
+such a rule at the fork where its proposal landed and never restates it for the forks that inherit
+it. **So an absence across the early forks is the expected shape for a rule those forks enforce.**
+Worked instance: a sender holding code is refused from Frontier onward — the specification's
+`frontier/fork.py` carries the check — while the only fixtures stating it sit at London and later.
+
+**3. A tier fukuii does not read still answers "does a published case exist".** Those are different
+questions and the second is the one an absence claim makes. Not reading a tier is a fact about this
+harness; it is not evidence about the corpus.
+
+### And the client trees are test material too
+
+**A client's own test data is a pinned, published vector corpus** — already stated above for
+precompiles, and it generalizes. The instance that produced this note: a claim that ETC's own
+consensus rules had no test coverage anywhere, drawn from sweeping the two ETC fixture corpora. The
+rules are covered in depth, as unit tests inside `ethereumclassic/core-geth`, in a form only that
+client can execute. **A fixture corpus and a client's test suite are two different instruments, and
+an absence claim needs both.**
+
 ### Currency: three of these corpora are frozen, and cloning one will not tell you so
 
 **A dormant repository is indistinguishable from a current one by cloning it.** It

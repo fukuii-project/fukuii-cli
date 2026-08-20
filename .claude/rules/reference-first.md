@@ -122,6 +122,29 @@ So: **run the sweep against a client you already know is positive, and one you
 know is negative, before believing any row of it.** A survey that cannot report
 a known-positive is not measuring what its column header says.
 
+## A corpus is TIERED, and sweeping one tier is not sweeping the corpus
+
+**Three absence claims in one session were each drawn from one tier, one subdirectory, or one range
+of forks, and each was wrong while looking conclusive.** The material was present every time; the
+instrument could not see it.
+
+`reference-corpus.md` § "Every corpus above is TIERED" carries the map — which tiers each corpus
+holds, and which of them this project actually reads. **Read it before writing any claim about what
+the published corpora do or do not cover**, because the count is the surprising part: this project
+reads three tiers and roughly thirty-six exist, including the one that carries transaction validity.
+
+Two of its rules are worth stating here, because they defeat a *careful* sweep rather than a lazy
+one:
+
+- **A fork-invariant rule is stated ONCE, at the fork whose proposal introduced it.** So sweeping
+  forks up to the one being built — the natural move — reports nothing for every rule those forks
+  merely inherit. An absence across the early forks is the expected shape, not a finding.
+- **A tier this project does not read still answers "does a published case exist."** Not reading a
+  tier is a fact about the harness, never evidence about the corpus.
+
+And a client's own test suite is test material: an absence claim about coverage needs the fixture
+corpora **and** the client trees, which are different instruments.
+
 ## The recurring shape: narrow scope, wide-enough survey
 
 **This has now happened at every layer that has reached this rule — L1, then L2 — and it is
