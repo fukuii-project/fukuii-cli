@@ -64,6 +64,20 @@ Two consequences of org-keying that a reader will otherwise hit as surprises:
   `etclabscore/tests` + `etclabscore/tests-etc`. See **Refs that are deliberately
   pinned** for why each pair exists — and note the two pairs are not equally
   load-bearing.
+- **An org-keyed name says who published a clone, never what is inside it, and
+  one clone here is actively misleading on that.** `etclabscore/tests` carries
+  **zero** Ethereum Classic fixtures. It is ETC Cooperative's snapshot of
+  `ethereum/tests`, frozen at `0ca936b392` (2022-11-14), and it holds **8,726
+  json files against the `ethereum/tests` clone's 1,176, with 8,114 paths unique
+  to it** — including the whole `BlockchainTests/GeneralStateTests/` tree, which
+  upstream no longer serves. Its labels run Frontier through **Merge** (5,539
+  files), so it is not a proof-of-work corpus either. **Measured 2026-08-20 after
+  it was called redundant on the strength of its name**, which is the error this
+  entry exists to prevent: the ETC-label count is zero, that is true, and it says
+  nothing about the other 8,114 files. **Do not rename it to describe its
+  contents** — the org key is what makes a `repo @ ref` citation resolve without
+  a lookup table, and the publisher is the fact that explains why the snapshot
+  exists at all.
 
 Clone with full history. A truncated clone cannot answer the question a
 reference corpus exists to answer — see **Depth** below, which is a rule about
