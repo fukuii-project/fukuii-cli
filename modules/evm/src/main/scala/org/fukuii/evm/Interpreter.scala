@@ -109,7 +109,21 @@ object Interpreter:
         frame.output = precompile.run(frame.message.data)
         Outcome.Stopped(frame.gasLeft, frame.output)
 
-  /** Moves an invocation's value from its caller to the account it runs as.
+  /** Moves an invocation's value from its caller to the account it runs as,
+    * where the invocation is one that moves it at all.
+    *
+    * ==Carrying a value and moving it are different things==
+    *
+    * An invocation that borrows another account's code while keeping its
+    * caller's identity carries the value it was itself invoked with, so the code
+    * it runs reads the same figure -- and moves nothing, because that move was
+    * already made by the invocation it is borrowing from. Moving it again takes
+    * the same value out of the original caller twice.
+    *
+    * **The second move is silent far more often than not.** It raises only where
+    * the original caller has since spent below the value; where it still holds
+    * enough, the transfer simply succeeds and the state root is wrong with
+    * nothing to report.
     *
     * The caller's balance was checked by whichever operation asked for the
     * invocation, so a shortfall here is a caller that did not check rather than
@@ -118,7 +132,7 @@ object Interpreter:
     * into a failure.
     */
   private def transfer(world: JournaledWorldState, message: Message): Unit =
-    if !message.value.isZero then
+    if message.transfersValue && !message.value.isZero then
       val available = world.balanceOf(message.caller)
       if available.toBigInt < message.value.toBigInt then
         throw new IllegalStateException(
@@ -602,12 +616,13 @@ object Interpreter:
   ): Either[Fault, Unit] =
     val schedule = environment.schedule
     val world = environment.world
-    // Bound once and read four times, because inheriting the caller's identity
-    // is not one difference but four: no value comes off the stack, no surcharge
-    // is paid for sending one, no stipend is forwarded, and no balance can
-    // refuse the call. The specification reaches the same four by giving this
-    // form its own entry point that charges a base and a request and nothing
-    // else, then hands the shared path a flag saying not to move anything.
+    // Bound once and read five times, because inheriting the caller's identity
+    // is not one difference but five: no value comes off the stack, no surcharge
+    // is paid for sending one, no stipend is forwarded, no balance can refuse
+    // the call, and NOTHING MOVES. The specification reaches the same five by
+    // giving this form its own entry point that charges a base and a request and
+    // nothing else, then hands the shared path a flag saying not to move
+    // anything -- and the fifth is the one this comment used to leave out.
     val inherits = form == CallForm.WithTheNamedAccountsCodeKeepingTheCaller
     val taken =
       for
@@ -646,7 +661,7 @@ object Interpreter:
         else
           val invoker = if inherits then frame.message.caller else frame.message.currentTarget
           val nested = new Frame(
-            Message(invoker, runsAs, Some(codeAddress), value, input, frame.message.depth + 1),
+            Message(invoker, runsAs, Some(codeAddress), value, input, !inherits, frame.message.depth + 1),
             Code(world.codeOf(codeAddress)),
             forwarded,
             frame.registeredSoFar
@@ -717,7 +732,7 @@ object Interpreter:
         else
           world.setNonce(creator, UInt64.fromBits(count.toBits + 1))
           val nested = new Frame(
-            Message(creator, target, None, endowment, Bytes.Empty, frame.message.depth + 1),
+            Message(creator, target, None, endowment, Bytes.Empty, transfersValue = true, frame.message.depth + 1),
             Code(initCode),
             forwarded,
             frame.registeredSoFar

@@ -101,8 +101,9 @@ object EvmFixtures:
       caller: Address = address(0x11),
       currentTarget: Address = address(0x22),
       value: Word = Word.Zero,
-      data: Bytes = Bytes.Empty
-  ): Message = Message(caller, currentTarget, Some(currentTarget), value, data)
+      data: Bytes = Bytes.Empty,
+      transfersValue: Boolean = true
+  ): Message = Message(caller, currentTarget, Some(currentTarget), value, data, transfersValue)
 
   /** The precompiles the baseline schedule prices. */
   val precompiles: PrecompileSet = PrecompileSet.baseline(GasSchedule.Baseline)

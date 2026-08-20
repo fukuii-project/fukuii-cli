@@ -724,3 +724,51 @@ class InvocationSpec extends AnyFlatSpec:
       "an account this state has never held was not charged for"
     )
   }
+
+  // ── Which invocations move the value they carry ──────────────────────────
+
+  "DELEGATECALL" should "leave both balances where the invocation it borrows from left them" in {
+    // The borrowing form carries the value for the code to read and moves
+    // nothing, because the move was already made by the invocation whose
+    // identity it borrows. Moving it again takes the same value out of the
+    // original caller twice -- and only announces itself where that caller has
+    // since spent below it. Here it has not, so a second move would be silent
+    // and the balances are the only thing that shows it.
+    val holder = world()
+    holder.codes(other) = codeOf(hex(stopping))
+    holder.balances(caller) = EvmFixtures.word(1000)
+    val environment = EvmFixtures.environment(holder, withTable = admitting)
+    val _ = runIn(
+      environment,
+      100000,
+      delegating(other, 40000),
+      EvmFixtures.message(caller = caller, currentTarget = runner, value = EvmFixtures.word(40))
+    )
+    assert(
+      environment.world.balanceOf(caller) == EvmFixtures.word(960) &&
+        environment.world.balanceOf(runner) == EvmFixtures.word(40),
+      "the value the borrowed invocation carries was moved a second time"
+    )
+  }
+
+  "CALLCODE" should "leave the balance it moves to itself exactly where it was" in {
+    // This form DOES move its value, and moves it to the account already
+    // holding it -- so the decrement and the credit cancel. They cancel because
+    // the credit re-reads the balance the decrement just wrote rather than a
+    // figure read before it, which is correct by the order the two statements
+    // are in and would double the balance if that order were ever reversed.
+    val holder = world()
+    holder.codes(other) = codeOf(hex(stopping))
+    holder.balances(runner) = EvmFixtures.word(500)
+    val environment = EvmFixtures.environment(holder)
+    val _ = runIn(
+      environment,
+      100000,
+      calling(0xf2, other, 40000, value = 40),
+      EvmFixtures.message(caller = caller, currentTarget = runner)
+    )
+    assert(
+      environment.world.balanceOf(runner) == EvmFixtures.word(500),
+      "an account sending value to itself did not end with what it started with"
+    )
+  }

@@ -154,7 +154,7 @@ class PrecompileDispatchSpec extends AnyFlatSpec:
       EvmFixtures.environment(),
       100000,
       Seq(0x0c),
-      Message(caller, identity, None, Word.Zero, Bytes.Empty)
+      Message(caller, identity, None, Word.Zero, Bytes.Empty, transfersValue = true)
     )
     assert(
       outcome == Right(Outcome.Halted(Halt.InvalidOpcode(0x0c))),
@@ -167,7 +167,7 @@ class PrecompileDispatchSpec extends AnyFlatSpec:
       EvmFixtures.environment(),
       100000,
       Seq(0x0c),
-      Message(caller, identity, Some(identity), Word.Zero, EvmFixtures.bytesOf("2a2a"))
+      Message(caller, identity, Some(identity), Word.Zero, EvmFixtures.bytesOf("2a2a"), transfersValue = true)
     )
     val spent = schedule.precompileIdentityBase + schedule.precompileIdentityPerWord
     assert(

@@ -28,6 +28,23 @@ import org.fukuii.bytes.{Address, Bytes}
   *   the input the invocation was called with, which the `CALLDATA` operations
   *   read. Reading past its end is not an error -- the specification pads with
   *   zeroes rather than refusing, so a short input is short and never missing.
+  * @param transfersValue
+  *   whether starting this invocation moves [[value]] from [[caller]] to
+  *   [[currentTarget]]. It is not always so: the form that borrows another
+  *   account's code while keeping its caller's identity carries the value **for
+  *   the code to read** and moves nothing, because the move was already made by
+  *   the invocation it is borrowing identity from. The specification carries the
+  *   same fact under the same name on the descriptor it passes, and besu names
+  *   it the same way.
+  *
+  *   **It has no default deliberately.** The fact is not a fork's to vary --
+  *   this form has never moved value at any fork -- so it does not belong with
+  *   the rules; and every site that starts an invocation genuinely has to
+  *   answer, including the layer that settles a transaction, which does move
+  *   value. A default would answer for them silently, and answering it wrongly
+  *   is not a failure anything reports: the value simply moves twice, and only a
+  *   caller that has already spent it turns that into an error rather than into
+  *   a wrong state root.
   * @param depth
   *   how many invocations deep this one is, counting the outermost as zero. It
   *   rides here rather than on the frame because it is settled by whoever asked
@@ -51,5 +68,6 @@ final case class Message(
     codeAddress: Option[Address],
     value: Word,
     data: Bytes,
+    transfersValue: Boolean,
     depth: Int = 0
 )

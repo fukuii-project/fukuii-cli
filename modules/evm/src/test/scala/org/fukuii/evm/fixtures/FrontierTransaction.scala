@@ -281,7 +281,8 @@ object StateFixtureRunner:
             currentTarget = recipient,
             codeAddress = Some(recipient),
             value = Word(transaction.value),
-            data = transaction.data
+            data = transaction.data,
+            transfersValue = true
           ),
           Code(journal.codeOf(recipient)),
           available
@@ -297,7 +298,8 @@ object StateFixtureRunner:
             currentTarget = target,
             codeAddress = None,
             value = Word(transaction.value),
-            data = Bytes.Empty
+            data = Bytes.Empty,
+            transfersValue = true
           ),
           Code(transaction.data),
           available
