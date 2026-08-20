@@ -25,6 +25,27 @@ import scala.util.Using
   * Its [[leaves]] is the store's own ordered view rather than a walk, so the
   * ordered-leaf-view obligation costs it nothing.
   *
+  * ==Do not hand this to `StateTrie`'s storage-trie parameter==
+  *
+  * That parameter is required to return an EMPTY trie each time it is called,
+  * because account destruction is expressed by dropping the memoized storage
+  * trie and letting the next call rebuild one -- the mechanism every surveyed
+  * implementation uses. [[StoredNodeTrie]] satisfies it, its root reference
+  * starting empty. This does not: it holds no state of its own and addresses
+  * `(namespace, version)` directly, so a freshly constructed one sees every
+  * entry already written under that pair, and a destruction through it would
+  * commit to the storage that was supposed to be gone.
+  *
+  * The requirement is stated on the parameter; this is the note saying which
+  * implementation fails it, which the parameter's own scaladoc cannot say
+  * without naming a type it does not depend on.
+  *
+  * Nothing enforces this, and a `StateTrie` IS built over both implementations
+  * today by the differential state-root property spec -- safely, because that
+  * spec destroys nothing. The two ways out, neither taken yet: give this trie a
+  * fresh version on rebuild, or move destruction into the pending-diff layer
+  * above the trie, which is where the field keeps it.
+  *
   * @param namespace
   *   the keyspace this trie's entries occupy. Keys within it are trie keys, so
   *   for a [[Securing.Secured]] trie the store's ascending byte order over them
