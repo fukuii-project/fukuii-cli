@@ -1,0 +1,64 @@
+# Real sbt output captured from this repository on 2026-08-20, from a `testFull`
+# run with the fixture-corpus pointer moved aside, so every certification corpus
+# was absent. The absolute repository path has been replaced with /repo -- this
+# repository is public and a tracked file carries no machine-local path -- and
+# per-test output between the summary blocks is elided as `[info] ...`. Nothing
+# the checker parses was touched.
+#
+# WHAT THIS FIXTURE IS FOR. Its accounting is PERFECT: 908 executed plus 25
+# canceled is exactly the 933 expected, so every count in this check clears. And
+# it certified nothing. One test failed, sbt exited 1, and the count alone
+# cannot see either.
+## sbt-run.sh started 2026-08-20T16:20:56Z
+## tasks: testFull
+
+[info] ...
+[info] CertificationCorporaSpec:
+[info] - should be configured, or nothing below this line certifies anything *** FAILED ***
+[info]   org.fukuii.evm.fixtures.FixtureCorpus.root.isDefined was false no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started. Every case below will cancel, and a canceled case is counted by nothing -- so without this one the run would certify nothing and report success. (CertificationCorporaSpec.scala:66)
+[info] - should be censused for every corpus the harness assembles !!! CANCELED !!!
+[info]   no fixture corpus (CertificationCorporaSpec.scala:82)
+[info] legacytests Constantinople/VMTests
+[info] - should hold the files the census records !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:92)
+[info] ...
+[info] Total number of tests run: 96
+[info] Suites: completed 9, aborted 0
+[info] Tests: succeeded 96, failed 0, canceled 0, ignored 0, pending 0
+[info] All tests passed.
+[info] ...
+[info] Total number of tests run: 35
+[info] Suites: completed 3, aborted 0
+[info] Tests: succeeded 35, failed 0, canceled 0, ignored 0, pending 0
+[info] All tests passed.
+[info] ...
+[info] Total number of tests run: 52
+[info] Suites: completed 7, aborted 0
+[info] Tests: succeeded 52, failed 0, canceled 0, ignored 0, pending 0
+[info] All tests passed.
+[info] ...
+[info] Total number of tests run: 153
+[info] Suites: completed 19, aborted 0
+[info] Tests: succeeded 153, failed 0, canceled 0, ignored 0, pending 0
+[info] All tests passed.
+[info] ...
+[info] Total number of tests run: 55
+[info] Suites: completed 6, aborted 0
+[info] Tests: succeeded 55, failed 0, canceled 0, ignored 0, pending 0
+[info] All tests passed.
+[info] ...
+[info] Total number of tests run: 404
+[info] Suites: completed 18, aborted 0
+[info] Tests: succeeded 403, failed 1, canceled 25, ignored 0, pending 0
+[info] *** 1 TEST FAILED ***
+[error] Failed tests:
+[error] 	org.fukuii.evm.fixtures.CertificationCorporaSpec
+[info] ...
+[info] Total number of tests run: 113
+[info] Suites: completed 10, aborted 0
+[info] Tests: succeeded 113, failed 0, canceled 0, ignored 0, pending 0
+[info] All tests passed.
+[error] elapsed time: 3 s
+[0J
+## sbt-run.sh finished 2026-08-20T16:21:00Z
+EXIT CODE: 1

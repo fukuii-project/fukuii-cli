@@ -2,9 +2,12 @@
 # Did that test run actually run the tests?
 #
 # Usage: scripts/check-test-run.sh <sbt-output-log> [expected-total]
-#   exit 0 = the log shows a FULL run: executed count == expected total
-#   exit 1 = the log shows a PARTIAL run, or a count that disagrees
-#   exit 2 = could not run: no log, no summary in it, or no expected total
+#   exit 0 = the log shows a FULL run that PASSED: executed count == expected
+#            total, and nothing failed
+#   exit 1 = the log shows a PARTIAL run, a count that disagrees, or a run in
+#            which a test FAILED
+#   exit 2 = could not run: no log, no summary in it, no expected total, or a
+#            summary this script could not parse
 #
 # WHAT THIS GUARDS, AND WHY THE EXIT CODE CANNOT.
 # sbt 2 caches test results machine-wide, and `test` resolves to testQuick
@@ -107,7 +110,31 @@ SUITES=$(sum_field 'Suites: completed [0-9]+')
 # certifies anything. Counting them is what makes that state nameable.
 CANCELED=$(sum_field 'canceled [0-9]+')
 CANCELED=${CANCELED:-0}
+# A FAILED TEST IS THE ONE THING THIS SCRIPT DID NOT LOOK AT, and the counts
+# above cannot infer it: a run where the certification tier fails and the rest
+# cancels accounts for every test that exists, so every figure here clears while
+# nothing was certified. Measured in this repository, 2026-08-20, with the
+# corpus pointer moved aside: 908 executed + 25 canceled = 933 expected, sbt
+# exited 1, and this script printed PASS.
+#
+# It is read off the SAME `Tests: succeeded N, failed M, canceled K` line that
+# already supplies the canceled count, so it adds no coupling this script did
+# not already have.
+FAILED=$(sum_field 'failed [0-9]+')
+FAILED=${FAILED:-0}
 BLOCKS=$(printf '%s' "$RUN" | grep -cE 'Total number of tests run: [0-9]+')
+# WHY EACH FIELD IS COUNTED AS WELL AS SUMMED. `sum_field` returning nothing is
+# indistinguishable from a genuine zero once ${VAR:-0} has run, so a field that
+# stops matching -- ScalaTest renaming it, or reflowing the line -- would report
+# "0 failed" forever. Requiring one match per summary block turns that into a
+# parse error instead. This is the failure the `Suites: completed` pattern
+# already had once, caught then only because a "?" appeared in the output.
+# Counted with the SAME instrument sum_field sums with -- every match, not
+# every matching line -- so the two figures are comparable. A spurious match
+# (a test name carrying "failed 3") therefore also trips this, in the safe
+# direction: over-counting is reported as unreadable rather than added in.
+FAILED_SEEN=$(printf '%s' "$RUN" | grep -oE 'failed [0-9]+' | wc -l)
+CANCELED_SEEN=$(printf '%s' "$RUN" | grep -oE 'canceled [0-9]+' | wc -l)
 
 echo "log      : $LOG"
 echo "expected : $EXPECTED test(s)"
@@ -138,6 +165,32 @@ ACCOUNTED=$((ACTUAL + CANCELED))
 if [ "$CANCELED" -gt 0 ]; then
   echo "canceled : $CANCELED test(s) -- these ran NOTHING and are in no other total"
   echo "accounted: $ACCOUNTED (executed + canceled), which is what the total below counts"
+fi
+echo "failed   : $FAILED test(s)"
+
+if [ "$FAILED_SEEN" != "$BLOCKS" ] || [ "$CANCELED_SEEN" != "$BLOCKS" ]; then
+  echo
+  echo "ERROR: this log has $BLOCKS summary block(s) but $FAILED_SEEN 'failed' and"
+  echo "       $CANCELED_SEEN 'canceled' field(s). One of them is not being read, so the"
+  echo "       figures above cannot be trusted -- a field that stops matching"
+  echo "       reports zero, and zero is what a clean run looks like."
+  echo "       Do not read this as a pass. Fix the pattern before relying on it."
+  exit 2
+fi
+
+# BEFORE THE COUNT COMPARISONS, DELIBERATELY. A failed test is a fact about the
+# run and does not depend on the reference total being right, or usable, or even
+# present -- so it must not sit behind a check that can exit first.
+if [ "$FAILED" -gt 0 ]; then
+  echo
+  echo "FAIL: $FAILED test(s) FAILED in this run."
+  echo "      The counts above may account for every test that exists. They do"
+  echo "      not say the run passed, and this one did not: a suite that fails"
+  echo "      while the rest of its cases cancel accounts for everything and"
+  echo "      certifies nothing."
+  echo "      Read the failures in the log before treating any figure here as"
+  echo "      evidence."
+  exit 1
 fi
 
 # Zero expected is not a bar anything can clear. Treat it as an unusable
@@ -172,30 +225,35 @@ if [ "$ACCOUNTED" -gt "$EXPECTED" ]; then
   exit 1
 fi
 
-# ── WHY THIS SCRIPT DOES NOT TRY TO SEE THE CERTIFICATION TIER ─────────────
+# ── WHAT THIS SCRIPT SEES OF THE CERTIFICATION TIER, AND WHAT IT DOES NOT ──
 #
-# The counts above answer "was every test that exists accounted for". They
-# cannot answer "did the tier that certifies against published vectors actually
-# RUN", because a canceled test is accounted for and executes nothing.
+# The counts answer "was every test that exists accounted for". They cannot
+# answer "did the tier that certifies against published vectors actually RUN",
+# because a canceled test is accounted for and executes nothing. That gap is
+# closed by the failed count above rather than here: the tier asserts its corpus
+# is present, so its absence is a FAILURE, and a failure is a field on the same
+# summary line every other figure comes from.
 #
-# A guard here DID try, keying on the suite name in ScalaTest's console output,
-# and it was removed rather than repaired. Three ways it failed open, all
-# measured: `grep -q` closing the pipe early made `pipefail` report 141 and the
-# guard silently stopped firing once the upstream produced more than a pipe
-# buffer -- reproduced SILENT at 190 KB of upstream output, FIRING at 82 KB, so
-# it would have gone quiet as forks were added; it read the whole file while
-# every count above reads the last run only, so it could contradict its own
-# figures; and reflowing a cancel reason onto a second line flipped it from
-# failing to printing its affirmative all-clear, with every marker still
-# present.
+# WHAT IS DELIBERATELY NOT DONE IS KEYING ON THE SUITE. A guard here did that,
+# reading ScalaTest's console text for a suite name, and it was removed rather
+# than repaired. Three ways it failed open, all measured: `grep -q` closing the
+# pipe early made `pipefail` report 141 and the guard silently stopped firing
+# once the upstream produced more than a pipe buffer -- reproduced SILENT at
+# 190 KB of upstream output, FIRING at 82 KB, so it would have gone quiet as
+# forks were added; it read the whole file while every count reads the last run
+# only, so it could contradict its own figures; and reflowing a cancel reason
+# onto a second line flipped it from failing to printing its affirmative
+# all-clear, with every marker still present. It also needed a hand-maintained
+# list of suite names that nothing proved complete.
 #
-# The common cause is the layer, not the three bugs: anything built on console
-# text is coupled to how ScalaTest chooses to print. So the check moved to the
-# test layer, where the corpus being absent is an assertion that FAILS -- and a
-# failing test is a signal sbt, the wrapper and the shell all already carry.
+# The common cause was the layer: per-test console text is coupled to how
+# ScalaTest chooses to print, and to which suites happen to exist. The summary
+# line is not -- it is one line per project, in a fixed field order, and this
+# script already reads three other fields off it.
 #
-# What is left here is the count, which is this script's actual subject, and the
-# canceled figure printed below because no other line in the log carries it.
+# SO THIS SCRIPT NAMES THREE FIGURES AND NO SUITES: what ran, what canceled, and
+# what failed. Which suite failed is in the log, and reading it is the reader's
+# next step rather than this script's.
 echo
 if [ "$CANCELED" -gt 0 ]; then
   echo "PASS: all $EXPECTED test(s) accounted for — but $ACTUAL ran and $CANCELED"

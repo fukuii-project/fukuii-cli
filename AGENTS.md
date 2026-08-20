@@ -301,6 +301,15 @@ holds the reference figure and is regenerated from a `testFull` run.
 code, and not merely against zero. **A non-zero count is not evidence of a full
 run.**
 
+**And a FULL count is not evidence of a passing run, which is the second half of
+the same trap.** A canceled test is counted by nothing, so a suite whose corpus
+is absent can fail one case, cancel the rest, and leave executed-plus-canceled
+exactly equal to the expected total. Measured here 2026-08-20: 908 executed plus
+25 canceled against an expected 933, sbt exiting 1, and every count clean.
+`scripts/check-test-run.sh` reads the failed count off the same summary line for
+that reason, so its own exit code carries both findings — **that** is the one to
+read, and it is not sbt's.
+
 **Read the expected total from a `testFull` run's own `Total number of tests
 run` line, not by counting from source.** `testFull` bypasses the cache, so its
 count is the one figure that cannot itself be a partial. Counting by hand is

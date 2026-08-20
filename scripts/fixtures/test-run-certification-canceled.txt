@@ -1,0 +1,64 @@
+## sbt-run.sh started 2026-08-20T09:10:53Z
+## tasks: clean; testFull
+
+[info] ...
+[info] CertificationCorporaSpec:
+[info] legacytests Constantinople/VMTests
+[info] - should hold the files the census records !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] - should hold the cases the census records !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] - should skip exactly the cases the census records !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] - should agree with every case it ran !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] legacytests Constantinople/GeneralStateTests at Frontier
+[info] - should hold the files the census records !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] - should hold the cases the census records !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] - should skip exactly the cases the census records !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] - should agree with every case it ran !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] execution-specs-fixtures state_tests/for_frontier
+[info] - should hold the files the census records !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] - should hold the cases the census records !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] - should skip exactly the cases the census records !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] - should agree with every case it ran !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] execution-specs-fixtures state_tests/for_homestead
+[info] - should hold the files the census records !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] - should hold the cases the census records !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] - should skip exactly the cases the census records !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] - should agree with every case it ran !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] legacytests Constantinople/GeneralStateTests at EIP150
+[info] - should hold the files the census records !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] - should hold the cases the census records !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] - should skip exactly the cases the census records !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] - should agree with every case it ran !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] execution-specs-fixtures state_tests/for_tangerinewhistle
+[info] - should hold the files the census records !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] - should hold the cases the census records !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] - should skip exactly the cases the census records !!! CANCELED !!!
+[info]   no fixture corpus: write the directory holding one subdirectory per upstream organization into .local/fixture-corpus-root, or set FUKUII_FIXTURE_ROOT before the sbt server this task runs in was started (CertificationCorporaSpec.scala:55)
+[info] ...
+[info] Run completed in 497 milliseconds.
+[info] Total number of tests run: 401
+[info] Suites: completed 18, aborted 0
+[info] Tests: succeeded 401, failed 0, canceled 24, ignored 0, pending 0
+[info] All tests passed.
+[success] elapsed time: 4 s
