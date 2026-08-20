@@ -632,7 +632,7 @@ class InvocationSpec extends AnyFlatSpec:
   it should "undo the deployment where the deposit is unaffordable and the rule is strict" in {
     // The exact scenario the three cases above pin at the baseline, run under
     // the fork that reverses it -- so the pair states a delta rather than two
-    // unrelated behaviours.
+    // unrelated behaviors.
     val environment = EvmFixtures.environmentUnder(strictDeposit)
     val _ = runIn(environment, 32200, creating(deploying))
     assert(

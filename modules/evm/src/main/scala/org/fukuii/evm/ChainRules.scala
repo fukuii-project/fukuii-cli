@@ -169,7 +169,7 @@ object ChainRules:
     * their history to this point, so one name serves both.
     *
     * `lazy` because [[Proposals]] is a sibling in this file: a strict value here
-    * would fix an initialisation order between two top-level objects for no
+    * would fix an initialization order between two top-level objects for no
     * reason anyone reading either would expect.
     */
   lazy val Homestead: ChainRules =
