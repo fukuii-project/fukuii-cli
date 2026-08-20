@@ -166,6 +166,22 @@ object ChainRules:
   * Named for the proposal rather than the fork that shipped it, so a network
   * that adopts one without the other -- which is the ordinary case across the
   * families this project serves -- can say so.
+  *
+  * ==That ordinary case, measured==
+  *
+  * EIP-150 is one proposal with three activation points across the networks
+  * this project targets. `ethereum/go-ethereum` at `6bb0588ad` activates it on
+  * its mainnet at block 2,463,000 (`params/config.go`);
+  * `ethereumclassic/core-geth` at `4185df450` activates the same proposal on
+  * Ethereum Classic mainnet at 2,500,000 and on Mordor at zero, that network
+  * having launched with it already in force (`params/config_classic.go`,
+  * `params/config_mordor.go`). `besu-eth/besu-etc` at `eb4248c99` gives the two
+  * families separate milestones for it outright, and Ethereum Classic's own
+  * release of that era extends its milestone with a further proposal that
+  * Ethereum shipped at a different one.
+  *
+  * So a fork is composed per network rather than per family, and a proposal
+  * that carried a fork's name could not be composed at all.
   */
 object Proposals:
 
