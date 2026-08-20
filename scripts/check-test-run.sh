@@ -172,12 +172,73 @@ if [ "$ACCOUNTED" -gt "$EXPECTED" ]; then
   exit 1
 fi
 
+# ── THE CERTIFICATION TIER, AND WHY THE COUNTS ABOVE CANNOT SEE IT ─────────
+#
+# Everything above answers "was every test that exists accounted for". None of
+# it can answer "did the tests that certify this client against published
+# vectors actually RUN", because a canceled test is accounted for and executes
+# nothing. So a clone without the corpus reaches this line with every figure
+# agreeing and the certification tier having measured NOTHING.
+#
+# THIS EXACT STATE WAS REPORTED AS A PASS UNTIL 2026-08-20, with a prose caveat
+# a human had to read and act on. Reproduced the day it was fixed, by moving the
+# corpus pointer aside and running the full suite: 905 executed, 24 canceled,
+# 929 accounted, and sbt, this gate and the shell all exited 0. The whole of a
+# section's certification evidence sat behind that.
+#
+# It was also found once before, at an earlier section's review, recorded as
+# "the certification gate passed precisely when nothing was certified", and left
+# unfixed. A gate whose failure state has been observed and not wired is worth
+# less than no gate, because it is cited as though it fired.
+CERT_SUITES="CertificationCorporaSpec"
+
+# NAMED SUITES, NOT A PATTERN -- and the name is verified against the tree,
+# because the failure to guard against is this check silently ceasing to match.
+# That is not hypothetical: the suite below was renamed once already, in the
+# same section that fixed this gate. A rename with no guard leaves a check that
+# can never fire and reports PASS forever.
+for suite in $CERT_SUITES; do
+  if ! find "$REPO/modules" -name "${suite}.scala" -print -quit 2>/dev/null | grep -q .; then
+    echo
+    echo "ERROR: this gate is configured to guard ${suite}, and no source file"
+    echo "       of that name exists. Either it was renamed -- in which case the"
+    echo "       certification check below can never fire again -- or it was"
+    echo "       deleted. Update CERT_SUITES in this script."
+    echo "       A gate that cannot see the suite it guards is not a gate."
+    exit 2
+  fi
+done
+
+# ScalaTest prints the cancelled test, then its reason and source location on
+# the NEXT line -- `(CertificationCorporaSpec.scala:55)`. That location is what
+# names the suite per canceled test; the bare suite header sits too far above to
+# be attributed safely when several suites cancel.
+CANCELED_CERTIFICATION=""
+for suite in $CERT_SUITES; do
+  if grep -A 1 -F -- '!!! CANCELED !!!' "$LOG" 2>/dev/null |
+    grep -qE "\(${suite}\.scala:[0-9]+\)"; then
+    CANCELED_CERTIFICATION="$CANCELED_CERTIFICATION $suite"
+  fi
+done
+
+if [ -n "$CANCELED_CERTIFICATION" ]; then
+  echo
+  echo "FAIL: THE CERTIFICATION TIER CANCELED —${CANCELED_CERTIFICATION}"
+  echo "      Those tests were accounted for in the total above and ran"
+  echo "      NOTHING. This build is certified against no published vector, and"
+  echo "      the executed count, sbt's own summary and its exit code are all"
+  echo "      silent about it. That is why this is an exit code and not a note."
+  echo "      Point .local/fixture-corpus-root at the reference corpus, or set"
+  echo "      FUKUII_FIXTURE_ROOT before the sbt server starts, then re-run."
+  exit 1
+fi
+
 echo
 if [ "$CANCELED" -gt 0 ]; then
   echo "PASS: all $EXPECTED test(s) accounted for — but $ACTUAL ran and $CANCELED"
-  echo "      CANCELED. A canceled suite measured nothing. If one of them is the"
-  echo "      certification tier, this run certifies nothing and says so here,"
-  echo "      because no other figure in the log can."
+  echo "      CANCELED. A canceled suite measured nothing. None of them is a"
+  echo "      certification suite, which is checked above rather than left to"
+  echo "      the reader, but a canceled test is still a test that did not run."
 else
   echo "PASS: $ACTUAL of $EXPECTED test(s) executed — a full run."
 fi
