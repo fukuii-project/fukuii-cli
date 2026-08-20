@@ -5,7 +5,7 @@ import org.fukuii.crypto.Keccak256
 import org.fukuii.evm.*
 import org.fukuii.rlp.RlpCodec
 import org.fukuii.trie.StateTrie
-import org.fukuii.types.Log
+import org.fukuii.types.{Log, Sender, Transaction}
 
 /** Why this fork refuses a transaction.
   *
@@ -24,6 +24,7 @@ enum Rejection:
   case NonceMismatch
   case InsufficientAccountFunds
   case SenderNotEoa
+  case InvalidSignature
 
 /** Whether a transaction may be executed at all, and why not when it may not. */
 enum Admission:
@@ -142,26 +143,91 @@ object StateFixtureRunner:
       case Left(error) => Verdict.Skipped(SkipReason.Undecodable(error))
       case Right(())   => executeSeeded(fixture, trie, base)
 
+  /** What reading the published signature established.
+    *
+    * Three outcomes rather than an address or nothing, because they are three
+    * different facts and only one of them is an answer about the transaction.
+    */
+  private enum Signer:
+
+    /** The sender is settled -- recovered from the published signature, or
+      * stated by a corpus that publishes none.
+      */
+    case Settled(transaction: StateTransaction)
+
+    /** This fork refuses the signature, so there is no sender to run as. */
+    case Refused(reason: Rejection)
+
+    /** The published bytes did not decode, so nothing was established. */
+    case Unreadable(detail: String)
+
+  /** The account that signed, where the corpus publishes what was signed.
+    *
+    * ==A stated sender is a convenience; a signature is the authority==
+    *
+    * No transaction carries a sender -- the specification has no such field and
+    * derives one -- so where a fixture publishes the signed bytes, those bytes
+    * decide, and a signature this fork refuses refuses the transaction rather
+    * than letting it run as whichever account the file happens to name.
+    *
+    * **The legacy corpus publishes no signed bytes for any of its cases**, so
+    * its stated sender stands. That is a property of that corpus, uniform
+    * across it, rather than a judgement made case by case -- and nothing
+    * degrades quietly, because wherever bytes are present they settle the
+    * question in both directions.
+    */
+  private def signerOf(transaction: StateTransaction): Signer =
+    // A transaction of a type this fork predates is refused for its TYPE, and
+    // admission is where that is said. Its envelope is not the legacy shape, so
+    // attempting recovery reports an unreadable file rather than a refused
+    // transaction -- turning two checked cases into two skipped ones. A client
+    // meeting one on the wire rejects it by type before doing signature work,
+    // and the ordering here is the same.
+    if transaction.kind != TransactionKind.Legacy then Signer.Settled(transaction)
+    else
+      transaction.signed match
+        case None        => Signer.Settled(transaction)
+        case Some(bytes) =>
+          RlpCodec.decodeFrom[Transaction](bytes.toIArray) match
+            case Left(error)   => Signer.Unreadable("published signature: " + error)
+            case Right(signed) =>
+              Sender.recover(signed) match
+                case Left(_)        => Signer.Refused(Rejection.InvalidSignature)
+                case Right(address) => Signer.Settled(transaction.copy(sender = address))
+
   private def executeSeeded(
       fixture: StateFixture,
       trie: StateTrie,
       base: StateTrieWorldState
   ): Verdict =
+    signerOf(fixture.transaction) match
+      case Signer.Unreadable(detail) => Verdict.Skipped(SkipReason.Undecodable(detail))
+      case Signer.Refused(reason)    =>
+        val journal = new JournaledWorldState(base)
+        journal.commit()
+        judge(fixture, base, trie, TransactionOutcome(Vector.empty, Some(reason), None))
+      case Signer.Settled(transaction) => executeSigned(fixture, transaction, trie, base)
+
+  private def executeSigned(
+      fixture: StateFixture,
+      transaction: StateTransaction,
+      trie: StateTrie,
+      base: StateTrieWorldState
+  ): Verdict =
     val journal = new JournaledWorldState(base)
-    val transaction = fixture.transaction
     val outcome = FrontierTransaction.admit(journal, fixture.block, transaction, GasSchedule.Baseline) match
       case Admission.Rejected(reason)       => TransactionOutcome(Vector.empty, Some(reason), None)
-      case Admission.Admitted(intrinsicGas) => settle(fixture, trie, journal, intrinsicGas)
+      case Admission.Admitted(intrinsicGas) => settle(fixture, transaction, trie, journal, intrinsicGas)
     journal.commit()
     judge(fixture, base, trie, outcome)
 
   private def settle(
       fixture: StateFixture,
+      transaction: StateTransaction,
       trie: StateTrie,
       journal: JournaledWorldState,
       intrinsicGas: BigInt
   ): TransactionOutcome =
-    val transaction = fixture.transaction
     val sender = transaction.sender
     // Read before the bump. The address a creation deploys to is derived from
     // the nonce the sender held when it signed, and the specification reaches

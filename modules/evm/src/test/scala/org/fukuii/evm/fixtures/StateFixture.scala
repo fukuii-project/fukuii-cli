@@ -16,6 +16,7 @@ final case class StateTransaction(
     value: BigInt,
     data: Bytes,
     sender: Address,
+    signed: Option[Bytes],
     kind: TransactionKind
 )
 
@@ -115,7 +116,7 @@ object StateFixture:
         case (Right(sofar), entry) =>
           for
             indexes <- indexesOf(entry)
-            transaction <- transactionOf(txJson, indexes)
+            transaction <- transactionOf(txJson, entry, indexes)
             expectation <- expectationOf(entry)
           yield sofar :+ StateFixture(name + "[" + indexes.label + "]", block, pre, transaction, expectation)
       }
@@ -142,7 +143,19 @@ object StateFixture:
       gasLimit <- FixtureValues.quantityAt(json, "currentGasLimit")
     yield BlockContext(coinbase, number, timestamp, difficulty, gasLimit)
 
-  private def transactionOf(json: Json, indexes: Indexes): Either[String, StateTransaction] =
+  /** The signed transaction a combination was built from, where the corpus
+    * publishes it.
+    *
+    * It sits on the post entry rather than beside the transaction, because each
+    * combination of the data, gas and value arrays is signed separately and so
+    * has bytes of its own. The legacy corpus publishes none for any case.
+    */
+  private def signedBytesOf(entry: Json): Either[String, Option[Bytes]] =
+    entry.hcursor.downField("txbytes").as[String] match
+      case Left(_)     => Right(None)
+      case Right(text) => FixtureValues.bytesOf(text).map(Some(_))
+
+  private def transactionOf(json: Json, entry: Json, indexes: Indexes): Either[String, StateTransaction] =
     val cursor = json.hcursor
     val kind =
       if cursor.downField("maxFeePerGas").focus.isDefined then TransactionKind.WithFeeMarket
@@ -156,7 +169,11 @@ object StateFixture:
       data <- selected(json, "data", indexes.data).flatMap(FixtureValues.bytesOf)
       sender <- FixtureValues.addressAt(json, "sender")
       to <- recipientOf(json)
-    yield StateTransaction(nonce, gasPrice, gasLimit, to, value, data, sender, kind)
+      // Absent is a fact about the corpus; present-and-unreadable is a broken
+      // fixture. Folding the second into the first would answer with the stated
+      // sender and report nothing, which is the one outcome this must not have.
+      signed <- signedBytesOf(entry)
+    yield StateTransaction(nonce, gasPrice, gasLimit, to, value, data, sender, signed, kind)
 
   /** A fee-market transaction states no gas price. It is invalid at this fork
     * whatever it states, so the price it is charged at never matters and zero
@@ -205,6 +222,7 @@ object StateFixture:
       "TransactionException.NONCE_MISMATCH_TOO_LOW" -> Rejection.NonceMismatch,
       "TransactionException.NONCE_MISMATCH_TOO_HIGH" -> Rejection.NonceMismatch,
       "TransactionException.INSUFFICIENT_ACCOUNT_FUNDS" -> Rejection.InsufficientAccountFunds,
+      "TransactionException.INVALID_SIGNATURE_VRS" -> Rejection.InvalidSignature,
       "TransactionException.SENDER_NOT_EOA" -> Rejection.SenderNotEoa
     )
 

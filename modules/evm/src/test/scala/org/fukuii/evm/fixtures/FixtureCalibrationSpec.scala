@@ -242,3 +242,23 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
     val _ = assert(altered != rejectionFixture, "the expectation this test removes was not found")
     assert(diverges(stateVerdict(altered)))
   }
+
+  it should "refuse the transaction when the published signature names no scheme" in {
+    // `1b` is the v the fixture signed with. Moving it off 27 and 28 leaves a
+    // value no legacy scheme reads and no chain identifier recovers, so the
+    // signature names no account at all. Under a driver that takes the stated
+    // sender on trust this edit changes nothing whatever -- which is what makes
+    // it the case that pins recovery to being used.
+    val altered = rejectionFixture.replace("80801ba0", "80801da0")
+    val _ = assert(altered != rejectionFixture, "the signature byte this test rewrites was not found")
+    assert(diverges(stateVerdict(altered)))
+  }
+
+  it should "be reported as undecodable when the published signature does not decode" in {
+    // Valid hex that is not a transaction. The fixture is otherwise intact, so
+    // the run must report that it could not read the signature rather than fall
+    // back to the sender the file names.
+    val altered = rejectionFixture.replace("0xf860800a", "0xc0800a")
+    val _ = assert(altered != rejectionFixture, "the signature prefix this test rewrites was not found")
+    assert(stateVerdict(altered).toString.contains("Undecodable"), stateVerdict(altered).toString)
+  }
