@@ -88,7 +88,7 @@ echo "       what 'check the count' gets mis-implemented as."
 MUTANT=$(mktemp) || exit 1
 # shellcheck disable=SC2016  # the $-forms are LITERAL sed pattern text, not
 # expansions -- the point is to rewrite the comparison in the target script.
-sed 's/if \[ "\$ACTUAL" -lt "\$EXPECTED" \]; then/if [ "$ACTUAL" -lt 1 ]; then/' "$CHECK" >"$MUTANT"
+sed 's/if \[ "\$ACCOUNTED" -lt "\$EXPECTED" \]; then/if [ "$ACCOUNTED" -lt 1 ]; then/' "$CHECK" >"$MUTANT"
 if cmp -s "$CHECK" "$MUTANT"; then
   echo "    *** the mutation did not apply — the comparison line moved. ***"
   a8=1

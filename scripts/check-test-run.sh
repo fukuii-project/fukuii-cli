@@ -99,6 +99,14 @@ sum_field() {
 
 ACTUAL=$(sum_field 'Total number of tests run: [0-9]+')
 SUITES=$(sum_field 'Suites: completed [0-9]+')
+# A CANCELED TEST IS INVISIBLE TO EVERY OTHER FIGURE IN THIS LOG, and that is a
+# ScalaTest property rather than a quirk of ours: `testsCompletedCount` is
+# succeeded + failed, so a canceled test appears in NO total. A suite that
+# cancels therefore reports "All tests passed", exits 0, and this check used to
+# say PASS -- while the thing it cancelled out of was the only tier that
+# certifies anything. Counting them is what makes that state nameable.
+CANCELED=$(sum_field 'canceled [0-9]+')
+CANCELED=${CANCELED:-0}
 BLOCKS=$(printf '%s' "$RUN" | grep -cE 'Total number of tests run: [0-9]+')
 
 echo "log      : $LOG"
@@ -126,9 +134,18 @@ if [ -z "$ACTUAL" ]; then
 fi
 
 echo "executed : $ACTUAL test(s) in ${SUITES:-?} suite(s), summed over ${BLOCKS} project block(s)"
+ACCOUNTED=$((ACTUAL + CANCELED))
+if [ "$CANCELED" -gt 0 ]; then
+  echo "canceled : $CANCELED test(s) -- these ran NOTHING and are in no other total"
+  echo "accounted: $ACCOUNTED (executed + canceled), which is what the total below counts"
+fi
 
 # Zero expected is not a bar anything can clear. Treat it as an unusable
 # reference rather than a pass, or a stale 0 would certify every run.
+# The gate counts tests that EXIST rather than tests that RAN, so a suite whose
+# corpus is absent clears it -- correctly, since nothing was added or removed.
+# What that must never do is read as certification having happened, which is why
+# the canceled count is printed above and called out below.
 if [ "$EXPECTED" -eq 0 ]; then
   echo
   echo "ERROR: the expected total is 0, so this check can never fail."
@@ -136,9 +153,9 @@ if [ "$EXPECTED" -eq 0 ]; then
   exit 2
 fi
 
-if [ "$ACTUAL" -lt "$EXPECTED" ]; then
+if [ "$ACCOUNTED" -lt "$EXPECTED" ]; then
   echo
-  echo "FAIL: PARTIAL RUN — $ACTUAL of $EXPECTED test(s) executed."
+  echo "FAIL: PARTIAL RUN — $ACCOUNTED of $EXPECTED test(s) accounted for."
   echo "      The log may well say 'All tests passed'. It is saying that about"
   echo "      the subset it ran, not about the suite. A non-zero count is not"
   echo "      evidence of a full run."
@@ -146,9 +163,9 @@ if [ "$ACTUAL" -lt "$EXPECTED" ]; then
   exit 1
 fi
 
-if [ "$ACTUAL" -gt "$EXPECTED" ]; then
+if [ "$ACCOUNTED" -gt "$EXPECTED" ]; then
   echo
-  echo "FAIL: $ACTUAL test(s) ran but only $EXPECTED were expected."
+  echo "FAIL: $ACCOUNTED test(s) accounted for but only $EXPECTED were expected."
   echo "      Tests were almost certainly added. This is not a defect in the"
   echo "      run — update scripts/test-expected-total.txt from a 'testFull'"
   echo "      run, as a visible edit, so the new total is reviewed."
@@ -156,5 +173,12 @@ if [ "$ACTUAL" -gt "$EXPECTED" ]; then
 fi
 
 echo
-echo "PASS: $ACTUAL of $EXPECTED test(s) executed — a full run."
+if [ "$CANCELED" -gt 0 ]; then
+  echo "PASS: all $EXPECTED test(s) accounted for — but $ACTUAL ran and $CANCELED"
+  echo "      CANCELED. A canceled suite measured nothing. If one of them is the"
+  echo "      certification tier, this run certifies nothing and says so here,"
+  echo "      because no other figure in the log can."
+else
+  echo "PASS: $ACTUAL of $EXPECTED test(s) executed — a full run."
+fi
 exit 0
