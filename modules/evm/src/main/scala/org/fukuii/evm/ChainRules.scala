@@ -79,14 +79,19 @@ type GasForwarding = (BigInt, BigInt) => BigInt
   * the fields left alone survive as the same values rather than as equal copies
   * -- which is what makes that testable rather than merely intended.
   *
-  * ==A member that is a function changes what comparing two of these means==
+  * ==Comparing two of these was never a value comparison==
   *
-  * [[gasForwarded]] compares by reference rather than by value, so two rules
-  * built separately are unequal even where the same proposals produced them.
-  * What the seam actually claims is untouched: applying no proposal returns the
-  * same value, and a field no proposal names survives as the same value rather
-  * than as an equal copy. A test comparing whole rules built twice is the one
-  * that would be surprised.
+  * [[OpcodeTable]] and [[PrecompileSet]] are plain classes carrying no equality
+  * of their own, so two of the members here were compared by reference well
+  * before a function joined them, and [[gasForwarded]] changes nothing about
+  * that. What equality on a function IS, the language does not settle: a lambda
+  * capturing nothing may or may not be the same instance from one evaluation to
+  * the next, so the honest word is unspecified rather than unequal.
+  *
+  * What the seam actually claims is untouched either way: applying no proposal
+  * returns the same value, and a field no proposal names survives as the same
+  * value rather than as an equal copy. A test comparing whole rules built twice
+  * is the one that would be surprised.
   *
   * @param gasForwarded
   *   how much of what the caller has left a nested invocation is given, out of
@@ -167,8 +172,18 @@ object ChainRules:
     * a reason of its own, because the reason given there does not carry. That
     * one rests on both families having run the same forks and shared their
     * history to this point, and this is where that stops being true: they
-    * release this proposal under different names, at different blocks, and one
-    * of them releases it alongside a proposal the other shipped separately.
+    * release this proposal under different names and at different blocks, and
+    * the fork after it groups the surrounding proposals differently in each.
+    *
+    * **Each family ships this proposal on its own**, which is worth stating
+    * because the opposite is the natural guess and it is wrong. `EIP-608` names
+    * one included proposal; `ECIP-1015` proposes one action; and
+    * `ethereumclassic/core-geth` at `4185df450` activates `EIP150Block` at
+    * 2,500,000 with nothing beside it. The regrouping is one fork later --
+    * Ethereum takes `EIP155Block` and `EIP158Block` together at 2,675,000,
+    * Ethereum Classic takes `EIP155Block` with `EIP160FBlock` at 3,000,000 and
+    * defers `EIP161FBlock` and `EIP170FBlock` to 8,772,000 -- which is what
+    * makes a fork name a family's label rather than a description of a rule set.
     *
     * What one name still serves is the rule SET, which is identical on both.
     * Each adopted EIP-150 unaltered; only where it switches on differs, and
@@ -201,9 +216,11 @@ object ChainRules:
   * Ethereum Classic mainnet at 2,500,000 and on Mordor at zero, that network
   * having launched with it already in force (`params/config_classic.go`,
   * `params/config_mordor.go`). `besu-eth/besu-etc` at `eb4248c99` gives the two
-  * families separate milestones for it outright, and Ethereum Classic's own
-  * release of that era extends its milestone with a further proposal that
-  * Ethereum shipped at a different one.
+  * families separate milestones for it outright. And the fork each family runs
+  * NEXT carries a different set: `core-geth` puts `EIP160FBlock` at 3,000,000,
+  * where `go-ethereum` at `6bb0588ad` folds the same proposal into
+  * `EIP158Block` at 2,675,000 -- so the two group proposals into forks
+  * differently even where they run the same ones.
   *
   * So a fork is composed per network rather than per family, and a proposal
   * that carried a fork's name could not be composed at all.
@@ -269,6 +286,13 @@ object Proposals:
     * is therefore read from both places at once -- the table for `EXTCODESIZE`,
     * the schedule for `EXTCODECOPY` -- which is why one field moving has to
     * reach both.
+    *
+    * **This is an instance of a general property, not a fact about these four
+    * fields.** [[GasSchedule]] states the classes a price falls into and how to
+    * re-derive which is which. A proposal moving a price this one does not name
+    * reads that first: some fields need no table work at all, and some are
+    * reached ONLY through the table or the precompile set, where editing the
+    * schedule alone does nothing whatever.
     */
   val stateReadRepricing: Proposal =
     rules =>
@@ -303,6 +327,15 @@ object Proposals:
     * request and what remains are the same number, and capping either is the
     * same operation -- which is why this reaches four operations through one
     * member rather than needing a second for the one that asks for nothing.
+    *
+    * ==It REPLACES the rule it finds rather than refining it==
+    *
+    * The body ignores whatever [[ChainRules.gasForwarded]] already held. That is
+    * right for a later proposal moving the fraction and wrong for one adding a
+    * second constraint over the top, and the two forms differ only by whether
+    * the body calls the rule it is replacing -- which nothing at the call site
+    * shows. A proposal written over this member chooses between them on purpose,
+    * or discards this one by accident.
     */
   val forwardedGasCap: Proposal =
     _.copy(gasForwarded = (remaining, requested) => requested.min(remaining - remaining / 64))

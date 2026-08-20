@@ -56,6 +56,43 @@ package org.fukuii.evm
   * there with the function they parameterize. Repeating them here would give
   * one price two homes, which is how the two come to disagree.
   *
+  * ==WHERE a price is read decides whether moving it here is enough==
+  *
+  * A price is consumed in one of two places, and a proposal that edits only this
+  * record is right for one of them and silently wrong for the other.
+  * [[OpcodeTable.baseline]] and [[PrecompileSet.baseline]] COPY a price out of
+  * this record when they build their entries, so an operation charged through an
+  * entry is charged what the record held at build time and a later edit never
+  * reaches it. An operation that reads the schedule at the moment it spends is
+  * charged what the record holds now.
+  *
+  * Three classes follow, and the two that are not the obvious one both fail
+  * quietly:
+  *
+  *   - read only at spend time -- editing this record is the whole change;
+  *   - read at BOTH -- editing this record alone HALF-APPLIES, moving the
+  *     spend-time sites and leaving every table entry at its old price;
+  *   - read only at build time -- editing this record alone is a COMPLETE
+  *     SILENT NO-OP.
+  *
+  * **Which field is in which class is deliberately not listed here.** It is a
+  * property of where the machine happens to read each price today and it moves
+  * whenever an operation is rewritten, so a list would rot without anyone
+  * touching this file. Re-derive it: for a field `f`, count `schedule.f` in
+  * `OpcodeTable.scala` and `PrecompileSet.scala` against `schedule.f` in
+  * `Interpreter.scala`. **Calibrate before believing it** -- [[externalBase]] is
+  * read in both and [[callBase]] only at spend time, so an instrument reporting
+  * those two alike is measuring something other than what it claims.
+  *
+  * A fourth group is read in neither, being the intrinsic prices charged by the
+  * layer that settles a transaction around an invocation. That layer is not in
+  * this module yet, which is why they read as unused rather than as spend-time.
+  *
+  * A proposal in the second or third class has to reach the table or the
+  * precompile set as well, which is what [[OpcodeTable.adding]] exists for.
+  * `Proposals.stateReadRepricing` is the worked instance, and it covers the
+  * table only -- no proposal has yet had to reach a precompile price.
+  *
   * ==A precompile's price is a price, and belongs here rather than with it==
   *
   * Both sources keep them beside every other charge -- the specification under
