@@ -265,3 +265,20 @@ object Proposals:
     */
   val forwardedGasCap: Proposal =
     _.copy(gasForwarded = (remaining, requested) => requested.min(remaining - remaining / 64))
+
+  /** EIP-150 -- ending an invocation and giving its balance away is charged for,
+    * and charged more where the account paid out to has never existed.
+    *
+    * A repricing in place, and only because the baseline was built to let it be
+    * one: both fields are already there priced at nothing, and the operation
+    * already works out its own charge rather than carrying a settled one. A
+    * schedule that named neither would make this a change to the record's shape
+    * and to how the operation is dispatched at the same time.
+    *
+    * The surcharge is the same figure the call family pays for the same
+    * situation and is a different field on purpose --
+    * [[GasSchedule.selfDestructNewAccount]] records why.
+    */
+  val selfDestructCharge: Proposal =
+    rules =>
+      rules.copy(schedule = rules.schedule.copy(selfDestruct = BigInt(5000), selfDestructNewAccount = BigInt(25000)))

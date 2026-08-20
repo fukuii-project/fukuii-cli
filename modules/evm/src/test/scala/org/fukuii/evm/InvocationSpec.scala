@@ -135,6 +135,9 @@ class InvocationSpec extends AnyFlatSpec:
     */
   private def capping: ChainRules = ChainRules.Baseline.applying(Proposals.forwardedGasCap)
 
+  /** The rules with EIP-150's charge for ending an invocation applied. */
+  private def charging: ChainRules = ChainRules.Baseline.applying(Proposals.selfDestructCharge)
+
   /** The same, plus the proposal that makes the delegating byte run at all. */
   private def cappingDelegation: ChainRules =
     ChainRules.Baseline.applying(Proposals.delegateCall, Proposals.forwardedGasCap)
@@ -702,4 +705,22 @@ class InvocationSpec extends AnyFlatSpec:
   it should "leave the creator nothing at the baseline, which is what the cap changes" in {
     val (frame, _) = runIn(EvmFixtures.environment(), 100000, creating("0c"))
     assert(frame.gasLeft == BigInt(0), "the baseline forwards the whole of what a creator holds")
+  }
+
+  "SELFDESTRUCT under EIP-150's charge" should "cost the base where the beneficiary already exists" in {
+    val holder = world()
+    holder.balances(other) = EvmFixtures.word(1)
+    val (frame, _) = runIn(EvmFixtures.environmentUnder(charging, holder), 100000, destroying(other))
+    assert(frame.gasLeft == BigInt(100000 - 3 - 5000), "the push costs 3 and the operation is no longer free")
+  }
+
+  it should "cost the base and a surcharge where the beneficiary has never existed" in {
+    // The account paid out to is brought into being by the payment, and that is
+    // charged for -- which is what makes this operation's price conditional on
+    // state rather than settled before it runs.
+    val (frame, _) = runIn(EvmFixtures.environmentUnder(charging), 100000, destroying(other))
+    assert(
+      frame.gasLeft == BigInt(100000 - 3 - 5000 - 25000),
+      "an account this state has never held was not charged for"
+    )
   }

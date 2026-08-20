@@ -490,13 +490,23 @@ object Interpreter:
       // reads and still runs when called, which is why registering and
       // destroying are separate acts in the specification too.
       case Opcode.SelfDestruct =>
-        priced(operation) { gas =>
+        exceptional(
           for
             operand <- frame.stack.pop()
             beneficiary = addressOf(operand)
             originator = frame.message.currentTarget
             _ = if !frame.alreadyRegistered(originator) then frame.refundCounter += schedule.refundSelfDestruct
-            _ <- frame.charge(gas)
+            // The account paid out to is looked at before anything is charged,
+            // which is the specification's own order and the reason this
+            // operation cannot carry a settled price: what it costs depends on
+            // the state its operand names. At the baseline both terms are
+            // nothing, so it works out to the same charge the table used to
+            // hold.
+            _ <- frame.charge(
+              schedule.selfDestruct +
+                (if environment.world.accountExists(beneficiary) then BigInt(0)
+                 else schedule.selfDestructNewAccount)
+            )
           yield
             val world = environment.world
             // Both balances are read before either is written, so an account
@@ -508,7 +518,7 @@ object Interpreter:
             world.setBalance(originator, Word.Zero)
             frame.accountsToDelete = frame.accountsToDelete + originator
             frame.running = false
-        }
+        )
 
       // ── Invocations this one starts ────────────────────────────────────────
 

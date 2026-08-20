@@ -162,3 +162,20 @@ class ChainRulesSpec extends AnyFlatSpec:
       "a rule about forwarding rebuilt something it does not name"
     )
   }
+
+  "selfDestructCharge" should "leave the refund exactly where the baseline set it" in
+    // The proposal that charges for this operation does not touch what it earns
+    // back, and a delta that moved both would be wrong on every network from
+    // this fork onward. Pinned because the two sit beside each other and the
+    // specification's own diff at this fork touches the refund's line without
+    // changing its value.
+    assert(
+      base.applying(Proposals.selfDestructCharge).schedule.refundSelfDestruct == BigInt(24000),
+      "a charge for ending an invocation moved the refund for it"
+    )
+
+  it should "leave the table as the same value, since a conditional charge is not a table entry" in
+    assert(
+      base.applying(Proposals.selfDestructCharge).table eq base.table,
+      "the operation works out its own price, so repricing it is a change to the schedule alone"
+    )

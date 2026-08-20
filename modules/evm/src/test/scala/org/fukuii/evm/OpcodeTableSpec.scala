@@ -16,9 +16,15 @@ import org.scalatest.prop.TableDrivenPropertyChecks
   * could check.
   *
   * `SELFDESTRUCT` is the one row that derivation cannot reach on its own:
-  * `instructions/system.py` binds `gas_cost = GasCosts.ZERO` before charging it,
-  * so the charge names a local rather than a constant. It is read from that
-  * assignment instead.
+  * `instructions/system.py` binds `gas_cost` to a local before charging it, so
+  * the charge names no constant. It is recorded as an operation that works out
+  * its own price rather than as one costing nothing, because at the fork that
+  * reprices it that local is a base plus a surcharge decided by the state its
+  * operand names -- and a price that becomes conditional was never a settled
+  * one. Holding it as settled here would make that fork a change to how the
+  * operation is dispatched as well as to what it costs. What it costs at this
+  * fork is nothing, and `InvocationSpec` is where that is stated, since a
+  * conditional charge is only observable by running it.
   */
 class OpcodeTableSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
@@ -154,7 +160,7 @@ class OpcodeTableSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     (Opcode.Call, Cost.Computed),
     (Opcode.CallCode, Cost.Computed),
     (Opcode.Return, Cost.Computed),
-    (Opcode.SelfDestruct, Cost.Fixed(BigInt(0)))
+    (Opcode.SelfDestruct, Cost.Computed)
   )
 
   property("the baseline table prices every operation as the specification does") {

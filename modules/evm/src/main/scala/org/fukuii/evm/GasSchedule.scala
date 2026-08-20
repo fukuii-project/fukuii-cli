@@ -122,7 +122,15 @@ final case class GasSchedule(
     // SELFDESTRUCT costs nothing to execute at this fork and is priced as a
     // field rather than a literal for the same reason: EIP-150 reprices it to
     // 5000, so a schedule that cannot name it cannot express that fork either.
-    selfDestruct: BigInt
+    selfDestruct: BigInt,
+    // The surcharge SELFDESTRUCT pays where the account it pays out to has never
+    // existed. It is deliberately NOT `newAccount`, which the call family pays
+    // for the same situation and at the same figure: the specification, the
+    // largest production client and the largest production JVM client all name
+    // the two separately, and they diverge at a later fork where one becomes a
+    // quantity computed from the bytes an account occupies and the other ceases
+    // to exist at all.
+    selfDestructNewAccount: BigInt
 )
 
 object GasSchedule:
@@ -175,5 +183,6 @@ object GasSchedule:
     transactionDataPerZeroByte = BigInt(4),
     transactionDataPerNonZeroByte = BigInt(68),
     transactionCreate = BigInt(0),
-    selfDestruct = BigInt(0)
+    selfDestruct = BigInt(0),
+    selfDestructNewAccount = BigInt(0)
   )

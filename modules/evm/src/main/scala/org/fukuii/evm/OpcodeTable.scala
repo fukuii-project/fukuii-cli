@@ -93,7 +93,6 @@ object OpcodeTable:
     val fixed: Map[Opcode, BigInt] =
       Map(
         Opcode.Stop -> schedule.zero,
-        Opcode.SelfDestruct -> schedule.selfDestruct,
         Opcode.Add -> schedule.veryLow,
         Opcode.Sub -> schedule.veryLow,
         Opcode.Lt -> schedule.veryLow,
