@@ -777,3 +777,13 @@ class InvocationSpec extends AnyFlatSpec:
       "an account sending value to itself did not end with what it started with"
     )
   }
+  it should "run out of gas where the frame cannot cover the base and the surcharge" in {
+    // Both cases above fund the frame far above the maximum charge, so the
+    // boundary this fork creates is never crossed by either. Before it, the
+    // operation was free and could not run out of gas at all.
+    val (_, outcome) = runIn(EvmFixtures.environmentUnder(charging), 3 + 5000 + 25000 - 1, destroying(other))
+    assert(
+      outcome == Right(Outcome.Halted(Halt.OutOfGas)),
+      "an operation that costs 30000 was affordable to a frame holding less"
+    )
+  }
