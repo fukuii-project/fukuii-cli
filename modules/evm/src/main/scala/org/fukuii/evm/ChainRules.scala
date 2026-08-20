@@ -9,6 +9,33 @@ package org.fukuii.evm
   */
 type Proposal = ChainRules => ChainRules
 
+/** How much of what a caller has left a nested invocation is given.
+  *
+  * ==Two arguments, and the baseline ignores the first==
+  *
+  * That is the whole content of the shape. `remaining` is what the caller would
+  * still hold once the invocation's own price and its memory are paid;
+  * `requested` is what the operation asked for. A rule that caps nothing cannot
+  * be written as the identity over `remaining` -- that would compare the request
+  * against what is left and hand back the smaller, turning a caller that asks
+  * for more than it holds from a frame that runs out of gas into one that
+  * quietly succeeds with less. **The comparison exists only where a cap does**,
+  * so a baseline able to ignore `remaining` outright is what the second argument
+  * buys. besu's baseline reaches the same conclusion from the other side: it
+  * hands back the request and compares nothing.
+  *
+  * ==Contract==
+  *
+  * `remaining` is never negative. Its callers subtract a price from what a frame
+  * holds, and a frame that cannot cover that price passes zero rather than the
+  * difference -- so the clamp has one home, at the subtraction, rather than one
+  * here and one there.
+  *
+  * Both arguments are gas, so transposing them compiles and is wrong. The order
+  * is `(remaining, requested)`.
+  */
+type GasForwarding = (BigInt, BigInt) => BigInt
+
 /** The rules one chain runs, as a value a fork produces rather than a branch the
   * machine takes.
   *
@@ -52,6 +79,21 @@ type Proposal = ChainRules => ChainRules
   * the fields left alone survive as the same values rather than as equal copies
   * -- which is what makes that testable rather than merely intended.
   *
+  * ==A member that is a function changes what comparing two of these means==
+  *
+  * [[gasForwarded]] compares by reference rather than by value, so two rules
+  * built separately are unequal even where the same proposals produced them.
+  * What the seam actually claims is untouched: applying no proposal returns the
+  * same value, and a field no proposal names survives as the same value rather
+  * than as an equal copy. A test comparing whole rules built twice is the one
+  * that would be surprised.
+  *
+  * @param gasForwarded
+  *   how much of what the caller has left a nested invocation is given, out of
+  *   what it asked for. At the baseline it is given what it asked for and the
+  *   caller pays for all of it, so a request larger than the caller can cover is
+  *   a frame that runs out of gas. EIP-150 caps it, and the same request then
+  *   succeeds with less. It reaches every nested invocation, `CREATE` included.
   * @param codeDepositMustSucceed
   *   whether a creation that cannot pay to store its returned code fails. At the
   *   baseline it does not: the account is left with no code, the gas already
@@ -69,6 +111,7 @@ final case class ChainRules(
     table: OpcodeTable,
     schedule: GasSchedule,
     precompiles: PrecompileSet,
+    gasForwarded: GasForwarding,
     codeDepositMustSucceed: Boolean,
     signatureSMustBeLow: Boolean
 ):
@@ -94,6 +137,7 @@ object ChainRules:
       table = OpcodeTable.baseline(GasSchedule.Baseline),
       schedule = GasSchedule.Baseline,
       precompiles = PrecompileSet.baseline(GasSchedule.Baseline),
+      gasForwarded = (_, requested) => requested,
       codeDepositMustSucceed = false,
       signatureSMustBeLow = false
     )
@@ -200,3 +244,24 @@ object Proposals:
           .adding(Operation(Opcode.Balance, Cost.Fixed(repriced.balance)))
           .adding(Operation(Opcode.ExtCodeSize, Cost.Fixed(repriced.externalBase)))
       )
+
+  /** EIP-150 -- a nested invocation is given all but one sixty-fourth of what
+    * the caller has left.
+    *
+    * The proposal's own reason is not the gas: it is that a caller asking for
+    * more than it holds used to be a frame that ran out of gas, and contracts
+    * computing their request from what they held were written against prices
+    * this same proposal moves. Capping rather than refusing keeps those callers
+    * working, and the sixty-fourth left behind is what the caller then has to
+    * act on whatever came back.
+    *
+    * ==One rule serves `CREATE` as well, and that is arithmetic rather than
+    * economy==
+    *
+    * A creation names no request; it forwards everything it holds. So its
+    * request and what remains are the same number, and capping either is the
+    * same operation -- which is why this reaches four operations through one
+    * member rather than needing a second for the one that asks for nothing.
+    */
+  val forwardedGasCap: Proposal =
+    _.copy(gasForwarded = (remaining, requested) => requested.min(remaining - remaining / 64))

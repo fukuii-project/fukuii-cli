@@ -121,3 +121,44 @@ class ChainRulesSpec extends AnyFlatSpec:
       base.applying(Proposals.stateReadRepricing).precompiles eq base.precompiles,
       "a repricing of operations rebuilt the precompile set"
     )
+
+  "the baseline's forwarding rule" should "hand over the whole of a request larger than what the caller has left" in
+    // The trap the two-argument shape exists to avoid, pinned as a claim so it
+    // cannot be simplified away. A rule written to take only what remains would
+    // return the smaller of the two here, and a caller asking for more than it
+    // holds would quietly succeed with less rather than running out of gas --
+    // a different state root at every fork before the cap arrives.
+    assert(
+      base.gasForwarded(BigInt(100), BigInt(1000)) == BigInt(1000),
+      "the baseline compared the request against what remains, which only a cap may do"
+    )
+
+  "forwardedGasCap" should "keep back one sixty-fourth of what remains" in
+    assert(
+      base.applying(Proposals.forwardedGasCap).gasForwarded(BigInt(6400), BigInt(1000000)) == BigInt(6300),
+      "a request above the cap is met with the cap"
+    )
+
+  it should "hand over what was asked for where that is under the cap" in
+    assert(
+      base.applying(Proposals.forwardedGasCap).gasForwarded(BigInt(6400), BigInt(50)) == BigInt(50),
+      "the cap is a ceiling on the request rather than a replacement for it"
+    )
+
+  it should "keep back nothing where fewer than sixty-four units remain" in
+    // The division floors, so the sixty-fourth of a small remainder is nothing
+    // and the caller keeps nothing back. Pinned because rounding the other way
+    // would be invisible on every figure large enough to look realistic.
+    assert(
+      base.applying(Proposals.forwardedGasCap).gasForwarded(BigInt(63), BigInt(1000)) == BigInt(63),
+      "the sixty-fourth kept back is floored, not rounded"
+    )
+
+  it should "leave the table, the schedule and the precompiles as the same values" in {
+    val changed = base.applying(Proposals.forwardedGasCap)
+    assert(
+      (changed.table eq base.table) && (changed.schedule eq base.schedule) &&
+        (changed.precompiles eq base.precompiles),
+      "a rule about forwarding rebuilt something it does not name"
+    )
+  }

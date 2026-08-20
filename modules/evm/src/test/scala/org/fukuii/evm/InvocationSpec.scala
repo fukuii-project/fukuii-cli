@@ -130,6 +130,15 @@ class InvocationSpec extends AnyFlatSpec:
     )
     environment.world.storageAt(runner, Word.Zero)
 
+  /** The rules with EIP-150's forwarded-gas cap applied and nothing else, so the
+    * prices below are still the baseline's and only what is forwarded moves.
+    */
+  private def capping: ChainRules = ChainRules.Baseline.applying(Proposals.forwardedGasCap)
+
+  /** The same, plus the proposal that makes the delegating byte run at all. */
+  private def cappingDelegation: ChainRules =
+    ChainRules.Baseline.applying(Proposals.delegateCall, Proposals.forwardedGasCap)
+
   // ── What an invocation is given, and what it leaves behind ───────────────
 
   "an invocation" should "bring the account it runs as into being" in {
@@ -638,4 +647,59 @@ class InvocationSpec extends AnyFlatSpec:
       frame.gasLeft == BigInt(0),
       "a halted deployment returns nothing, where at the baseline what it did not spend comes back"
     )
+  }
+
+  // ── What a nested invocation may be given ────────────────────────────────
+
+  "CALL under the forwarded-gas cap" should "hand over all but one sixty-fourth where the request is larger" in {
+    // 6440 left when the operation runs, less its own settled 40 leaves 6400 to
+    // cap: a sixty-fourth of that is 100, so 6300 goes and 100 stays. The callee
+    // stops without spending any of it, so all 6300 comes back on top.
+    val holder = world()
+    holder.codes(other) = codeOf(hex(stopping))
+    val (frame, _) = runIn(EvmFixtures.environmentUnder(capping, holder), 6461, calling(0xf1, other, 60000))
+    assert(frame.gasLeft == BigInt(6400), "the caller was charged for the capped amount rather than for what it asked")
+  }
+
+  it should "run out of gas at the baseline, where the same request is charged in full" in {
+    // The other half of the delta, and the reason the cap was proposed: before
+    // it, asking for more than you hold is a frame that dies rather than one
+    // that gets less.
+    val holder = world()
+    holder.codes(other) = codeOf(hex(stopping))
+    val (_, outcome) = runIn(EvmFixtures.environment(holder), 6461, calling(0xf1, other, 60000))
+    assert(
+      outcome == Right(Outcome.Halted(Halt.OutOfGas)),
+      "the baseline charges the whole request and cannot cover it"
+    )
+  }
+
+  it should "run out of gas where the caller cannot cover the operation's own price" in {
+    // 25000 left against a settled 40 plus the 25000 for an account this state
+    // has never held. What remains to cap is nothing rather than a shortfall of
+    // forty, and the difference is not cosmetic: a shortfall would make the cap
+    // negative, and a negative amount forwarded would reduce the charge below
+    // what the caller holds and let an unaffordable call through.
+    val (_, outcome) = runIn(EvmFixtures.environmentUnder(capping), 25021, calling(0xf1, other, 60000))
+    assert(outcome == Right(Outcome.Halted(Halt.OutOfGas)), "a caller that cannot pay the price was let through")
+  }
+
+  "DELEGATECALL under the forwarded-gas cap" should "be capped like the rest of the call family" in {
+    val holder = world()
+    holder.codes(other) = codeOf(hex(stopping))
+    val (frame, _) = runIn(EvmFixtures.environmentUnder(cappingDelegation, holder), 6458, delegating(other, 60000))
+    assert(frame.gasLeft == BigInt(6400), "the form that keeps its caller's identity is capped on the same terms")
+  }
+
+  "CREATE under the forwarded-gas cap" should "leave the creator a sixty-fourth of what it held" in {
+    // A creation names no request, so the cap applies to everything the creator
+    // still holds once the settled price is paid. The deployment halts, so
+    // nothing comes back and what is left is exactly what was kept back.
+    val (frame, _) = runIn(EvmFixtures.environmentUnder(capping), 100000, creating("0c"))
+    assert(frame.gasLeft == BigInt(1062), "a creation forwarded everything, or kept back the wrong share")
+  }
+
+  it should "leave the creator nothing at the baseline, which is what the cap changes" in {
+    val (frame, _) = runIn(EvmFixtures.environment(), 100000, creating("0c"))
+    assert(frame.gasLeft == BigInt(0), "the baseline forwards the whole of what a creator holds")
   }

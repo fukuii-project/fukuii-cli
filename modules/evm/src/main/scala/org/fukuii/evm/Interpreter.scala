@@ -562,10 +562,20 @@ object Interpreter:
     *
     * Everything the caller pays -- the settled part, the surcharge for an
     * account this state has never held, the surcharge for sending anything, and
-    * the whole of the gas being forwarded -- is charged in one go, before any
+    * the whole of the gas actually forwarded -- is charged in one go, before any
     * balance is read. What the callee receives is that forwarded gas plus a
     * stipend where value was sent, which comes out of the surcharge the caller
     * already paid rather than out of the caller's remaining gas.
+    *
+    * ==How much is forwarded is the fork's to say, and it is settled first==
+    *
+    * The caller asks for an amount; [[ChainRules.gasForwarded]] decides how much
+    * of it the callee gets, out of what the caller would still hold once this
+    * operation's own price and its memory were paid. That is why the memory cost
+    * is worked out here rather than left to `reach` to fold in: the figure has
+    * to exist before anything is taken. At the baseline the answer is the whole
+    * request, so a caller asking for more than it can cover runs out of gas on
+    * the charge below rather than quietly getting less.
     *
     * ==A nested invocation that fails costs the caller everything it forwarded==
     *
@@ -603,13 +613,15 @@ object Interpreter:
           case CallForm.ToTheAccountNamed                        => codeAddress
           case CallForm.WithTheNamedAccountsCode                 => frame.message.currentTarget
           case CallForm.WithTheNamedAccountsCodeKeepingTheCaller => frame.message.currentTarget
-        settled = schedule.callBase + requested.toBigInt +
+        ownPrice = schedule.callBase +
           (if world.accountExists(runsAs) then BigInt(0) else schedule.newAccount) +
           (if inherits || value.isZero then BigInt(0) else schedule.callValue)
-        _ <- reach(frame, settled, (inputOffset, inputSize), (outputOffset, outputSize))
+        memory = expansionCost(frame, (inputOffset, inputSize), (outputOffset, outputSize))
+        granted = environment.rules.gasForwarded(spare(frame.gasLeft, ownPrice + memory), requested.toBigInt)
+        _ <- reach(frame, ownPrice + granted, (inputOffset, inputSize), (outputOffset, outputSize))
       yield
         val forwarded =
-          requested.toBigInt + (if inherits || value.isZero then BigInt(0) else schedule.callStipend)
+          granted + (if inherits || value.isZero then BigInt(0) else schedule.callStipend)
         val input = regionOf(frame, inputOffset, inputSize)
         (codeAddress, runsAs, value, forwarded, input, outputOffset, outputSize)
 
@@ -672,11 +684,12 @@ object Interpreter:
     taken match
       case Left(halt)                   => Left(Fault.Exceptional(halt))
       case Right((endowment, initCode)) =>
-        // Everything left is forwarded, so the creator holds nothing while the
-        // deployment runs and is given back only what the deployment did not
-        // spend.
-        val forwarded = frame.gasLeft
-        frame.gasLeft = BigInt(0)
+        // A creation asks for nothing, so what it may be given is decided
+        // against everything the creator holds. Whatever the rules keep back
+        // stays with the creator while the deployment runs, on top of whatever
+        // the deployment does not spend.
+        val forwarded = environment.rules.gasForwarded(frame.gasLeft, frame.gasLeft)
+        frame.gasLeft -= forwarded
         val creator = frame.message.currentTarget
         val count = world.nonceOf(creator)
         val target = ContractAddress.of(creator, count)
@@ -1128,12 +1141,40 @@ object Interpreter:
     * large.
     */
   private def reach(frame: Frame, settled: BigInt, regions: (Word, Word)*): Either[Halt, Unit] =
-    val furthest =
-      regions.filterNot(_._2.isZero).map(region => region._1.toBigInt + region._2.toBigInt).foldLeft(BigInt(0))(_ max _)
+    val furthest = furthestOf(regions)
     for
       _ <- frame.charge(settled + GasCost.expansion(BigInt(frame.memory.size), furthest))
       _ <- if furthest > MaxReach then Left(Halt.OutOfGas) else Right(())
     yield frame.memory.ensure(furthest.toInt)
+
+  /** The furthest byte any of `regions` addresses, which is what reaching all of
+    * them costs -- see [[reach]] for why the furthest alone is the whole sum.
+    */
+  private def furthestOf(regions: Seq[(Word, Word)]): BigInt =
+    regions.filterNot(_._2.isZero).map(region => region._1.toBigInt + region._2.toBigInt).foldLeft(BigInt(0))(_ max _)
+
+  /** What extending memory to hold `regions` costs, worked out without charging
+    * it.
+    *
+    * [[reach]] settles a price and takes it in one act, which is what every
+    * operation but one family wants. A nested invocation is the exception: how
+    * much gas it may be given is decided against what the caller would still
+    * hold once this is paid, so the figure has to exist before anything is
+    * taken.
+    */
+  private def expansionCost(frame: Frame, regions: (Word, Word)*): BigInt =
+    GasCost.expansion(BigInt(frame.memory.size), furthestOf(regions))
+
+  /** What is left of `held` once `cost` is paid, and nothing where it does not
+    * cover it.
+    *
+    * This is [[GasForwarding]]'s non-negative contract met at the only two sites
+    * that have to meet it. A frame that cannot cover the price it is about to be
+    * charged still owes the rule a figure, and it runs out of gas on that charge
+    * a moment later whatever the rule answered -- so the clamp lives here, once,
+    * rather than inside every rule that could be written.
+    */
+  private def spare(held: BigInt, cost: BigInt): BigInt = if held <= cost then BigInt(0) else held - cost
 
   /** The furthest byte an operation may address before it is refused.
     *
