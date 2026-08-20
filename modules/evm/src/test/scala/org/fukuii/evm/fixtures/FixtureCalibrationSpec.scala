@@ -311,7 +311,7 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
     // The negative control. Without it a boundary that reported a divergence
     // unconditionally would satisfy every case below.
     assert(
-      FrontierCorpus.outcomeOf("quiet")(Verdict.Agreed) == CaseOutcome("quiet", Verdict.Agreed),
+      CertificationCorpora.outcomeOf("quiet")(Verdict.Agreed) == CaseOutcome("quiet", Verdict.Agreed),
       "the boundary reported something other than what running the case returned"
     )
 
@@ -319,7 +319,7 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
     // A skip means there was nothing here to compare; a throw means the machine
     // broke on something there was. A harness conflating them reports a machine
     // that throws on every case as entirely skipped, and therefore green.
-    val outcome = FrontierCorpus.outcomeOf("broken")(throw new IllegalStateException("boom"))
+    val outcome = CertificationCorpora.outcomeOf("broken")(throw new IllegalStateException("boom"))
     val diverged = outcome.verdict match
       case Verdict.Diverged(_) => true
       case _                   => false
@@ -327,7 +327,7 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
   }
 
   it should "name what broke in the divergence it records" in {
-    val outcome = FrontierCorpus.outcomeOf("broken")(throw new IllegalStateException("boom"))
+    val outcome = CertificationCorpora.outcomeOf("broken")(throw new IllegalStateException("boom"))
     val reasons = outcome.verdict match
       case Verdict.Diverged(causes) => causes.mkString
       case _                        => ""
@@ -343,7 +343,7 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
     // consensus finding, which is why the boundary is NonFatal and not Throwable.
     val propagated =
       try
-        val _ = FrontierCorpus.outcomeOf("fatal")(throw new OutOfMemoryError("calibration"))
+        val _ = CertificationCorpora.outcomeOf("fatal")(throw new OutOfMemoryError("calibration"))
         false
       catch case _: OutOfMemoryError => true
     assert(propagated, "a fatal error was swallowed and recorded as a case outcome")

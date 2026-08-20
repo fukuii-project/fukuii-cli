@@ -22,7 +22,7 @@ import org.fukuii.evm.ChainRules
   * suites asking two questions of two different runs could disagree about how
   * many cases there were.
   */
-object FrontierCorpus:
+object CertificationCorpora:
 
   /** Every report, or nothing at all when the corpus root is not configured.
     *
@@ -44,7 +44,7 @@ object FrontierCorpus:
     * once, so the same 2394 files answer a different question per fork asked --
     * and a report naming only the directory could not say which was asked.
     */
-  val LegacyStateCorpus: String = "legacytests Constantinople/GeneralStateTests at Frontier"
+  val LegacyFrontierStateCorpus: String = "legacytests Constantinople/GeneralStateTests at Frontier"
 
   /** The same directory, read for EIP-150's expectations instead.
     *
@@ -85,7 +85,7 @@ object FrontierCorpus:
   private def assemble(root: Path): Vector[CorpusReport] =
     Vector(
       vmReport(FixtureCorpus.legacy(root).resolve("VMTests")),
-      stateReport(LegacyStateCorpus, FixtureCorpus.legacy(root).resolve("GeneralStateTests")),
+      stateReport(LegacyFrontierStateCorpus, FixtureCorpus.legacy(root).resolve("GeneralStateTests")),
       stateReport(GeneratedStateCorpus, FixtureCorpus.generated(root).resolve("state_tests/for_frontier")),
       stateReport(
         LegacyEip150StateCorpus,
