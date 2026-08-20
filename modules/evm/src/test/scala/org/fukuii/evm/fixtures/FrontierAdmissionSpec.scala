@@ -3,7 +3,7 @@ package org.fukuii.evm.fixtures
 import org.scalatest.flatspec.AnyFlatSpec
 
 import org.fukuii.bytes.{Address, Bytes, UInt64}
-import org.fukuii.evm.{BlockContext, EvmFixtures, GasSchedule, Word}
+import org.fukuii.evm.{BlockContext, ChainRules, EvmFixtures, GasSchedule, Proposals, Word}
 
 /** Every reason admission can refuse a transaction, each reached on purpose.
   *
@@ -76,9 +76,17 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
       nonce: BigInt = 0,
       gasPrice: BigInt = 1,
       gasLimit: BigInt = 100000,
-      value: BigInt = 0
+      value: BigInt = 0,
+      to: Option[Address] = Some(recipient),
+      data: Bytes = Bytes.Empty
   ): StateTransaction =
-    StateTransaction(nonce, gasPrice, gasLimit, Some(recipient), value, Bytes.Empty, sender, None, kind)
+    StateTransaction(nonce, gasPrice, gasLimit, to, value, data, sender, None, kind)
+
+  /** The rules with EIP-2's creation surcharge applied. */
+  private val charging: GasSchedule = ChainRules.Baseline.applying(Proposals.creationCharge).schedule
+
+  private def charged(transaction: StateTransaction, schedule: GasSchedule): BigInt =
+    FrontierTransaction.intrinsicCost(schedule, transaction.data, transaction.to.isEmpty)
 
   /** A world in which [[admissible]] is admitted, from which each refusal is
     * likewise one edit away.
@@ -161,4 +169,35 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
       verdict(admissible(), world(code = EvmFixtures.bytesOf("0x600160005500"))) ==
         Admission.Rejected(Rejection.SenderNotEoa),
       verdict(admissible(), world(code = EvmFixtures.bytesOf("0x600160005500"))).toString
+    )
+
+  // ── What a transaction pays before it runs ──────────────────────────────
+
+  "the intrinsic charge" should "ask a deployment no more than a call at the baseline" in
+    // The specification names no creation constant at this fork and its charge is
+    // a base plus the data, so the two shapes cost the same. Without this the
+    // surcharge below would have nothing to be a delta over.
+    assert(
+      charged(admissible(to = None), GasSchedule.Baseline) ==
+        charged(admissible(), GasSchedule.Baseline)
+    )
+
+  it should "ask a deployment thirty-two thousand more once the proposal is applied" in
+    assert(
+      charged(admissible(to = None), charging) - charged(admissible(to = None), GasSchedule.Baseline) ==
+        BigInt(32000)
+    )
+
+  it should "leave a call charged exactly what it was" in
+    // The control. A surcharge applied to every transaction rather than only to
+    // a deployment would satisfy both cases above and be wrong for every call on
+    // the network.
+    assert(charged(admissible(), charging) == charged(admissible(), GasSchedule.Baseline))
+
+  it should "still charge a deployment for the data it carries" in
+    // The surcharge is added to the data charge rather than replacing it, so a
+    // deployment with a payload pays for both.
+    assert(
+      charged(admissible(to = None, data = EvmFixtures.bytesOf("0xff")), charging) -
+        charged(admissible(to = None), charging) == BigInt(68)
     )

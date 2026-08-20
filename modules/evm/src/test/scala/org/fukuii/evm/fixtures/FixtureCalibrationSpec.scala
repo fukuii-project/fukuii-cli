@@ -2,6 +2,8 @@ package org.fukuii.evm.fixtures
 
 import org.scalatest.flatspec.AnyFlatSpec
 
+import org.fukuii.evm.{ChainRules, Proposals}
+
 /** The harness read against fixtures held here rather than on disk, so that it
   * is exercised in a clone that has no corpus at all.
   *
@@ -132,11 +134,33 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
       case Right(fixtures) =>
         fixtures.map(VmFixtureRunner.run).headOption.getOrElse(Verdict.Diverged(Vector("no case")))
 
-  private def stateVerdict(contents: String): Verdict =
+  private def stateVerdict(
+      contents: String,
+      rules: ChainRules = StateFixtureRunner.Baseline
+  ): Verdict =
     StateFixture.decodeFile("calibration", contents) match
       case Left(error)     => Verdict.Diverged(Vector(error))
       case Right(contents) =>
-        contents.fixtures.map(StateFixtureRunner.run).headOption.getOrElse(Verdict.Diverged(Vector("no case")))
+        contents.fixtures
+          .map(fixture => StateFixtureRunner.run(fixture, rules))
+          .headOption
+          .getOrElse(Verdict.Diverged(Vector("no case")))
+
+  /** The published signature with an `s` above half the curve order.
+    *
+    * **Not the true mirror image of the published one** -- computing `n - s`
+    * was not done, and claiming it would be a number this file asserts and never
+    * checked. What is true and is all the bound needs: this `s` begins `0xa6`,
+    * half the order begins `0x7f`, so it is above. Written as a substitution so
+    * the rest of the fixture stays verbatim.
+    */
+  private val highSignature: String =
+    rejectionFixture
+      .replace("1ba0", "1ca0")
+      .replace(
+        "59d5c99684510838ebaea7f337bc9599364414b12acbde5223ed0d265896fa48",
+        "a62a366897aef7c714515080cc8436a6c9bbeb4e0b3fa5add5fd7d5c98d3e6f9"
+      )
 
   private def diverges(verdict: Verdict): Boolean = verdict match
     case Verdict.Diverged(_) => true
@@ -261,4 +285,24 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
     val altered = rejectionFixture.replace("0xf860800a", "0xc0800a")
     val _ = assert(altered != rejectionFixture, "the signature prefix this test rewrites was not found")
     assert(stateVerdict(altered).toString.contains("Undecodable"), stateVerdict(altered).toString)
+  }
+
+  it should "admit a signature at the baseline that the bound would refuse" in {
+    // The mirror image recovers an account too -- a different one, unfunded, so
+    // the fixture's own balance rule refuses it. The point is that admission got
+    // that far: nothing about the signature stopped it.
+    val _ = assert(highSignature != rejectionFixture, "the signature this test rewrites was not found")
+    assert(
+      stateVerdict(highSignature) == Verdict.Agreed,
+      stateVerdict(highSignature).toString
+    )
+  }
+
+  it should "refuse that same signature once the bound is applied" in {
+    // Same bytes, same expectation, one rule different. The fixture expects a
+    // refusal for want of funds and now gets one for the signature, so the
+    // reason comparison is what reports it -- which is why R179 had to land
+    // before this could be tested at all.
+    val bounded = StateFixtureRunner.Baseline.applying(Proposals.lowSignatureS)
+    assert(diverges(stateVerdict(highSignature, bounded)), stateVerdict(highSignature, bounded).toString)
   }

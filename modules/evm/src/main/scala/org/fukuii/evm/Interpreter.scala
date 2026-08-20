@@ -712,27 +712,30 @@ object Interpreter:
   /** Runs a deployment and stores whatever it returned as the new account's
     * code.
     *
-    * ==Failing to pay for the code is not a failure at this fork==
+    * ==Whether failing to pay for the code is a failure is the fork's to say==
     *
-    * A deployment that returns more code than its remaining gas can pay to store
-    * still SUCCEEDS: it keeps that gas, deploys nothing, and the creating
-    * operation is told the address as though code had been stored. Both sources
-    * are explicit about it -- the specification catches the charge and empties
-    * the output rather than recording an error, and go-ethereum carries the same
-    * behavior behind a check for the later proposal that reverses it. An
-    * account left behind with no code is the visible consequence, and it is the
-    * correct one here.
+    * At the baseline it is not. A deployment that returns more code than its
+    * remaining gas can pay to store still SUCCEEDS: it keeps that gas, deploys
+    * nothing, and the creating operation is told the address as though code had
+    * been stored. An account left behind with no code is the visible
+    * consequence, and it is the correct one there. EIP-2 reverses it -- the
+    * creation is undone, every remaining unit of gas is taken, and the creating
+    * operation is told it failed -- and `codeDepositMustSucceed` is which of
+    * the two this chain runs.
     *
-    * ==No second snapshot is taken here, and that is a property rather than an
-    * omission==
+    * ==The second snapshot earns its place once that flag can be set==
     *
-    * The specification wraps this path in its own snapshot as well, with a
-    * storage clear between the two. That clear cannot do anything under the
-    * rule applied by [[deployableAt]], which refuses to deploy over an account
-    * holding storage at all -- so nothing happens between the two snapshots and
-    * the outer one restores exactly what the inner one already did. The code
-    * stored below sits outside both, which is what keeps a successful
-    * deployment's code from being undone.
+    * It used to be omitted, on the reasoning that the outer one restores
+    * whatever this one would have. **That reasoning was fork-specific and this
+    * is the fork that ends it.** [[run]] releases its snapshot the moment it
+    * returns a stop, and a deposit that cannot be paid for is a stop -- so by
+    * the time the charge fails there is nothing left holding the deployment's
+    * writes, and the reversal would have had nothing to reverse.
+    *
+    * The specification takes its snapshot at the same place, and the nonce the
+    * creator spent is outside it in both: it is incremented by the operation
+    * that asked for the creation, before this runs, so a failed deposit does not
+    * hand it back.
     *
     * ==Two callers, one of them not built yet==
     *
@@ -751,14 +754,20 @@ object Interpreter:
       environment: Environment
   ): Either[Unsupported, Outcome] =
     val schedule = environment.schedule
+    val world = environment.world
+    val taken = world.snapshot()
     run(nested, environment).map {
       case Outcome.Stopped(_, code) =>
         nested.charge(schedule.codeDepositPerByte * BigInt(code.length)) match
+          case Left(halt) if environment.rules.codeDepositMustSucceed =>
+            world.restore(taken)
+            nested.gasLeft = BigInt(0)
+            Outcome.Halted(halt)
           case Left(_) =>
             nested.output = Bytes.Empty
             Outcome.Stopped(nested.gasLeft, Bytes.Empty)
           case Right(()) =>
-            environment.world.setCode(nested.message.currentTarget, code)
+            world.setCode(nested.message.currentTarget, code)
             Outcome.Stopped(nested.gasLeft, code)
       case halted => halted
     }

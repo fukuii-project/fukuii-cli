@@ -111,6 +111,14 @@ final case class GasSchedule(
     transactionBase: BigInt,
     transactionDataPerZeroByte: BigInt,
     transactionDataPerNonZeroByte: BigInt,
+    // A surcharge a transaction pays for deploying rather than calling. The
+    // baseline charges nothing, which is the whole of what the specification
+    // does at that fork: it names no such constant and its intrinsic cost is a
+    // base plus the data. EIP-2 introduces one, and holding it here at zero
+    // rather than adding the field with the proposal is what makes that delta a
+    // repricing in place -- the shape the seam expresses best -- instead of a
+    // change to the record's own shape.
+    transactionCreate: BigInt,
     // SELFDESTRUCT costs nothing to execute at this fork and is priced as a
     // field rather than a literal for the same reason: EIP-150 reprices it to
     // 5000, so a schedule that cannot name it cannot express that fork either.
@@ -166,5 +174,6 @@ object GasSchedule:
     transactionBase = BigInt(21000),
     transactionDataPerZeroByte = BigInt(4),
     transactionDataPerNonZeroByte = BigInt(68),
+    transactionCreate = BigInt(0),
     selfDestruct = BigInt(0)
   )

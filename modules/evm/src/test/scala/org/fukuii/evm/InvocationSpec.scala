@@ -97,6 +97,9 @@ class InvocationSpec extends AnyFlatSpec:
     val frame = new Frame(message, Code(Bytes.fromArray(program.map(_.toByte).toArray)), BigInt(gas))
     (frame, Interpreter.run(frame, environment))
 
+  /** The rules with EIP-2's deposit rule applied. */
+  private def strictDeposit: ChainRules = ChainRules.Baseline.applying(Proposals.codeDepositMustSucceed)
+
   /** The rules with EIP-7 applied, which is the only way this byte runs. */
   private def admitting: OpcodeTable = ChainRules.Baseline.applying(Proposals.delegateCall).table
 
@@ -604,5 +607,35 @@ class InvocationSpec extends AnyFlatSpec:
         case Right(Outcome.Halted(_)) => true
         case _                        => false,
       "the baseline names no operation at this byte, so it must halt as any undefined byte does: " + outcome
+    )
+  }
+
+  // ── The same unaffordable deposit, under the fork that calls it a failure ─
+
+  it should "undo the deployment where the deposit is unaffordable and the rule is strict" in {
+    // The exact scenario the three cases above pin at the baseline, run under
+    // the fork that reverses it -- so the pair states a delta rather than two
+    // unrelated behaviours.
+    val environment = EvmFixtures.environmentUnder(strictDeposit)
+    val _ = runIn(environment, 32200, creating(deploying))
+    assert(
+      !environment.world.accountExists(ContractAddress.of(runner, UInt64.Zero)),
+      "the creation is undone, so not even the empty account it left behind survives"
+    )
+  }
+
+  it should "answer zero where the deposit is unaffordable and the rule is strict" in {
+    val (frame, _) = runIn(EvmFixtures.environmentUnder(strictDeposit), 32200, creating(deploying))
+    assert(
+      frame.stack.peek(0) == Right(Word.Zero),
+      "the creating operation is told it failed, where at the baseline it is told the address"
+    )
+  }
+
+  it should "take every remaining unit of gas where the deposit is unaffordable and the rule is strict" in {
+    val (frame, _) = runIn(EvmFixtures.environmentUnder(strictDeposit), 32200, creating(deploying))
+    assert(
+      frame.gasLeft == BigInt(0),
+      "a halted deployment returns nothing, where at the baseline what it did not spend comes back"
     )
   }

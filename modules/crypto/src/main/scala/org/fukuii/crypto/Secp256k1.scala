@@ -54,7 +54,16 @@ object Secp256k1:
     * accepting both makes a signed payload malleable — its hash changes while
     * it stays valid. Signing canonicalizes to the low half.
     */
-  private val halfCurveOrder = params.getN.shiftRight(1)
+  /** Half the curve order, above which a signature's `s` has a mirror image
+    * that recovers the same account.
+    *
+    * Visible rather than private because [[recoverPublicKey]] deliberately does
+    * not apply it -- the bound takes effect at a stated fork, so the layer
+    * holding that fork's rules is the one that must apply it, and it cannot
+    * without the number. Exposing a public curve parameter costs nothing; a
+    * caller re-deriving it from a curve of its own would be the real risk.
+    */
+  val halfCurveOrder: BigInt = params.getN.shiftRight(1)
 
   /** Signs with a deterministic nonce and a canonical low `s`.
     *

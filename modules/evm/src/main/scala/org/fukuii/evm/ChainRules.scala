@@ -57,12 +57,20 @@ type Proposal = ChainRules => ChainRules
   *   baseline it does not: the account is left with no code, the gas already
   *   spent stays spent, and the creating operation is told the address as though
   *   code had been stored. EIP-2 reverses this.
+  * @param signatureSMustBeLow
+  *   whether a signature whose `s` exceeds half the curve order is refused. At
+  *   the baseline it is not, and both values of an `s` and its mirror image
+  *   recover the same account under two different transaction hashes. EIP-2
+  *   refuses the upper half. **This one is settled outside the machine**, by
+  *   whatever admits a transaction, and is held here because it is the fork's
+  *   rule and not that layer's preference.
   */
 final case class ChainRules(
     table: OpcodeTable,
     schedule: GasSchedule,
     precompiles: PrecompileSet,
-    codeDepositMustSucceed: Boolean
+    codeDepositMustSucceed: Boolean,
+    signatureSMustBeLow: Boolean
 ):
 
   /** These rules with each proposal applied, in the order given.
@@ -86,7 +94,8 @@ object ChainRules:
       table = OpcodeTable.baseline(GasSchedule.Baseline),
       schedule = GasSchedule.Baseline,
       precompiles = PrecompileSet.baseline(GasSchedule.Baseline),
-      codeDepositMustSucceed = false
+      codeDepositMustSucceed = false,
+      signatureSMustBeLow = false
     )
 
 /** The changes individual proposals make to the rules a chain runs.
@@ -104,3 +113,30 @@ object Proposals:
     */
   val delegateCall: Proposal =
     rules => rules.copy(table = rules.table.adding(Operation(Opcode.DelegateCall, Cost.Computed)))
+
+  /** EIP-2 -- a transaction that deploys pays a surcharge before it runs.
+    *
+    * A repricing in place: the field exists at the baseline priced at nothing,
+    * so this moves a number and changes no shape. **It is only observable on a
+    * transaction whose recipient is absent**, which is the path the harness
+    * could not execute at all until it was taught to.
+    */
+  val creationCharge: Proposal =
+    rules => rules.copy(schedule = rules.schedule.copy(transactionCreate = BigInt(32000)))
+
+  /** EIP-2 -- a deployment that cannot pay to store its code fails outright.
+    *
+    * A behavior and neither an entry nor a price, which is the delta kind that
+    * forced the rules to be a value at all. The baseline leaves the account
+    * behind holding nothing and keeps the gas; this undoes the creation and
+    * takes it.
+    */
+  val codeDepositMustSucceed: Proposal = _.copy(codeDepositMustSucceed = true)
+
+  /** EIP-2 -- a signature whose `s` is above half the curve order is refused.
+    *
+    * The comparison is strict in the specification, so `s` exactly at half the
+    * order stays valid and only what is above it is refused. Settled outside the
+    * machine, which is why it is a rule here and a check there.
+    */
+  val lowSignatureS: Proposal = _.copy(signatureSMustBeLow = true)

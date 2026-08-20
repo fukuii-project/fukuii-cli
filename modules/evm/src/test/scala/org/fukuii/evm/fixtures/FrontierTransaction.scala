@@ -1,7 +1,7 @@
 package org.fukuii.evm.fixtures
 
 import org.fukuii.bytes.{Address, Bytes, UInt64}
-import org.fukuii.crypto.Keccak256
+import org.fukuii.crypto.{Keccak256, Secp256k1}
 import org.fukuii.evm.*
 import org.fukuii.rlp.RlpCodec
 import org.fukuii.trie.StateTrie
@@ -65,7 +65,14 @@ object FrontierTransaction:
   /** A nonce at or above this cannot be signed for, applied to every fork. */
   val NonceLimit: BigInt = (BigInt(1) << 64) - 1
 
-  def intrinsicCost(schedule: GasSchedule, data: Bytes): BigInt =
+  /** What a transaction is charged before any of it runs.
+    *
+    * `deploys` is the recipient being absent rather than a property of the data,
+    * because a transaction that deploys states no recipient -- and the surcharge
+    * it pays is priced by the schedule rather than named here, so a fork moving
+    * it moves a number.
+    */
+  def intrinsicCost(schedule: GasSchedule, data: Bytes, deploys: Boolean): BigInt =
     val raw = data.toIArray
     var zeros = 0
     var i = 0
@@ -73,7 +80,8 @@ object FrontierTransaction:
       if raw(i) == 0.toByte then zeros += 1
       i += 1
     schedule.transactionBase + schedule.transactionDataPerZeroByte * zeros +
-      schedule.transactionDataPerNonZeroByte * (raw.length - zeros)
+      schedule.transactionDataPerNonZeroByte * (raw.length - zeros) +
+      (if deploys then schedule.transactionCreate else BigInt(0))
 
   /** Whether the block would carry this transaction, checked in the order the
     * specification checks it.
@@ -94,7 +102,7 @@ object FrontierTransaction:
     // already short-circuits, so deferring each to its own use is a reordering and
     // not a behavior change; `intrinsic` is read twice and a `lazy val` computes it
     // once.
-    lazy val intrinsic = intrinsicCost(schedule, transaction.data)
+    lazy val intrinsic = intrinsicCost(schedule, transaction.data, transaction.to.isEmpty)
     lazy val held = world.balanceOf(transaction.sender).toBigInt
     lazy val nonce = world.nonceOf(transaction.sender).toBigInt
     lazy val maximumFee = transaction.gasLimit * transaction.gasPrice
@@ -136,12 +144,20 @@ final case class TransactionOutcome(
   */
 object StateFixtureRunner:
 
-  def run(fixture: StateFixture): Verdict =
+  /** The rules a fixture is run under when the caller names none.
+    *
+    * The baseline, carrying the precompiles the harness prices. A corpus filled
+    * for a later fork passes that fork's rules instead, which is the whole of
+    * what certifying against one costs here.
+    */
+  val Baseline: ChainRules = ChainRules.Baseline.copy(precompiles = VmFixtureRunner.precompiles)
+
+  def run(fixture: StateFixture, rules: ChainRules = Baseline): Verdict =
     val trie = VmFixtureRunner.freshTrie()
     val base = new StateTrieWorldState(trie)
     FixtureValues.seed(base, fixture.pre) match
       case Left(error) => Verdict.Skipped(SkipReason.Undecodable(error))
-      case Right(())   => executeSeeded(fixture, trie, base)
+      case Right(())   => executeSeeded(fixture, rules, trie, base)
 
   /** What reading the published signature established.
     *
@@ -176,7 +192,7 @@ object StateFixtureRunner:
     * degrades quietly, because wherever bytes are present they settle the
     * question in both directions.
     */
-  private def signerOf(transaction: StateTransaction): Signer =
+  private def signerOf(transaction: StateTransaction, rules: ChainRules): Signer =
     // A transaction of a type this fork predates is refused for its TYPE, and
     // admission is where that is said. Its envelope is not the legacy shape, so
     // attempting recovery reports an unreadable file rather than a refused
@@ -191,39 +207,52 @@ object StateFixtureRunner:
           RlpCodec.decodeFrom[Transaction](bytes.toIArray) match
             case Left(error)   => Signer.Unreadable("published signature: " + error)
             case Right(signed) =>
-              Sender.recover(signed) match
-                case Left(_)        => Signer.Refused(Rejection.InvalidSignature)
-                case Right(address) => Signer.Settled(transaction.copy(sender = address))
+              // The upper half of the order is refused here rather than in
+              // recovery, because recovery holds no fork rules and says so: a
+              // high `s` and its mirror image recover the SAME account under two
+              // different transaction hashes, so this is a duplicate the curve
+              // cannot suppress and only a fork can refuse. The comparison is
+              // strict, so exactly half the order stays valid.
+              if rules.signatureSMustBeLow &&
+                Sender.signatureOf(signed).exists(_.s > Secp256k1.halfCurveOrder)
+              then Signer.Refused(Rejection.InvalidSignature)
+              else
+                Sender.recover(signed) match
+                  case Left(_)        => Signer.Refused(Rejection.InvalidSignature)
+                  case Right(address) => Signer.Settled(transaction.copy(sender = address))
 
   private def executeSeeded(
       fixture: StateFixture,
+      rules: ChainRules,
       trie: StateTrie,
       base: StateTrieWorldState
   ): Verdict =
-    signerOf(fixture.transaction) match
+    signerOf(fixture.transaction, rules) match
       case Signer.Unreadable(detail) => Verdict.Skipped(SkipReason.Undecodable(detail))
       case Signer.Refused(reason)    =>
         val journal = new JournaledWorldState(base)
         journal.commit()
         judge(fixture, base, trie, TransactionOutcome(Vector.empty, Some(reason), None))
-      case Signer.Settled(transaction) => executeSigned(fixture, transaction, trie, base)
+      case Signer.Settled(transaction) => executeSigned(fixture, transaction, rules, trie, base)
 
   private def executeSigned(
       fixture: StateFixture,
       transaction: StateTransaction,
+      rules: ChainRules,
       trie: StateTrie,
       base: StateTrieWorldState
   ): Verdict =
     val journal = new JournaledWorldState(base)
-    val outcome = FrontierTransaction.admit(journal, fixture.block, transaction, GasSchedule.Baseline) match
+    val outcome = FrontierTransaction.admit(journal, fixture.block, transaction, rules.schedule) match
       case Admission.Rejected(reason)       => TransactionOutcome(Vector.empty, Some(reason), None)
-      case Admission.Admitted(intrinsicGas) => settle(fixture, transaction, trie, journal, intrinsicGas)
+      case Admission.Admitted(intrinsicGas) => settle(fixture, transaction, rules, trie, journal, intrinsicGas)
     journal.commit()
     judge(fixture, base, trie, outcome)
 
   private def settle(
       fixture: StateFixture,
       transaction: StateTransaction,
+      rules: ChainRules,
       trie: StateTrie,
       journal: JournaledWorldState,
       intrinsicGas: BigInt
@@ -241,7 +270,7 @@ object StateFixtureRunner:
       blockHashAt = VmFixtureRunner.blockHashOf,
       block = fixture.block,
       transaction = TransactionContext(sender, transaction.gasPrice),
-      rules = ChainRules.Baseline.copy(precompiles = VmFixtureRunner.precompiles)
+      rules = rules
     )
     val available = transaction.gasLimit - intrinsicGas
     val (frame, result) = transaction.to match

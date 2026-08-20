@@ -147,3 +147,15 @@ object EvmFixtures:
       ofTransaction,
       ChainRules.Baseline.copy(table = withTable, schedule = withSchedule, precompiles = withPrecompiles)
     )
+
+  /** An environment running `rules` whole.
+    *
+    * A sibling of the helper above rather than a parameter on it: a default
+    * cannot be derived from an earlier parameter in the same list, so a `rules`
+    * parameter beside the three overrides would have to default them
+    * independently -- and a caller passing rules would then have their table and
+    * schedule silently replaced by the baseline's. Two helpers say which one the
+    * caller means.
+    */
+  def environmentUnder(rules: ChainRules, world: WorldState = new MapWorldState): Environment =
+    new Environment(new JournaledWorldState(world), blockHashAt, block, transaction, rules)
