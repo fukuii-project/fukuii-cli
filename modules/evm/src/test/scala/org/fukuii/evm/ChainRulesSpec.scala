@@ -28,6 +28,14 @@ class ChainRulesSpec extends AnyFlatSpec:
   private val secondRepricing: Proposal =
     rules => rules.copy(schedule = rules.schedule.copy(transactionBase = BigInt(21000)))
 
+  /** What a table charges for `opcode` before it runs, where that is settled.
+    *
+    * An operation that works out its own price has no number here to compare,
+    * so absence and a figure are different answers rather than a missing one.
+    */
+  private def settledCost(table: OpcodeTable, opcode: Opcode): Option[BigInt] =
+    table.operationAt(opcode.code).collect { case Operation(_, Cost.Fixed(gas)) => gas }
+
   "the baseline" should "leave a creation that cannot pay for its code holding no code rather than failing" in
     // The rule the machine started with, pinned here so a fork that reverses it
     // has something to reverse. A baseline that already carried the later
@@ -71,3 +79,45 @@ class ChainRulesSpec extends AnyFlatSpec:
 
   it should "compose to a different result when that order is reversed" in
     assert(base.applying(secondRepricing, repricing).schedule.transactionBase == BigInt(53000))
+
+  "stateReadRepricing" should "move every price it names" in {
+    val repriced = base.applying(Proposals.stateReadRepricing).schedule
+    assert(
+      repriced.storageLoad == BigInt(200) && repriced.balance == BigInt(400) &&
+        repriced.externalBase == BigInt(700) && repriced.callBase == BigInt(700),
+      "a price the proposal names did not move"
+    )
+  }
+
+  it should "reprice the table entry of every operation the baseline priced from the schedule" in {
+    // The half of this delta that is invisible from the schedule. Three of the
+    // four fields were copied into a table entry when the baseline was built, so
+    // a proposal that moved the schedule alone would leave these three charging
+    // what they charged before with nothing in the schedule to show it.
+    val table = base.applying(Proposals.stateReadRepricing).table
+    assert(
+      settledCost(table, Opcode.SLoad).contains(BigInt(200)) &&
+        settledCost(table, Opcode.Balance).contains(BigInt(400)) &&
+        settledCost(table, Opcode.ExtCodeSize).contains(BigInt(700)),
+      "an operation charged through the table kept its baseline price"
+    )
+  }
+
+  it should "leave every entry it does not name exactly as the baseline holds it" in {
+    // Stated as the set that moved rather than as spot checks, so an entry
+    // reached by accident fails as loudly as one missed on purpose.
+    val named = Set(Opcode.SLoad, Opcode.Balance, Opcode.ExtCodeSize)
+    val table = base.applying(Proposals.stateReadRepricing).table
+    val moved =
+      Opcode.values.toSet.filter(opcode => table.operationAt(opcode.code) != base.table.operationAt(opcode.code))
+    assert(moved == named, s"the entries that moved were ${moved.toString} rather than ${named.toString}")
+  }
+
+  it should "leave the precompile prices as the same value, not an equal copy" in
+    // The precompiles are built from the schedule too, so a proposal that
+    // rebuilt them from the repriced one would look correct and would have
+    // rewritten what it does not name.
+    assert(
+      base.applying(Proposals.stateReadRepricing).precompiles eq base.precompiles,
+      "a repricing of operations rebuilt the precompile set"
+    )

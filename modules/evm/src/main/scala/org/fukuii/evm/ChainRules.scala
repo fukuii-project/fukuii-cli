@@ -159,3 +159,44 @@ object Proposals:
     * machine, which is why it is a rule here and a check there.
     */
   val lowSignatureS: Proposal = _.copy(signatureSMustBeLow = true)
+
+  /** EIP-150 -- the operations that read account state cost more.
+    *
+    * Four prices move and nothing else does. What the four have in common is a
+    * state read rather than a computation, which is the proposal's own
+    * reasoning: loading a storage slot, reading an account's balance, reading
+    * another account's code, and reaching another account at all were priced
+    * against arithmetic rather than against the disk they touch.
+    *
+    * ==A settled price has two homes, and moving one of them is silent==
+    *
+    * [[OpcodeTable.baseline]] copies a settled price out of the schedule when it
+    * builds an entry, so an operation charged through that entry is charged what
+    * the table was built with rather than what the schedule holds now. A
+    * proposal that moved the schedule alone would leave `BALANCE`, `EXTCODESIZE`
+    * and `SLOAD` charging exactly what they charged before, with nothing in the
+    * schedule to show it. So this names the table too, which is what
+    * [[OpcodeTable.adding]] is for: an entry inserted over an operation already
+    * present replaces it.
+    *
+    * `EXTCODECOPY` and the call family read their settled part from the schedule
+    * at the moment they spend it and need no entry. [[GasSchedule.externalBase]]
+    * is therefore read from both places at once -- the table for `EXTCODESIZE`,
+    * the schedule for `EXTCODECOPY` -- which is why one field moving has to
+    * reach both.
+    */
+  val stateReadRepricing: Proposal =
+    rules =>
+      val repriced = rules.schedule.copy(
+        storageLoad = BigInt(200),
+        balance = BigInt(400),
+        externalBase = BigInt(700),
+        callBase = BigInt(700)
+      )
+      rules.copy(
+        schedule = repriced,
+        table = rules.table
+          .adding(Operation(Opcode.SLoad, Cost.Fixed(repriced.storageLoad)))
+          .adding(Operation(Opcode.Balance, Cost.Fixed(repriced.balance)))
+          .adding(Operation(Opcode.ExtCodeSize, Cost.Fixed(repriced.externalBase)))
+      )
