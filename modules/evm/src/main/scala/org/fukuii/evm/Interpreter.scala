@@ -702,8 +702,20 @@ object Interpreter:
     * the outer one restores exactly what the inner one already did. The code
     * stored below sits outside both, which is what keeps a successful
     * deployment's code from being undone.
+    *
+    * ==Two callers, one of them not built yet==
+    *
+    * Visible within this module rather than to this file, because deployment
+    * has two entry points and only one of them is an operation. `CREATE` is the
+    * first; a transaction whose recipient is absent is the second, and the
+    * layer that settles such a transaction does not exist here yet. The
+    * specification treats them as one path for the same reason -- its
+    * `process_message_call` dispatches on an empty target and both arms reach
+    * the same creation -- and go-ethereum publishes its `Create` so the state
+    * transition can call what the operation calls. Copying this into whatever
+    * stands in for that layer would put a fork-varying rule in two places.
     */
-  private def deploy(
+  private[evm] def deploy(
       nested: Frame,
       environment: Environment
   ): Either[Unsupported, Outcome] =
@@ -814,7 +826,7 @@ object Interpreter:
     * already admits. A fixture reversal is no longer a live trigger, the
     * published fixture having landed on this side.
     */
-  private def deployableAt(world: WorldState, address: Address): Boolean =
+  private[evm] def deployableAt(world: WorldState, address: Address): Boolean =
     world.nonceOf(address) == UInt64.Zero && world.codeOf(address).isEmpty && !world.hasStorage(address)
 
   /** Takes what a nested invocation earned into the invocation that started it.

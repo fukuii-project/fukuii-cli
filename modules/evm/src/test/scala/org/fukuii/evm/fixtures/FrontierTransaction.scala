@@ -136,20 +136,14 @@ final case class TransactionOutcome(
 object StateFixtureRunner:
 
   def run(fixture: StateFixture): Verdict =
-    fixture.transaction.to match
-      case None            => Verdict.Skipped(SkipReason.TransactionLevelCreation)
-      case Some(recipient) => execute(fixture, recipient)
-
-  private def execute(fixture: StateFixture, recipient: Address): Verdict =
     val trie = VmFixtureRunner.freshTrie()
     val base = new StateTrieWorldState(trie)
     FixtureValues.seed(base, fixture.pre) match
       case Left(error) => Verdict.Skipped(SkipReason.Undecodable(error))
-      case Right(())   => executeSeeded(fixture, recipient, trie, base)
+      case Right(())   => executeSeeded(fixture, trie, base)
 
   private def executeSeeded(
       fixture: StateFixture,
-      recipient: Address,
       trie: StateTrie,
       base: StateTrieWorldState
   ): Verdict =
@@ -157,32 +151,25 @@ object StateFixtureRunner:
     val transaction = fixture.transaction
     val outcome = FrontierTransaction.admit(journal, fixture.block, transaction, GasSchedule.Baseline) match
       case Admission.Rejected(reason)       => TransactionOutcome(Vector.empty, Some(reason), None)
-      case Admission.Admitted(intrinsicGas) => settle(fixture, recipient, trie, journal, intrinsicGas)
+      case Admission.Admitted(intrinsicGas) => settle(fixture, trie, journal, intrinsicGas)
     journal.commit()
     judge(fixture, base, trie, outcome)
 
   private def settle(
       fixture: StateFixture,
-      recipient: Address,
       trie: StateTrie,
       journal: JournaledWorldState,
       intrinsicGas: BigInt
   ): TransactionOutcome =
     val transaction = fixture.transaction
     val sender = transaction.sender
+    // Read before the bump. The address a creation deploys to is derived from
+    // the nonce the sender held when it signed, and the specification reaches
+    // the same value from the other side -- it increments first and computes
+    // the address from `nonce - 1`.
+    val signedAt = journal.nonceOf(sender)
     journal.setNonce(sender, nextNonce(transaction.nonce))
     journal.setBalance(sender, journal.balanceOf(sender).sub(Word(transaction.gasLimit * transaction.gasPrice)))
-    val frame = new Frame(
-      Message(
-        caller = sender,
-        currentTarget = recipient,
-        codeAddress = Some(recipient),
-        value = Word(transaction.value),
-        data = transaction.data
-      ),
-      Code(journal.codeOf(recipient)),
-      transaction.gasLimit - intrinsicGas
-    )
     val environment = new Environment(
       journal,
       blockHashAt = VmFixtureRunner.blockHashOf,
@@ -192,7 +179,40 @@ object StateFixtureRunner:
       schedule = GasSchedule.Baseline,
       precompiles = VmFixtureRunner.precompiles
     )
-    val result = Interpreter.run(frame, environment)
+    val available = transaction.gasLimit - intrinsicGas
+    val (frame, result) = transaction.to match
+      case Some(recipient) =>
+        val called = new Frame(
+          Message(
+            caller = sender,
+            currentTarget = recipient,
+            codeAddress = Some(recipient),
+            value = Word(transaction.value),
+            data = transaction.data
+          ),
+          Code(journal.codeOf(recipient)),
+          available
+        )
+        (called, Interpreter.run(called, environment))
+      case None =>
+        // A creation carries its init code as CODE and no input, which is the
+        // one place the two shapes differ before the machine sees them.
+        val target = ContractAddress.of(sender, signedAt)
+        val deploying = new Frame(
+          Message(
+            caller = sender,
+            currentTarget = target,
+            codeAddress = None,
+            value = Word(transaction.value),
+            data = Bytes.Empty
+          ),
+          Code(transaction.data),
+          available
+        )
+        val outcome =
+          if Interpreter.deployableAt(journal, target) then Interpreter.deploy(deploying, environment)
+          else Right(Outcome.Halted(Halt.AddressCollision))
+        (deploying, outcome)
     val (gasLeft, succeeded, unsupported) = result match
       case Left(gap)                            => (BigInt(0), false, Some(gap.opcode.toString))
       case Right(Outcome.Stopped(remaining, _)) => (remaining, true, None)

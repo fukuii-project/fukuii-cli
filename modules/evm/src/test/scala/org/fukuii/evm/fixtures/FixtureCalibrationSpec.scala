@@ -207,9 +207,13 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
     assert(diverges(stateVerdict(altered)))
   }
 
-  it should "be reported as skipped when the transaction deploys code" in {
+  it should "be executed rather than set aside when the transaction deploys code" in {
+    // Rewriting the recipient away turns this into a creation. The published
+    // root is a call's, so the run must diverge -- and diverging is the claim:
+    // the case is now judged, where it was previously counted as unexamined.
     val altered = stateFixture.replace("\"to\": \"0x095e7baea6a6c7c4c2dfeb977efac326af552d87\"", "\"to\": \"\"")
-    assert(stateVerdict(altered) == Verdict.Skipped(SkipReason.TransactionLevelCreation))
+    val _ = assert(altered != stateFixture, "the recipient this test rewrites was not found")
+    assert(diverges(stateVerdict(altered)))
   }
 
   it should "diverge when the fixture names a refusal other than the one the driver makes" in {

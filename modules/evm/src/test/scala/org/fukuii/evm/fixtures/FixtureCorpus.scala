@@ -18,13 +18,6 @@ enum SkipReason:
     */
   case NoExpectationAtThisFork
 
-  /** The transaction deploys code rather than calling an account, and this
-    * layer publishes no entry point for that: a deployment reached from a
-    * transaction is assembled by whatever ends the transaction, which is a
-    * layer above this one.
-    */
-  case TransactionLevelCreation
-
   /** The file, or one case inside it, did not decode. */
   case Undecodable(detail: String)
 
@@ -77,9 +70,8 @@ final case class CorpusReport(corpus: String, filesRead: Int, outcomes: Vector[C
     head + detail.mkString
 
   private def label(reason: SkipReason): String = reason match
-    case SkipReason.NoExpectationAtThisFork  => "no-expectation-at-this-fork"
-    case SkipReason.TransactionLevelCreation => "transaction-level-creation"
-    case SkipReason.Undecodable(_)           => "undecodable"
+    case SkipReason.NoExpectationAtThisFork => "no-expectation-at-this-fork"
+    case SkipReason.Undecodable(_)          => "undecodable"
 
 object CorpusReport:
 

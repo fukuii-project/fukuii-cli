@@ -28,8 +28,8 @@ class FrontierCorpusSpec extends AnyFlatSpec:
 
   private val census: Map[String, CorpusCensus] = Map(
     FrontierCorpus.LegacyVmCorpus -> CorpusCensus(files = 609, cases = 609, skipped = 0),
-    FrontierCorpus.LegacyStateCorpus -> CorpusCensus(files = 2394, cases = 2691, skipped = 1861),
-    FrontierCorpus.GeneratedStateCorpus -> CorpusCensus(files = 31, cases = 530, skipped = 75)
+    FrontierCorpus.LegacyStateCorpus -> CorpusCensus(files = 2394, cases = 2691, skipped = 1668),
+    FrontierCorpus.GeneratedStateCorpus -> CorpusCensus(files = 31, cases = 530, skipped = 0)
   )
 
   private def report(corpus: String): CorpusReport =
