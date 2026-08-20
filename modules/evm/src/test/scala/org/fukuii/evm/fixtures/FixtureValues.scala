@@ -79,6 +79,7 @@ object FixtureValues:
         case (Right(sofar), (key, entry)) =>
           for
             address <- addressOf(key)
+            _ <- if sofar.contains(address) then Left("two keys name account " + address.toHex) else Right(())
             account <- account(entry)
           yield sofar.updated(address, account)
       }
@@ -102,6 +103,7 @@ object FixtureValues:
             case (Right(sofar), (key, held)) =>
               for
                 slot <- quantity(key)
+                _ <- if sofar.contains(slot) then Left("two keys name storage slot " + slot) else Right(())
                 value <- held.asString.toRight("storage value is not a string").flatMap(quantity)
               yield sofar.updated(slot, value)
           }
@@ -113,17 +115,44 @@ object FixtureValues:
     * seam's stated contract, and letting the fixture's own omission stand in
     * for it would agree with the implementation for the wrong reason.
     */
+  /** A fixture quantity as a machine word, REFUSING one that does not fit.
+    *
+    * [[Word.apply]] wraps, because the machine wraps -- and a reader must not.
+    * A balance of 2^256 seeded through the wrapping constructor becomes zero and
+    * a slot key of 2^256+1 collides with slot 1, in both cases producing a
+    * well-formed world the fixture never described, with no skip recorded and no
+    * divergence raised. The nonce was already checked this way; these three were
+    * not, and the asymmetry was the tell.
+    */
+  private def word(what: String, value: BigInt): Either[String, Word] =
+    if value < 0 || value > Word.MaxValue.toBigInt then Left("unrepresentable " + what + " " + value)
+    else Right(Word(value))
+
   def seed(world: WorldState, accounts: Map[Address, FixtureAccount]): Either[String, Unit] =
     accounts.toVector.sortBy(_._1.toHex).foldLeft(Right(()): Either[String, Unit]) {
       case (Left(error), _)                => Left(error)
       case (Right(()), (address, account)) =>
-        UInt64.fromBigInt(account.nonce).left.map(_ => "unrepresentable nonce " + account.nonce).map { nonce =>
+        for
+          nonce <- UInt64.fromBigInt(account.nonce).left.map(_ => "unrepresentable nonce " + account.nonce)
+          balance <- word("balance", account.balance)
+          storage <- account.storage.toVector
+            .sortBy(_._1)
+            .foldLeft(
+              Right(Vector.empty): Either[String, Vector[(Word, Word)]]
+            ) {
+              case (Left(error), _)             => Left(error)
+              case (Right(sofar), (slot, held)) =>
+                for
+                  key <- word("storage slot", slot)
+                  value <- word("storage value", held)
+                yield sofar :+ (key, value)
+            }
+        yield
           world.touch(address)
           world.setNonce(address, nonce)
-          world.setBalance(address, Word(account.balance))
+          world.setBalance(address, balance)
           if account.code.nonEmpty then world.setCode(address, account.code)
-          account.storage.foreach((slot, value) => world.setStorage(address, Word(slot), Word(value)))
-        }
+          storage.foreach((slot, value) => world.setStorage(address, slot, value))
     }
 
   /** Every way `world` disagrees with the accounts a fixture expects, over the

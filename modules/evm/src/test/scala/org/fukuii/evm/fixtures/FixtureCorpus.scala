@@ -4,6 +4,7 @@ import java.nio.file.{Files, Path, Paths}
 
 import scala.jdk.CollectionConverters.given
 import scala.util.Using
+import scala.util.control.NonFatal
 
 /** Why one fixture in a corpus was not executed.
   *
@@ -154,4 +155,24 @@ object FixtureCorpus:
           .sortBy(_.toString)
       }
 
-  def read(path: Path): String = Files.readString(path)
+  /** The file's text, or the reason it could not be had.
+    *
+    * ==Why this returns an Either where it used to throw==
+    *
+    * `Files.readString` throws on input that is not valid UTF-8, and the module
+    * had no exception boundary anywhere -- so a truncated download, a
+    * partially-written file, or a `.json` that is actually gzip did not become
+    * one counted skip. It aborted every test in the suite with a stack trace.
+    *
+    * That is narrower than it sounds and worse than it sounds at once: the skip
+    * taxonomy already has [[SkipReason.Undecodable]], but only a PARSE failure
+    * reached it, because circe returns those as a value. The likeliest real
+    * failure -- a file that cannot be read as text at all -- took a different
+    * path out of the module entirely.
+    *
+    * `NonFatal` deliberately does not catch an `OutOfMemoryError`, which a file
+    * above 2 GB would raise. That one should fail loudly and stop the run.
+    */
+  def read(path: Path): Either[String, String] =
+    try Right(Files.readString(path))
+    catch case NonFatal(cause) => Left("unreadable: " + cause.getClass.getSimpleName)

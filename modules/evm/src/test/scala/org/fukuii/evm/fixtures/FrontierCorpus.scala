@@ -46,7 +46,9 @@ object FrontierCorpus:
   private def vmReport(directory: Path): CorpusReport =
     val files = FixtureCorpus.jsonFilesUnder(directory)
     val outcomes = files.flatMap { file =>
-      VmFixture.decodeFile(file.getFileName.toString, FixtureCorpus.read(file)) match
+      FixtureCorpus
+        .read(file)
+        .flatMap(VmFixture.decodeFile(file.getFileName.toString, _)) match
         case Left(error) =>
           Vector(CaseOutcome(file.getFileName.toString, Verdict.Skipped(SkipReason.Undecodable(error))))
         case Right(fixtures) =>
@@ -57,7 +59,9 @@ object FrontierCorpus:
   private def stateReport(name: String, directory: Path): CorpusReport =
     val files = FixtureCorpus.jsonFilesUnder(directory)
     val outcomes = files.flatMap { file =>
-      StateFixture.decodeFile(file.getFileName.toString, FixtureCorpus.read(file)) match
+      FixtureCorpus
+        .read(file)
+        .flatMap(StateFixture.decodeFile(file.getFileName.toString, _)) match
         case Left(error) =>
           Vector(CaseOutcome(file.getFileName.toString, Verdict.Skipped(SkipReason.Undecodable(error))))
         case Right(contents) =>
