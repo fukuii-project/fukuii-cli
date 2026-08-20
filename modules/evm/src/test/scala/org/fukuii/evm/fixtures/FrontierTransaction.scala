@@ -157,15 +157,12 @@ object StateFixtureRunner:
       journal,
       blockHashAt = VmFixtureRunner.blockHashOf,
       block = fixture.block,
-      transaction = TransactionContext(sender, transaction.gasPrice)
+      transaction = TransactionContext(sender, transaction.gasPrice),
+      table = OpcodeTable.baseline(GasSchedule.Baseline),
+      schedule = GasSchedule.Baseline,
+      precompiles = VmFixtureRunner.precompiles
     )
-    val result = Interpreter.run(
-      frame,
-      OpcodeTable.baseline(GasSchedule.Baseline),
-      GasSchedule.Baseline,
-      VmFixtureRunner.precompiles,
-      environment
-    )
+    val result = Interpreter.run(frame, environment)
     val (gasLeft, succeeded, unsupported) = result match
       case Left(gap)                            => (BigInt(0), false, Some(gap.opcode.toString))
       case Right(Outcome.Stopped(remaining, _)) => (remaining, true, None)

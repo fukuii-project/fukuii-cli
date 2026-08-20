@@ -172,7 +172,10 @@ object VmFixtureRunner:
         journal,
         blockHashAt = VmFixtureRunner.blockHashOf,
         block = fixture.block,
-        transaction = TransactionContext(invocation.origin, invocation.gasPrice)
+        transaction = TransactionContext(invocation.origin, invocation.gasPrice),
+        table = OpcodeTable.baseline(GasSchedule.Baseline),
+        schedule = GasSchedule.Baseline,
+        precompiles = precompiles
       )
       val frame = new Frame(
         Message(
@@ -186,13 +189,7 @@ object VmFixtureRunner:
         invocation.gas
       )
       val outcome =
-        Interpreter.run(
-          frame,
-          OpcodeTable.baseline(GasSchedule.Baseline),
-          GasSchedule.Baseline,
-          precompiles,
-          environment
-        )
+        Interpreter.run(frame, environment)
       judge(fixture, frame, trie, journal, base, outcome)
 
   /** The hash of an earlier block as the published corpora define it, which is

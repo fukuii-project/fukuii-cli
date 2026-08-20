@@ -73,11 +73,9 @@ object Interpreter:
     */
   def run(
       frame: Frame,
-      table: OpcodeTable,
-      schedule: GasSchedule,
-      precompiles: PrecompileSet,
       environment: Environment
   ): Either[Unsupported, Outcome] =
+    val precompiles = environment.precompiles
     if frame.message.depth > Stack.Limit then
       frame.gasLeft = BigInt(0)
       Right(Outcome.Halted(Halt.StackDepthLimit))
@@ -88,7 +86,7 @@ object Interpreter:
       transfer(world, frame.message)
       val result = frame.message.codeAddress.flatMap(precompiles.at) match
         case Some(precompile) => Right(runNatively(frame, precompile))
-        case None             => execute(frame, table, schedule, precompiles, environment)
+        case None             => execute(frame, environment)
       result match
         case Right(Outcome.Stopped(_, _)) => ()
         case _                            => world.restore(taken)
@@ -131,18 +129,16 @@ object Interpreter:
 
   private def execute(
       frame: Frame,
-      table: OpcodeTable,
-      schedule: GasSchedule,
-      precompiles: PrecompileSet,
       environment: Environment
   ): Either[Unsupported, Outcome] =
+    val table = environment.table
     var fault: Option[Fault] = None
     while fault.isEmpty && frame.running && frame.pc < frame.code.length do
       val code = frame.code.byteAt(frame.pc)
       table.operationAt(code) match
         case None            => fault = Some(Fault.Exceptional(Halt.InvalidOpcode(code)))
         case Some(operation) =>
-          step(frame, operation, table, schedule, precompiles, environment) match
+          step(frame, operation, environment) match
             case Left(met) => fault = Some(met)
             case Right(()) => ()
     fault match
@@ -166,11 +162,9 @@ object Interpreter:
   private def step(
       frame: Frame,
       operation: Operation,
-      table: OpcodeTable,
-      schedule: GasSchedule,
-      precompiles: PrecompileSet,
       environment: Environment
   ): Either[Fault, Unit] =
+    val schedule = environment.schedule
     operation.opcode match
 
       case Opcode.Stop =>
@@ -518,10 +512,10 @@ object Interpreter:
 
       // ── Invocations this one starts ────────────────────────────────────────
 
-      case Opcode.Create   => create(frame, table, schedule, precompiles, environment)
-      case Opcode.Call     => messageCall(frame, table, schedule, precompiles, environment, CallForm.ToTheAccountNamed)
+      case Opcode.Create   => create(frame, environment)
+      case Opcode.Call     => messageCall(frame, environment, CallForm.ToTheAccountNamed)
       case Opcode.CallCode =>
-        messageCall(frame, table, schedule, precompiles, environment, CallForm.WithTheNamedAccountsCode)
+        messageCall(frame, environment, CallForm.WithTheNamedAccountsCode)
 
       case unbuilt => Left(Fault.NotBuilt(unbuilt))
 
@@ -562,12 +556,10 @@ object Interpreter:
     */
   private def messageCall(
       frame: Frame,
-      table: OpcodeTable,
-      schedule: GasSchedule,
-      precompiles: PrecompileSet,
       environment: Environment,
       form: CallForm
   ): Either[Fault, Unit] =
+    val schedule = environment.schedule
     val world = environment.world
     val taken =
       for
@@ -606,7 +598,7 @@ object Interpreter:
             forwarded,
             frame.registeredSoFar
           )
-          run(nested, table, schedule, precompiles, environment) match
+          run(nested, environment) match
             case Left(unsupported) => Left(Fault.NotBuilt(unsupported.opcode))
             case Right(outcome)    =>
               val answer = outcome match
@@ -634,11 +626,9 @@ object Interpreter:
     */
   private def create(
       frame: Frame,
-      table: OpcodeTable,
-      schedule: GasSchedule,
-      precompiles: PrecompileSet,
       environment: Environment
   ): Either[Fault, Unit] =
+    val schedule = environment.schedule
     val world = environment.world
     val taken =
       for
@@ -678,7 +668,7 @@ object Interpreter:
             forwarded,
             frame.registeredSoFar
           )
-          deploy(nested, table, schedule, precompiles, environment) match
+          deploy(nested, environment) match
             case Left(unsupported) => Left(Fault.NotBuilt(unsupported.opcode))
             case Right(outcome)    =>
               val answer = outcome match
@@ -715,12 +705,10 @@ object Interpreter:
     */
   private def deploy(
       nested: Frame,
-      table: OpcodeTable,
-      schedule: GasSchedule,
-      precompiles: PrecompileSet,
       environment: Environment
   ): Either[Unsupported, Outcome] =
-    run(nested, table, schedule, precompiles, environment).map {
+    val schedule = environment.schedule
+    run(nested, environment).map {
       case Outcome.Stopped(_, code) =>
         nested.charge(schedule.codeDepositPerByte * BigInt(code.length)) match
           case Left(_) =>

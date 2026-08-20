@@ -18,9 +18,6 @@ import org.scalatest.flatspec.AnyFlatSpec
   */
 class InvocationSpec extends AnyFlatSpec:
 
-  private val schedule = GasSchedule.Baseline
-  private val table = OpcodeTable.baseline(schedule)
-
   private val caller = EvmFixtures.address(0x11)
   private val runner = EvmFixtures.address(0x22)
   private val other = EvmFixtures.address(0x33)
@@ -98,7 +95,7 @@ class InvocationSpec extends AnyFlatSpec:
       message: Message = EvmFixtures.message()
   ): (Frame, Either[Unsupported, Outcome]) =
     val frame = new Frame(message, Code(Bytes.fromArray(program.map(_.toByte).toArray)), BigInt(gas))
-    (frame, Interpreter.run(frame, table, schedule, EvmFixtures.precompiles, environment))
+    (frame, Interpreter.run(frame, environment))
 
   // ── What an invocation is given, and what it leaves behind ───────────────
 

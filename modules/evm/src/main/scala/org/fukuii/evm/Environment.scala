@@ -61,5 +61,19 @@ final class Environment(
     val world: JournaledWorldState,
     val blockHashAt: BigInt => Hash,
     val block: BlockContext,
-    val transaction: TransactionContext
+    val transaction: TransactionContext,
+    // THE CHAIN CONFIGURATION, which this type's own contract already covered
+    // and which used to be threaded past it. These three were separate
+    // parameters on six signatures alongside `environment` -- while the scaladoc
+    // above says this is "everything outside a frame that an operation may
+    // reach", which describes them exactly.
+    //
+    // The field puts them on a receiver: go-ethereum's `EVM` struct holds
+    // `Context`, `TxContext`, `StateDB` and `table` as fields, and `Run` takes
+    // three parameters, none of them these; besu holds `operations` and
+    // `gasCalculator` as private final fields and `runToHalt` takes two. Both
+    // surveyed clients bundle rather than thread.
+    val table: OpcodeTable,
+    val schedule: GasSchedule,
+    val precompiles: PrecompileSet
 )

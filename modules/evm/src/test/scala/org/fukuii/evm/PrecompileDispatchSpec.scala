@@ -22,8 +22,6 @@ import org.scalatest.flatspec.AnyFlatSpec
 class PrecompileDispatchSpec extends AnyFlatSpec:
 
   private val schedule = GasSchedule.Baseline
-  private val table = OpcodeTable.baseline(schedule)
-  private val precompiles = PrecompileSet.baseline(schedule)
 
   private val caller = EvmFixtures.address(0x11)
   private val runner = EvmFixtures.address(0x22)
@@ -84,7 +82,7 @@ class PrecompileDispatchSpec extends AnyFlatSpec:
       message: Message = EvmFixtures.message()
   ): (Frame, Either[Unsupported, Outcome]) =
     val frame = new Frame(message, Code(Bytes.fromArray(program.map(_.toByte).toArray)), BigInt(gas))
-    (frame, Interpreter.run(frame, table, schedule, precompiles, environment))
+    (frame, Interpreter.run(frame, environment))
 
   /** An environment whose named accounts already exist, so that a call is not
     * also charged for bringing one into being -- that charge is the calling

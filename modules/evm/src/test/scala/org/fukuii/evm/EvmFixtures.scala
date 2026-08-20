@@ -132,5 +132,17 @@ object EvmFixtures:
   def environment(
       world: WorldState = new MapWorldState,
       inBlock: BlockContext = block,
-      ofTransaction: TransactionContext = transaction
-  ): Environment = new Environment(new JournaledWorldState(world), blockHashAt, inBlock, ofTransaction)
+      ofTransaction: TransactionContext = transaction,
+      withTable: OpcodeTable = OpcodeTable.baseline(GasSchedule.Baseline),
+      withSchedule: GasSchedule = GasSchedule.Baseline,
+      withPrecompiles: PrecompileSet = precompiles
+  ): Environment =
+    new Environment(
+      new JournaledWorldState(world),
+      blockHashAt,
+      inBlock,
+      ofTransaction,
+      withTable,
+      withSchedule,
+      withPrecompiles
+    )
