@@ -1,6 +1,8 @@
 package org.fukuii.evm.fixtures
 
 import java.nio.file.Path
+import scala.util.control.NonFatal
+
 import org.fukuii.evm.ChainRules
 
 /** The three published corpora this fork is certified against, run once and
@@ -59,6 +61,39 @@ object FrontierCorpus:
       )
     )
 
+  /** What running one case established, with a case that THREW recorded as a
+    * divergence rather than as a skip.
+    *
+    * ==A throw is a divergence, and calling it a skip fails open==
+    *
+    * A skip means there was nothing here to compare. A throw means the machine
+    * broke on something there was. Counting the second as the first would let a
+    * machine that threw on every case report as entirely skipped and therefore
+    * green -- the same shape [[FixtureCorpus.read]] records one layer up, where
+    * an unreadable file aborted every test in the suite instead of becoming one
+    * counted outcome. That boundary was put at the reader and not at the runner,
+    * and this is the other half of it.
+    *
+    * ==Without it, one throwing case costs the whole run and says nothing==
+    *
+    * The reports are assembled inside a `lazy val`, so an initializer that
+    * throws leaves it uninitialized and the next access starts again. Every test
+    * that asks for a report therefore re-runs every corpus from the first tier,
+    * and the failure surfaces as a run that produces no output for as long as
+    * anyone is willing to wait rather than as an error naming a case.
+    *
+    * `NonFatal` for the reason [[FixtureCorpus.read]] gives: an
+    * `OutOfMemoryError` should stop the run rather than be recorded as a wrong
+    * answer.
+    */
+  private[fixtures] def outcomeOf(name: String)(running: => Verdict): CaseOutcome =
+    val verdict =
+      try running
+      catch
+        case NonFatal(cause) =>
+          Verdict.Diverged(Vector("threw " + cause.getClass.getName + ": " + cause.getMessage))
+    CaseOutcome(name, verdict)
+
   private def vmReport(directory: Path): CorpusReport =
     val files = FixtureCorpus.jsonFilesUnder(directory)
     val outcomes = files.flatMap { file =>
@@ -68,7 +103,7 @@ object FrontierCorpus:
         case Left(error) =>
           Vector(CaseOutcome(file.getFileName.toString, Verdict.Skipped(SkipReason.Undecodable(error))))
         case Right(fixtures) =>
-          fixtures.map(fixture => CaseOutcome(fixture.name, VmFixtureRunner.run(fixture)))
+          fixtures.map(fixture => outcomeOf(fixture.name)(VmFixtureRunner.run(fixture)))
     }
     CorpusReport(LegacyVmCorpus, files.length, outcomes)
 
@@ -90,7 +125,7 @@ object FrontierCorpus:
             CaseOutcome(case_, Verdict.Skipped(SkipReason.NoExpectationAtThisFork))
           }
           val run =
-            contents.fixtures.map(fixture => CaseOutcome(fixture.name, StateFixtureRunner.run(fixture, rules)))
+            contents.fixtures.map(fixture => outcomeOf(fixture.name)(StateFixtureRunner.run(fixture, rules)))
           skipped ++ run
     }
     CorpusReport(name, files.length, outcomes)
