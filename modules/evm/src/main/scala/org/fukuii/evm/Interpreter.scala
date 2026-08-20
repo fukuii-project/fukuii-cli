@@ -1083,4 +1083,16 @@ object Interpreter:
       _ <- if furthest > MaxReach then Left(Halt.OutOfGas) else Right(())
     yield frame.memory.ensure(furthest.toInt)
 
+  /** The furthest byte an operation may address before it is refused.
+    *
+    * The margin is not caution: it is what makes the `toInt` below safe.
+    * [[Memory.ensure]] rounds its argument up to the next whole word, adding as
+    * much as `Word.Width - 1`, and that addition is on `Int`. Bounding the reach
+    * a whole word below `Int.MaxValue` leaves exactly enough headroom for the
+    * rounding to land inside the range instead of wrapping negative.
+    *
+    * So subtracting `Word.Width` here is a precondition of the rounding, not a
+    * round number chosen for comfort, and raising this value re-opens an
+    * overflow the gas charge above would never reach on its own.
+    */
   private val MaxReach: BigInt = BigInt(Int.MaxValue - Word.Width)
