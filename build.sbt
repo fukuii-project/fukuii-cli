@@ -282,6 +282,15 @@ lazy val bouncyCastleVersion = "1.85"
 // against a build on an older jawn reports clean; the version is right here by
 // resolution rather than by anything a scanner would have told us.
 //
+// The parser is used at its defaults, deliberately, and one default is worth
+// naming because it is invisible downstream. `parse` builds a `JsonObject`, so
+// a duplicated key collapses AT PARSE TIME on a last-wins basis -- the fixture
+// loaders detect duplicates while folding, but they fold over what circe
+// already produced, so a collapse is not something they can see. Accepted
+// rather than guarded: the corpora are machine-generated, and last-wins is what
+// every reference client's own parser does with the same input, so a guard here
+// would make fukuii reject a file the field accepts. Revisit only if a
+// hand-authored fixture ever enters the corpus.
 // Licenses: circe Apache-2.0, matching this project; cats and jawn MIT.
 lazy val circeVersion = "0.14.16"
 
