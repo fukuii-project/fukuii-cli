@@ -62,18 +62,26 @@ final class Environment(
     val blockHashAt: BigInt => Hash,
     val block: BlockContext,
     val transaction: TransactionContext,
-    // THE CHAIN CONFIGURATION, which this type's own contract already covered
-    // and which used to be threaded past it. These three were separate
-    // parameters on six signatures alongside `environment` -- while the scaladoc
-    // above says this is "everything outside a frame that an operation may
-    // reach", which describes them exactly.
+    // THE CHAIN CONFIGURATION, as one value rather than as the loose operations,
+    // prices and precompiles it used to be. A behavior that varies by fork is
+    // what forced the bundle: a table cannot hold one and a schedule cannot
+    // price one, so a fourth loose parameter was the alternative -- and three
+    // had already been threaded past this type once before landing on it.
     //
-    // The field puts them on a receiver: go-ethereum's `EVM` struct holds
-    // `Context`, `TxContext`, `StateDB` and `table` as fields, and `Run` takes
-    // three parameters, none of them these; besu holds `operations` and
-    // `gasCalculator` as private final fields and `runToHalt` takes two. Both
-    // surveyed clients bundle rather than thread.
-    val table: OpcodeTable,
-    val schedule: GasSchedule,
-    val precompiles: PrecompileSet
-)
+    // The split is the field's. go-ethereum's `EVM` holds `chainConfig` and
+    // `chainRules` beside its block and transaction contexts; besu separates the
+    // `ProtocolSpec` a fork builds from the `MessageFrame` an invocation
+    // carries. What a fork decides and what an invocation carries are different
+    // lifetimes, and this is the seam between them.
+    val rules: ChainRules
+):
+
+  /** The three the machine reads most, forwarded so an operation asks the
+    * environment for what it needs rather than reaching through to the
+    * configuration that produced it.
+    */
+  def table: OpcodeTable = rules.table
+
+  def schedule: GasSchedule = rules.schedule
+
+  def precompiles: PrecompileSet = rules.precompiles

@@ -137,12 +137,13 @@ object EvmFixtures:
       withSchedule: GasSchedule = GasSchedule.Baseline,
       withPrecompiles: PrecompileSet = precompiles
   ): Environment =
+    // The three stay separate parameters here rather than one set of rules,
+    // because a spec overriding a table wants to say so and not to assemble a
+    // configuration around it. The assembly is this helper's job.
     new Environment(
       new JournaledWorldState(world),
       blockHashAt,
       inBlock,
       ofTransaction,
-      withTable,
-      withSchedule,
-      withPrecompiles
+      ChainRules.Baseline.copy(table = withTable, schedule = withSchedule, precompiles = withPrecompiles)
     )

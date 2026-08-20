@@ -173,9 +173,7 @@ object VmFixtureRunner:
         blockHashAt = VmFixtureRunner.blockHashOf,
         block = fixture.block,
         transaction = TransactionContext(invocation.origin, invocation.gasPrice),
-        table = OpcodeTable.baseline(GasSchedule.Baseline),
-        schedule = GasSchedule.Baseline,
-        precompiles = precompiles
+        rules = ChainRules.Baseline.copy(precompiles = precompiles)
       )
       val frame = new Frame(
         Message(

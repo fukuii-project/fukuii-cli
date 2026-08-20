@@ -241,9 +241,7 @@ object StateFixtureRunner:
       blockHashAt = VmFixtureRunner.blockHashOf,
       block = fixture.block,
       transaction = TransactionContext(sender, transaction.gasPrice),
-      table = OpcodeTable.baseline(GasSchedule.Baseline),
-      schedule = GasSchedule.Baseline,
-      precompiles = VmFixtureRunner.precompiles
+      rules = ChainRules.Baseline.copy(precompiles = VmFixtureRunner.precompiles)
     )
     val available = transaction.gasLimit - intrinsicGas
     val (frame, result) = transaction.to match
