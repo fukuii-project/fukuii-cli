@@ -509,7 +509,6 @@ object Interpreter:
             operand <- frame.stack.pop()
             beneficiary = addressOf(operand)
             originator = frame.message.currentTarget
-            _ = if !frame.alreadyRegistered(originator) then frame.refundCounter += schedule.refundSelfDestruct
             // The account paid out to is looked at before anything is charged,
             // which is the specification's own order and the reason this
             // operation cannot carry a settled price: what it costs depends on
@@ -521,6 +520,17 @@ object Interpreter:
                 (if environment.world.accountExists(beneficiary) then BigInt(0)
                  else schedule.selfDestructNewAccount)
             )
+            // THE CHARGE COMES FIRST, and the refund only once it is paid. That
+            // is the specification's order, and it stopped being free to ignore
+            // at this fork: while the charge was nothing it could not fail, so
+            // earning the refund before paying was unobservable. It can fail
+            // now. Nothing today makes the difference visible -- a halted frame
+            // has its world restored, its counters are taken up only by a frame
+            // that stopped, and a transaction reads the counter only when it
+            // succeeded -- but that is an invariant held by three unrelated
+            // call sites, none of which mentions it. Ordering the two here is
+            // what makes the question answerable in one place.
+            _ = if !frame.alreadyRegistered(originator) then frame.refundCounter += schedule.refundSelfDestruct
           yield
             val world = environment.world
             // Both balances are read before either is written, so an account
@@ -641,8 +651,8 @@ object Interpreter:
         ownPrice = schedule.callBase +
           (if world.accountExists(runsAs) then BigInt(0) else schedule.newAccount) +
           (if inherits || value.isZero then BigInt(0) else schedule.callValue)
-        memory = expansionCost(frame, (inputOffset, inputSize), (outputOffset, outputSize))
-        granted = environment.rules.gasForwarded(spare(frame.gasLeft, ownPrice + memory), requested.toBigInt)
+        memoryCost = expansionCost(frame, (inputOffset, inputSize), (outputOffset, outputSize))
+        granted = environment.rules.gasForwarded(spare(frame.gasLeft, ownPrice + memoryCost), requested.toBigInt)
         _ <- reach(frame, ownPrice + granted, (inputOffset, inputSize), (outputOffset, outputSize))
       yield
         val forwarded =
@@ -704,17 +714,27 @@ object Interpreter:
         offset <- frame.stack.pop()
         size <- frame.stack.pop()
         _ <- reach(frame, schedule.createBase, (offset, size))
-      yield (endowment, regionOf(frame, offset, size))
-
-    taken match
-      case Left(halt)                   => Left(Fault.Exceptional(halt))
-      case Right((endowment, initCode)) =>
         // A creation asks for nothing, so what it may be given is decided
         // against everything the creator holds. Whatever the rules keep back
         // stays with the creator while the deployment runs, on top of whatever
         // the deployment does not spend.
-        val forwarded = environment.rules.gasForwarded(frame.gasLeft, frame.gasLeft)
-        frame.gasLeft -= forwarded
+        forwarded = environment.rules.gasForwarded(frame.gasLeft, frame.gasLeft)
+        // TAKEN BY CHARGING RATHER THAN BY ASSIGNMENT, which is [[Frame]]'s own
+        // contract: gas leaves through `charge`, which refuses rather than going
+        // negative, and a frame that overspent is indistinguishable afterwards
+        // from one that could afford it. Both rules this build ships return no
+        // more than what remains, so nothing is refused here today -- it is
+        // [[GasForwarding]]'s postcondition enforced rather than assumed, at the
+        // one site where nothing else would catch a breach. The sibling site
+        // needs no such guard: it charges the grant together with the
+        // operation's own price a line later, so an over-large grant is
+        // unaffordable there by construction.
+        _ <- frame.charge(forwarded)
+      yield (endowment, regionOf(frame, offset, size), forwarded)
+
+    taken match
+      case Left(halt)                              => Left(Fault.Exceptional(halt))
+      case Right((endowment, initCode, forwarded)) =>
         val creator = frame.message.currentTarget
         val count = world.nonceOf(creator)
         val target = ContractAddress.of(creator, count)
@@ -1193,8 +1213,9 @@ object Interpreter:
   /** What is left of `held` once `cost` is paid, and nothing where it does not
     * cover it.
     *
-    * This is [[GasForwarding]]'s non-negative contract met at the only two sites
-    * that have to meet it. A frame that cannot cover the price it is about to be
+    * This is [[GasForwarding]]'s non-negative contract met at the one site that
+    * has to meet it -- the creating site passes a frame's own remaining gas,
+    * which cannot be negative, and needs no clamp. A frame that cannot cover the price it is about to be
     * charged still owes the rule a figure, and it runs out of gas on that charge
     * a moment later whatever the rule answered -- so the clamp lives here, once,
     * rather than inside every rule that could be written.

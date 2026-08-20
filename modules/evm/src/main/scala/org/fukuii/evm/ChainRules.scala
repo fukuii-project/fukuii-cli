@@ -33,6 +33,20 @@ type Proposal = ChainRules => ChainRules
   *
   * Both arguments are gas, so transposing them compiles and is wrong. The order
   * is `(remaining, requested)`.
+  *
+  * ==Postcondition: `0 <= result <= remaining`==
+  *
+  * A rule may hand back no more than the caller has left. Both rules this build
+  * ships satisfy it by construction -- one returns its second argument, which
+  * its caller has already bounded, and the other takes a minimum against it --
+  * so nothing turns on it today. **The reason to state it is the shape of the
+  * rule that would break it**: a floor, of the kind that gives a callee a
+  * minimum to work with, returns a figure that does not depend on `remaining`
+  * at all, and extending this member is exactly what such a proposal would do.
+  *
+  * Both sites enforce it rather than trusting it, and neither could be told to
+  * do otherwise: each charges what it was handed, and a charge refuses rather
+  * than taking a frame's gas below nothing.
   */
 type GasForwarding = (BigInt, BigInt) => BigInt
 
