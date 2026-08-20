@@ -509,28 +509,31 @@ object Interpreter:
             operand <- frame.stack.pop()
             beneficiary = addressOf(operand)
             originator = frame.message.currentTarget
+            // THE REFUND IS EARNED BEFORE THE CHARGE IS PAID, which is the order
+            // both authorities have. `tangerine_whistle/vm/instructions/system.py`
+            // adds to the counter at :408 and charges at :410; go-ethereum-pow
+            // at v1.10.26 adds the refund inside `gasSelfdestruct`
+            // (`core/vm/gas_table.go:438`) and the interpreter spends what that
+            // function returned afterwards.
+            //
+            // It reads like the wrong way round now the charge can fail, and
+            // nothing here makes the difference observable: a frame that halts
+            // has its world restored, a frame's counters are taken up only where
+            // it stopped, and a transaction reads them only where it succeeded.
+            // So the invariant is held by three call sites rather than by this
+            // one -- and conformance still decides it, because the two orders
+            // cannot be told apart from outside and the alternative is an
+            // unforced divergence in a consensus path.
+            _ = if !frame.alreadyRegistered(originator) then frame.refundCounter += schedule.refundSelfDestruct
             // The account paid out to is looked at before anything is charged,
-            // which is the specification's own order and the reason this
-            // operation cannot carry a settled price: what it costs depends on
-            // the state its operand names. At the baseline both terms are
-            // nothing, so it works out to the same charge the table used to
-            // hold.
+            // which is the reason this operation cannot carry a settled price:
+            // what it costs depends on the state its operand names. At the
+            // baseline both terms are nothing.
             _ <- frame.charge(
               schedule.selfDestruct +
                 (if environment.world.accountExists(beneficiary) then BigInt(0)
                  else schedule.selfDestructNewAccount)
             )
-            // THE CHARGE COMES FIRST, and the refund only once it is paid. That
-            // is the specification's order, and it stopped being free to ignore
-            // at this fork: while the charge was nothing it could not fail, so
-            // earning the refund before paying was unobservable. It can fail
-            // now. Nothing today makes the difference visible -- a halted frame
-            // has its world restored, its counters are taken up only by a frame
-            // that stopped, and a transaction reads the counter only when it
-            // succeeded -- but that is an invariant held by three unrelated
-            // call sites, none of which mentions it. Ordering the two here is
-            // what makes the question answerable in one place.
-            _ = if !frame.alreadyRegistered(originator) then frame.refundCounter += schedule.refundSelfDestruct
           yield
             val world = environment.world
             // Both balances are read before either is written, so an account
