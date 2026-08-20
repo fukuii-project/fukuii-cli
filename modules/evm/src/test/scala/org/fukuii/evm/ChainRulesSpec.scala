@@ -179,3 +179,17 @@ class ChainRulesSpec extends AnyFlatSpec:
       base.applying(Proposals.selfDestructCharge).table eq base.table,
       "the operation works out its own price, so repricing it is a change to the schedule alone"
     )
+
+  it should "leave the operation working out its own price at every fork the seam builds" in {
+    // The mirror of the two-homes hazard, in the direction the schedule's own
+    // taxonomy does not cover. Nothing reads this entry's cost any more, so a
+    // proposal settling one -- `table.adding(Operation(Opcode.SelfDestruct,
+    // Cost.Fixed(n)))` -- would compile, pass, and be charged the schedule's
+    // figure instead of `n`, silently. The guard that catches the opposite
+    // mismatch is the interpreter reporting an operation it cannot price; there
+    // is none in this direction, so it is asserted here across every
+    // composition rather than at the baseline alone.
+    val settled = Vector(ChainRules.Baseline, ChainRules.Homestead, ChainRules.TangerineWhistle)
+      .filter(rules => settledCost(rules.table, Opcode.SelfDestruct).isDefined)
+    assert(settled.isEmpty, "a fork settled a price for an operation that works out its own")
+  }
