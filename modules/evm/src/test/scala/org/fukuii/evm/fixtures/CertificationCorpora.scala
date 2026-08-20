@@ -80,8 +80,6 @@ object CertificationCorpora:
     */
   val GeneratedTangerineWhistleCorpus: String = "execution-specs-fixtures state_tests/for_tangerinewhistle"
 
-  def reportFor(name: String): Option[CorpusReport] = reports.flatMap(_.find(_.corpus == name))
-
   private def assemble(root: Path): Vector[CorpusReport] =
     Vector(
       vmReport(FixtureCorpus.legacy(root).resolve("VMTests")),

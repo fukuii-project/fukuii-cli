@@ -1,6 +1,7 @@
 package org.fukuii.evm.fixtures
 
-import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.prop.TableDrivenPropertyChecks
+import org.scalatest.propspec.AnyPropSpec
 
 /** How much of a corpus was there, and how much of it ran.
   *
@@ -9,8 +10,7 @@ import org.scalatest.flatspec.AnyFlatSpec
   * which has begun dropping cases, fails rather than reporting a smaller run as
   * a clean one.
   */
-final case class CorpusCensus(files: Int, cases: Int, skipped: Int):
-  def executed: Int = cases - skipped
+final case class CorpusCensus(files: Int, cases: Int, skipped: Int)
 
 /** The certification run: every published fixture this layer can reach, at every
   * fork it has rules for, against the machine.
@@ -44,7 +44,7 @@ final case class CorpusCensus(files: Int, cases: Int, skipped: Int):
   * fork added. The fork names live on the individual corpora, where each one
   * correctly labels the expectations that corpus is read for.
   */
-class CertificationCorporaSpec extends AnyFlatSpec:
+class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
   private val census: Map[String, CorpusCensus] = Map(
     CertificationCorpora.LegacyVmCorpus -> CorpusCensus(files = 609, cases = 609, skipped = 0),
@@ -59,7 +59,46 @@ class CertificationCorporaSpec extends AnyFlatSpec:
     CertificationCorpora.GeneratedTangerineWhistleCorpus -> CorpusCensus(files = 33, cases = 536, skipped = 0)
   )
 
-  "the fixture corpus" should "be configured, or nothing below this line certifies anything" in
+  /** Every censused corpus, as the rows the four properties below drive.
+    *
+    * ==Built FROM the census, so a corpus cannot be censused without being
+    * asserted==
+    *
+    * Written out per corpus instead, a corpus could be added to the census AND
+    * to what the harness assembles and simply never be asserted about: it would
+    * run, its divergences would be discarded, and no count would move, because
+    * the number of TESTS would be unchanged. Rows derived from the census have
+    * no such step to forget.
+    *
+    * Three things below close the set between them. A corpus assembled and not
+    * censused fails the property that compares the two names; a corpus censused
+    * and not assembled fails these rows; and a corpus dropped from BOTH leaves
+    * those two agreeing with each other, so a third counts the census instead.
+    */
+  private val censused = Table(("corpus", "expected"), census.toSeq.sortBy(_._1)*)
+
+  /** The assembled reports, or a canceled test where there is no corpus.
+    *
+    * **Called before `forAll` and never inside it.** `TableForN.forAll` catches
+    * `Throwable` in order to attach the failing row, which turns the exception a
+    * cancellation is carried by into a failure. Raised per row, the absence of a
+    * corpus would therefore report as every property FAILING rather than as
+    * every case cancelling -- and a build with no corpus would be
+    * indistinguishable from a broken machine.
+    */
+  private def assembled: Vector[CorpusReport] =
+    CertificationCorpora.reports.getOrElse(
+      cancel(
+        "no fixture corpus: write the directory holding one subdirectory per upstream organization into " +
+          FixtureCorpus.RootPointer.toString + ", or set " + FixtureCorpus.RootVariable +
+          " before the sbt server this task runs in was started"
+      )
+    )
+
+  private def found(reports: Vector[CorpusReport], corpus: String): CorpusReport =
+    reports.find(_.corpus == corpus).getOrElse(fail("censused but never assembled: " + corpus))
+
+  property("the fixture corpus is configured, or nothing below this line certifies anything") {
     // The one case here that does not cancel when the corpus is absent, and the
     // whole of what makes that state visible. Everything after it measures the
     // machine; this measures whether there was anything to measure it against.
@@ -71,153 +110,65 @@ class CertificationCorporaSpec extends AnyFlatSpec:
         " canceled case is counted by nothing -- so without this one the run would certify nothing" +
         " and report success."
     )
-
-  it should "be censused for every corpus the harness assembles" in {
-    // Without this a seventh corpus can be added, run, and have its divergences
-    // discarded: no census row means no spec block asks it anything, and the
-    // count ratchet does not move either, because the number of TESTS is
-    // unchanged. The failure is a corpus that is certified against nothing while
-    // every figure agrees.
-    val assembled = CertificationCorpora.reports
-      .getOrElse(cancel("no fixture corpus"))
-      .map(_.corpus)
-      .toSet
-    assert(assembled == census.keySet, s"assembled ${assembled.toString} against a census of ${census.keySet.toString}")
   }
 
-  private def report(corpus: String): CorpusReport =
-    CertificationCorpora
-      .reportFor(corpus)
-      .getOrElse(
-        cancel(
-          "no fixture corpus: write the directory holding one subdirectory per upstream organization into " +
-            FixtureCorpus.RootPointer.toString + ", or set " + FixtureCorpus.RootVariable +
-            " before the sbt server this task runs in was started"
-        )
-      )
-
-  private def expected(corpus: String): CorpusCensus =
-    census.getOrElse(corpus, throw new IllegalStateException("no census recorded for " + corpus))
-
-  CertificationCorpora.LegacyVmCorpus should "hold the files the census records" in {
-    val found = report(CertificationCorpora.LegacyVmCorpus)
-    assert(found.filesRead == expected(CertificationCorpora.LegacyVmCorpus).files, found.describe)
+  property("every corpus the harness assembles is censused") {
+    // One half of the pair. A corpus the harness assembles but never censuses
+    // would run with nothing asking it anything, and no count would move,
+    // because the number of TESTS would be unchanged. The other half is the
+    // table above, which derives its rows from the census so that the reverse --
+    // censused and never assembled -- cannot happen either.
+    val names = assembled.map(_.corpus).toSet
+    assert(names == census.keySet, s"assembled ${names.toString} against a census of ${census.keySet.toString}")
   }
 
-  it should "hold the cases the census records" in {
-    val found = report(CertificationCorpora.LegacyVmCorpus)
-    assert(found.casesFound == expected(CertificationCorpora.LegacyVmCorpus).cases, found.describe)
+  property("the census covers six corpora, counted") {
+    // THE REMOVAL CASE, which the pairing cannot see. Dropping a corpus from the
+    // census AND from what the harness assembles leaves those two agreeing with
+    // each other, leaves the same six properties registered, and leaves the
+    // expected total unmoved -- so a tier can be deleted with every signal green.
+    // Deriving the rows from the census closed the addition case and left this
+    // one open in the same shape.
+    //
+    // It matters because of when it happens: deleting a row is the move
+    // available to whoever needs a red build green after an upstream corpus
+    // moves, which is exactly the moment a ratchet earns its keep.
+    //
+    // Six: the interpreter tier, the state tier read for Frontier and again for
+    // EIP-150, and the generated state tier filled for Frontier, Homestead and
+    // Tangerine Whistle. Raising this is adding a corpus. Lowering it is
+    // dropping certified cases, and that is a decision rather than a tidy-up.
+    assert(census.size == 6, s"the census covers ${census.size.toString} corpora rather than six")
   }
 
-  it should "skip exactly the cases the census records" in {
-    val found = report(CertificationCorpora.LegacyVmCorpus)
-    assert(found.skipped.length == expected(CertificationCorpora.LegacyVmCorpus).skipped, found.describe)
+  property("every censused corpus holds the files the census records") {
+    val reports = assembled
+    forAll(censused) { (corpus: String, expected: CorpusCensus) =>
+      val report = found(reports, corpus)
+      assert(report.filesRead == expected.files, report.describe)
+    }
   }
 
-  it should "agree with every case it ran" in {
-    val found = report(CertificationCorpora.LegacyVmCorpus)
-    assert(found.diverged.isEmpty, found.describe)
+  property("every censused corpus holds the cases the census records") {
+    val reports = assembled
+    forAll(censused) { (corpus: String, expected: CorpusCensus) =>
+      val report = found(reports, corpus)
+      assert(report.casesFound == expected.cases, report.describe)
+    }
   }
 
-  CertificationCorpora.LegacyFrontierStateCorpus should "hold the files the census records" in {
-    val found = report(CertificationCorpora.LegacyFrontierStateCorpus)
-    assert(found.filesRead == expected(CertificationCorpora.LegacyFrontierStateCorpus).files, found.describe)
+  property("every censused corpus skips exactly the cases the census records") {
+    val reports = assembled
+    forAll(censused) { (corpus: String, expected: CorpusCensus) =>
+      val report = found(reports, corpus)
+      assert(report.skipped.length == expected.skipped, report.describe)
+    }
   }
 
-  it should "hold the cases the census records" in {
-    val found = report(CertificationCorpora.LegacyFrontierStateCorpus)
-    assert(found.casesFound == expected(CertificationCorpora.LegacyFrontierStateCorpus).cases, found.describe)
-  }
-
-  it should "skip exactly the cases the census records" in {
-    val found = report(CertificationCorpora.LegacyFrontierStateCorpus)
-    assert(found.skipped.length == expected(CertificationCorpora.LegacyFrontierStateCorpus).skipped, found.describe)
-  }
-
-  it should "agree with every case it ran" in {
-    val found = report(CertificationCorpora.LegacyFrontierStateCorpus)
-    assert(found.diverged.isEmpty, found.describe)
-  }
-
-  CertificationCorpora.GeneratedStateCorpus should "hold the files the census records" in {
-    val found = report(CertificationCorpora.GeneratedStateCorpus)
-    assert(found.filesRead == expected(CertificationCorpora.GeneratedStateCorpus).files, found.describe)
-  }
-
-  it should "hold the cases the census records" in {
-    val found = report(CertificationCorpora.GeneratedStateCorpus)
-    assert(found.casesFound == expected(CertificationCorpora.GeneratedStateCorpus).cases, found.describe)
-  }
-
-  it should "skip exactly the cases the census records" in {
-    val found = report(CertificationCorpora.GeneratedStateCorpus)
-    assert(found.skipped.length == expected(CertificationCorpora.GeneratedStateCorpus).skipped, found.describe)
-  }
-
-  it should "agree with every case it ran" in {
-    val found = report(CertificationCorpora.GeneratedStateCorpus)
-    assert(found.diverged.isEmpty, found.describe)
-  }
-
-  CertificationCorpora.GeneratedHomesteadCorpus should "hold the files the census records" in {
-    val found = report(CertificationCorpora.GeneratedHomesteadCorpus)
-    assert(found.filesRead == expected(CertificationCorpora.GeneratedHomesteadCorpus).files, found.describe)
-  }
-
-  it should "hold the cases the census records" in {
-    val found = report(CertificationCorpora.GeneratedHomesteadCorpus)
-    assert(found.casesFound == expected(CertificationCorpora.GeneratedHomesteadCorpus).cases, found.describe)
-  }
-
-  it should "skip exactly the cases the census records" in {
-    val found = report(CertificationCorpora.GeneratedHomesteadCorpus)
-    assert(found.skipped.length == expected(CertificationCorpora.GeneratedHomesteadCorpus).skipped, found.describe)
-  }
-
-  it should "agree with every case it ran" in {
-    val found = report(CertificationCorpora.GeneratedHomesteadCorpus)
-    assert(found.diverged.isEmpty, found.describe)
-  }
-
-  CertificationCorpora.LegacyEip150StateCorpus should "hold the files the census records" in {
-    val found = report(CertificationCorpora.LegacyEip150StateCorpus)
-    assert(found.filesRead == expected(CertificationCorpora.LegacyEip150StateCorpus).files, found.describe)
-  }
-
-  it should "hold the cases the census records" in {
-    val found = report(CertificationCorpora.LegacyEip150StateCorpus)
-    assert(found.casesFound == expected(CertificationCorpora.LegacyEip150StateCorpus).cases, found.describe)
-  }
-
-  it should "skip exactly the cases the census records" in {
-    val found = report(CertificationCorpora.LegacyEip150StateCorpus)
-    assert(found.skipped.length == expected(CertificationCorpora.LegacyEip150StateCorpus).skipped, found.describe)
-  }
-
-  it should "agree with every case it ran" in {
-    val found = report(CertificationCorpora.LegacyEip150StateCorpus)
-    assert(found.diverged.isEmpty, found.describe)
-  }
-
-  CertificationCorpora.GeneratedTangerineWhistleCorpus should "hold the files the census records" in {
-    val found = report(CertificationCorpora.GeneratedTangerineWhistleCorpus)
-    assert(found.filesRead == expected(CertificationCorpora.GeneratedTangerineWhistleCorpus).files, found.describe)
-  }
-
-  it should "hold the cases the census records" in {
-    val found = report(CertificationCorpora.GeneratedTangerineWhistleCorpus)
-    assert(found.casesFound == expected(CertificationCorpora.GeneratedTangerineWhistleCorpus).cases, found.describe)
-  }
-
-  it should "skip exactly the cases the census records" in {
-    val found = report(CertificationCorpora.GeneratedTangerineWhistleCorpus)
-    assert(
-      found.skipped.length == expected(CertificationCorpora.GeneratedTangerineWhistleCorpus).skipped,
-      found.describe
-    )
-  }
-
-  it should "agree with every case it ran" in {
-    val found = report(CertificationCorpora.GeneratedTangerineWhistleCorpus)
-    assert(found.diverged.isEmpty, found.describe)
+  property("every censused corpus agrees with every case it ran") {
+    val reports = assembled
+    forAll(censused) { (corpus: String, _: CorpusCensus) =>
+      val report = found(reports, corpus)
+      assert(report.diverged.isEmpty, report.describe)
+    }
   }
