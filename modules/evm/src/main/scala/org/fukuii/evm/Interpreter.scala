@@ -510,20 +510,30 @@ object Interpreter:
             beneficiary = addressOf(operand)
             originator = frame.message.currentTarget
             // THE REFUND IS EARNED BEFORE THE CHARGE IS PAID, which is the order
-            // both authorities have. `tangerine_whistle/vm/instructions/system.py`
-            // adds to the counter at :408 and charges at :410; go-ethereum-pow
-            // at v1.10.26 adds the refund inside `gasSelfdestruct`
-            // (`core/vm/gas_table.go:438`) and the interpreter spends what that
-            // function returned afterwards.
+            // both authorities have. `src/ethereum/forks/tangerine_whistle/vm/instructions/system.py`
+            // at `ccaaaba58` adds to the counter at :408 and charges at :410;
+            // `ethereum/go-ethereum-pow` at `v1.10.26` adds the refund inside
+            // `gasSelfdestruct` (`core/vm/gas_table.go:438`) and the interpreter
+            // spends what that function returned afterwards. The line numbers
+            // are the whole of the evidence here, so the ref is what keeps them
+            // checkable.
+            //
+            // `SSTORE` above takes the same order against the same source, so
+            // this is the machine agreeing with itself as well as with them.
             //
             // It reads like the wrong way round now the charge can fail, and
-            // nothing here makes the difference observable: a frame that halts
-            // has its world restored, a frame's counters are taken up only where
-            // it stopped, and a transaction reads them only where it succeeded.
-            // So the invariant is held by three call sites rather than by this
-            // one -- and conformance still decides it, because the two orders
-            // cannot be told apart from outside and the alternative is an
-            // unforced divergence in a consensus path.
+            // nothing here makes the difference observable, because three sites
+            // outside this one hold that: [[run]] restores the world of a frame
+            // that halted, [[incorporate]] takes up a frame's counters only
+            // where it stopped, and whatever settles a transaction reads them
+            // only where it succeeded. **The third of those is a test fixture
+            // today** -- no transaction layer exists in this module yet -- so
+            // the requirement it carries is one the real layer inherits rather
+            // than one anything in production states.
+            //
+            // Conformance still decides the order: the two cannot be told apart
+            // from outside, and the alternative is an unforced divergence in a
+            // consensus path.
             _ = if !frame.alreadyRegistered(originator) then frame.refundCounter += schedule.refundSelfDestruct
             // The account paid out to is looked at before anything is charged,
             // which is the reason this operation cannot carry a settled price:
