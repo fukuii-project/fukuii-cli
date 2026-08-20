@@ -131,6 +131,23 @@ class StateTrieWorldStateSpec extends AnyFlatSpec:
     )
   }
 
+  it should "commit to the storage root a ZERO write has just produced" in {
+    // The non-zero case above and this one run through the SAME unconditional
+    // rewriteAccount call, which is exactly why this test looks redundant and is
+    // not. A future edit reasoning "only the write branch changes the storage
+    // root, so only it needs the rewrite" would pass every other test in this
+    // file while reintroducing the defect the non-zero case was added to catch.
+    // The two branches are pinned separately so that edit fails.
+    val state = EvmFixtures.stateTrie()
+    account(state, owner, 0, Bytes.Empty)
+    over(state).setStorage(owner, EvmFixtures.word(1), EvmFixtures.word(42))
+    over(state).setStorage(owner, EvmFixtures.word(1), EvmFixtures.word(0))
+    assert(
+      state.getAccount(owner).toOption.flatten.map(_.storageRoot).contains(state.storageRoot(owner)),
+      "a slot removed by a zero write leaves the leaf committing to the root the storage had before the removal"
+    )
+  }
+
   "an account leaf" should "commit to the storage root a write has just produced" in {
     val state = EvmFixtures.stateTrie()
     account(state, owner, 0, Bytes.Empty)
