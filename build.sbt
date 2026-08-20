@@ -37,6 +37,28 @@ ThisBuild / organization := "org.fukuii"
 // rather than in its own statement, for the reason that assignment documents.
 ThisBuild / javacOptions := Seq("--release", "25")
 
+// How long the build server outlives the command that started it.
+//
+// sbt's own default is SEVEN DAYS -- `serverIdleTimeout := Some(new
+// FiniteDuration(7, TimeUnit.DAYS))` at `main/src/main/scala/sbt/Defaults.scala`
+// in `sbt/sbt` at `v2.0.4`, the version `project/build.properties` pins. The key
+// itself documents the effect: "sbt server will exit if it goes at least the
+// specified duration without receiving any commands."
+//
+// That default is wrong for a shared workstation. `.jvmopts` caps the heap at
+// 4g, and a server left from a finished session was measured holding 3.0 GB --
+// roughly a tenth of this machine's memory -- fourteen hours after its last
+// command. Nothing reports that: an idle server contributes nothing to load
+// average, so the pre-task check this project's house rules prescribe cannot
+// see it.
+//
+// Thirty minutes keeps the server warm across a working session, which is worth
+// real time -- a clean full run reuses it and finishes in seconds -- and reaps
+// it once the session is over. sbt reaps a SECONDARY server after ten minutes
+// by its own default (`sbt.server.secondaryIdleTimeout`, 600s), so this is the
+// same order of magnitude rather than an unusual value.
+ThisBuild / serverIdleTimeout := Some(scala.concurrent.duration.Duration(30, java.util.concurrent.TimeUnit.MINUTES))
+
 // The warning ratchet: every category below is an ERROR, from this commit.
 //
 // WHY NOW, AND WHY NOT LATER. A warning category costs nothing to gate before
