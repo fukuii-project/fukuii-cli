@@ -15,14 +15,26 @@ final case class CorpusCensus(files: Int, cases: Int, skipped: Int):
 /** The certification run: every published fixture this layer can reach, at every
   * fork it has rules for, against the machine.
   *
-  * ==Cancelled rather than passed when the corpus is absent==
+  * ==A missing corpus FAILS here, and the individual cases still cancel==
   *
   * The corpora are third-party artifacts of tens of megabytes and are assembled
   * beside a clone rather than inside it. Without them there is nothing to
-  * measure, and a test that passed in that state would report conformance it
+  * measure, and a case that passed in that state would report conformance it
   * never checked -- so each one cancels, naming the variable that supplies the
   * corpus. `FixtureCalibrationSpec` is what still runs, and what shows the
   * harness would notice a divergence if it saw one.
+  *
+  * **Cancelling is the right answer for a case and the wrong answer for the
+  * run.** A canceled test appears in no total ScalaTest reports, so a build with
+  * no corpus certified nothing while sbt, the executed count and every exit code
+  * agreed it had passed. The first case below is what makes that state loud: it
+  * asserts the corpus is configured at all, so it FAILS rather than cancelling,
+  * and one failing test is a signal every layer above already understands.
+  *
+  * It is checked here rather than in the shell because the shell can only read
+  * the console. Any check built on that text is coupled to how ScalaTest chooses
+  * to print, and one written against today's layout stopped firing when a reason
+  * wrapped onto a second line -- while still printing its all-clear.
   *
   * ==Named for what it does rather than for a fork==
   *
@@ -47,6 +59,19 @@ class CertificationCorporaSpec extends AnyFlatSpec:
     CertificationCorpora.LegacyEip150StateCorpus -> CorpusCensus(files = 2394, cases = 2840, skipped = 1744),
     CertificationCorpora.GeneratedTangerineWhistleCorpus -> CorpusCensus(files = 33, cases = 536, skipped = 0)
   )
+
+  "the fixture corpus" should "be configured, or nothing below this line certifies anything" in
+    // The one case here that does not cancel when the corpus is absent, and the
+    // whole of what makes that state visible. Everything after it measures the
+    // machine; this measures whether there was anything to measure it against.
+    assert(
+      FixtureCorpus.root.isDefined,
+      "no fixture corpus: write the directory holding one subdirectory per upstream organization into " +
+        FixtureCorpus.RootPointer.toString + ", or set " + FixtureCorpus.RootVariable +
+        " before the sbt server this task runs in was started. Every case below will cancel, and a" +
+        " canceled case is counted by nothing -- so without this one the run would certify nothing" +
+        " and report success."
+    )
 
   private def report(corpus: String): CorpusReport =
     CertificationCorpora

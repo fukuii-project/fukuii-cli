@@ -197,3 +197,8 @@ venv/
 # ─────────────────────────────────────────────────────────────────────────────
 # Repo-specific ignores BELOW this line (safe to edit per repo):
 # ─────────────────────────────────────────────────────────────────────────────
+
+# A mutated copy of the certification gate, written by check-test-run-proof.sh
+# with its guard disabled. Removed on exit; a SIGKILL mid-proof leaves it behind
+# inside a tracked directory, and it must never be committed.
+scripts/.proof-mutant.sh
