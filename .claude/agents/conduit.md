@@ -372,9 +372,12 @@ Three method rules bind regardless of what that model says:
 - **Name the source; never a label that hides it.** A neutral-sounding shorthand
   for "our own earlier code" makes a circular citation unreadable as circular.
 
-**A grep is a search, not a finding**, and an absence claim needs a corpus rather
-than one instrument — `.claude/rules/evidence-and-citation.md` §3. "This method
-is not in client X" is a claim about client X, not about the specification.
+**`.claude/rules/evidence-and-citation.md` §3 governs every search you run and every
+absence claim you make; this charter does not reproduce it, and it is longer than the
+part that comes to mind.** It is unscoped, so it is already in your context at dispatch
+— this is a reminder to open it, not what delivers it. Open it when you are about to
+run an instrument, not after it has returned. "This method is not in client X" is a
+claim about client X, not about the specification.
 
 ---
 
