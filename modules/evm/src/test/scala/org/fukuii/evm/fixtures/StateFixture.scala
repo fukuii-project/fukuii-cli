@@ -30,12 +30,27 @@ enum TransactionKind:
   case WithAccessList
   case WithFeeMarket
 
+/** The corpus's own statement that a transaction must be refused, and which of
+  * the reasons it names this build can actually produce.
+  *
+  * Both halves are kept because they differ exactly where the corpus names a
+  * rule this fork has not implemented -- which is the state every rule is in
+  * before the fork introducing it lands. Keeping only the mapped half would
+  * turn "this build has no such refusal" into "no refusal is acceptable", and a
+  * divergence could then say a refusal was wrong without saying which rule was
+  * missing.
+  */
+final case class ExpectedRejection(stated: Set[String], accepted: Set[Rejection]):
+
+  /** The corpus's wording, for a divergence a reader has to act on. */
+  def describe: String = stated.toVector.sorted.mkString(" or ")
+
 /** What a state fixture expects one combination to produce. */
 final case class StateExpectation(
     root: Hash,
     logs: Option[Hash],
     state: Option[Map[Address, FixtureAccount]],
-    rejected: Boolean
+    rejection: Option[ExpectedRejection]
 )
 
 /** One executable combination of a state fixture: a name, a pre-state, one
@@ -169,9 +184,42 @@ object StateFixture:
         case None => held.asString.toRight(field + " is neither an array nor a string")
     }
 
+  /** The corpus's vocabulary for an invalid transaction, against the refusals
+    * this fork's admission can produce.
+    *
+    * Only what admission decides appears here. A name absent from this map
+    * survives verbatim in [[ExpectedRejection.stated]], so a case naming a rule
+    * this build has not implemented diverges and says which one -- rather than
+    * passing because a refusal for some other reason left the state root where
+    * the fixture expected it.
+    */
+  private val RejectionVocabulary: Map[String, Rejection] =
+    Map(
+      "TransactionException.TYPE_1_TX_PRE_FORK" -> Rejection.TypePreFork,
+      "TransactionException.TYPE_2_TX_PRE_FORK" -> Rejection.TypePreFork,
+      "TransactionException.TYPE_3_TX_PRE_FORK" -> Rejection.TypePreFork,
+      "TransactionException.TYPE_4_TX_PRE_FORK" -> Rejection.TypePreFork,
+      "TransactionException.INTRINSIC_GAS_TOO_LOW" -> Rejection.IntrinsicGasTooLow,
+      "TransactionException.NONCE_IS_MAX" -> Rejection.NonceIsMax,
+      "TransactionException.GAS_ALLOWANCE_EXCEEDED" -> Rejection.GasAllowanceExceeded,
+      "TransactionException.NONCE_MISMATCH_TOO_LOW" -> Rejection.NonceMismatch,
+      "TransactionException.NONCE_MISMATCH_TOO_HIGH" -> Rejection.NonceMismatch,
+      "TransactionException.INSUFFICIENT_ACCOUNT_FUNDS" -> Rejection.InsufficientAccountFunds,
+      "TransactionException.SENDER_NOT_EOA" -> Rejection.SenderNotEoa
+    )
+
+  /** A fixture may name more than one acceptable reason, separated by a bar,
+    * where a client is free to refuse for either.
+    */
+  private def rejectionOf(entry: Json): Option[ExpectedRejection] =
+    entry.hcursor.downField("expectException").as[String].toOption.map { text =>
+      val stated = text.split('|').map(_.trim).filter(_.nonEmpty).toSet
+      ExpectedRejection(stated, stated.flatMap(RejectionVocabulary.get))
+    }
+
   private def expectationOf(entry: Json): Either[String, StateExpectation] =
     val cursor = entry.hcursor
-    val rejected = cursor.downField("expectException").focus.isDefined
+    val rejection = rejectionOf(entry)
     for
       root <- cursor.downField("hash").as[String].left.map(_ => "no hash").flatMap(FixtureValues.hashOf)
       logs <- cursor.downField("logs").as[String] match
@@ -180,4 +228,4 @@ object StateFixture:
       state <- cursor.downField("state").focus match
         case None       => Right(None)
         case Some(json) => FixtureValues.accounts(json).map(Some(_))
-    yield StateExpectation(root, logs, state, rejected)
+    yield StateExpectation(root, logs, state, rejection)

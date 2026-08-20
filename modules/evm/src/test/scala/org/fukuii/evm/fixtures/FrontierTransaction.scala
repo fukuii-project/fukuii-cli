@@ -7,10 +7,28 @@ import org.fukuii.rlp.RlpCodec
 import org.fukuii.trie.StateTrie
 import org.fukuii.types.Log
 
+/** Why this fork refuses a transaction.
+  *
+  * Typed rather than a message, because the corpus states a reason too and a
+  * fixture expecting one refusal must not be satisfied by another. Comparing
+  * two vocabularies as free text is what made that check unwritable, so these
+  * carry the corpus's own names -- coarsened only where one branch here decides
+  * what the corpus names in two, which is why there is one [[NonceMismatch]]
+  * against its too-low and too-high.
+  */
+enum Rejection:
+  case TypePreFork
+  case IntrinsicGasTooLow
+  case NonceIsMax
+  case GasAllowanceExceeded
+  case NonceMismatch
+  case InsufficientAccountFunds
+  case SenderNotEoa
+
 /** Whether a transaction may be executed at all, and why not when it may not. */
 enum Admission:
   case Admitted(intrinsicGas: BigInt)
-  case Rejected(reason: String)
+  case Rejected(reason: Rejection)
 
 /** Everything a state fixture needs that sits ABOVE the machine: the intrinsic
   * charge, the upfront purchase of gas, the refund, the fee, and the removal of
@@ -79,13 +97,13 @@ object FrontierTransaction:
     lazy val held = world.balanceOf(transaction.sender).toBigInt
     lazy val nonce = world.nonceOf(transaction.sender).toBigInt
     lazy val maximumFee = transaction.gasLimit * transaction.gasPrice
-    if transaction.kind != TransactionKind.Legacy then Admission.Rejected("a transaction type this fork predates")
-    else if intrinsic > transaction.gasLimit then Admission.Rejected("gas below the intrinsic cost")
-    else if transaction.nonce >= NonceLimit then Admission.Rejected("nonce at the limit")
-    else if transaction.gasLimit > block.gasLimit then Admission.Rejected("gas above what the block has left")
-    else if nonce != transaction.nonce then Admission.Rejected("nonce mismatch")
-    else if held < maximumFee + transaction.value then Admission.Rejected("balance below the maximum fee plus value")
-    else if world.codeOf(transaction.sender).nonEmpty then Admission.Rejected("sender carries code")
+    if transaction.kind != TransactionKind.Legacy then Admission.Rejected(Rejection.TypePreFork)
+    else if intrinsic > transaction.gasLimit then Admission.Rejected(Rejection.IntrinsicGasTooLow)
+    else if transaction.nonce >= NonceLimit then Admission.Rejected(Rejection.NonceIsMax)
+    else if transaction.gasLimit > block.gasLimit then Admission.Rejected(Rejection.GasAllowanceExceeded)
+    else if nonce != transaction.nonce then Admission.Rejected(Rejection.NonceMismatch)
+    else if held < maximumFee + transaction.value then Admission.Rejected(Rejection.InsufficientAccountFunds)
+    else if world.codeOf(transaction.sender).nonEmpty then Admission.Rejected(Rejection.SenderNotEoa)
     else Admission.Admitted(intrinsic)
 
 /** The nonce a sender holds after the transaction, which admission has already
@@ -96,8 +114,20 @@ private def nextNonce(nonce: BigInt): UInt64 =
     .fromBigInt(nonce + 1)
     .getOrElse(throw new IllegalStateException("an admitted transaction carried an unrepresentable nonce " + nonce))
 
-/** What executing one transaction produced. */
-final case class TransactionOutcome(logs: Vector[Log], failure: Option[String])
+/** What executing one transaction produced.
+  *
+  * The refusal and the unsupported operation are separate because they are
+  * different kinds of fact: a refusal is this fork's own answer about a
+  * transaction, and an unsupported operation is a limit of this build. Sharing
+  * one channel let a fixture that expects a refusal absorb an unimplemented
+  * opcode silently, which is the direction that matters -- the corpus states an
+  * expected refusal exactly where a fork's new rules are under test.
+  */
+final case class TransactionOutcome(
+    logs: Vector[Log],
+    rejection: Option[Rejection],
+    unsupported: Option[String]
+)
 
 /** Runs one state fixture: seeds the pre-state, settles the transaction around
   * an invocation, and compares the state root it computes against the published
@@ -126,7 +156,7 @@ object StateFixtureRunner:
     val journal = new JournaledWorldState(base)
     val transaction = fixture.transaction
     val outcome = FrontierTransaction.admit(journal, fixture.block, transaction, GasSchedule.Baseline) match
-      case Admission.Rejected(reason)       => TransactionOutcome(Vector.empty, Some(reason))
+      case Admission.Rejected(reason)       => TransactionOutcome(Vector.empty, Some(reason), None)
       case Admission.Admitted(intrinsicGas) => settle(fixture, recipient, trie, journal, intrinsicGas)
     journal.commit()
     judge(fixture, base, trie, outcome)
@@ -181,7 +211,7 @@ object StateFixtureRunner:
     if succeeded then
       journal.commit()
       frame.accountsToDelete.foreach(trie.destroyAccount)
-    TransactionOutcome(if succeeded then frame.logs else Vector.empty, unsupported.map("this build cannot run " + _))
+    TransactionOutcome(if succeeded then frame.logs else Vector.empty, None, unsupported)
 
   private def judge(
       fixture: StateFixture,
@@ -196,12 +226,24 @@ object StateFixtureRunner:
     val logDivergence = expected.logs.flatMap { want =>
       Option.when(emitted != want)("logs " + emitted.toHex + " != " + want.toHex)
     }
-    val rejection = (outcome.failure, expected.rejected) match
-      case (Some(reason), false) if reason.startsWith("this build") => Some(reason)
-      case _                                                        => None
+    // The fixture's own statement about the transaction, checked in both
+    // directions and by reason. Checking only that SOME refusal occurred is
+    // satisfied by any of them, and a refused transaction leaves the state root
+    // at its pre-state value whichever branch refused it -- so the root, which
+    // is the only other check on these cases, cannot tell one reason from
+    // another.
+    val settlement = (outcome.rejection, expected.rejection) match
+      case (Some(actual), Some(wanted)) if wanted.accepted.contains(actual) => None
+      case (Some(actual), Some(wanted))                                     =>
+        Some("refused as " + actual + ", but the fixture expects " + wanted.describe)
+      case (Some(actual), None) => Some("refused as " + actual + ", but the fixture expects execution")
+      case (None, Some(wanted)) => Some("executed, but the fixture expects refusal as " + wanted.describe)
+      case (None, None)         => None
+    val unsupported = outcome.unsupported.map("this build cannot run " + _)
     val accounts = expected.state.toVector.flatMap { wanted =>
       val slots = (address: Address) => fixture.pre.get(address).fold(Set.empty[BigInt])(_.storage.keySet)
       FixtureValues.divergences(base, wanted, slots)
     }
-    val all = rootDivergence.toVector ++ logDivergence.toVector ++ rejection.toVector ++ accounts
+    val all =
+      rootDivergence.toVector ++ logDivergence.toVector ++ settlement.toVector ++ unsupported.toVector ++ accounts
     if all.isEmpty then Verdict.Agreed else Verdict.Diverged(all)

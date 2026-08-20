@@ -211,3 +211,30 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
     val altered = stateFixture.replace("\"to\": \"0x095e7baea6a6c7c4c2dfeb977efac326af552d87\"", "\"to\": \"\"")
     assert(stateVerdict(altered) == Verdict.Skipped(SkipReason.TransactionLevelCreation))
   }
+
+  it should "diverge when the fixture names a refusal other than the one the driver makes" in {
+    // Renaming the expectation leaves the pre-state, and so the state root,
+    // exactly as published. The transaction is still refused and still refused
+    // at the same branch, so every other check on this case agrees -- which is
+    // what makes the reason comparison the only thing that can see it.
+    val altered = rejectionFixture.replace("INSUFFICIENT_ACCOUNT_FUNDS", "NONCE_IS_MAX")
+    val _ = assert(altered != rejectionFixture, "the expectation this test rewrites was not found")
+    assert(diverges(stateVerdict(altered)))
+  }
+
+  it should "diverge when the fixture names a refusal this build cannot make" in {
+    // The state every rule is in before the fork introducing it lands: the
+    // corpus names it, admission has no branch for it, and a refusal for an
+    // unrelated reason leaves the root where the fixture expects it. A build
+    // missing the rule has to fail here rather than be credited with it.
+    val altered = rejectionFixture.replace("INSUFFICIENT_ACCOUNT_FUNDS", "INVALID_SIGNATURE_VRS")
+    val _ = assert(altered != rejectionFixture, "the expectation this test rewrites was not found")
+    assert(diverges(stateVerdict(altered)))
+  }
+
+  it should "diverge when the fixture expects execution and the driver refuses" in {
+    val altered =
+      rejectionFixture.replace(",\"expectException\":\"TransactionException.INSUFFICIENT_ACCOUNT_FUNDS\"", "")
+    val _ = assert(altered != rejectionFixture, "the expectation this test removes was not found")
+    assert(diverges(stateVerdict(altered)))
+  }
