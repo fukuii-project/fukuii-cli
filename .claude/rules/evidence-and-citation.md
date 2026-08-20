@@ -146,6 +146,55 @@ Looking for a gas-cost rule, search the number. Looking for a fork activation,
 search the block height. A search for the fork's *name* finds the comments and
 misses the implementation.
 
+### The control must be a member of the class you are counting
+
+**A calibration proves the instrument ran. It proves the PATTERN discriminates only if the control is
+something the pattern itself must match.** Those are different claims, and the second is the one a
+zero depends on.
+
+The failing shape, which looks like diligence:
+
+```
+grep -c 'the thing I am looking for' file    # -> 0
+grep -c 'some token I know is present' file  # -> 94   "instrument fires"
+```
+
+The second line establishes that `grep` works and the file is readable. **It establishes nothing about
+whether the first pattern would have matched had the thing been there** — a mistyped pattern, a wrong
+word boundary, or a phrase that lives somewhere else entirely all still report zero.
+
+**Calibrate with a KNOWN POSITIVE FOR THE PATTERN, and a known negative for the same pattern.** Run
+the pattern against a file, a fixture, or a synthesized line that must match; confirm it does. Then
+run it where it must not; confirm it does not. Only then is a zero elsewhere a finding.
+
+**Measured, repeatedly, and by more than one kind of actor here:**
+
+- An earlier review record's F9 calibrated a zero with *"94 hits for `review`"* — a present token
+  unrelated to the pattern under test. The pattern was wrong and the zero was wrong.
+- A charter audit reported a discipline present in a charter. The pattern was
+  `invariant, not a name\|not the name\|...`, and what matched was **`not the names above`** in an
+  unrelated sentence about directory listings. The true count was zero; the discipline lives in a
+  rule, not a charter, and the wrong reading nearly produced a restructure of seven files.
+- The same audit's own sweep reported seven hits for `\bspec` — four `specific`, two `specialist`, one
+  `specialty`, and **none of them `specification`**, which was the word under test.
+
+**The tell: your control and your pattern have nothing in common.** If the token you calibrated with
+could not have been matched by the pattern you are trusting, you calibrated the tool and not the
+question.
+
+**This applies to any instrument with a pass state, not only to `grep`** — a sweep, a gate, a proof
+arm, a test. `scripts/*-proof.sh` is this discipline made mechanical, and **it takes both halves**:
+its positive arms seed the very defect the check exists to catch and require the check to fail **with
+the exact exit code that defect must produce**; its negative arms seed a known-good input and require
+it to pass.
+
+**Both halves, because the first half alone reads as the whole rule** — and stated alone it licenses
+deleting the very negative controls the paragraph above mandates. "Requires the check to fail" is
+also weaker than what those scripts actually assert: arms distinguish exit 1 from 2 from 3 from 97, and an arm that accepts
+any non-zero exit cannot tell the seeded defect from an unrelated breakage. That looseness has already
+shipped here as a placebo arm that passed on a path-resolution error while printing a conclusion about
+a mutation it never reached.
+
 ### A second pass, differently patterned, before "clean"
 
 One pass is not evidence of completeness. Before declaring a pattern family
