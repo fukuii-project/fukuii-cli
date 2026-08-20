@@ -12,8 +12,13 @@ import org.scalatest.flatspec.AnyFlatSpec
   */
 class OpcodeSpec extends AnyFlatSpec:
 
-  "the vocabulary" should "hold every operation the specification defines at this fork" in
-    assert(Opcode.values.length == 129, "the Ops enum has 129 members, counted in the file rather than recalled")
+  "the vocabulary" should "hold every operation this build knows, across forks" in
+    // 130, counted in the file rather than recalled. **This is no longer a
+    // per-fork figure**: a byte's meaning does not change once it has one, so
+    // the enum accumulates across forks and a table selects from it. The number
+    // rises with the first operation each proposal adds, and is a counted fact
+    // either way.
+    assert(Opcode.values.length == 130, "the Ops enum has 130 members, counted in the file rather than recalled")
 
   it should "give each operation a distinct byte" in
     assert(

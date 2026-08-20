@@ -516,14 +516,25 @@ object Interpreter:
       case Opcode.Call     => messageCall(frame, environment, CallForm.ToTheAccountNamed)
       case Opcode.CallCode =>
         messageCall(frame, environment, CallForm.WithTheNamedAccountsCode)
+      case Opcode.DelegateCall =>
+        messageCall(frame, environment, CallForm.WithTheNamedAccountsCodeKeepingTheCaller)
 
       case unbuilt => Left(Fault.NotBuilt(unbuilt))
 
-  /** Which account a message call runs as, and whose code it runs.
+  /** Which account a message call runs as, whose code it runs, and whose
+    * identity the invocation carries.
     *
-    * The two forms differ in exactly this and nothing else, so they share one
-    * implementation and the difference is a value rather than a duplicated
-    * body. Both take the account to borrow code from off the stack.
+    * ==Two axes, and the second one arrived later==
+    *
+    * While there were two forms they differed in exactly one thing -- which
+    * account runs -- and one sentence covered them. The third moves a second
+    * axis: it keeps the caller and the value its own caller was invoked with, so
+    * the code it runs cannot tell it was reached indirectly. **That is what
+    * makes this an enumeration of forms rather than a boolean**, and it is why
+    * the shared implementation reads the form four times rather than once.
+    *
+    * All three take the account to borrow code from off the stack. Only the
+    * first two take a value off it as well.
     */
   private enum CallForm:
 
@@ -534,6 +545,16 @@ object Interpreter:
       * code.
       */
     case WithTheNamedAccountsCode
+
+    /** This account runs, under its own storage, using the named account's
+      * code -- and the caller and value are the ones this frame was itself
+      * invoked with rather than anything on the stack.
+      *
+      * Nothing moves: the value is carried for the code to read, not
+      * transferred, so this form charges no surcharge for sending, forwards no
+      * stipend, and cannot be refused for a balance it never spends.
+      */
+    case WithTheNamedAccountsCodeKeepingTheCaller
 
   /** Starts a nested invocation of another account's code.
     *
@@ -561,39 +582,49 @@ object Interpreter:
   ): Either[Fault, Unit] =
     val schedule = environment.schedule
     val world = environment.world
+    // Bound once and read four times, because inheriting the caller's identity
+    // is not one difference but four: no value comes off the stack, no surcharge
+    // is paid for sending one, no stipend is forwarded, and no balance can
+    // refuse the call. The specification reaches the same four by giving this
+    // form its own entry point that charges a base and a request and nothing
+    // else, then hands the shared path a flag saying not to move anything.
+    val inherits = form == CallForm.WithTheNamedAccountsCodeKeepingTheCaller
     val taken =
       for
         requested <- frame.stack.pop()
         named <- frame.stack.pop()
-        value <- frame.stack.pop()
+        value <- if inherits then Right(frame.message.value) else frame.stack.pop()
         inputOffset <- frame.stack.pop()
         inputSize <- frame.stack.pop()
         outputOffset <- frame.stack.pop()
         outputSize <- frame.stack.pop()
         codeAddress = addressOf(named)
         runsAs = form match
-          case CallForm.ToTheAccountNamed        => codeAddress
-          case CallForm.WithTheNamedAccountsCode => frame.message.currentTarget
+          case CallForm.ToTheAccountNamed                        => codeAddress
+          case CallForm.WithTheNamedAccountsCode                 => frame.message.currentTarget
+          case CallForm.WithTheNamedAccountsCodeKeepingTheCaller => frame.message.currentTarget
         settled = schedule.callBase + requested.toBigInt +
           (if world.accountExists(runsAs) then BigInt(0) else schedule.newAccount) +
-          (if value.isZero then BigInt(0) else schedule.callValue)
+          (if inherits || value.isZero then BigInt(0) else schedule.callValue)
         _ <- reach(frame, settled, (inputOffset, inputSize), (outputOffset, outputSize))
       yield
-        val forwarded = requested.toBigInt + (if value.isZero then BigInt(0) else schedule.callStipend)
+        val forwarded =
+          requested.toBigInt + (if inherits || value.isZero then BigInt(0) else schedule.callStipend)
         val input = regionOf(frame, inputOffset, inputSize)
         (codeAddress, runsAs, value, forwarded, input, outputOffset, outputSize)
 
     taken match
       case Left(halt) => Left(Fault.Exceptional(halt))
       case Right((codeAddress, runsAs, value, forwarded, input, outputOffset, outputSize)) =>
-        if world.balanceOf(frame.message.currentTarget).toBigInt < value.toBigInt ||
+        if (!inherits && world.balanceOf(frame.message.currentTarget).toBigInt < value.toBigInt) ||
           frame.message.depth + 1 > Stack.Limit
         then
           frame.gasLeft += forwarded
           exceptional(frame.stack.push(Word.Zero).map(_ => advance(frame)))
         else
+          val invoker = if inherits then frame.message.caller else frame.message.currentTarget
           val nested = new Frame(
-            Message(frame.message.currentTarget, runsAs, Some(codeAddress), value, input, frame.message.depth + 1),
+            Message(invoker, runsAs, Some(codeAddress), value, input, frame.message.depth + 1),
             Code(world.codeOf(codeAddress)),
             forwarded,
             frame.registeredSoFar

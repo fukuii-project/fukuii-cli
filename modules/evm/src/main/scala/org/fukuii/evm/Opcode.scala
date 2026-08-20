@@ -154,6 +154,7 @@ enum Opcode(val code: Int):
   case Call extends Opcode(0xf1)
   case CallCode extends Opcode(0xf2)
   case Return extends Opcode(0xf3)
+  case DelegateCall extends Opcode(0xf4)
   case SelfDestruct extends Opcode(0xff)
 
 object Opcode:

@@ -166,10 +166,19 @@ class OpcodeTableSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     }
   }
 
-  property("the baseline table holds every operation the machine knows and no other byte") {
+  property("the baseline table holds the operations the machine started with and no other byte") {
+    // 129, counted, against a vocabulary of 130. **The gap is the point**: the
+    // enum spans forks and the baseline selects from it, so an operation a later
+    // proposal adds must be absent here or its delta would be unobservable --
+    // the fork correct, the seam having proved nothing.
+    //
+    // Pinned as a NUMBER rather than against the enum, deliberately. Comparing
+    // the two would make this assertion restate the expression it is checking,
+    // and an operation added to the enum and forgotten in the baseline's own
+    // exclusion would then join the baseline in silence. A counted figure fails.
     assert(
-      table.opcodes == Opcode.values.toSet && table.size == Opcode.values.length,
-      "a byte outside the vocabulary must run nothing, and every operation in it must run"
+      table.size == 129 && !table.contains(Opcode.DelegateCall),
+      "a byte outside this fork's set must run nothing, and every operation in it must run"
     )
   }
 

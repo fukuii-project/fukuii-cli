@@ -141,11 +141,26 @@ object OpcodeTable:
         Opcode.Gas -> schedule.base
       ) ++ stackFamilies.map(_ -> schedule.veryLow)
 
-    val computed: Set[Opcode] = Opcode.values.toSet -- fixed.keySet
+    val computed: Set[Opcode] = Opcode.values.toSet -- fixed.keySet -- laterThanBaseline
     val all =
       fixed.map((opcode, gas) => Operation(opcode, Cost.Fixed(gas))) ++
         computed.map(opcode => Operation(opcode, Cost.Computed))
     new OpcodeTable(all.map(operation => operation.opcode.code -> operation).toMap)
+
+  /** Operations [[Opcode]] names that the baseline does not run.
+    *
+    * The enum spans every fork this build knows, because a byte's meaning does
+    * not change once it has one -- so the baseline SELECTS from it rather than
+    * being it. Without this the first operation a proposal adds would already be
+    * in the table it was meant to add it to, and its delta would be
+    * unobservable: the fork would be correct and the seam would have proved
+    * nothing.
+    *
+    * **`OpcodeTableSpec` pins the baseline's size as a counted number**, so an
+    * operation added to the enum and forgotten here fails loudly rather than
+    * joining the baseline in silence. That direction is the one worth failing.
+    */
+  private def laterThanBaseline: Set[Opcode] = Set(Opcode.DelegateCall)
 
   /** The three families whose members differ only in a count, and which are
     * priced alike across all of them.

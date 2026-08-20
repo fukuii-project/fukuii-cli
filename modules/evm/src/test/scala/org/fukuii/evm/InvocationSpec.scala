@@ -97,6 +97,36 @@ class InvocationSpec extends AnyFlatSpec:
     val frame = new Frame(message, Code(Bytes.fromArray(program.map(_.toByte).toArray)), BigInt(gas))
     (frame, Interpreter.run(frame, environment))
 
+  /** The rules with EIP-7 applied, which is the only way this byte runs. */
+  private def admitting: OpcodeTable = ChainRules.Baseline.applying(Proposals.delegateCall).table
+
+  /** Six operands, not seven: this form takes no value off the stack. */
+  private def delegating(target: Address, gas: Int): Seq[Int] =
+    push1(0) ++ push1(0) ++ push1(0) ++ push1(0) ++ push20(target) ++ push2(gas) :+ 0xf4
+
+  /** Writes whoever called it into slot zero. */
+  private val recordingCaller: Seq[Int] = Seq(0x33) ++ push1(0) ++ Seq(0x55, 0x00)
+
+  /** Writes the value it was invoked with into slot zero. */
+  private val recordingValue: Seq[Int] = Seq(0x34) ++ push1(0) ++ Seq(0x55, 0x00)
+
+  private def recorded(program: Seq[Int], borrowed: Seq[Int], value: Int = 0): Word =
+    val state = world()
+    state.setCode(other, Bytes.fromArray(borrowed.map(_.toByte).toArray))
+    // The OUTER invocation moves its own value from its own caller before any of
+    // this runs, so that account is the one that has to hold it. Funding the
+    // account under test instead fails in the interpreter rather than in the
+    // assertion, which reads as a defect and is a fixture.
+    state.setBalance(caller, EvmFixtures.word(1000))
+    val environment = EvmFixtures.environment(state, withTable = admitting)
+    val _ = runIn(
+      environment,
+      200000,
+      program,
+      EvmFixtures.message(caller = caller, currentTarget = runner, value = EvmFixtures.word(value))
+    )
+    environment.world.storageAt(runner, Word.Zero)
+
   // ── What an invocation is given, and what it leaves behind ───────────────
 
   "an invocation" should "bring the account it runs as into being" in {
@@ -510,4 +540,69 @@ class InvocationSpec extends AnyFlatSpec:
     val program = calling(0xf1, other, 40000) ++ destroying(other)
     val (frame, _) = runIn(EvmFixtures.environment(holder), 100000, program)
     assert(frame.refundCounter == BigInt(48000), "two accounts registered is two refunds, which is the control")
+  }
+
+  // ── A nested invocation that borrows identity as well as code ────────────
+
+  "a delegated call" should "leave its code unable to tell it was not called directly" in {
+    // The property stated as the specification states it, rather than against a
+    // literal address: the same code, reached the two ways, must record the same
+    // caller. Comparing to a written-out address would test the same thing and
+    // would also test this suite's ability to spell one.
+    val directly = recorded(recordingCaller, Seq.empty)
+    val delegated = recorded(delegating(other, 40000), recordingCaller)
+    assert(directly == delegated && directly != Word.Zero, "direct=" + directly + " delegated=" + delegated)
+  }
+
+  it should "differ from a call that borrows code without borrowing identity" in {
+    // The contrast that makes the case above mean something. CALLCODE runs the
+    // same borrowed code in the same storage and names the borrower as caller,
+    // so a form that confused the two would pass the case above and fail here.
+    val delegated = recorded(delegating(other, 40000), recordingCaller)
+    val borrowed = recorded(calling(0xf2, other, 40000), recordingCaller)
+    assert(delegated != borrowed, "delegated=" + delegated + " callcode=" + borrowed)
+  }
+
+  it should "read the value its own caller was invoked with" in
+    assert(recorded(delegating(other, 40000), recordingValue, value = 7) == EvmFixtures.word(7))
+
+  it should "read zero where a borrowing call would have pushed its own" in
+    // CALLCODE takes a value off the stack and this one is given none, so the
+    // inherited seven above is the delta rather than an accident of the fixture.
+    assert(recorded(calling(0xf2, other, 40000), recordingValue, value = 7) == Word.Zero)
+
+  it should "write to the storage of the account that delegated" in
+    assert(recorded(delegating(other, 40000), recordingCaller) != Word.Zero, "slot zero of the delegating account")
+
+  it should "move no value, whatever value it carries" in {
+    val state = world()
+    state.setCode(other, Bytes.fromArray(recordingValue.map(_.toByte).toArray))
+    state.setBalance(caller, EvmFixtures.word(1000))
+    val environment = EvmFixtures.environment(state, withTable = admitting)
+    val _ = runIn(
+      environment,
+      200000,
+      delegating(other, 40000),
+      EvmFixtures.message(caller = caller, currentTarget = runner, value = EvmFixtures.word(7))
+    )
+    // The account whose code ran is the one that must be untouched. The outer
+    // invocation's own transfer of seven to the delegating account is a separate
+    // and legitimate movement, so asserting on that account would confuse the
+    // two and could not fail for the reason this test exists.
+    assert(
+      environment.world.balanceOf(other) == Word.Zero,
+      "the account whose code was borrowed received value: " + environment.world.balanceOf(other)
+    )
+  }
+
+  it should "run nothing where the proposal that adds it has not been applied" in {
+    val state = world()
+    state.setCode(other, Bytes.fromArray(recordingCaller.map(_.toByte).toArray))
+    val (_, outcome) = runIn(EvmFixtures.environment(state), 200000, delegating(other, 40000))
+    assert(
+      outcome match
+        case Right(Outcome.Halted(_)) => true
+        case _                        => false,
+      "the baseline names no operation at this byte, so it must halt as any undefined byte does: " + outcome
+    )
   }

@@ -88,3 +88,19 @@ object ChainRules:
       precompiles = PrecompileSet.baseline(GasSchedule.Baseline),
       codeDepositMustSucceed = false
     )
+
+/** The changes individual proposals make to the rules a chain runs.
+  *
+  * Named for the proposal rather than the fork that shipped it, so a network
+  * that adopts one without the other -- which is the ordinary case across the
+  * families this project serves -- can say so.
+  */
+object Proposals:
+
+  /** EIP-7 -- `DELEGATECALL`.
+    *
+    * An addition to the table and nothing else. What the operation *does* is the
+    * machine's; that it exists at all is this.
+    */
+  val delegateCall: Proposal =
+    rules => rules.copy(table = rules.table.adding(Operation(Opcode.DelegateCall, Cost.Computed)))
