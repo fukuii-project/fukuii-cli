@@ -5,8 +5,15 @@ import scala.util.control.NonFatal
 
 import org.fukuii.evm.ChainRules
 
-/** The three published corpora this fork is certified against, run once and
-  * reported as counts.
+/** The published corpora this layer is certified against, run once and reported
+  * as counts.
+  *
+  * ==A tier is a directory and a fork key, and neither implies the other==
+  *
+  * The generated tier partitions by fork, so a directory names one; the legacy
+  * tier does not, so one directory answers for every fork it carries an
+  * expectation under and is read once per fork. A report is therefore keyed by
+  * both, and the count of reports is not the count of directories.
   *
   * ==Computed once, because running them is the expensive part==
   *
@@ -19,8 +26,8 @@ object FrontierCorpus:
 
   /** Every report, or nothing at all when the corpus root is not configured.
     *
-    * The distinction is the point: a harness that answered with three empty
-    * reports would be indistinguishable from one that found nothing wrong.
+    * The distinction is the point: a harness that answered with empty reports
+    * would be indistinguishable from one that found nothing wrong.
     */
   lazy val reports: Option[Vector[CorpusReport]] = FixtureCorpus.root.map(assemble)
 
@@ -31,8 +38,25 @@ object FrontierCorpus:
 
   /** The legacy hand-written state tier, of which only the cases carrying a
     * Frontier expectation are executable here.
+    *
+    * The fork is named in the report because this directory is read more than
+    * once. A general state test states expectations under several forks at
+    * once, so the same 2394 files answer a different question per fork asked --
+    * and a report naming only the directory could not say which was asked.
     */
-  val LegacyStateCorpus: String = "legacytests Constantinople/GeneralStateTests"
+  val LegacyStateCorpus: String = "legacytests Constantinople/GeneralStateTests at Frontier"
+
+  /** The same directory, read for EIP-150's expectations instead.
+    *
+    * **These cases are not a subset of the suites named for that proposal, and
+    * the difference is thirteenfold.** Four suites carry it in their names and
+    * hold 81 cases between them; the fork key is carried by 650 cases across the
+    * tier, expanding to 1096 runnable combinations. The suite name under-reports
+    * because a general state test is not organised by the fork it exercises,
+    * and the post key is what the reader dispatches on -- which is the invariant
+    * to search for rather than the name.
+    */
+  val LegacyEip150StateCorpus: String = "legacytests Constantinople/GeneralStateTests at EIP150"
 
   /** The generated state tier, from the tests@v20.0.1 release. */
   val GeneratedStateCorpus: String = "execution-specs-fixtures state_tests/for_frontier"
@@ -46,6 +70,16 @@ object FrontierCorpus:
     */
   val GeneratedHomesteadCorpus: String = "execution-specs-fixtures state_tests/for_homestead"
 
+  /** The same tier filled for the fork after that.
+    *
+    * **The directory is partitioned by the fork a test was FILLED FOR, not by
+    * the fork it was authored at**, so it holds families named for much later
+    * proposals evaluated under these rules. What it certifies is therefore every
+    * published state test filled for this fork, which is a different set from
+    * every test of this fork and is the only claim the directory supports.
+    */
+  val GeneratedTangerineWhistleCorpus: String = "execution-specs-fixtures state_tests/for_tangerinewhistle"
+
   def reportFor(name: String): Option[CorpusReport] = reports.flatMap(_.find(_.corpus == name))
 
   private def assemble(root: Path): Vector[CorpusReport] =
@@ -54,12 +88,33 @@ object FrontierCorpus:
       stateReport(LegacyStateCorpus, FixtureCorpus.legacy(root).resolve("GeneralStateTests")),
       stateReport(GeneratedStateCorpus, FixtureCorpus.generated(root).resolve("state_tests/for_frontier")),
       stateReport(
+        LegacyEip150StateCorpus,
+        FixtureCorpus.legacy(root).resolve("GeneralStateTests"),
+        fork = "EIP150",
+        rules = tangerineWhistle
+      ),
+      stateReport(
         GeneratedHomesteadCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_homestead"),
         fork = "Homestead",
         rules = ChainRules.Homestead.copy(precompiles = VmFixtureRunner.precompiles)
+      ),
+      stateReport(
+        GeneratedTangerineWhistleCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_tangerinewhistle"),
+        fork = "TangerineWhistle",
+        rules = tangerineWhistle
       )
     )
+
+  /** The rules the two tiers above are certified under, bound once because they
+    * are the same rules reached through two corpora that name this fork
+    * differently -- `TangerineWhistle` in the generated tier, `EIP150` in the
+    * legacy one. Two bindings would let the two drift into certifying different
+    * machines under one section's name.
+    */
+  private def tangerineWhistle: ChainRules =
+    ChainRules.TangerineWhistle.copy(precompiles = VmFixtureRunner.precompiles)
 
   /** What running one case established, with a case that THREW recorded as a
     * divergence rather than as a skip.

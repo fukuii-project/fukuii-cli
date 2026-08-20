@@ -30,7 +30,13 @@ class FrontierCorpusSpec extends AnyFlatSpec:
     FrontierCorpus.LegacyVmCorpus -> CorpusCensus(files = 609, cases = 609, skipped = 0),
     FrontierCorpus.LegacyStateCorpus -> CorpusCensus(files = 2394, cases = 2691, skipped = 1668),
     FrontierCorpus.GeneratedStateCorpus -> CorpusCensus(files = 31, cases = 530, skipped = 0),
-    FrontierCorpus.GeneratedHomesteadCorpus -> CorpusCensus(files = 34, cases = 545, skipped = 0)
+    FrontierCorpus.GeneratedHomesteadCorpus -> CorpusCensus(files = 34, cases = 545, skipped = 0),
+    // The same 2394 files as the Frontier row, asked a different question. Every
+    // figure differs: a case counts as found when it states an expectation at
+    // the fork asked about OR states none, and a case that states one expands
+    // into a run per post entry -- so 650 cases carrying this key become 1096.
+    FrontierCorpus.LegacyEip150StateCorpus -> CorpusCensus(files = 2394, cases = 2840, skipped = 1744),
+    FrontierCorpus.GeneratedTangerineWhistleCorpus -> CorpusCensus(files = 33, cases = 536, skipped = 0)
   )
 
   private def report(corpus: String): CorpusReport =
@@ -124,5 +130,45 @@ class FrontierCorpusSpec extends AnyFlatSpec:
 
   it should "agree with every case it ran" in {
     val found = report(FrontierCorpus.GeneratedHomesteadCorpus)
+    assert(found.diverged.isEmpty, found.describe)
+  }
+
+  FrontierCorpus.LegacyEip150StateCorpus should "hold the files the census records" in {
+    val found = report(FrontierCorpus.LegacyEip150StateCorpus)
+    assert(found.filesRead == expected(FrontierCorpus.LegacyEip150StateCorpus).files, found.describe)
+  }
+
+  it should "hold the cases the census records" in {
+    val found = report(FrontierCorpus.LegacyEip150StateCorpus)
+    assert(found.casesFound == expected(FrontierCorpus.LegacyEip150StateCorpus).cases, found.describe)
+  }
+
+  it should "skip exactly the cases the census records" in {
+    val found = report(FrontierCorpus.LegacyEip150StateCorpus)
+    assert(found.skipped.length == expected(FrontierCorpus.LegacyEip150StateCorpus).skipped, found.describe)
+  }
+
+  it should "agree with every case it ran" in {
+    val found = report(FrontierCorpus.LegacyEip150StateCorpus)
+    assert(found.diverged.isEmpty, found.describe)
+  }
+
+  FrontierCorpus.GeneratedTangerineWhistleCorpus should "hold the files the census records" in {
+    val found = report(FrontierCorpus.GeneratedTangerineWhistleCorpus)
+    assert(found.filesRead == expected(FrontierCorpus.GeneratedTangerineWhistleCorpus).files, found.describe)
+  }
+
+  it should "hold the cases the census records" in {
+    val found = report(FrontierCorpus.GeneratedTangerineWhistleCorpus)
+    assert(found.casesFound == expected(FrontierCorpus.GeneratedTangerineWhistleCorpus).cases, found.describe)
+  }
+
+  it should "skip exactly the cases the census records" in {
+    val found = report(FrontierCorpus.GeneratedTangerineWhistleCorpus)
+    assert(found.skipped.length == expected(FrontierCorpus.GeneratedTangerineWhistleCorpus).skipped, found.describe)
+  }
+
+  it should "agree with every case it ran" in {
+    val found = report(FrontierCorpus.GeneratedTangerineWhistleCorpus)
     assert(found.diverged.isEmpty, found.describe)
   }

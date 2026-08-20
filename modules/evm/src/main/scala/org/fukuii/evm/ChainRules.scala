@@ -161,6 +161,31 @@ object ChainRules:
       Proposals.lowSignatureS
     )
 
+  /** [[Homestead]] with EIP-150 applied.
+    *
+    * A fork name labels the composition, as it does above -- and this one needs
+    * a reason of its own, because the reason given there does not carry. That
+    * one rests on both families having run the same forks and shared their
+    * history to this point, and this is where that stops being true: they
+    * release this proposal under different names, at different blocks, and one
+    * of them releases it alongside a proposal the other shipped separately.
+    *
+    * What one name still serves is the rule SET, which is identical on both.
+    * Each adopted EIP-150 unaltered; only where it switches on differs, and
+    * when a fork switches on is a chain configuration's to state rather than
+    * this value's. So the rules both families run at this point are one value,
+    * and the fork name here labels that value rather than either family's
+    * release of it.
+    *
+    * `lazy` for the reason [[Homestead]] gives, and because it derives from it.
+    */
+  lazy val TangerineWhistle: ChainRules =
+    Homestead.applying(
+      Proposals.stateReadRepricing,
+      Proposals.forwardedGasCap,
+      Proposals.selfDestructCharge
+    )
+
 /** The changes individual proposals make to the rules a chain runs.
   *
   * Named for the proposal rather than the fork that shipped it, so a network
