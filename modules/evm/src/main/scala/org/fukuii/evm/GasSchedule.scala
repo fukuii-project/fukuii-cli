@@ -100,7 +100,21 @@ final case class GasSchedule(
     precompileRipemd160Base: BigInt,
     precompileRipemd160PerWord: BigInt,
     precompileIdentityBase: BigInt,
-    precompileIdentityPerWord: BigInt
+    precompileIdentityPerWord: BigInt,
+    // THE TRANSACTION-INTRINSIC PRICES. They belong here and not beside the
+    // caller that charges them, because both authorities keep them in the same
+    // repriceable record as everything above -- and because EIP-2028 is exactly
+    // a repricing-in-place of `transactionDataPerNonZeroByte`, which is the
+    // commonest delta kind this seam exists to express. Holding them elsewhere
+    // would have made the seam complete for opcodes and precompiles and absent
+    // for the charge every transaction pays first.
+    transactionBase: BigInt,
+    transactionDataPerZeroByte: BigInt,
+    transactionDataPerNonZeroByte: BigInt,
+    // SELFDESTRUCT costs nothing to execute at this fork and is priced as a
+    // field rather than a literal for the same reason: EIP-150 reprices it to
+    // 5000, so a schedule that cannot name it cannot express that fork either.
+    selfDestruct: BigInt
 )
 
 object GasSchedule:
@@ -148,5 +162,9 @@ object GasSchedule:
     precompileRipemd160Base = BigInt(600),
     precompileRipemd160PerWord = BigInt(120),
     precompileIdentityBase = BigInt(15),
-    precompileIdentityPerWord = BigInt(3)
+    precompileIdentityPerWord = BigInt(3),
+    transactionBase = BigInt(21000),
+    transactionDataPerZeroByte = BigInt(4),
+    transactionDataPerNonZeroByte = BigInt(68),
+    selfDestruct = BigInt(0)
   )

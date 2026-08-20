@@ -34,29 +34,37 @@ enum Admission:
   */
 object FrontierTransaction:
 
-  /** Charged before any code runs, whatever the transaction does. */
-  val BaseCost: BigInt = BigInt(21000)
-
-  val PerZeroByte: BigInt = BigInt(4)
-
-  val PerNonZeroByte: BigInt = BigInt(68)
+  /** The intrinsic prices now live in [[GasSchedule]] rather than here.
+    *
+    * They were three `val`s in this file, which made the fork seam complete for
+    * opcodes and precompiles and absent for the charge every transaction pays
+    * first -- and EIP-2028 is precisely a repricing-in-place of the non-zero-byte
+    * price, so the one delta kind the seam most needs to express was the one it
+    * could not. Read them from the schedule the caller supplies.
+    */
 
   /** A nonce at or above this cannot be signed for, applied to every fork. */
   val NonceLimit: BigInt = (BigInt(1) << 64) - 1
 
-  def intrinsicCost(data: Bytes): BigInt =
+  def intrinsicCost(schedule: GasSchedule, data: Bytes): BigInt =
     val raw = data.toIArray
     var zeros = 0
     var i = 0
     while i < raw.length do
       if raw(i) == 0.toByte then zeros += 1
       i += 1
-    BaseCost + PerZeroByte * zeros + PerNonZeroByte * (raw.length - zeros)
+    schedule.transactionBase + schedule.transactionDataPerZeroByte * zeros +
+      schedule.transactionDataPerNonZeroByte * (raw.length - zeros)
 
   /** Whether the block would carry this transaction, checked in the order the
     * specification checks it.
     */
-  def admit(world: WorldState, block: BlockContext, transaction: StateTransaction): Admission =
+  def admit(
+      world: WorldState,
+      block: BlockContext,
+      transaction: StateTransaction,
+      schedule: GasSchedule
+  ): Admission =
     // LAZY, and the laziness is the point rather than a micro-optimisation.
     // These four were strict, so every one of them ran before the first branch --
     // including for a transaction rejected immediately for being a type this fork
@@ -67,7 +75,7 @@ object FrontierTransaction:
     // already short-circuits, so deferring each to its own use is a reordering and
     // not a behavior change; `intrinsic` is read twice and a `lazy val` computes it
     // once.
-    lazy val intrinsic = intrinsicCost(transaction.data)
+    lazy val intrinsic = intrinsicCost(schedule, transaction.data)
     lazy val held = world.balanceOf(transaction.sender).toBigInt
     lazy val nonce = world.nonceOf(transaction.sender).toBigInt
     lazy val maximumFee = transaction.gasLimit * transaction.gasPrice
@@ -117,7 +125,7 @@ object StateFixtureRunner:
   ): Verdict =
     val journal = new JournaledWorldState(base)
     val transaction = fixture.transaction
-    val outcome = FrontierTransaction.admit(journal, fixture.block, transaction) match
+    val outcome = FrontierTransaction.admit(journal, fixture.block, transaction, GasSchedule.Baseline) match
       case Admission.Rejected(reason)       => TransactionOutcome(Vector.empty, Some(reason))
       case Admission.Admitted(intrinsicGas) => settle(fixture, recipient, trie, journal, intrinsicGas)
     journal.commit()
