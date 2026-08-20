@@ -24,16 +24,27 @@ object FixtureValues:
     * an empty string is zero rather than an error: several fixtures write an
     * absent quantity that way.
     */
+  /** A hex-or-decimal quantity, **bounded to one machine word**.
+    *
+    * Every quantity a fixture can legitimately state -- a balance, a gas limit, a
+    * gas price, a slot key, a slot value, a nonce -- is at most 2^256, so a longer
+    * one is malformed rather than large. Bounding here rather than at each use
+    * means a multi-megabyte hex string is refused before anything multiplies two
+    * of them together, which is the shape that turns a parse into work
+    * proportional to the square of what a caller supplied.
+    */
   def quantity(text: String): Either[String, BigInt] =
     val trimmed = text.trim
-    if trimmed.isEmpty then Right(BigInt(0))
-    else if trimmed.startsWith("0x") || trimmed.startsWith("0X") then
-      val body = trimmed.substring(2)
-      if body.isEmpty then Right(BigInt(0))
-      else if body.forall(isHexDigit) then Right(BigInt(body, 16))
-      else Left("not a hex quantity: " + trimmed)
-    else if trimmed.forall(_.isDigit) then Right(BigInt(trimmed))
-    else Left("not a quantity: " + trimmed)
+    val parsed =
+      if trimmed.isEmpty then Right(BigInt(0))
+      else if trimmed.startsWith("0x") || trimmed.startsWith("0X") then
+        val body = trimmed.substring(2)
+        if body.isEmpty then Right(BigInt(0))
+        else if body.forall(isHexDigit) then Right(BigInt(body, 16))
+        else Left("not a hex quantity: " + trimmed)
+      else if trimmed.forall(_.isDigit) then Right(BigInt(trimmed))
+      else Left("not a quantity: " + trimmed)
+    parsed.filterOrElse(_ <= Word.MaxValue.toBigInt, "quantity wider than a word: " + trimmed.take(24) + "...")
 
   /** A byte string. An odd number of digits is left-padded rather than
     * rejected, because a fixture writes a storage value and a byte string in

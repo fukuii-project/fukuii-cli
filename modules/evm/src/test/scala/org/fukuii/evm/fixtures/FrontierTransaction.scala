@@ -57,10 +57,20 @@ object FrontierTransaction:
     * specification checks it.
     */
   def admit(world: WorldState, block: BlockContext, transaction: StateTransaction): Admission =
-    val intrinsic = intrinsicCost(transaction.data)
-    val held = world.balanceOf(transaction.sender).toBigInt
-    val nonce = world.nonceOf(transaction.sender).toBigInt
-    val maximumFee = transaction.gasLimit * transaction.gasPrice
+    // LAZY, and the laziness is the point rather than a micro-optimisation.
+    // These four were strict, so every one of them ran before the first branch --
+    // including for a transaction rejected immediately for being a type this fork
+    // predates. `maximumFee` is an unbounded multiplication of two magnitudes the
+    // caller supplies, performed four lines above the branch that bounds one of
+    // them. Admission is exactly where that ordering matters, because admission is
+    // what faces a transaction that arrived from somewhere else. Scala's `else if`
+    // already short-circuits, so deferring each to its own use is a reordering and
+    // not a behavior change; `intrinsic` is read twice and a `lazy val` computes it
+    // once.
+    lazy val intrinsic = intrinsicCost(transaction.data)
+    lazy val held = world.balanceOf(transaction.sender).toBigInt
+    lazy val nonce = world.nonceOf(transaction.sender).toBigInt
+    lazy val maximumFee = transaction.gasLimit * transaction.gasPrice
     if transaction.kind != TransactionKind.Legacy then Admission.Rejected("a transaction type this fork predates")
     else if intrinsic > transaction.gasLimit then Admission.Rejected("gas below the intrinsic cost")
     else if transaction.nonce >= NonceLimit then Admission.Rejected("nonce at the limit")
