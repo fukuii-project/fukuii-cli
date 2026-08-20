@@ -92,7 +92,7 @@ class InvocationSpec extends AnyFlatSpec:
       environment: Environment,
       gas: Int,
       program: Seq[Int],
-      message: Message = EvmFixtures.message()
+      message: Message = EvmFixtures.message(transfersValue = true)
   ): (Frame, Either[Unsupported, Outcome]) =
     val frame = new Frame(message, Code(Bytes.fromArray(program.map(_.toByte).toArray)), BigInt(gas))
     (frame, Interpreter.run(frame, environment))
@@ -126,7 +126,12 @@ class InvocationSpec extends AnyFlatSpec:
       environment,
       200000,
       program,
-      EvmFixtures.message(caller = caller, currentTarget = runner, value = EvmFixtures.word(value))
+      EvmFixtures.message(
+        caller = caller,
+        currentTarget = runner,
+        value = EvmFixtures.word(value),
+        transfersValue = true
+      )
     )
     environment.world.storageAt(runner, Word.Zero)
 
@@ -178,7 +183,7 @@ class InvocationSpec extends AnyFlatSpec:
     val funded = world()
     funded.balances(caller) = EvmFixtures.word(1000)
     val environment = EvmFixtures.environment(funded)
-    val _ = runIn(environment, 100, stopping, EvmFixtures.message(value = EvmFixtures.word(40)))
+    val _ = runIn(environment, 100, stopping, EvmFixtures.message(value = EvmFixtures.word(40), transfersValue = true))
     assert(environment.world.balanceOf(caller) == EvmFixtures.word(960), "the caller pays before any code runs")
   }
 
@@ -186,7 +191,7 @@ class InvocationSpec extends AnyFlatSpec:
     val funded = world()
     funded.balances(caller) = EvmFixtures.word(1000)
     val environment = EvmFixtures.environment(funded)
-    val _ = runIn(environment, 100, stopping, EvmFixtures.message(value = EvmFixtures.word(40)))
+    val _ = runIn(environment, 100, stopping, EvmFixtures.message(value = EvmFixtures.word(40), transfersValue = true))
     assert(environment.world.balanceOf(runner) == EvmFixtures.word(40), "the value arrives before the code sees it")
   }
 
@@ -194,12 +199,12 @@ class InvocationSpec extends AnyFlatSpec:
     val funded = world()
     funded.balances(caller) = EvmFixtures.word(1000)
     val environment = EvmFixtures.environment(funded)
-    val _ = runIn(environment, 100, halting, EvmFixtures.message(value = EvmFixtures.word(40)))
+    val _ = runIn(environment, 100, halting, EvmFixtures.message(value = EvmFixtures.word(40), transfersValue = true))
     assert(environment.world.balanceOf(caller) == EvmFixtures.word(1000), "a transfer is undone with everything else")
   }
 
   "an invocation nested past the limit" should "halt rather than run" in {
-    val nested = EvmFixtures.message().copy(depth = Stack.Limit + 1)
+    val nested = EvmFixtures.message(transfersValue = true).copy(depth = Stack.Limit + 1)
     val (_, outcome) = runIn(EvmFixtures.environment(), 100, stopping, nested)
     assert(
       outcome == Right(Outcome.Halted(Halt.StackDepthLimit)),
@@ -598,7 +603,7 @@ class InvocationSpec extends AnyFlatSpec:
       environment,
       200000,
       delegating(other, 40000),
-      EvmFixtures.message(caller = caller, currentTarget = runner, value = EvmFixtures.word(7))
+      EvmFixtures.message(caller = caller, currentTarget = runner, value = EvmFixtures.word(7), transfersValue = true)
     )
     // The account whose code ran is the one that must be untouched. The outer
     // invocation's own transfer of seven to the delegating account is a separate
@@ -742,7 +747,7 @@ class InvocationSpec extends AnyFlatSpec:
       environment,
       100000,
       delegating(other, 40000),
-      EvmFixtures.message(caller = caller, currentTarget = runner, value = EvmFixtures.word(40))
+      EvmFixtures.message(caller = caller, currentTarget = runner, value = EvmFixtures.word(40), transfersValue = true)
     )
     assert(
       environment.world.balanceOf(caller) == EvmFixtures.word(960) &&
@@ -765,7 +770,7 @@ class InvocationSpec extends AnyFlatSpec:
       environment,
       100000,
       calling(0xf2, other, 40000, value = 40),
-      EvmFixtures.message(caller = caller, currentTarget = runner)
+      EvmFixtures.message(caller = caller, currentTarget = runner, transfersValue = true)
     )
     assert(
       environment.world.balanceOf(runner) == EvmFixtures.word(500),

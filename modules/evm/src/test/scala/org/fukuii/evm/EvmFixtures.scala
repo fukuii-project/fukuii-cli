@@ -102,7 +102,7 @@ object EvmFixtures:
       currentTarget: Address = address(0x22),
       value: Word = Word.Zero,
       data: Bytes = Bytes.Empty,
-      transfersValue: Boolean = true
+      transfersValue: Boolean
   ): Message = Message(caller, currentTarget, Some(currentTarget), value, data, transfersValue)
 
   /** The precompiles the baseline schedule prices. */

@@ -16,17 +16,21 @@ class InterpreterSpec extends AnyFlatSpec:
   private val table = OpcodeTable.baseline(schedule)
 
   private def frameOf(gas: Int, program: Int*): Frame =
-    new Frame(EvmFixtures.message(), Code(Bytes.fromArray(program.map(_.toByte).toArray)), BigInt(gas))
+    new Frame(
+      EvmFixtures.message(transfersValue = true),
+      Code(Bytes.fromArray(program.map(_.toByte).toArray)),
+      BigInt(gas)
+    )
 
   private def exec(gas: Int, program: Int*): (Frame, Either[Unsupported, Outcome]) =
-    execFor(EvmFixtures.message(), EvmFixtures.environment(), gas, program*)
+    execFor(EvmFixtures.message(transfersValue = true), EvmFixtures.environment(), gas, program*)
 
   private def execIn(
       environment: Environment,
       gas: Int,
       program: Int*
   ): (Frame, Either[Unsupported, Outcome]) =
-    execFor(EvmFixtures.message(), environment, gas, program*)
+    execFor(EvmFixtures.message(transfersValue = true), environment, gas, program*)
 
   private def execFor(
       message: Message,
@@ -308,7 +312,8 @@ class InterpreterSpec extends AnyFlatSpec:
   "CALLVALUE" should "report the value sent with this invocation" in {
     val funded = new EvmFixtures.MapWorldState
     funded.balances(EvmFixtures.address(0x11)) = w(9)
-    val (frame, _) = execFor(EvmFixtures.message(value = w(9)), EvmFixtures.environment(funded), 100, 0x34)
+    val (frame, _) =
+      execFor(EvmFixtures.message(value = w(9), transfersValue = true), EvmFixtures.environment(funded), 100, 0x34)
     assert(frame.stack.peek(0) == Right(w(9)), "the value rides on the message")
   }
 
@@ -388,13 +393,15 @@ class InterpreterSpec extends AnyFlatSpec:
 
   "CALLDATALOAD" should "read a whole word from the input" in {
     val data = EvmFixtures.bytesOf("00" * 31 + "2a")
-    val (frame, _) = execFor(EvmFixtures.message(data = data), EvmFixtures.environment(), 100, 0x60, 0x00, 0x35)
+    val (frame, _) =
+      execFor(EvmFixtures.message(data = data, transfersValue = true), EvmFixtures.environment(), 100, 0x60, 0x00, 0x35)
     assert(frame.stack.peek(0) == Right(w(42)), "the word is read big-endian from the offset given")
   }
 
   it should "zero-fill where the input runs out" in {
     val data = EvmFixtures.bytesOf("ff")
-    val (frame, _) = execFor(EvmFixtures.message(data = data), EvmFixtures.environment(), 100, 0x60, 0x00, 0x35)
+    val (frame, _) =
+      execFor(EvmFixtures.message(data = data, transfersValue = true), EvmFixtures.environment(), 100, 0x60, 0x00, 0x35)
     assert(
       frame.stack.peek(0) == Right(Word(BigInt(0xff) << 248)),
       "reading past the input pads rather than failing, so a one-byte input is a word with one byte in it"
@@ -403,7 +410,8 @@ class InterpreterSpec extends AnyFlatSpec:
 
   "CALLDATASIZE" should "report the length of the input" in {
     val data = EvmFixtures.bytesOf("aabbcc")
-    val (frame, _) = execFor(EvmFixtures.message(data = data), EvmFixtures.environment(), 100, 0x36)
+    val (frame, _) =
+      execFor(EvmFixtures.message(data = data, transfersValue = true), EvmFixtures.environment(), 100, 0x36)
     assert(frame.stack.peek(0) == Right(w(3)), "the length in bytes, not in words")
   }
 
@@ -411,7 +419,7 @@ class InterpreterSpec extends AnyFlatSpec:
     val data = EvmFixtures.bytesOf("aabbccdd")
     val (frame, _) =
       execFor(
-        EvmFixtures.message(data = data),
+        EvmFixtures.message(data = data, transfersValue = true),
         EvmFixtures.environment(),
         100,
         0x60,
@@ -429,7 +437,7 @@ class InterpreterSpec extends AnyFlatSpec:
     val data = EvmFixtures.bytesOf("aabb")
     val (frame, _) =
       execFor(
-        EvmFixtures.message(data = data),
+        EvmFixtures.message(data = data, transfersValue = true),
         EvmFixtures.environment(),
         100,
         0x60,
@@ -450,7 +458,7 @@ class InterpreterSpec extends AnyFlatSpec:
     val data = EvmFixtures.bytesOf("aabbccdd")
     val (frame, _) =
       execFor(
-        EvmFixtures.message(data = data),
+        EvmFixtures.message(data = data, transfersValue = true),
         EvmFixtures.environment(),
         100,
         0x60,

@@ -79,7 +79,7 @@ class PrecompileDispatchSpec extends AnyFlatSpec:
       environment: Environment,
       gas: Int,
       program: Seq[Int],
-      message: Message = EvmFixtures.message()
+      message: Message = EvmFixtures.message(transfersValue = true)
   ): (Frame, Either[Unsupported, Outcome]) =
     val frame = new Frame(message, Code(Bytes.fromArray(program.map(_.toByte).toArray)), BigInt(gas))
     (frame, Interpreter.run(frame, environment))
