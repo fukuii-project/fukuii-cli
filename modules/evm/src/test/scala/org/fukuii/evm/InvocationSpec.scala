@@ -90,18 +90,47 @@ class InvocationSpec extends AnyFlatSpec:
 
   private def runIn(
       environment: Environment,
-      gas: Int,
+      gas: BigInt,
       program: Seq[Int],
       message: Message = EvmFixtures.message(transfersValue = true)
   ): (Frame, Either[Unsupported, Outcome]) =
-    val frame = new Frame(message, Code(Bytes.fromArray(program.map(_.toByte).toArray)), BigInt(gas))
+    val frame = new Frame(message, Code(Bytes.fromArray(program.map(_.toByte).toArray)), gas)
     (frame, Interpreter.run(frame, environment))
 
-  /** The rules with EIP-2's deposit rule applied. */
-  private def strictDeposit: ChainRules = ChainRules.Baseline.applying(Proposals.codeDepositMustSucceed)
+  private val schedule = EvmFixtures.schedule
 
-  /** The rules with EIP-7 applied, which is the only way this byte runs. */
-  private def admitting: OpcodeTable = ChainRules.Baseline.applying(Proposals.delegateCall).table
+  /** What the deployment inside [[deploying]] costs to run: four pushes and a
+    * store at the very-low tier, plus the one word of memory it touches.
+    */
+  private val deploymentCost: BigInt = schedule.veryLow * 5 + GasCost.MemoryPerWord + schedule.zero
+
+  /** What reaching the creating operation costs: five pushes and a store at the
+    * very-low tier, plus one word of memory.
+    */
+  private val creationPreamble: BigInt = schedule.veryLow * 6 + GasCost.MemoryPerWord
+
+  /** Gas enough to run the deployment and fall exactly one unit short of storing
+    * the single byte it returns.
+    *
+    * Derived rather than written down, so that it stays one short whatever the
+    * schedule prices are. A literal would be a shortfall under one schedule and
+    * an affordable deposit under another, and the test would then pass while
+    * exercising the other branch.
+    */
+  private val oneShortOfDeposit: BigInt =
+    creationPreamble + schedule.createBase + deploymentCost + schedule.codeDepositPerByte - 1
+
+  /** The rules with the deposit rule settled strict.
+    *
+    * Written as a flag rather than by naming the proposal that introduced it:
+    * this spec is about what the MACHINE does with the flag, and which document
+    * supplied it is a chain configuration's business.
+    */
+  private def strictDeposit: ChainRules = EvmFixtures.rules.copy(codeDepositMustSucceed = true)
+
+  /** The table with the delegating byte in it, which is the only way it runs. */
+  private def admitting: OpcodeTable =
+    EvmFixtures.rules.table.adding(Operation(Opcode.DelegateCall, Cost.Computed))
 
   /** Six operands, not seven: this form takes no value off the stack. */
   private def delegating(target: Address, gas: Int): Seq[Int] =
@@ -135,17 +164,57 @@ class InvocationSpec extends AnyFlatSpec:
     )
     environment.world.storageAt(runner, Word.Zero)
 
-  /** The rules with EIP-150's forwarded-gas cap applied and nothing else, so the
-    * prices below are still the baseline's and only what is forwarded moves.
+  /** How much of what remains is kept back from a nested invocation under the
+    * capped rule below. The figure every network that caps has chosen.
+    *
+    * Stated here rather than read from the rule, which holds no such value: the
+    * expectations below are computed from this, so a change to what the rule
+    * actually divides by fails them instead of moving them along with it.
     */
-  private def capping: ChainRules = ChainRules.Baseline.applying(Proposals.forwardedGasCap)
+  private val Fraction: Int = 64
 
-  /** The rules with EIP-150's charge for ending an invocation applied. */
-  private def charging: ChainRules = ChainRules.Baseline.applying(Proposals.selfDestructCharge)
+  /** What a capped call has available to forward, chosen as a whole multiple of
+    * [[Fraction]] so the share kept back is exact rather than rounded.
+    *
+    * The callee stops without spending any of it, so everything forwarded comes
+    * back and the frame ends holding exactly this.
+    */
+  private val Capped: Int = 6400
 
-  /** The same, plus the proposal that makes the delegating byte run at all. */
-  private def cappingDelegation: ChainRules =
-    ChainRules.Baseline.applying(Proposals.delegateCall, Proposals.forwardedGasCap)
+  /** Gas enough to reach a capped call with [[Capped]] left to forward.
+    *
+    * Derived from the schedule rather than written down: the seven operands and
+    * the operation's own settled price are what stand between the frame's gas
+    * and the amount under test, and both move with a reprice.
+    */
+  private val cappedRun: BigInt = schedule.veryLow * 7 + schedule.callBase + Capped
+
+  /** The rules with a forwarding cap and nothing else moved, so only what is
+    * forwarded differs from the uncapped run beside it.
+    */
+  private def capping: ChainRules =
+    EvmFixtures.rules.copy(gasForwarded = GasForwarding.AllButOneSixtyFourth)
+
+  /** What ending an invocation costs under [[charging]], and the surcharge for a
+    * beneficiary this state has never held.
+    *
+    * Named here rather than taken from a network, because what is under test is
+    * that the machine charges the two fields -- not what any chain sets them to.
+    * Both differ from every other price in the schedule so a mis-read field
+    * fails rather than coinciding.
+    */
+  private val destructionCharge: BigInt = BigInt(5051)
+
+  private val destructionSurcharge: BigInt = BigInt(25053)
+
+  /** The rules with ending an invocation charged for. */
+  private def charging: ChainRules =
+    EvmFixtures.rules.copy(
+      schedule = schedule.copy(selfDestruct = destructionCharge, selfDestructNewAccount = destructionSurcharge)
+    )
+
+  /** The same cap, over a table that makes the delegating byte run at all. */
+  private def cappingDelegation: ChainRules = capping.copy(table = admitting)
 
   // ── What an invocation is given, and what it leaves behind ───────────────
 
@@ -266,15 +335,15 @@ class InvocationSpec extends AnyFlatSpec:
     holder.codes(other) = codeOf(hex(stopping))
     val (frame, _) = runIn(EvmFixtures.environment(holder), 100000, calling(0xf1, other, 1000))
     assert(
-      frame.gasLeft == BigInt(100000 - 7 * 3 - 40 - 1000 + 1000),
-      "seven pushes at 3 and a settled 40, with the forwarded gas charged and the unspent part handed back"
+      frame.gasLeft == BigInt(100000) - schedule.veryLow * 7 - schedule.callBase - schedule.zero,
+      "seven pushes and the operation's settled price, with the forwarded gas charged and all but the callee's own spend handed back"
     )
   }
 
   it should "cost more where the account named has never existed" in {
     val (frame, _) = runIn(EvmFixtures.environment(), 100000, calling(0xf1, other, 1000))
     assert(
-      frame.gasLeft == BigInt(100000 - 7 * 3 - 40 - 25000 - 1000 + 1000),
+      frame.gasLeft == BigInt(100000) - schedule.veryLow * 7 - schedule.callBase - schedule.newAccount - 1000 + 1000,
       "an account this state has never held is brought into being by the call, and that is charged for"
     )
   }
@@ -285,8 +354,10 @@ class InvocationSpec extends AnyFlatSpec:
     holder.balances(runner) = EvmFixtures.word(50)
     val (frame, _) = runIn(EvmFixtures.environment(holder), 100000, calling(0xf1, other, 1000, value = 40))
     assert(
-      frame.gasLeft == BigInt(100000 - 7 * 3 - 40 - 9000 - 1000 + 1000 + 2300),
-      "sending anything costs 9000, of which 2300 is given to the callee and comes back unspent here"
+      frame.gasLeft ==
+        BigInt(100000) - schedule.veryLow * 7 - schedule.callBase - schedule.callValue - schedule.zero +
+        schedule.callStipend,
+      "sending anything costs the value surcharge, of which the stipend goes to the callee and comes back unspent"
     )
   }
 
@@ -295,8 +366,10 @@ class InvocationSpec extends AnyFlatSpec:
     holder.codes(other) = codeOf(hex(stopping))
     val (frame, _) = runIn(EvmFixtures.environment(holder), 100000, calling(0xf1, other, 1000, value = 40))
     assert(
-      frame.gasLeft == BigInt(100000 - 7 * 3 - 40 - 9000 - 1000 + 1000 + 2300),
-      "nothing ran, so the forwarded gas comes back with the stipend, leaving 6700 of the 9000 actually spent"
+      frame.gasLeft ==
+        BigInt(100000) - schedule.veryLow * 7 - schedule.callBase - schedule.callValue - 1000 + 1000 +
+        schedule.callStipend,
+      "nothing ran, so the forwarded gas comes back with the stipend and only the rest of the surcharge is spent"
     )
   }
 
@@ -312,7 +385,7 @@ class InvocationSpec extends AnyFlatSpec:
     holder.codes(other) = codeOf(hex(halting))
     val (frame, _) = runIn(EvmFixtures.environment(holder), 100000, calling(0xf1, other, 1000))
     assert(
-      frame.gasLeft == BigInt(100000 - 7 * 3 - 40 - 1000),
+      frame.gasLeft == BigInt(100000) - schedule.veryLow * 7 - schedule.callBase - 1000,
       "there is no cheap failure at this fork, so a halted nesting keeps everything it was given"
     )
   }
@@ -358,7 +431,7 @@ class InvocationSpec extends AnyFlatSpec:
     holder.codes(other) = codeOf(hex(stopping))
     val (frame, _) = runIn(EvmFixtures.environment(holder), 100000, calling(0xf2, other, 1000))
     assert(
-      frame.gasLeft == BigInt(100000 - 7 * 3 - 40 - 1000 + 1000),
+      frame.gasLeft == BigInt(100000) - schedule.veryLow * 7 - schedule.callBase - schedule.zero,
       "the destination is the account already running, so it exists and no surcharge applies"
     )
   }
@@ -425,14 +498,14 @@ class InvocationSpec extends AnyFlatSpec:
   it should "hand the gas back where the creator cannot cover the endowment" in {
     val (frame, _) = runIn(EvmFixtures.environment(), 200000, creating(deploying, endowment = 40))
     assert(
-      frame.gasLeft == BigInt(200000 - 3 - 3 - 3 - 3 - 3 - 3 - 3 - 32000),
-      "nothing ran, so only the pushes, the word of memory and the settled 32000 were spent"
+      frame.gasLeft == BigInt(200000) - creationPreamble - schedule.createBase,
+      "nothing ran, so only the pushes, the word of memory and the creating operation's settled price were spent"
     )
   }
 
   it should "deploy nothing where the deposit is unaffordable" in {
     val environment = EvmFixtures.environment()
-    val _ = runIn(environment, 32200, creating(deploying))
+    val _ = runIn(environment, oneShortOfDeposit, creating(deploying))
     assert(
       environment.world.codeOf(ContractAddress.of(runner, UInt64.Zero)) == Bytes.Empty,
       "at this fork a deployment that cannot pay to store its code keeps the gas and stores nothing"
@@ -440,7 +513,7 @@ class InvocationSpec extends AnyFlatSpec:
   }
 
   it should "still answer with the address where the deposit is unaffordable" in {
-    val (frame, _) = runIn(EvmFixtures.environment(), 32200, creating(deploying))
+    val (frame, _) = runIn(EvmFixtures.environment(), oneShortOfDeposit, creating(deploying))
     assert(
       frame.stack.peek(0) == Right(Word.fromBytes(Bytes.fromIArray(ContractAddress.of(runner, UInt64.Zero).toBytes))),
       "the specification records no error, so the creating operation is told the address as though code were stored"
@@ -448,9 +521,9 @@ class InvocationSpec extends AnyFlatSpec:
   }
 
   it should "keep the gas where the deposit is unaffordable" in {
-    val (frame, _) = runIn(EvmFixtures.environment(), 32200, creating(deploying))
+    val (frame, _) = runIn(EvmFixtures.environment(), oneShortOfDeposit, creating(deploying))
     assert(
-      frame.gasLeft == BigInt(32200 - 12 - 9 - 32000 - 18),
+      frame.gasLeft == oneShortOfDeposit - creationPreamble - schedule.createBase - deploymentCost,
       "the charge that could not be made deducted nothing, so what the deployment did not spend comes back"
     )
   }
@@ -530,7 +603,10 @@ class InvocationSpec extends AnyFlatSpec:
 
   it should "earn its refund" in {
     val (frame, _) = runIn(EvmFixtures.environment(), 100, destroying(other))
-    assert(frame.refundCounter == BigInt(24000), "the refund is counted on the frame and never added to its gas")
+    assert(
+      frame.refundCounter == schedule.refundSelfDestruct,
+      "the refund is counted on the frame and never added to its gas"
+    )
   }
 
   it should "end the invocation" in {
@@ -540,7 +616,10 @@ class InvocationSpec extends AnyFlatSpec:
 
   it should "cost nothing" in {
     val (frame, _) = runIn(EvmFixtures.environment(), 100, destroying(other))
-    assert(frame.gasLeft == BigInt(100 - 3), "the push costs 3 and the operation itself is free at this fork")
+    assert(
+      frame.gasLeft == BigInt(100) - schedule.veryLow - schedule.selfDestruct - schedule.selfDestructNewAccount,
+      "the push is charged at its tier and the operation at the two fields the schedule names for it"
+    )
   }
 
   // A borrowed run destroys the account it was borrowed by, and then that
@@ -551,7 +630,7 @@ class InvocationSpec extends AnyFlatSpec:
     holder.codes(other) = codeOf(hex(destroying(other)))
     val program = calling(0xf2, other, 40000) ++ destroying(other)
     val (frame, _) = runIn(EvmFixtures.environment(holder), 100000, program)
-    assert(frame.refundCounter == BigInt(24000), "the refund is paid once per account per transaction")
+    assert(frame.refundCounter == schedule.refundSelfDestruct, "the refund is paid once per account per transaction")
   }
 
   it should "earn a refund for each different account registered" in {
@@ -559,7 +638,10 @@ class InvocationSpec extends AnyFlatSpec:
     holder.codes(other) = codeOf(hex(destroying(other)))
     val program = calling(0xf1, other, 40000) ++ destroying(other)
     val (frame, _) = runIn(EvmFixtures.environment(holder), 100000, program)
-    assert(frame.refundCounter == BigInt(48000), "two accounts registered is two refunds, which is the control")
+    assert(
+      frame.refundCounter == schedule.refundSelfDestruct * 2,
+      "two accounts registered is two refunds, which is the control"
+    )
   }
 
   // ── A nested invocation that borrows identity as well as code ────────────
@@ -623,18 +705,18 @@ class InvocationSpec extends AnyFlatSpec:
       outcome match
         case Right(Outcome.Halted(_)) => true
         case _                        => false,
-      "the baseline names no operation at this byte, so it must halt as any undefined byte does: " + outcome
+      "these rules name no operation at this byte, so it must halt as any undefined byte does: " + outcome
     )
   }
 
   // ── The same unaffordable deposit, under the fork that calls it a failure ─
 
   it should "undo the deployment where the deposit is unaffordable and the rule is strict" in {
-    // The exact scenario the three cases above pin at the baseline, run under
+    // The exact scenario the three cases above pin under the permissive rule, run under
     // the fork that reverses it -- so the pair states a delta rather than two
     // unrelated behaviors.
     val environment = EvmFixtures.environmentUnder(strictDeposit)
-    val _ = runIn(environment, 32200, creating(deploying))
+    val _ = runIn(environment, oneShortOfDeposit, creating(deploying))
     assert(
       !environment.world.accountExists(ContractAddress.of(runner, UInt64.Zero)),
       "the creation is undone, so not even the empty account it left behind survives"
@@ -642,18 +724,18 @@ class InvocationSpec extends AnyFlatSpec:
   }
 
   it should "answer zero where the deposit is unaffordable and the rule is strict" in {
-    val (frame, _) = runIn(EvmFixtures.environmentUnder(strictDeposit), 32200, creating(deploying))
+    val (frame, _) = runIn(EvmFixtures.environmentUnder(strictDeposit), oneShortOfDeposit, creating(deploying))
     assert(
       frame.stack.peek(0) == Right(Word.Zero),
-      "the creating operation is told it failed, where at the baseline it is told the address"
+      "the creating operation is told it failed, where under the permissive rule it is told the address"
     )
   }
 
   it should "take every remaining unit of gas where the deposit is unaffordable and the rule is strict" in {
-    val (frame, _) = runIn(EvmFixtures.environmentUnder(strictDeposit), 32200, creating(deploying))
+    val (frame, _) = runIn(EvmFixtures.environmentUnder(strictDeposit), oneShortOfDeposit, creating(deploying))
     assert(
       frame.gasLeft == BigInt(0),
-      "a halted deployment returns nothing, where at the baseline what it did not spend comes back"
+      "a halted deployment returns nothing, where under the permissive rule what it did not spend comes back"
     )
   }
 
@@ -665,20 +747,24 @@ class InvocationSpec extends AnyFlatSpec:
     // stops without spending any of it, so all 6300 comes back on top.
     val holder = world()
     holder.codes(other) = codeOf(hex(stopping))
-    val (frame, _) = runIn(EvmFixtures.environmentUnder(capping, holder), 6461, calling(0xf1, other, 60000))
-    assert(frame.gasLeft == BigInt(6400), "the caller was charged for the capped amount rather than for what it asked")
+    val (frame, _) =
+      runIn(EvmFixtures.environmentUnder(capping, holder), cappedRun, calling(0xf1, other, 60000))
+    assert(
+      frame.gasLeft == BigInt(Capped) - schedule.zero,
+      "the caller was charged for the capped amount rather than for what it asked"
+    )
   }
 
-  it should "run out of gas at the baseline, where the same request is charged in full" in {
+  it should "run out of gas uncapped, where the same request is charged in full" in {
     // The other half of the delta, and the reason the cap was proposed: before
     // it, asking for more than you hold is a frame that dies rather than one
     // that gets less.
     val holder = world()
     holder.codes(other) = codeOf(hex(stopping))
-    val (_, outcome) = runIn(EvmFixtures.environment(holder), 6461, calling(0xf1, other, 60000))
+    val (_, outcome) = runIn(EvmFixtures.environment(holder), cappedRun, calling(0xf1, other, 60000))
     assert(
       outcome == Right(Outcome.Halted(Halt.OutOfGas)),
-      "the baseline charges the whole request and cannot cover it"
+      "the uncapped rule charges the whole request and cannot cover it"
     )
   }
 
@@ -688,15 +774,27 @@ class InvocationSpec extends AnyFlatSpec:
     // forty, and the difference is not cosmetic: a shortfall would make the cap
     // negative, and a negative amount forwarded would reduce the charge below
     // what the caller holds and let an unaffordable call through.
-    val (_, outcome) = runIn(EvmFixtures.environmentUnder(capping), 25021, calling(0xf1, other, 60000))
+    val (_, outcome) =
+      runIn(
+        EvmFixtures.environmentUnder(capping),
+        schedule.veryLow * 7 + schedule.newAccount,
+        calling(0xf1, other, 60000)
+      )
     assert(outcome == Right(Outcome.Halted(Halt.OutOfGas)), "a caller that cannot pay the price was let through")
   }
 
   "DELEGATECALL under the forwarded-gas cap" should "be capped like the rest of the call family" in {
     val holder = world()
     holder.codes(other) = codeOf(hex(stopping))
-    val (frame, _) = runIn(EvmFixtures.environmentUnder(cappingDelegation, holder), 6458, delegating(other, 60000))
-    assert(frame.gasLeft == BigInt(6400), "the form that keeps its caller's identity is capped on the same terms")
+    val (frame, _) = runIn(
+      EvmFixtures.environmentUnder(cappingDelegation, holder),
+      schedule.veryLow * 6 + schedule.callBase + Capped,
+      delegating(other, 60000)
+    )
+    assert(
+      frame.gasLeft == BigInt(Capped) - schedule.zero,
+      "the form that keeps its caller's identity is capped on the same terms"
+    )
   }
 
   "CREATE under the forwarded-gas cap" should "leave the creator a sixty-fourth of what it held" in {
@@ -704,19 +802,25 @@ class InvocationSpec extends AnyFlatSpec:
     // still holds once the settled price is paid. The deployment halts, so
     // nothing comes back and what is left is exactly what was kept back.
     val (frame, _) = runIn(EvmFixtures.environmentUnder(capping), 100000, creating("0c"))
-    assert(frame.gasLeft == BigInt(1062), "a creation forwarded everything, or kept back the wrong share")
+    assert(
+      frame.gasLeft == (BigInt(100000) - creationPreamble - schedule.createBase) / Fraction,
+      "a creation forwarded everything, or kept back the wrong share"
+    )
   }
 
-  it should "leave the creator nothing at the baseline, which is what the cap changes" in {
+  it should "leave the creator nothing uncapped, which is what the cap changes" in {
     val (frame, _) = runIn(EvmFixtures.environment(), 100000, creating("0c"))
-    assert(frame.gasLeft == BigInt(0), "the baseline forwards the whole of what a creator holds")
+    assert(frame.gasLeft == BigInt(0), "the uncapped rule forwards the whole of what a creator holds")
   }
 
   "SELFDESTRUCT under EIP-150's charge" should "cost the base where the beneficiary already exists" in {
     val holder = world()
     holder.balances(other) = EvmFixtures.word(1)
     val (frame, _) = runIn(EvmFixtures.environmentUnder(charging, holder), 100000, destroying(other))
-    assert(frame.gasLeft == BigInt(100000 - 3 - 5000), "the push costs 3 and the operation is no longer free")
+    assert(
+      frame.gasLeft == BigInt(100000) - schedule.veryLow - destructionCharge,
+      "the push is charged at its tier and the operation at the charge these rules name"
+    )
   }
 
   it should "cost the base and a surcharge where the beneficiary has never existed" in {
@@ -725,7 +829,7 @@ class InvocationSpec extends AnyFlatSpec:
     // state rather than settled before it runs.
     val (frame, _) = runIn(EvmFixtures.environmentUnder(charging), 100000, destroying(other))
     assert(
-      frame.gasLeft == BigInt(100000 - 3 - 5000 - 25000),
+      frame.gasLeft == BigInt(100000) - schedule.veryLow - destructionCharge - destructionSurcharge,
       "an account this state has never held was not charged for"
     )
   }
@@ -734,10 +838,14 @@ class InvocationSpec extends AnyFlatSpec:
     // Both cases above fund the frame far above the maximum charge, so the
     // boundary this fork creates is never crossed by either. Before it, the
     // operation was free and could not run out of gas at all.
-    val (_, outcome) = runIn(EvmFixtures.environmentUnder(charging), 3 + 5000 + 25000 - 1, destroying(other))
+    val (_, outcome) = runIn(
+      EvmFixtures.environmentUnder(charging),
+      schedule.veryLow + destructionCharge + destructionSurcharge - 1,
+      destroying(other)
+    )
     assert(
       outcome == Right(Outcome.Halted(Halt.OutOfGas)),
-      "an operation that costs 30000 was affordable to a frame holding less"
+      "the whole charge was affordable to a frame holding one unit less than it"
     )
   }
 

@@ -1,9 +1,21 @@
-package org.fukuii.evm
+package org.fukuii.chainspec.networks
+
+import org.fukuii.evm.{Cost, Opcode, OpcodeTable, Operation}
 
 import org.scalatest.propspec.AnyPropSpec
 import org.scalatest.prop.TableDrivenPropertyChecks
 
-/** Every operation the baseline table holds, and what it charges.
+/** Every operation Ethereum launched with, and what it charged.
+  *
+  * ==A certification of this NETWORK's prices, which is why it is not with the
+  * machine==
+  *
+  * The figures below are one network's genesis configuration read against the
+  * specification that defined it. They say nothing about the machine: an
+  * interpreter that ignored its schedule entirely would still satisfy every one
+  * of them, because the table under test is built from the very values being
+  * asserted. What the MACHINE does with a schedule is certified in
+  * `modules/evm` against prices chosen to be no network's.
   *
   * ==Where the expected values come from==
   *
@@ -26,9 +38,9 @@ import org.scalatest.prop.TableDrivenPropertyChecks
   * fork is nothing, and `InvocationSpec` is where that is stated, since a
   * conditional charge is only observable by running it.
   */
-class OpcodeTableSpec extends AnyPropSpec with TableDrivenPropertyChecks:
+class EthereumGasScheduleSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
-  private val table = OpcodeTable.baseline(GasSchedule.Baseline)
+  private val table = Ethereum.frontier.evm.table
 
   private val expected = Table(
     ("opcode", "cost"),
@@ -163,7 +175,7 @@ class OpcodeTableSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     (Opcode.SelfDestruct, Cost.Computed)
   )
 
-  property("the baseline table prices every operation as the specification does") {
+  property("Ethereum's genesis table prices every operation as the specification does") {
     forAll(expected) { (opcode: Opcode, cost: Cost) =>
       assert(
         table.operationAt(opcode.code) == Some(Operation(opcode, cost)),
@@ -172,16 +184,16 @@ class OpcodeTableSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     }
   }
 
-  property("the baseline table holds the operations the machine started with and no other byte") {
+  property("Ethereum's genesis table holds the operations it launched with and no other byte") {
     // 129, counted, against a vocabulary of 130. **The gap is the point**: the
-    // enum spans forks and the baseline selects from it, so an operation a later
-    // proposal adds must be absent here or its delta would be unobservable --
-    // the fork correct, the seam having proved nothing.
+    // enum spans forks and this network's genesis table selects from it, so an
+    // operation a later proposal adds must be absent here or its delta would be
+    // unobservable -- the fork correct, the seam having proved nothing.
     //
     // Pinned as a NUMBER rather than against the enum, deliberately. Comparing
     // the two would make this assertion restate the expression it is checking,
-    // and an operation added to the enum and forgotten in the baseline's own
-    // exclusion would then join the baseline in silence. A counted figure fails.
+    // and an operation added to the enum and forgotten in this table's own
+    // exclusion would then join it in silence. A counted figure fails.
     assert(
       table.size == 129 && !table.contains(Opcode.DelegateCall),
       "a byte outside this fork's set must run nothing, and every operation in it must run"
@@ -214,7 +226,7 @@ class OpcodeTableSpec extends AnyPropSpec with TableDrivenPropertyChecks:
   }
 
   property("a schedule change moves every operation priced from what changed") {
-    val dearer = OpcodeTable.baseline(GasSchedule.Baseline.copy(veryLow = BigInt(30)))
+    val dearer = OpcodeTable.original(Ethereum.genesisPrices.copy(veryLow = BigInt(30)))
     assert(
       dearer.operationAt(Opcode.Add.code) == Some(Operation(Opcode.Add, Cost.Fixed(BigInt(30)))) &&
         dearer.operationAt(Opcode.Mul.code) == table.operationAt(Opcode.Mul.code),

@@ -1,7 +1,11 @@
 package org.fukuii.evm
 
 import org.fukuii.bytes.{Address, Bytes, Hash}
-import org.fukuii.crypto.{Keccak256, Ripemd160, Secp256k1, Sha256, Signature}
+// The two digests are aliased because the precompiles that answer with them
+// carry the ecosystem's names for the ENTRIES -- `Sha256`, `Ripemd160` -- and a
+// nested class would otherwise shadow the primitive its own body calls. The
+// alias names what each object is rather than renaming it: a digest.
+import org.fukuii.crypto.{Keccak256, Ripemd160 as Ripemd160Digest, Secp256k1, Sha256 as Sha256Digest, Signature}
 
 /** A contract the machine runs natively rather than by interpreting code.
   *
@@ -36,15 +40,33 @@ trait Precompile:
   /** The answer, which is empty where the input cannot be made sense of. */
   def run(input: Bytes): Bytes
 
-/** The precompiles the machine started with.
+/** The natives this machine can run, each priced by whoever builds the set.
   *
-  * Each is a factory taking its own prices rather than reading them, so that a
-  * repricing is an argument at the point [[PrecompileSet.baseline]] builds the
-  * entry rather than an edit here. That is how the field expresses one:
+  * ==What is here is the implementation; WHICH of them a chain runs is not==
+  *
+  * These four are what the machine knows how to compute. A chain configuration
+  * decides which of them it places, at which addresses, at which prices -- and
+  * that composition is not here, because it is a network's and this module is
+  * the machine's. [[PrecompileSet.Empty]] is what such a composition is built
+  * over.
+  *
+  * Each takes its own prices as constructor arguments rather than reading them
+  * from anywhere, so that a repricing is an argument at the point the entry is
+  * built rather than an edit here. That is how the field expresses one:
   * go-ethereum swaps the registry's entry for a differently-priced type, and
   * `ethereumclassic/core-geth` -- which serves several networks from one
   * binary, as this project intends to -- does the same by reassigning the map
   * key.
+  *
+  * ==Case classes, so that two sets built twice can be compared==
+  *
+  * A precompile is priced data plus a computation the address already implies,
+  * so structural equality is the right equality for one: two entries agree when
+  * they are the same native at the same prices. Written as anonymous classes
+  * these compared by reference, which made [[PrecompileSet]] -- and through it
+  * [[ChainRules]] -- answer *different* for two identical configurations built
+  * separately. [[PrecompileSet.equals]] records what that costs and why the
+  * residual is safe.
   *
   * Prices, addresses and failure behavior are `ethereum/execution-specs` @
   * `ccaaaba58`, `forks/frontier/vm/precompiled_contracts/` and
@@ -75,25 +97,26 @@ object Precompile:
     * Flat-priced, because the input it reads is a fixed width however much was
     * supplied.
     */
-  def ecRecover(gas: BigInt): Precompile = new Precompile:
+  final case class EcRecover(gas: BigInt) extends Precompile:
     def gasFor(input: Bytes): BigInt = gas
     def run(input: Bytes): Bytes = signerOf(input)
 
-  def sha256(base: BigInt, perWord: BigInt): Precompile = new Precompile:
+  /** The SHA-256 digest of the input. */
+  final case class Sha256(base: BigInt, perWord: BigInt) extends Precompile:
     def gasFor(input: Bytes): BigInt = costPerWord(base, perWord, input)
-    def run(input: Bytes): Bytes = Bytes.fromIArray(Sha256.hash(input.toIArray).toBytes)
+    def run(input: Bytes): Bytes = Bytes.fromIArray(Sha256Digest.hash(input.toIArray).toBytes)
 
   /** The RIPEMD-160 digest, left-padded into a whole word.
     *
     * The digest is 20 bytes and the answer is 32, so the padding is part of the
     * contract rather than a convenience for the caller.
     */
-  def ripemd160(base: BigInt, perWord: BigInt): Precompile = new Precompile:
+  final case class Ripemd160(base: BigInt, perWord: BigInt) extends Precompile:
     def gasFor(input: Bytes): BigInt = costPerWord(base, perWord, input)
-    def run(input: Bytes): Bytes = leftPadded(Ripemd160.hash(input.toIArray))
+    def run(input: Bytes): Bytes = leftPadded(Ripemd160Digest.hash(input.toIArray))
 
   /** The input, unchanged. */
-  def identity(base: BigInt, perWord: BigInt): Precompile = new Precompile:
+  final case class Identity(base: BigInt, perWord: BigInt) extends Precompile:
     def gasFor(input: Bytes): BigInt = costPerWord(base, perWord, input)
     def run(input: Bytes): Bytes = input
 

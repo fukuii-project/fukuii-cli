@@ -1,8 +1,13 @@
-package org.fukuii.evm.fixtures
+package org.fukuii.chainspec.certification
+
+import org.fukuii.evm.fixtures.*
 
 import java.nio.file.Path
 import scala.util.control.NonFatal
 
+import org.fukuii.bytes.UInt64
+import org.fukuii.chainspec.{Network, Schedule}
+import org.fukuii.chainspec.networks.{EthereumClassicMainnet, EthereumMainnet, KnownNetworks}
 import org.fukuii.evm.ChainRules
 
 /** The published corpora this layer is certified against, run once and reported
@@ -24,12 +29,30 @@ import org.fukuii.evm.ChainRules
   */
 object CertificationCorpora:
 
-  /** Every report, or nothing at all when the corpus root is not configured.
+  /** Every report, or nothing at all when the harness cannot be assembled.
     *
     * The distinction is the point: a harness that answered with empty reports
-    * would be indistinguishable from one that found nothing wrong.
+    * would be indistinguishable from one that found nothing wrong. `None` is
+    * caught loudly by the first case in `CertificationCorporaSpec`, which is
+    * why every step below may collapse into it rather than reporting its own
+    * failure -- a broken registry is separately and loudly asserted by
+    * `KnownNetworksSpec`, so nothing here has to restate that diagnosis.
+    *
+    * ==The rules come from the registry, not from a named composition==
+    *
+    * Each corpus below is bound to a NETWORK and a HEIGHT, and what runs is
+    * whatever that network's schedule says is in force there. Naming a
+    * composition instead would certify the compositions and say nothing about
+    * the schedule, because a composition is right by construction while an
+    * activation is an external fact nothing here can derive.
     */
-  lazy val reports: Option[Vector[CorpusReport]] = FixtureCorpus.root.map(assemble)
+  lazy val reports: Option[Vector[CorpusReport]] =
+    for
+      root <- FixtureCorpus.root
+      registry <- KnownNetworks.registry.toOption
+      ethereum <- registry.at(EthereumMainnet.network.chainId)
+      classic <- registry.at(EthereumClassicMainnet.network.chainId)
+    yield assemble(root, ethereum, classic)
 
   /** The legacy hand-written interpreter tier: an invocation stated directly,
     * with no transaction around it.
@@ -80,11 +103,93 @@ object CertificationCorpora:
     */
   val GeneratedTangerineWhistleCorpus: String = "execution-specs-fixtures state_tests/for_tangerinewhistle"
 
-  private def assemble(root: Path): Vector[CorpusReport] =
+  /** The same directory as the tier above, resolved through the other network's
+    * schedule instead.
+    *
+    * ==One corpus, two schedules, and that is the whole claim==
+    *
+    * Both networks adopted EIP-150 unaltered, so a case filled for that fork is
+    * a case either of them must satisfy. What differs is WHERE each switched it
+    * on -- block 2,463,000 and block 2,500,000 -- so running one corpus through
+    * both schedules at each network's own height exercises the two activations
+    * against material neither of them can influence.
+    *
+    * **This is the only corpus whose passing depends on Ethereum Classic's
+    * activation being right.** Move that block and every case here is resolved
+    * under the rules of the fork before it.
+    */
+  val ClassicTangerineWhistleCorpus: String =
+    "execution-specs-fixtures state_tests/for_tangerinewhistle through Ethereum Classic"
+
+  /** The height at which each corpus asks its network what is in force.
+    *
+    * ==These figures are the harness's, and duplicating the schedule's is the
+    * mechanism rather than an oversight==
+    *
+    * A schedule states where a fork begins. These state where the harness
+    * BELIEVES it begins, which is what makes the two comparable: the corpus is
+    * filled for a named fork, it is run at the height that fork is supposed to
+    * start at, and the schedule answers with whatever it actually holds there.
+    * When the two disagree the corpus is resolved under a neighbouring fork's
+    * rules and diverges.
+    *
+    * **So do not replace these by reading the activation off the schedule.**
+    * That closes the loop: the harness would ask the schedule where the fork is
+    * and then ask the same schedule what runs there, which is true of any
+    * schedule whatsoever and certifies nothing.
+    *
+    * Each figure is cited on the schedule entry that is supposed to match it.
+    */
+  private[certification] val EthereumFrontierStarts: Long = 0L
+  private[certification] val EthereumHomesteadStarts: Long = 1150000L
+  private[certification] val EthereumTangerineWhistleStarts: Long = 2463000L
+  private[certification] val ClassicGasRepriceStarts: Long = 2500000L
+
+  /** Every network-and-height pair the corpora above are resolved at.
+    *
+    * Built from the same four constants [[assemble]] uses, so a figure moved
+    * for one is moved for both -- which is the intent, because the figure is
+    * the thing under test. What this does NOT close is a corpus added later at
+    * a fifth height and never listed here; the count property beside the census
+    * is what makes adding a corpus a visible act.
+    */
+  private[certification] val resolutionPoints: Vector[(Network, Long)] =
     Vector(
-      vmReport(FixtureCorpus.legacy(root).resolve("VMTests")),
-      stateReport(LegacyFrontierStateCorpus, FixtureCorpus.legacy(root).resolve("GeneralStateTests")),
-      stateReport(GeneratedStateCorpus, FixtureCorpus.generated(root).resolve("state_tests/for_frontier")),
+      EthereumMainnet.network -> EthereumFrontierStarts,
+      EthereumMainnet.network -> EthereumHomesteadStarts,
+      EthereumMainnet.network -> EthereumTangerineWhistleStarts,
+      EthereumClassicMainnet.network -> ClassicGasRepriceStarts
+    )
+
+  /** What a network runs at a height, taken from that network's schedule.
+    *
+    * The whole of the indirection between a corpus and the rules it runs under.
+    * Nothing downstream names a composition, so every corpus below is certifying
+    * an activation as well as a machine.
+    */
+  private def rulesAt(schedule: Schedule, height: Long): ChainRules =
+    schedule.at(UInt64.fromBits(height), UInt64.Zero).evm
+
+  private def assemble(root: Path, ethereum: Schedule, classic: Schedule): Vector[CorpusReport] =
+    val frontier = rulesAt(ethereum, EthereumFrontierStarts)
+    val homestead = rulesAt(ethereum, EthereumHomesteadStarts)
+
+    // Bound once, because the two tiers below reach these rules through corpora
+    // that name the fork differently -- `TangerineWhistle` in the generated
+    // tier, `EIP150` in the legacy one. Two resolutions would let the two drift
+    // into certifying different machines under one section's name.
+    val tangerineWhistle = rulesAt(ethereum, EthereumTangerineWhistleStarts)
+
+    val gasReprice = rulesAt(classic, ClassicGasRepriceStarts)
+
+    Vector(
+      vmReport(FixtureCorpus.legacy(root).resolve("VMTests"), frontier),
+      stateReport(LegacyFrontierStateCorpus, FixtureCorpus.legacy(root).resolve("GeneralStateTests"), rules = frontier),
+      stateReport(
+        GeneratedStateCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_frontier"),
+        rules = frontier
+      ),
       stateReport(
         LegacyEip150StateCorpus,
         FixtureCorpus.legacy(root).resolve("GeneralStateTests"),
@@ -95,24 +200,21 @@ object CertificationCorpora:
         GeneratedHomesteadCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_homestead"),
         fork = "Homestead",
-        rules = ChainRules.Homestead.copy(precompiles = VmFixtureRunner.precompiles)
+        rules = homestead
       ),
       stateReport(
         GeneratedTangerineWhistleCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_tangerinewhistle"),
         fork = "TangerineWhistle",
         rules = tangerineWhistle
+      ),
+      stateReport(
+        ClassicTangerineWhistleCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_tangerinewhistle"),
+        fork = "TangerineWhistle",
+        rules = gasReprice
       )
     )
-
-  /** The rules the two tiers above are certified under, bound once because they
-    * are the same rules reached through two corpora that name this fork
-    * differently -- `TangerineWhistle` in the generated tier, `EIP150` in the
-    * legacy one. Two bindings would let the two drift into certifying different
-    * machines under one section's name.
-    */
-  private val tangerineWhistle: ChainRules =
-    ChainRules.TangerineWhistle.copy(precompiles = VmFixtureRunner.precompiles)
 
   /** What running one case established, with a case that THREW recorded as a
     * divergence rather than as a skip.
@@ -139,7 +241,7 @@ object CertificationCorpora:
     * `OutOfMemoryError` should stop the run rather than be recorded as a wrong
     * answer.
     */
-  private[fixtures] def outcomeOf(name: String)(running: => Verdict): CaseOutcome =
+  private[certification] def outcomeOf(name: String)(running: => Verdict): CaseOutcome =
     val verdict =
       try running
       catch
@@ -147,7 +249,7 @@ object CertificationCorpora:
           Verdict.Diverged(Vector("threw " + cause.getClass.getName + ": " + cause.getMessage))
     CaseOutcome(name, verdict)
 
-  private def vmReport(directory: Path): CorpusReport =
+  private def vmReport(directory: Path, rules: ChainRules): CorpusReport =
     val files = FixtureCorpus.jsonFilesUnder(directory)
     val outcomes = files.flatMap { file =>
       FixtureCorpus
@@ -156,7 +258,7 @@ object CertificationCorpora:
         case Left(error) =>
           Vector(CaseOutcome(file.getFileName.toString, Verdict.Skipped(SkipReason.Undecodable(error))))
         case Right(fixtures) =>
-          fixtures.map(fixture => outcomeOf(fixture.name)(VmFixtureRunner.run(fixture)))
+          fixtures.map(fixture => outcomeOf(fixture.name)(VmFixtureRunner.run(fixture, rules)))
     }
     CorpusReport(LegacyVmCorpus, files.length, outcomes)
 
@@ -164,7 +266,7 @@ object CertificationCorpora:
       name: String,
       directory: Path,
       fork: String = StateFixture.Fork,
-      rules: ChainRules = StateFixtureRunner.Baseline
+      rules: ChainRules
   ): CorpusReport =
     val files = FixtureCorpus.jsonFilesUnder(directory)
     val outcomes = files.flatMap { file =>

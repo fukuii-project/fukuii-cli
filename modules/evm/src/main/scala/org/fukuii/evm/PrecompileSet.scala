@@ -16,11 +16,14 @@ import org.fukuii.bytes.Address
   * its own or take one away. `ethereumclassic/core-geth` -- which serves
   * several networks from one binary, as this project intends to -- is the
   * worked case: `core/vm/contracts.go` starts from a `basePrecompiledContracts`
-  * map holding exactly the entries [[baseline]] holds, then merges per-proposal
-  * additions over it, and expresses a repricing by reassigning the key rather
-  * than by editing the base. `ethereum-optimism/op-geth` carries exactly one
-  * chain-specific file under `core/vm`, and that file is its precompile
-  * registry -- so a network's divergence lands here rather than in the machine.
+  * map holding exactly the four this project's chain configurations place, then
+  * merges per-proposal additions over it, and expresses a repricing by
+  * reassigning the key rather than by editing the base. That base map is a
+  * NETWORK's, not the machine's, which is why the equivalent composition is not
+  * in this module. `ethereum-optimism/op-geth` @ `86be6726f` carries its
+  * chain-specific tokens under `core/vm` in one file, `contracts.go`, which is
+  * the precompile registry -- so a network's divergence lands here rather than
+  * in the machine.
   *
   * ==Changes come in three kinds, and only two need a combinator==
   *
@@ -53,12 +56,46 @@ final class PrecompileSet private (private val entries: Map[Address, Precompile]
     */
   def removing(address: Address): PrecompileSet = new PrecompileSet(entries.removed(address))
 
+  /** Whether two sets place the same natives at the same addresses at the same
+    * prices.
+    *
+    * ==Why a class with no equality was not good enough==
+    *
+    * Two networks running the same rules is a question this project has to
+    * answer -- [[ChainRules]] is compared as a whole to establish it -- and
+    * every member of that record has to answer by value for the whole to. This
+    * was one of the two that did not, so two identical configurations built
+    * separately compared unequal while two references to one build compared
+    * equal, which made the answer depend on how a test happened to be written
+    * rather than on the rules.
+    *
+    * ==The residual, and why its direction is the safe one==
+    *
+    * [[Precompile]] is a trait and stays open, so a chain supplying its own
+    * native as an anonymous class contributes reference equality to this
+    * comparison. Such a set therefore compares unequal to an otherwise
+    * identical one built separately.
+    *
+    * **That is a false negative and it cannot be a false positive.** A
+    * differently-priced entry is a different value and never compares equal, so
+    * this can refuse to confirm an agreement that exists but can never assert
+    * one that does not. For a comparison that decides whether two chains run
+    * the same rules, erring toward *different* is the direction to err in, and
+    * the failure is a test going red rather than a claim going unchecked.
+    */
+  override def equals(other: Any): Boolean = other match
+    case that: PrecompileSet => entries == that.entries
+    case _                   => false
+
+  override def hashCode: Int = entries.hashCode
+
 object PrecompileSet:
 
   /** A chain that runs no precompile at all.
     *
-    * Not a state any network is in, and it is what [[baseline]] is a change to
-    * -- so a set is always built up rather than cut down from a hardcoded four.
+    * Not a state any network is in, and it is what every chain configuration's
+    * set is a change to -- so a set is always built up rather than cut down
+    * from a hardcoded four.
     */
   val Empty: PrecompileSet = new PrecompileSet(Map.empty)
 
@@ -73,22 +110,6 @@ object PrecompileSet:
 
   /** The input, unchanged. */
   val Identity: Address = addressOf(0x04)
-
-  /** The precompiles the machine started with, priced by `schedule`.
-    *
-    * Named for what it is rather than for the fork that shipped it, following
-    * [[OpcodeTable.baseline]] and the client both follow: a baseline shared by
-    * every network this machine serves cannot carry one network's name for it.
-    */
-  def baseline(schedule: GasSchedule): PrecompileSet =
-    Empty
-      .adding(EcRecover, Precompile.ecRecover(schedule.precompileEcRecover))
-      .adding(Sha256, Precompile.sha256(schedule.precompileSha256Base, schedule.precompileSha256PerWord))
-      .adding(
-        Ripemd160,
-        Precompile.ripemd160(schedule.precompileRipemd160Base, schedule.precompileRipemd160PerWord)
-      )
-      .adding(Identity, Precompile.identity(schedule.precompileIdentityBase, schedule.precompileIdentityPerWord))
 
   /** The address a low number names, which is how the field writes these: a
     * precompile sits at the low end of the space and everything above it is

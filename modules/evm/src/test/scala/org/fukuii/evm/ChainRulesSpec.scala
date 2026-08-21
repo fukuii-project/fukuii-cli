@@ -2,21 +2,25 @@ package org.fukuii.evm
 
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** The fork seam's own properties, tested before a fork is expressed through it.
+/** The fork seam's own properties, and the comparability the record now carries.
   *
-  * A baseline with no delta over it has never been exercised as a baseline, so
-  * everything the seam claims is claimed by a single instantiation. These are
-  * the claims themselves, each stated as something a wrong delta would break --
-  * not as a description of what the code does.
+  * ==Deltas written HERE, never taken from a chain configuration==
   *
-  * **The load-bearing one is that a proposal leaves alone what it does not
-  * name.** A delta that rewrites the baseline is the seam failing, and it fails
-  * quietly: the fork it produces is still correct, and the next fork derived
-  * from the same baseline is not.
+  * The deltas below change one field each and are made up for the purpose. That
+  * is deliberate and it is what makes this a machine spec: what a real proposal
+  * does is a chain configuration's claim and is certified where that
+  * configuration lives, while what `applying` does with ANY delta is the
+  * machine's and is certified here. A spec that reached for a real proposal
+  * would be asserting both at once and could not fail for only one reason.
+  *
+  * **The load-bearing claim is that a delta leaves alone what it does not
+  * name.** A delta that rebuilds what it was asked to leave alone is the seam
+  * failing, and it fails quietly: the fork it produces is still correct, and the
+  * next fork derived from the same rules is not.
   */
 class ChainRulesSpec extends AnyFlatSpec:
 
-  private val base: ChainRules = ChainRules.Baseline
+  private val base: ChainRules = EvmFixtures.rules
 
   /** Changes one price and nothing else, so what survives is observable. */
   private val repricing: Proposal =
@@ -26,29 +30,22 @@ class ChainRulesSpec extends AnyFlatSpec:
   private val depositRule: Proposal = _.copy(codeDepositMustSucceed = true)
 
   private val secondRepricing: Proposal =
-    rules => rules.copy(schedule = rules.schedule.copy(transactionBase = BigInt(21000)))
+    rules => rules.copy(schedule = rules.schedule.copy(transactionBase = EvmFixtures.schedule.transactionBase))
 
-  /** What a table charges for `opcode` before it runs, where that is settled.
-    *
-    * An operation that works out its own price has no number here to compare,
-    * so absence and a figure are different answers rather than a missing one.
-    */
-  private def settledCost(table: OpcodeTable, opcode: Opcode): Option[BigInt] =
-    table.operationAt(opcode.code).collect { case Operation(_, Cost.Fixed(gas)) => gas }
-
-  "the baseline" should "leave a creation that cannot pay for its code holding no code rather than failing" in
-    // The rule the machine started with, pinned here so a fork that reverses it
-    // has something to reverse. A baseline that already carried the later
-    // behavior would make its delta unobservable.
+  "the rules a spec starts from" should "leave a creation that cannot pay for its code holding no code rather than failing" in
+    // Pinned here so a delta that reverses it has something to reverse. Rules
+    // that already carried the later behavior would make that delta
+    // unobservable.
     assert(!base.codeDepositMustSucceed)
 
   "applying" should "change nothing when given no proposal" in
     assert(base.applying() == base)
 
   it should "leave every field the proposal does not name as the same value, not an equal copy" in {
-    // `eq`, not `==`. An equal copy would pass a value comparison and still mean
-    // the seam had rebuilt what it was asked to leave alone -- which is the
-    // difference between a delta and a fork of the baseline.
+    // `eq`, not `==`. Both members now carry value equality, so an equal copy
+    // WOULD pass a value comparison -- and that is exactly the state this
+    // asserts against: the seam is meant to hand back what it was given, not to
+    // rebuild something indistinguishable from it.
     val changed = base.applying(repricing)
     assert(
       (changed.table eq base.table) && (changed.precompiles eq base.precompiles),
@@ -57,12 +54,13 @@ class ChainRulesSpec extends AnyFlatSpec:
   }
 
   it should "leave the rules it was applied to unaltered" in {
-    // The baseline is a shared value every fork derives from, so a proposal that
-    // mutated it would corrupt every other fork rather than only its own.
+    // A starting configuration is a shared value every fork derives from, so a
+    // delta that mutated it would corrupt every other fork rather than only its
+    // own.
     val _ = base.applying(repricing, depositRule)
     assert(
-      base.schedule.transactionBase == BigInt(21000) && !base.codeDepositMustSucceed,
-      "applying a proposal altered the baseline it derived from"
+      base.schedule.transactionBase == EvmFixtures.schedule.transactionBase && !base.codeDepositMustSucceed,
+      "applying a proposal altered the rules it derived from"
     )
   }
 
@@ -75,121 +73,134 @@ class ChainRulesSpec extends AnyFlatSpec:
   it should "apply proposals in the order given" in
     // Two proposals touching one price compose to whichever ran last, so the
     // order is the caller's to state rather than the seam's to sort.
-    assert(base.applying(repricing, secondRepricing).schedule.transactionBase == BigInt(21000))
+    assert(base.applying(repricing, secondRepricing).schedule.transactionBase == EvmFixtures.schedule.transactionBase)
 
   it should "compose to a different result when that order is reversed" in
     assert(base.applying(secondRepricing, repricing).schedule.transactionBase == BigInt(53000))
 
-  "stateReadRepricing" should "move every price it names" in {
-    val repriced = base.applying(Proposals.stateReadRepricing).schedule
-    assert(
-      repriced.storageLoad == BigInt(200) && repriced.balance == BigInt(400) &&
-        repriced.externalBase == BigInt(700) && repriced.callBase == BigInt(700),
-      "a price the proposal names did not move"
-    )
-  }
-
-  it should "reprice the table entry of every operation the baseline priced from the schedule" in {
-    // The half of this delta that is invisible from the schedule. Three of the
-    // four fields were copied into a table entry when the baseline was built, so
-    // a proposal that moved the schedule alone would leave these three charging
-    // what they charged before with nothing in the schedule to show it.
-    val table = base.applying(Proposals.stateReadRepricing).table
-    assert(
-      settledCost(table, Opcode.SLoad).contains(BigInt(200)) &&
-        settledCost(table, Opcode.Balance).contains(BigInt(400)) &&
-        settledCost(table, Opcode.ExtCodeSize).contains(BigInt(700)),
-      "an operation charged through the table kept its baseline price"
-    )
-  }
-
-  it should "leave every entry it does not name exactly as the baseline holds it" in {
-    // Stated as the set that moved rather than as spot checks, so an entry
-    // reached by accident fails as loudly as one missed on purpose.
-    val named = Set(Opcode.SLoad, Opcode.Balance, Opcode.ExtCodeSize)
-    val table = base.applying(Proposals.stateReadRepricing).table
-    val moved =
-      Opcode.values.toSet.filter(opcode => table.operationAt(opcode.code) != base.table.operationAt(opcode.code))
-    assert(moved == named, s"the entries that moved were ${moved.toString} rather than ${named.toString}")
-  }
-
-  it should "leave the precompile prices as the same value, not an equal copy" in
-    // The precompiles are built from the schedule too, so a proposal that
-    // rebuilt them from the repriced one would look correct and would have
-    // rewritten what it does not name.
-    assert(
-      base.applying(Proposals.stateReadRepricing).precompiles eq base.precompiles,
-      "a repricing of operations rebuilt the precompile set"
-    )
-
-  "the baseline's forwarding rule" should "hand over the whole of a request larger than what the caller has left" in
+  "an uncapped forwarding rule" should "hand over the whole of a request larger than what the caller has left" in
     // The trap the two-argument shape exists to avoid, pinned as a claim so it
     // cannot be simplified away. A rule written to take only what remains would
     // return the smaller of the two here, and a caller asking for more than it
     // holds would quietly succeed with less rather than running out of gas --
-    // a different state root at every fork before the cap arrives.
+    // a different state root at every fork before a cap arrives.
     assert(
-      base.gasForwarded(BigInt(100), BigInt(1000)) == BigInt(1000),
-      "the baseline compared the request against what remains, which only a cap may do"
+      GasForwarding.Whole.forward(BigInt(100), BigInt(1000)) == BigInt(1000),
+      "the uncapped rule compared the request against what remains, which only a cap may do"
     )
 
-  "forwardedGasCap" should "keep back one sixty-fourth of what remains" in
+  "a fractional cap" should "keep back one part of what remains" in
     assert(
-      base.applying(Proposals.forwardedGasCap).gasForwarded(BigInt(6400), BigInt(1000000)) == BigInt(6300),
+      GasForwarding.AllButOneSixtyFourth.forward(BigInt(6400), BigInt(1000000)) == BigInt(6300),
       "a request above the cap is met with the cap"
     )
 
   it should "hand over what was asked for where that is under the cap" in
     assert(
-      base.applying(Proposals.forwardedGasCap).gasForwarded(BigInt(6400), BigInt(50)) == BigInt(50),
+      GasForwarding.AllButOneSixtyFourth.forward(BigInt(6400), BigInt(50)) == BigInt(50),
       "the cap is a ceiling on the request rather than a replacement for it"
     )
 
-  it should "keep back nothing where fewer than sixty-four units remain" in
-    // The division floors, so the sixty-fourth of a small remainder is nothing
-    // and the caller keeps nothing back. Pinned because rounding the other way
-    // would be invisible on every figure large enough to look realistic.
+  it should "keep back nothing where fewer units remain than the divisor" in
+    // The division floors, so the fraction of a small remainder is nothing and
+    // the caller keeps nothing back. Pinned because rounding the other way would
+    // be invisible on every figure large enough to look realistic.
     assert(
-      base.applying(Proposals.forwardedGasCap).gasForwarded(BigInt(63), BigInt(1000)) == BigInt(63),
-      "the sixty-fourth kept back is floored, not rounded"
+      GasForwarding.AllButOneSixtyFourth.forward(BigInt(63), BigInt(1000)) == BigInt(63),
+      "the share kept back is floored, not rounded"
     )
 
-  it should "leave the table, the schedule and the precompiles as the same values" in {
-    val changed = base.applying(Proposals.forwardedGasCap)
+  it should "compare by which rule it is, not by identity" in
+    // The whole reason this member is data rather than a function. Two lambdas
+    // computing the same thing are not answerably equal, so while it was one no
+    // caller could ask whether two networks forwarded gas alike.
     assert(
-      (changed.table eq base.table) && (changed.schedule eq base.schedule) &&
-        (changed.precompiles eq base.precompiles),
-      "a rule about forwarding rebuilt something it does not name"
+      GasForwarding.AllButOneSixtyFourth != GasForwarding.Whole &&
+        GasForwarding.AllButOneSixtyFourth == GasForwarding.AllButOneSixtyFourth,
+      "a forwarding rule did not compare by what it does"
+    )
+
+  "two rule sets" should "compare equal when they were built separately from the same parts" in {
+    // The capability the whole record was made comparable for: *do these two
+    // networks run the same rules* has to be answerable without the answer
+    // depending on whether a caller built one value or two. Every member is
+    // rebuilt here rather than shared, so nothing in this comparison is
+    // reference identity.
+    val rebuilt = ChainRules(
+      table = OpcodeTable.original(EvmFixtures.schedule),
+      schedule = EvmFixtures.schedule,
+      precompiles = EvmFixtures.precompiles,
+      gasForwarded = GasForwarding.Whole,
+      codeDepositMustSucceed = false,
+      signatureSMustBeLow = false
+    )
+    assert(rebuilt == base, "two identical configurations built separately compared as different rules")
+  }
+
+  it should "compare unequal when a single price differs" in
+    // The other direction, without which the claim above would be satisfied by
+    // an equality that answered true for everything.
+    assert(
+      base.applying(repricing) != base,
+      "a rule set differing by one price compared equal"
+    )
+
+  it should "give two separately built tables one hash as well as one equality" in {
+    // `equals` and `hashCode` are hand-written on the table and nothing else
+    // pins them together. `ChainRules` is a case class whose generated hash
+    // chains through this member, so an edit touching one override and not the
+    // other breaks every Set and Map keyed on a rule set -- silently, because
+    // equality would still answer correctly.
+    val rebuilt = OpcodeTable.original(EvmFixtures.schedule)
+    assert(
+      (rebuilt ne base.table) && rebuilt == base.table && rebuilt.hashCode == base.table.hashCode,
+      "two tables that compare equal hash differently, so the equality contract is broken"
     )
   }
 
-  "selfDestructCharge" should "leave the refund exactly where the baseline set it" in
-    // The proposal that charges for this operation does not touch what it earns
-    // back, and a delta that moved both would be wrong on every network from
-    // this fork onward. Pinned because the two sit beside each other and the
-    // specification's own diff at this fork touches the refund's line without
-    // changing its value.
+  it should "give two separately built precompile sets one hash as well as one equality" in {
+    // The other hand-written pair, for the same reason and with the same
+    // failure mode. Rebuilt rather than reused: the fixture's set is the very
+    // one this rule set holds, so comparing it against itself would pass
+    // whatever either override did.
+    val rebuilt = PrecompileSet.Empty
+      .adding(PrecompileSet.EcRecover, Precompile.EcRecover(EvmFixtures.schedule.precompileEcRecover))
+      .adding(
+        PrecompileSet.Sha256,
+        Precompile.Sha256(EvmFixtures.schedule.precompileSha256Base, EvmFixtures.schedule.precompileSha256PerWord)
+      )
+      .adding(
+        PrecompileSet.Ripemd160,
+        Precompile.Ripemd160(
+          EvmFixtures.schedule.precompileRipemd160Base,
+          EvmFixtures.schedule.precompileRipemd160PerWord
+        )
+      )
+      .adding(
+        PrecompileSet.Identity,
+        Precompile.Identity(EvmFixtures.schedule.precompileIdentityBase, EvmFixtures.schedule.precompileIdentityPerWord)
+      )
     assert(
-      base.applying(Proposals.selfDestructCharge).schedule.refundSelfDestruct == BigInt(24000),
-      "a charge for ending an invocation moved the refund for it"
+      (rebuilt ne base.precompiles) && rebuilt == base.precompiles &&
+        rebuilt.hashCode == base.precompiles.hashCode,
+      "two precompile sets that compare equal hash differently, so the equality contract is broken"
     )
-
-  it should "leave the table as the same value, since a conditional charge is not a table entry" in
-    assert(
-      base.applying(Proposals.selfDestructCharge).table eq base.table,
-      "the operation works out its own price, so repricing it is a change to the schedule alone"
-    )
-
-  it should "leave the operation working out its own price at every fork the seam builds" in {
-    // The mirror of the two-homes hazard, in the direction the schedule's own
-    // taxonomy does not cover. Nothing reads this entry's cost any more, so a
-    // proposal settling one -- `table.adding(Operation(Opcode.SelfDestruct,
-    // Cost.Fixed(n)))` -- would compile, pass, and be charged the schedule's
-    // figure instead of `n`, silently. The guard that catches the opposite
-    // mismatch is the interpreter reporting an operation it cannot price; there
-    // is none in this direction, so it is asserted here across every
-    // composition rather than at the baseline alone.
-    val settled = Vector(ChainRules.Baseline, ChainRules.Homestead, ChainRules.TangerineWhistle)
-      .filter(rules => settledCost(rules.table, Opcode.SelfDestruct).isDefined)
-    assert(settled.isEmpty, "a fork settled a price for an operation that works out its own")
   }
+
+  it should "compare unequal when a single operation differs" in
+    // The table is one of the two members that carried no equality of its own,
+    // so this is the case that would have passed for the wrong reason before.
+    assert(
+      base.copy(table = base.table.removing(Opcode.Add)) != base,
+      "a rule set missing an operation compared equal"
+    )
+
+  it should "compare unequal when a single precompile is priced differently" in
+    // The other such member, and the one whose equality rests on the natives
+    // themselves comparing by value.
+    assert(
+      base.copy(
+        precompiles = base.precompiles.adding(PrecompileSet.Identity, Precompile.Identity(BigInt(1), BigInt(1)))
+      ) != base,
+      "a rule set with a differently-priced native compared equal"
+    )

@@ -147,14 +147,27 @@ object VmFixture:
   */
 object VmFixtureRunner:
 
-  def run(fixture: VmFixture): Verdict =
+  /** Runs `fixture` under `rules`.
+    *
+    * ==The rules are the caller's to name, with nothing to fall back on==
+    *
+    * This built one network's genesis rules for itself, which made the harness
+    * quietly opinionated about which chain a corpus belonged to. What a corpus
+    * is read under is part of what the corpus IS, so it arrives from the caller.
+    */
+  def run(fixture: VmFixture, rules: ChainRules): Verdict =
     val trie = freshTrie()
     val base = new StateTrieWorldState(trie)
     FixtureValues.seed(base, fixture.pre) match
       case Left(error) => Verdict.Skipped(SkipReason.Undecodable(error))
-      case Right(())   => runSeeded(fixture, trie, base)
+      case Right(())   => runSeeded(fixture, rules, trie, base)
 
-  private def runSeeded(fixture: VmFixture, trie: StateTrie, base: StateTrieWorldState): Verdict =
+  private def runSeeded(
+      fixture: VmFixture,
+      rules: ChainRules,
+      trie: StateTrie,
+      base: StateTrieWorldState
+  ): Verdict =
     val invocation = fixture.invocation
     val held = base.balanceOf(invocation.target).toBigInt
     if held < invocation.value then
@@ -173,7 +186,7 @@ object VmFixtureRunner:
         blockHashAt = VmFixtureRunner.blockHashOf,
         block = fixture.block,
         transaction = TransactionContext(invocation.origin, invocation.gasPrice),
-        rules = ChainRules.Baseline.copy(precompiles = precompiles)
+        rules = rules
       )
       val frame = new Frame(
         Message(
@@ -197,8 +210,6 @@ object VmFixtureRunner:
     * fixture that reads one.
     */
   def blockHashOf(number: BigInt): Hash = Keccak256.hash(IArray.unsafeFromArray(number.toString.getBytes("US-ASCII")))
-
-  val precompiles: PrecompileSet = PrecompileSet.baseline(GasSchedule.Baseline)
 
   def freshTrie(): StateTrie =
     val backing = new InMemoryKeyValueStore(Layout(RepresentationId("fixture"), Set.empty))

@@ -60,11 +60,11 @@ package org.fukuii.evm
   *
   * A price is consumed in one of two places, and a proposal that edits only this
   * record is right for one of them and silently wrong for the other.
-  * [[OpcodeTable.baseline]] and [[PrecompileSet.baseline]] COPY a price out of
-  * this record when they build their entries, so an operation charged through an
-  * entry is charged what the record held at build time and a later edit never
-  * reaches it. An operation that reads the schedule at the moment it spends is
-  * charged what the record holds now.
+  * [[OpcodeTable.original]] and the composition that builds a chain's precompile
+  * set both COPY a price out of this record when they build their entries, so an
+  * operation charged through an entry is charged what the record held at build
+  * time and a later edit never reaches it. An operation that reads the schedule
+  * at the moment it spends is charged what the record holds now.
   *
   * Three classes follow, and the two that are not the obvious one both fail
   * quietly:
@@ -90,16 +90,17 @@ package org.fukuii.evm
   *
   * A proposal in the second or third class has to reach the table or the
   * precompile set as well, which is what [[OpcodeTable.adding]] exists for.
-  * `Proposals.stateReadRepricing` is the worked instance, and it covers the
-  * table only -- no proposal has yet had to reach a precompile price.
+  * EIP-150's state-read repricing is the worked instance, and it covers the
+  * table only -- no proposal has yet had to reach a precompile price. The
+  * proposals themselves are a chain configuration's and are not in this module.
   *
   * ==A precompile's price is a price, and belongs here rather than with it==
   *
   * Both sources keep them beside every other charge -- the specification under
   * its own heading in the same table of costs, go-ethereum in the same file of
   * protocol parameters -- and a network reprices one the way it reprices
-  * anything else. [[PrecompileSet.baseline]] reads them from here into the
-  * entries it builds, exactly as [[OpcodeTable.baseline]] does.
+  * anything else. A chain configuration reads them from here into the precompile
+  * entries it builds, exactly as [[OpcodeTable.original]] does for operations.
   */
 final case class GasSchedule(
     base: BigInt,
@@ -149,7 +150,7 @@ final case class GasSchedule(
     transactionDataPerZeroByte: BigInt,
     transactionDataPerNonZeroByte: BigInt,
     // A surcharge a transaction pays for deploying rather than calling. The
-    // baseline charges nothing, which is the whole of what the specification
+    // original specification charges nothing, which is the whole of what it
     // does at that fork: it names no such constant and its intrinsic cost is a
     // base plus the data. EIP-2 introduces one, and holding it here at zero
     // rather than adding the field with the proposal is what makes that delta a
@@ -169,57 +170,3 @@ final case class GasSchedule(
     // to exist at all.
     selfDestructNewAccount: BigInt
 )
-
-object GasSchedule:
-
-  /** The prices the machine started with, and the floor every later schedule is
-    * a change to.
-    *
-    * Named for what it is rather than for the fork that shipped it: this is the
-    * base every network's schedule departs from, and the fork's own name belongs
-    * to the family that had it, not to a value both families share.
-    */
-  val Baseline: GasSchedule = GasSchedule(
-    base = BigInt(2),
-    veryLow = BigInt(3),
-    low = BigInt(5),
-    mid = BigInt(8),
-    high = BigInt(10),
-    zero = BigInt(0),
-    jumpDest = BigInt(1),
-    blockHash = BigInt(20),
-    balance = BigInt(20),
-    externalBase = BigInt(20),
-    storageLoad = BigInt(50),
-    storageSet = BigInt(20000),
-    storageReset = BigInt(5000),
-    refundStorageClear = BigInt(15000),
-    refundSelfDestruct = BigInt(24000),
-    callBase = BigInt(40),
-    callValue = BigInt(9000),
-    callStipend = BigInt(2300),
-    newAccount = BigInt(25000),
-    createBase = BigInt(32000),
-    codeDepositPerByte = BigInt(200),
-    expBase = BigInt(10),
-    expPerByte = BigInt(10),
-    keccak256Base = BigInt(30),
-    keccak256PerWord = BigInt(6),
-    copyPerWord = BigInt(3),
-    logBase = BigInt(375),
-    logDataPerByte = BigInt(8),
-    logTopic = BigInt(375),
-    precompileEcRecover = BigInt(3000),
-    precompileSha256Base = BigInt(60),
-    precompileSha256PerWord = BigInt(12),
-    precompileRipemd160Base = BigInt(600),
-    precompileRipemd160PerWord = BigInt(120),
-    precompileIdentityBase = BigInt(15),
-    precompileIdentityPerWord = BigInt(3),
-    transactionBase = BigInt(21000),
-    transactionDataPerZeroByte = BigInt(4),
-    transactionDataPerNonZeroByte = BigInt(68),
-    transactionCreate = BigInt(0),
-    selfDestruct = BigInt(0),
-    selfDestructNewAccount = BigInt(0)
-  )

@@ -1,8 +1,12 @@
-package org.fukuii.evm.fixtures
+package org.fukuii.chainspec.certification
+
+import org.fukuii.evm.fixtures.*
 
 import org.scalatest.flatspec.AnyFlatSpec
 
-import org.fukuii.evm.{ChainRules, Proposals}
+import org.fukuii.chainspec.networks.Ethereum
+import org.fukuii.chainspec.proposals.eip.Eip2
+import org.fukuii.evm.ChainRules
 
 /** The harness read against fixtures held here rather than on disk, so that it
   * is exercised in a clone that has no corpus at all.
@@ -132,11 +136,14 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
     VmFixture.decodeFile("calibration", contents) match
       case Left(error)     => Verdict.Diverged(Vector(error))
       case Right(fixtures) =>
-        fixtures.map(VmFixtureRunner.run).headOption.getOrElse(Verdict.Diverged(Vector("no case")))
+        fixtures
+          .map(fixture => VmFixtureRunner.run(fixture, Ethereum.frontier.evm))
+          .headOption
+          .getOrElse(Verdict.Diverged(Vector("no case")))
 
   private def stateVerdict(
       contents: String,
-      rules: ChainRules = StateFixtureRunner.Baseline
+      rules: ChainRules = Ethereum.frontier.evm
   ): Verdict =
     StateFixture.decodeFile("calibration", contents) match
       case Left(error)     => Verdict.Diverged(Vector(error))
@@ -287,7 +294,7 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
     assert(stateVerdict(altered).toString.contains("Undecodable"), stateVerdict(altered).toString)
   }
 
-  it should "admit a signature at the baseline that the bound would refuse" in {
+  it should "admit a signature at Frontier that the bound would refuse" in {
     // The mirror image recovers an account too -- a different one, unfunded, so
     // the fixture's own balance rule refuses it. The point is that admission got
     // that far: nothing about the signature stopped it.
@@ -300,10 +307,10 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
 
   it should "refuse that same signature once the bound is applied" in {
     // Same bytes, same expectation, one rule different. The fixture expects a
-    // refusal for want of funds and now gets one for the signature, so the
-    // reason comparison is what reports it -- which is why R179 had to land
-    // before this could be tested at all.
-    val bounded = StateFixtureRunner.Baseline.applying(Proposals.lowSignatureS)
+    // refusal for want of funds and now gets one for the signature -- so both
+    // runs refuse, and a check comparing only WHETHER the case was refused
+    // agrees with the fixture here. Only comparing the reason reports it.
+    val bounded = Ethereum.frontier.evm.applying(Eip2.lowSignatureS)
     assert(diverges(stateVerdict(highSignature, bounded)), stateVerdict(highSignature, bounded).toString)
   }
 

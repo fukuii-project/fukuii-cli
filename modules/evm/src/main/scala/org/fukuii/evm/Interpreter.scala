@@ -538,7 +538,7 @@ object Interpreter:
             // The account paid out to is looked at before anything is charged,
             // which is the reason this operation cannot carry a settled price:
             // what it costs depends on the state its operand names. At the
-            // baseline both terms are nothing.
+            // original specification both terms are nothing.
             _ <- frame.charge(
               schedule.selfDestruct +
                 (if environment.world.accountExists(beneficiary) then BigInt(0)
@@ -620,7 +620,7 @@ object Interpreter:
     * of it the callee gets, out of what the caller would still hold once this
     * operation's own price and its memory were paid. That is why the memory cost
     * is worked out here rather than left to `reach` to fold in: the figure has
-    * to exist before anything is taken. At the baseline the answer is the whole
+    * to exist before anything is taken. Where a chain caps nothing the answer is the whole
     * request, so a caller asking for more than it can cover runs out of gas on
     * the charge below rather than quietly getting less.
     *
@@ -665,7 +665,8 @@ object Interpreter:
           (if world.accountExists(runsAs) then BigInt(0) else schedule.newAccount) +
           (if inherits || value.isZero then BigInt(0) else schedule.callValue)
         memoryCost = expansionCost(frame, (inputOffset, inputSize), (outputOffset, outputSize))
-        granted = environment.rules.gasForwarded(spare(frame.gasLeft, ownPrice + memoryCost), requested.toBigInt)
+        granted = environment.rules.gasForwarded
+          .forward(spare(frame.gasLeft, ownPrice + memoryCost), requested.toBigInt)
         _ <- reach(frame, ownPrice + granted, (inputOffset, inputSize), (outputOffset, outputSize))
       yield
         val forwarded =
@@ -731,7 +732,7 @@ object Interpreter:
         // against everything the creator holds. Whatever the rules keep back
         // stays with the creator while the deployment runs, on top of whatever
         // the deployment does not spend.
-        forwarded = environment.rules.gasForwarded(frame.gasLeft, frame.gasLeft)
+        forwarded = environment.rules.gasForwarded.forward(frame.gasLeft, frame.gasLeft)
         // TAKEN BY CHARGING RATHER THAN BY ASSIGNMENT, which is [[Frame]]'s own
         // contract: gas leaves through `charge`, which refuses rather than going
         // negative, and a frame that overspent is indistinguishable afterwards
@@ -785,7 +786,7 @@ object Interpreter:
     *
     * ==Whether failing to pay for the code is a failure is the fork's to say==
     *
-    * At the baseline it is not. A deployment that returns more code than its
+    * Before EIP-2 it is not. A deployment that returns more code than its
     * remaining gas can pay to store still SUCCEEDS: it keeps that gas, deploys
     * nothing, and the creating operation is told the address as though code had
     * been stored. An account left behind with no code is the visible
@@ -933,7 +934,7 @@ object Interpreter:
     *
     * Reversing trigger, accordingly narrowed: **ECIP-1121 settling the question
     * the other way for the proof-of-work family**, in which case this becomes
-    * configuration rather than a constant -- which the baseline-plus-deltas seam
+    * configuration rather than a constant -- which the root-plus-deltas seam
     * already admits. A fixture reversal is no longer a live trigger, the
     * published fixture having landed on this side.
     */

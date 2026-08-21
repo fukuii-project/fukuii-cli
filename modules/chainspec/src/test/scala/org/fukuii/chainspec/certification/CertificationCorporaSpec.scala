@@ -1,4 +1,9 @@
-package org.fukuii.evm.fixtures
+package org.fukuii.chainspec.certification
+
+import org.fukuii.bytes.UInt64
+import org.fukuii.chainspec.networks.KnownNetworks
+import org.fukuii.chainspec.{Activation, Network, Registry}
+import org.fukuii.evm.fixtures.*
 
 import org.scalatest.prop.TableDrivenPropertyChecks
 import org.scalatest.propspec.AnyPropSpec
@@ -56,7 +61,12 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     // the fork asked about OR states none, and a case that states one expands
     // into a run per post entry -- so 650 cases carrying this key become 1096.
     CertificationCorpora.LegacyEip150StateCorpus -> CorpusCensus(files = 2394, cases = 2840, skipped = 1744),
-    CertificationCorpora.GeneratedTangerineWhistleCorpus -> CorpusCensus(files = 33, cases = 536, skipped = 0)
+    CertificationCorpora.GeneratedTangerineWhistleCorpus -> CorpusCensus(files = 33, cases = 536, skipped = 0),
+    // The same 33 files as the row above, resolved through the other network's
+    // schedule at that network's own activation. The figures are identical
+    // because the corpus is: what differs is which schedule was asked, and at
+    // what height.
+    CertificationCorpora.ClassicTangerineWhistleCorpus -> CorpusCensus(files = 33, cases = 536, skipped = 0)
   )
 
   /** Every censused corpus, as the rows the four properties below drive.
@@ -76,6 +86,12 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     * those two agreeing with each other, so a third counts the census instead.
     */
   private val censused = Table(("corpus", "expected"), census.toSeq.sortBy(_._1)*)
+
+  private val registry: Registry =
+    KnownNetworks.registry.getOrElse(fail("the authored networks do not form a registry"))
+
+  /** Every network-and-height pair the harness resolves rules at. */
+  private val resolutions = Table(("network", "height"), CertificationCorpora.resolutionPoints*)
 
   /** The assembled reports, or a canceled test where there is no corpus.
     *
@@ -122,7 +138,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     assert(names == census.keySet, s"assembled ${names.toString} against a census of ${census.keySet.toString}")
   }
 
-  property("the census covers six corpora, counted") {
+  property("the census covers seven corpora, counted") {
     // THE REMOVAL CASE, which the pairing cannot see. Dropping a corpus from the
     // census AND from what the harness assembles leaves those two agreeing with
     // each other, leaves the same six properties registered, and leaves the
@@ -134,11 +150,12 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     // available to whoever needs a red build green after an upstream corpus
     // moves, which is exactly the moment a ratchet earns its keep.
     //
-    // Six: the interpreter tier, the state tier read for Frontier and again for
-    // EIP-150, and the generated state tier filled for Frontier, Homestead and
-    // Tangerine Whistle. Raising this is adding a corpus. Lowering it is
+    // Seven: the interpreter tier, the state tier read for Frontier and again
+    // for EIP-150, the generated state tier filled for Frontier, Homestead and
+    // Tangerine Whistle, and that last one read a second time through the other
+    // network's schedule. Raising this is adding a corpus. Lowering it is
     // dropping certified cases, and that is a decision rather than a tidy-up.
-    assert(census.size == 6, s"the census covers ${census.size.toString} corpora rather than six")
+    assert(census.size == 7, s"the census covers ${census.size.toString} corpora rather than seven")
   }
 
   property("every censused corpus holds the files the census records") {
@@ -170,5 +187,36 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     forAll(censused) { (corpus: String, _: CorpusCensus) =>
       val report = found(reports, corpus)
       assert(report.diverged.isEmpty, report.describe)
+    }
+  }
+
+  property("one corpus run through both networks' schedules reaches the same verdict on every case") {
+    // The strongest thing two networks in one build can say to each other. Both
+    // adopted EIP-150 unaltered and switched it on 37,000 blocks apart, so this
+    // pair of reports differs in exactly one input -- which schedule was asked,
+    // and at which height -- and must differ in no output.
+    //
+    // Comparing the verdicts rather than the counts is deliberate: two runs can
+    // agree on how many cases diverged while diverging on different ones.
+    val reports = assembled
+    val throughEthereum = found(reports, CertificationCorpora.GeneratedTangerineWhistleCorpus)
+    val throughClassic = found(reports, CertificationCorpora.ClassicTangerineWhistleCorpus)
+    assert(
+      throughEthereum.outcomes == throughClassic.outcomes,
+      throughEthereum.describe + " || " + throughClassic.describe
+    )
+  }
+
+  property("no corpus is resolved through a height that is not an activation on its network") {
+    // What stops the heights above being quietly slid to somewhere convenient
+    // after a divergence. Each one must be a point the network actually forks
+    // at, which the schedule states and the harness does not.
+    forAll(resolutions) { (network: Network, height: Long) =>
+      val schedule = registry.at(network.chainId).getOrElse(fail("no schedule for " + network.name))
+      assert(
+        height == 0L || schedule.forkPoints.contains(Activation.AtBlock(UInt64.fromBits(height))),
+        network.name + " is asked for its rules at block " + height.toString +
+          ", which is not an activation on its schedule: " + schedule.forkPoints.toString
+      )
     }
   }

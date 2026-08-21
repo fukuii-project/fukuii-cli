@@ -481,6 +481,48 @@ lazy val evm = (project in file("modules/evm"))
     )
   )
 
+// chainspec -- which rules a network runs, and from when.
+//
+// It sits ABOVE the EVM and the edge is one-way, which is the boundary the
+// field draws too: besu's `evm/build.gradle` names `ethereum:core` zero times
+// while `ethereum/core/build.gradle` names `:evm` once. A schedule is
+// configuration ABOUT the machine and holds nothing the machine executes.
+//
+// Two edges, each used by a type here rather than declared against one this
+// module might grow:
+//
+//   bytes   an activation is a block number or a timestamp and a network is
+//           found by its chain id -- all three are the protocol's machine
+//           word, and this module names it directly rather than reaching it
+//           through evm
+//   evm     the one facet a spec currently populates IS the machine's rules,
+//           and a component's delta is written in terms of them
+//
+// `types` is deliberately absent: nothing here names a header, an account or a
+// transaction. A schedule answers questions ABOUT a block's height and
+// timestamp without ever holding a block.
+// The `test->test` half of the evm edge, and why it is not a shortcut.
+//
+// The published fixture corpora are certified against a NETWORK's rules, so the
+// mapping from a corpus to the rules it is read under belongs here. The
+// machinery that reads a fixture and runs it -- the JSON decoders, the runner,
+// the state seeding -- is the machine's and stays in `evm`'s test tree, which
+// is also where the JSON parser is declared for the one module that reads JSON.
+//
+// Without this mapping the harness would have to move whole, which would make
+// `build.sbt`'s own statement that only `evm` reads JSON false. With it, each
+// half sits with the thing it is about, and this module's tests reach the
+// machinery exactly as its main sources reach the machine.
+//
+// The direction is unchanged and still one-way: nothing in `evm` names anything
+// here, at either scope.
+lazy val chainspec = (project in file("modules/chainspec"))
+  .dependsOn(bytes, evm % "compile->compile;test->test")
+  .settings(
+    name := "fukuii-chainspec",
+    libraryDependencies ++= testDeps
+  )
+
 // The aggregate. `aggregate` makes a task at the root fan out to every module;
 // it is NOT a dependency edge, so the root gains nothing on its classpath.
 //
@@ -489,7 +531,7 @@ lazy val evm = (project in file("modules/evm"))
 // org.fukuii:fukuii_3, so the repo name must not leak into it. Lowercase
 // because this is a Maven artifactId, not a display name.
 lazy val root = (project in file("."))
-  .aggregate(bytes, rlp, crypto, types, storage, trie, evm)
+  .aggregate(bytes, rlp, crypto, types, storage, trie, evm, chainspec)
   .settings(
     name := "fukuii",
     libraryDependencies ++= testDeps

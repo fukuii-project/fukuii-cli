@@ -3,7 +3,7 @@ package org.fukuii.evm
 import org.fukuii.bytes.{Address, Bytes}
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** The registry as a seam: what the baseline holds, and that a chain can change
+/** The registry as a seam: what a placed set holds, and that a chain can change
   * it in each of the three ways the field changes one.
   *
   * The addresses are asserted here rather than assumed anywhere else, because
@@ -16,12 +16,12 @@ import org.scalatest.flatspec.AnyFlatSpec
   */
 class PrecompileSetSpec extends AnyFlatSpec:
 
-  private val schedule = GasSchedule.Baseline
-  private val baseline = PrecompileSet.baseline(schedule)
+  private val schedule = EvmFixtures.schedule
+  private val placed = EvmFixtures.precompiles
 
   private def addressOf(low: Int): Address = Address.fromBytesTruncating(IArray(low.toByte))
 
-  /** Answers something no baseline entry answers, so a test can tell which of
+  /** Answers something no placed entry answers, so a test can tell which of
     * two entries responded.
     */
   private val marker: Precompile = new Precompile:
@@ -30,9 +30,9 @@ class PrecompileSetSpec extends AnyFlatSpec:
 
   // ── The addresses ────────────────────────────────────────────────────────
 
-  "the baseline set" should "answer at four addresses and no others" in
+  "a set placed by a chain configuration" should "answer at the addresses it was given and no others" in
     assert(
-      baseline.addresses == Set(
+      placed.addresses == Set(
         PrecompileSet.EcRecover,
         PrecompileSet.Sha256,
         PrecompileSet.Ripemd160,
@@ -54,14 +54,14 @@ class PrecompileSetSpec extends AnyFlatSpec:
     assert(PrecompileSet.Identity == addressOf(0x04), "identity answers at 0x04")
 
   it should "answer nothing at the address just above the last" in
-    assert(baseline.at(addressOf(0x05)).isEmpty, "0x05 arrives at a later fork and is not this one's")
+    assert(placed.at(addressOf(0x05)).isEmpty, "0x05 arrives at a later fork and is not this one's")
 
   it should "answer nothing at the zero address" in
-    assert(baseline.at(addressOf(0x00)).isEmpty, "the zero address runs code like any other")
+    assert(placed.at(addressOf(0x00)).isEmpty, "the zero address runs code like any other")
 
   it should "price recovery flat" in
     assert(
-      baseline.at(PrecompileSet.EcRecover).get.gasFor(Bytes.Empty) == schedule.precompileEcRecover,
+      placed.at(PrecompileSet.EcRecover).get.gasFor(Bytes.Empty) == schedule.precompileEcRecover,
       "the schedule is where the price comes from"
     )
 
@@ -69,36 +69,36 @@ class PrecompileSetSpec extends AnyFlatSpec:
 
   "a chain configuration" should "be able to add a precompile at a free address" in
     assert(
-      baseline.adding(addressOf(0x05), marker).at(addressOf(0x05)).isDefined,
+      placed.adding(addressOf(0x05), marker).at(addressOf(0x05)).isDefined,
       "every later fork adds one, so addition has to be expressible"
     )
 
-  it should "leave the baseline's own entries in place when it adds one" in
+  it should "leave the entries it already held in place when it adds one" in
     assert(
-      baseline.adding(addressOf(0x05), marker).size == baseline.size + 1,
+      placed.adding(addressOf(0x05), marker).size == placed.size + 1,
       "adding replaces nothing it did not name"
     )
 
   it should "be able to reprice one in place, by replacing the entry" in
     assert(
-      baseline.adding(PrecompileSet.Identity, marker).at(PrecompileSet.Identity).get.gasFor(Bytes.Empty) == BigInt(1),
+      placed.adding(PrecompileSet.Identity, marker).at(PrecompileSet.Identity).get.gasFor(Bytes.Empty) == BigInt(1),
       "a repricing is how the field expresses the commonest delta, and it is an addition at an occupied address"
     )
 
   it should "not grow when it reprices one" in
-    assert(baseline.adding(PrecompileSet.Identity, marker).size == baseline.size, "replacing is not adding")
+    assert(placed.adding(PrecompileSet.Identity, marker).size == placed.size, "replacing is not adding")
 
   it should "be able to remove one" in
     assert(
-      baseline.removing(PrecompileSet.Identity).at(PrecompileSet.Identity).isEmpty,
+      placed.removing(PrecompileSet.Identity).at(PrecompileSet.Identity).isEmpty,
       "a network that runs this machine can take one away"
     )
 
   it should "leave the others in place when it removes one" in
-    assert(baseline.removing(PrecompileSet.Identity).size == baseline.size - 1, "removal takes exactly what it names")
+    assert(placed.removing(PrecompileSet.Identity).size == placed.size - 1, "removal takes exactly what it names")
 
   it should "change nothing by removing an address that holds none" in
-    assert(baseline.removing(addressOf(0x05)).addresses == baseline.addresses, "removal is not an error")
+    assert(placed.removing(addressOf(0x05)).addresses == placed.addresses, "removal is not an error")
 
   "the empty set" should "answer nowhere" in
-    assert(PrecompileSet.Empty.size == 0, "a baseline is built up from this rather than cut down from a fixed four")
+    assert(PrecompileSet.Empty.size == 0, "a chain's set is built up from this rather than cut down from a fixed four")

@@ -79,17 +79,86 @@ final class OpcodeTable private (private val entries: Map[Int, Operation]):
   /** The table without `opcode`, whose byte then runs nothing. */
   def removing(opcode: Opcode): OpcodeTable = new OpcodeTable(entries.removed(opcode.code))
 
+  /** Whether two tables run the same operations at the same prices.
+    *
+    * Total, and nothing can defeat it: an entry is an [[Operation]], which is a
+    * case class over an enum and a [[Cost]] carrying a `BigInt`, so every level
+    * of this comparison is already by value.
+    *
+    * ==Two networks running the same rules is a question with an answer==
+    *
+    * [[ChainRules]] is compared as a whole to establish it, and a record
+    * answers by value only if every member does. This was one of the two that
+    * did not: two identical tables built separately compared unequal, so
+    * whether the answer came out right depended on whether a caller had built
+    * one value or two.
+    *
+    * ==A delta leaving a table ALONE is still asserted with `eq`, deliberately==
+    *
+    * The seam's own claim is that a proposal touching no operation leaves the
+    * same table rather than an equal copy, and only reference identity says
+    * that. Adding equality here does not weaken those assertions because they
+    * never used it; it makes their use of `eq` a choice a reader can see rather
+    * than the only thing available.
+    */
+  override def equals(other: Any): Boolean = other match
+    case that: OpcodeTable => entries == that.entries
+    case _                 => false
+
+  override def hashCode: Int = entries.hashCode
+
 object OpcodeTable:
 
-  /** The operations the machine started with, priced by `schedule`.
+  /** The operations the EVM was originally specified with, priced by
+    * `schedule`.
     *
-    * Named for what it is rather than for the fork that shipped it, following
-    * the client that had the same problem: core-geth calls this
-    * `newBaseInstructionSet` and leaves the fork's name in a comment, because a
-    * baseline shared by every network it serves cannot carry one network's name
-    * for it.
+    * ==The SHAPE is the machine's; the PRICES are a network's, and that is the
+    * parameter==
+    *
+    * Which byte runs which operation, and whether an operation's charge is
+    * settled before it runs or worked out from its operands, is the EVM's own
+    * definition. What each of them costs is not: every network sets those, and
+    * a network that reprices one does so through a proposal. So this holds the
+    * first and takes the second as an argument, which is the seam between the
+    * machine and a chain configuration drawn through one function.
+    *
+    * ==This is the ROOT of every network's derivation, not any network's
+    * choice==
+    *
+    * Every EVM-equivalent network's operation set is this plus the proposals it
+    * adopts: Polygon, Gnosis and the OP Stack all run `DELEGATECALL` because
+    * they adopt EIP-7, and none of them disagrees about where it came from.
+    * What IS a network's choice is stopping here -- running this with no
+    * proposal applied -- and that statement lives with that network's
+    * configuration rather than in this module.
+    *
+    * **So moving this out of the machine would make every future network either
+    * duplicate it or import the first network's copy**, which is the shape this
+    * project is trying not to have.
+    *
+    * ==Named for what it is, which is what the field does too==
+    *
+    * Four production clients keep this in the machine and parameterize it by
+    * prices. `besu-eth/besu` @ `c2addd9424` is the closest in shape:
+    * `MainnetEVMs.frontierOperations(GasCalculator, EvmConfiguration)` sits in
+    * its `evm` module, whose `build.gradle` names `:ethereum:core` zero times,
+    * while `MainnetProtocolSpecs` sits in the layer above.
+    * `ethereumclassic/core-geth` @ `4185df450` -- the multi-network one --
+    * calls it `newBaseInstructionSet` at `core/vm/jump_table.go:245` and leaves
+    * the fork's name in the comment above it, because a root shared by every
+    * network it serves cannot carry one network's name for it.
+    * `ethereum/go-ethereum-pow` @ `v1.10.26` and `ethereum/go-ethereum` @
+    * `6bb0588ad` both hold it as `newFrontierInstructionSet` in the same
+    * package.
+    *
+    * **The asymmetry with [[PrecompileSet]] is the field's rather than an
+    * inconsistency here.** In `ethereum-optimism/op-geth` @ `86be6726f` and
+    * `ronin/ronin` @ `84f1c2260`, every chain-specific token under `core/vm`
+    * is in the precompile path -- the registry and the selection beside it --
+    * and `jump_table.go` and `instructions.go` carry none in either. Membership
+    * is where networks diverge; the instruction set's shape is the machine's.
     */
-  def baseline(schedule: GasSchedule): OpcodeTable =
+  def original(schedule: GasSchedule): OpcodeTable =
     val fixed: Map[Opcode, BigInt] =
       Map(
         Opcode.Stop -> schedule.zero,
@@ -140,26 +209,32 @@ object OpcodeTable:
         Opcode.Gas -> schedule.base
       ) ++ stackFamilies.map(_ -> schedule.veryLow)
 
-    val computed: Set[Opcode] = Opcode.values.toSet -- fixed.keySet -- laterThanBaseline
+    val computed: Set[Opcode] = Opcode.values.toSet -- fixed.keySet -- laterThanOriginal
     val all =
       fixed.map((opcode, gas) => Operation(opcode, Cost.Fixed(gas))) ++
         computed.map(opcode => Operation(opcode, Cost.Computed))
     new OpcodeTable(all.map(operation => operation.opcode.code -> operation).toMap)
 
-  /** Operations [[Opcode]] names that the baseline does not run.
+  /** Operations [[Opcode]] names that the EVM was not originally specified
+    * with.
     *
     * The enum spans every fork this build knows, because a byte's meaning does
-    * not change once it has one -- so the baseline SELECTS from it rather than
+    * not change once it has one -- so [[original]] SELECTS from it rather than
     * being it. Without this the first operation a proposal adds would already be
     * in the table it was meant to add it to, and its delta would be
     * unobservable: the fork would be correct and the seam would have proved
     * nothing.
     *
-    * **`OpcodeTableSpec` pins the baseline's size as a counted number**, so an
-    * operation added to the enum and forgotten here fails loudly rather than
-    * joining the baseline in silence. That direction is the one worth failing.
+    * **This is EVM history and not a network's configuration**, which is why it
+    * belongs in the machine: `DELEGATECALL` entered through EIP-7, and a
+    * network that runs it runs it by adopting EIP-7. No network disagrees about
+    * that, so nothing here is one network's word against another's.
+    *
+    * **A spec pins [[original]]'s size as a counted number**, so an operation
+    * added to the enum and forgotten here fails loudly rather than joining the
+    * root in silence. That direction is the one worth failing.
     */
-  private def laterThanBaseline: Set[Opcode] = Set(Opcode.DelegateCall)
+  private def laterThanOriginal: Set[Opcode] = Set(Opcode.DelegateCall)
 
   /** The three families whose members differ only in a count, and which are
     * priced alike across all of them.

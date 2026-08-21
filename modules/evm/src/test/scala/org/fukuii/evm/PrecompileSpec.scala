@@ -25,7 +25,7 @@ import org.scalatest.flatspec.AnyFlatSpec
   */
 class PrecompileSpec extends AnyFlatSpec:
 
-  private val precompiles = PrecompileSet.baseline(GasSchedule.Baseline)
+  private val precompiles = EvmFixtures.precompiles
 
   private val ecRecover = precompiles.at(PrecompileSet.EcRecover).get
   private val sha256 = precompiles.at(PrecompileSet.Sha256).get
@@ -128,4 +128,4 @@ class PrecompileSpec extends AnyFlatSpec:
     assert(identity.run(Bytes.Empty).isEmpty, "a copy of nothing is nothing")
 
   it should "charge only its base for an empty input" in
-    assert(identity.gasFor(Bytes.Empty) == GasSchedule.Baseline.precompileIdentityBase, "no bytes is no words")
+    assert(identity.gasFor(Bytes.Empty) == EvmFixtures.schedule.precompileIdentityBase, "no bytes is no words")

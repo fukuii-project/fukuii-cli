@@ -12,8 +12,8 @@ import org.scalatest.flatspec.AnyFlatSpec
   */
 class InterpreterSpec extends AnyFlatSpec:
 
-  private val schedule = GasSchedule.Baseline
-  private val table = OpcodeTable.baseline(schedule)
+  private val schedule = EvmFixtures.schedule
+  private val table = OpcodeTable.original(schedule)
 
   private def frameOf(gas: Int, program: Int*): Frame =
     new Frame(
@@ -71,7 +71,7 @@ class InterpreterSpec extends AnyFlatSpec:
   "running off the end of the code" should "end normally rather than exceptionally" in {
     val (_, outcome) = exec(100, 0x60, 0x01)
     assert(
-      outcome == Right(Outcome.Stopped(BigInt(97), Bytes.Empty)),
+      outcome == Right(Outcome.Stopped(BigInt(100) - schedule.veryLow, Bytes.Empty)),
       "the loop ends on the program counter, with no terminator required"
     )
   }
@@ -91,7 +91,7 @@ class InterpreterSpec extends AnyFlatSpec:
 
   it should "cost nothing" in {
     val (frame, _) = exec(100, 0x00)
-    assert(frame.gasLeft == BigInt(100), "STOP makes no charge at all in the specification")
+    assert(frame.gasLeft == BigInt(100) - schedule.zero, "STOP is charged the tier the schedule names for it")
   }
 
   "a byte naming no operation" should "halt and report which byte it was" in {
@@ -114,7 +114,7 @@ class InterpreterSpec extends AnyFlatSpec:
 
   it should "cost the very low tier" in {
     val (frame, _) = afterBinary(100, 0x01)
-    assert(frame.gasLeft == BigInt(100 - 3 - 3 - 3), "two pushes at 3 and an ADD at 3")
+    assert(frame.gasLeft == BigInt(100) - schedule.veryLow * 3, "two pushes and an ADD, each at the very-low tier")
   }
 
   "SUB" should "subtract the second operand from the top one" in {
@@ -124,7 +124,10 @@ class InterpreterSpec extends AnyFlatSpec:
 
   "MUL" should "cost the low tier rather than the very low one" in {
     val (frame, _) = afterBinary(100, 0x02)
-    assert(frame.gasLeft == BigInt(100 - 3 - 3 - 5), "MUL is priced above ADD")
+    assert(
+      frame.gasLeft == BigInt(100) - schedule.veryLow * 2 - schedule.low,
+      "MUL names the low tier where ADD names the very-low one"
+    )
   }
 
   "LT" should "compare the top against the one below it" in {
@@ -145,14 +148,14 @@ class InterpreterSpec extends AnyFlatSpec:
   "EXP" should "charge for each byte of the exponent" in {
     val (frame, _) = exec(100, 0x61, 0x01, 0x00, 0x60, 0x02, 0x0a)
     assert(
-      frame.gasLeft == BigInt(100 - 3 - 3 - (10 + 10 * 2)),
+      frame.gasLeft == BigInt(100) - schedule.veryLow * 2 - (schedule.expBase + schedule.expPerByte * 2),
       "the exponent is the operand pushed first, and two bytes of it cost the base plus twice the per-byte rate"
     )
   }
 
   it should "charge only the base when the exponent is zero" in {
     val (frame, _) = exec(100, 0x60, 0x00, 0x60, 0x02, 0x0a)
-    assert(frame.gasLeft == BigInt(100 - 3 - 3 - 10), "a zero exponent occupies no bytes")
+    assert(frame.gasLeft == BigInt(100) - schedule.veryLow * 2 - schedule.expBase, "a zero exponent occupies no bytes")
   }
 
   "an operation that cannot be paid for" should "halt out of gas" in {
@@ -205,7 +208,10 @@ class InterpreterSpec extends AnyFlatSpec:
 
   "GAS" should "report what remains once the operation has been paid for" in {
     val (frame, _) = exec(100, 0x5a)
-    assert(frame.stack.peek(0) == Right(w(98)), "the charge of two is made before the value is read")
+    assert(
+      frame.stack.peek(0) == Right(Word(BigInt(100) - schedule.base)),
+      "the operation's own charge is made before the value is read"
+    )
   }
 
   "JUMP" should "continue at a marked destination" in {
@@ -243,7 +249,10 @@ class InterpreterSpec extends AnyFlatSpec:
 
   "MSTORE" should "charge for the memory it makes the machine hold" in {
     val (frame, _) = exec(100, 0x60, 0x00, 0x60, 0x00, 0x52)
-    assert(frame.gasLeft == BigInt(100 - 3 - 3 - 3 - 3), "the base of three plus one word of memory at three")
+    assert(
+      frame.gasLeft == BigInt(100) - schedule.veryLow * 3 - GasCost.MemoryPerWord,
+      "two pushes and the operation at the very-low tier, plus one word of memory"
+    )
   }
 
   "MSIZE" should "report the memory rounded up to a whole word" in {
@@ -301,7 +310,10 @@ class InterpreterSpec extends AnyFlatSpec:
 
   it should "cost the base tier" in {
     val (frame, _) = exec(100, 0x30)
-    assert(frame.gasLeft == BigInt(100 - 2), "every operation that only reads context is priced at the base tier")
+    assert(
+      frame.gasLeft == BigInt(100) - schedule.base,
+      "every operation that only reads context is priced at the base tier"
+    )
   }
 
   "CALLER" should "report the account that called this invocation" in {
@@ -388,7 +400,10 @@ class InterpreterSpec extends AnyFlatSpec:
 
   it should "cost twenty" in {
     val (frame, _) = exec(100, 0x61, 0x03, 0xe7, 0x40)
-    assert(frame.gasLeft == BigInt(100 - 3 - 20), "a push at 3 and a block-hash lookup at 20")
+    assert(
+      frame.gasLeft == BigInt(100) - schedule.veryLow - schedule.blockHash,
+      "a push at the very-low tier and a block-hash lookup at its own price"
+    )
   }
 
   "CALLDATALOAD" should "read a whole word from the input" in {
@@ -470,8 +485,8 @@ class InterpreterSpec extends AnyFlatSpec:
         0x37
       )
     assert(
-      frame.gasLeft == BigInt(100 - 9 - 3 - 3 - 3),
-      "three pushes at 3, then a base of 3, one word at 3, and one word of memory at 3"
+      frame.gasLeft == BigInt(100) - schedule.veryLow * 4 - schedule.copyPerWord - GasCost.MemoryPerWord,
+      "three pushes and the operation's own base at the very-low tier, one word copied, one word of memory"
     )
   }
 
@@ -479,7 +494,7 @@ class InterpreterSpec extends AnyFlatSpec:
     val (_, outcome) =
       exec(100, (0x60 +: Seq(0x00, 0x60, 0x00, 0x7f)) ++ Seq.fill(32)(0xff) :+ 0x37*)
     assert(
-      outcome == Right(Outcome.Stopped(BigInt(100 - 3 - 3 - 3 - 3), Bytes.Empty)),
+      outcome == Right(Outcome.Stopped(BigInt(100) - schedule.veryLow * 4, Bytes.Empty)),
       "a zero-length copy skips the extension entirely, so an offset no memory could reach stays affordable"
     )
   }
@@ -549,8 +564,9 @@ class InterpreterSpec extends AnyFlatSpec:
     val program = Seq(0x60, 0x02, 0x60, 0x00, 0x60, 0x00, 0x73) ++ Seq.fill(20)(0x05) :+ 0x3c
     val (frame, _) = execIn(EvmFixtures.environment(world), 100, program*)
     assert(
-      frame.gasLeft == BigInt(100 - 9 - 3 - 20 - 3 - 3),
-      "four pushes, then a base of 20 rather than 3, one word copied at 3, and one word of memory at 3"
+      frame.gasLeft ==
+        BigInt(100) - schedule.veryLow * 4 - schedule.externalBase - schedule.copyPerWord - GasCost.MemoryPerWord,
+      "four pushes, then the external base rather than the very-low tier, one word copied, one word of memory"
     )
   }
 
@@ -561,7 +577,10 @@ class InterpreterSpec extends AnyFlatSpec:
 
   it should "cost fifty" in {
     val (frame, _) = execIn(EvmFixtures.environment(), 100, 0x60, 0x01, 0x54)
-    assert(frame.gasLeft == BigInt(100 - 3 - 50), "a push at 3 and a storage read at 50")
+    assert(
+      frame.gasLeft == BigInt(100) - schedule.veryLow - schedule.storageLoad,
+      "a push at the very-low tier and a storage read at its own price"
+    )
   }
 
   it should "answer with what SSTORE wrote" in {
@@ -580,14 +599,17 @@ class InterpreterSpec extends AnyFlatSpec:
 
   it should "cost the setting price when the slot held nothing" in {
     val (frame, _) = execIn(EvmFixtures.environment(), 30000, 0x60, 0x2a, 0x60, 0x01, 0x55)
-    assert(frame.gasLeft == BigInt(30000 - 3 - 3 - 20000), "taking a slot from zero to a value is the expensive case")
+    assert(
+      frame.gasLeft == BigInt(30000) - schedule.veryLow * 2 - schedule.storageSet,
+      "taking a slot from zero to a value is charged the setting price"
+    )
   }
 
   it should "cost the resetting price when the slot already held a value" in {
     val (frame, _) =
       execIn(EvmFixtures.environment(), 30000, 0x60, 0x2a, 0x60, 0x01, 0x55, 0x60, 0x2b, 0x60, 0x01, 0x55)
     assert(
-      frame.gasLeft == BigInt(30000 - 3 - 3 - 20000 - 3 - 3 - 5000),
+      frame.gasLeft == BigInt(30000) - schedule.veryLow * 4 - schedule.storageSet - schedule.storageReset,
       "only a slot that held zero costs the setting price"
     )
   }
@@ -596,7 +618,7 @@ class InterpreterSpec extends AnyFlatSpec:
     val (frame, _) =
       execIn(EvmFixtures.environment(), 30000, 0x60, 0x2a, 0x60, 0x01, 0x55, 0x60, 0x00, 0x60, 0x01, 0x55)
     assert(
-      frame.gasLeft == BigInt(30000 - 3 - 3 - 20000 - 3 - 3 - 5000),
+      frame.gasLeft == BigInt(30000) - schedule.veryLow * 4 - schedule.storageSet - schedule.storageReset,
       "clearing is charged the resetting price and earns its refund separately"
     )
   }
@@ -604,7 +626,10 @@ class InterpreterSpec extends AnyFlatSpec:
   it should "earn a refund for clearing a slot that held a value" in {
     val (frame, _) =
       execIn(EvmFixtures.environment(), 30000, 0x60, 0x2a, 0x60, 0x01, 0x55, 0x60, 0x00, 0x60, 0x01, 0x55)
-    assert(frame.refundCounter == BigInt(15000), "the refund is counted on the frame and never returned to its gas")
+    assert(
+      frame.refundCounter == schedule.refundStorageClear,
+      "the refund is counted on the frame and never returned to its gas"
+    )
   }
 
   it should "earn no refund for writing a value" in {
@@ -630,8 +655,8 @@ class InterpreterSpec extends AnyFlatSpec:
   it should "cost the settled part alone where nothing is read" in {
     val (frame, _) = exec(100, 0x60, 0x00, 0x60, 0x00, 0x20)
     assert(
-      frame.gasLeft == BigInt(100 - 3 - 3 - 30),
-      "two pushes at 3 and the settled part at 30, with no word to hash"
+      frame.gasLeft == BigInt(100) - schedule.veryLow * 2 - schedule.keccak256Base,
+      "two pushes and the settled part, with no word to hash"
     )
   }
 
@@ -646,8 +671,10 @@ class InterpreterSpec extends AnyFlatSpec:
   it should "cost a word of hashing and a word of memory" in {
     val (frame, _) = exec(100, 0x60, 0x20, 0x60, 0x00, 0x20)
     assert(
-      frame.gasLeft == BigInt(100 - 3 - 3 - 30 - 6 - 3),
-      "two pushes at 3, a settled 30, one word hashed at 6, and one word of memory at 3"
+      frame.gasLeft ==
+        BigInt(100) - schedule.veryLow * 2 - schedule.keccak256Base - schedule.keccak256PerWord -
+        GasCost.MemoryPerWord,
+      "two pushes, the settled part, one word hashed, and one word of memory"
     )
   }
 
@@ -668,7 +695,10 @@ class InterpreterSpec extends AnyFlatSpec:
 
   it should "cost the settled part" in {
     val (frame, _) = exec(1000, 0x60, 0x00, 0x60, 0x00, 0xa0)
-    assert(frame.gasLeft == BigInt(1000 - 3 - 3 - 375), "two pushes at 3 and a settled 375")
+    assert(
+      frame.gasLeft == BigInt(1000) - schedule.veryLow * 2 - schedule.logBase,
+      "two pushes and the entry's settled part"
+    )
   }
 
   it should "carry the bytes the region holds" in {
@@ -679,8 +709,9 @@ class InterpreterSpec extends AnyFlatSpec:
   it should "charge for every byte carried" in {
     val (frame, _) = exec(1000, 0x60, 0x2a, 0x60, 0x00, 0x53, 0x60, 0x01, 0x60, 0x00, 0xa0)
     assert(
-      frame.gasLeft == BigInt(1000 - 3 - 3 - 3 - 3 - 3 - 3 - 375 - 8),
-      "the store costs three pushes and a word of memory, and the entry costs 375 plus 8 for its one byte"
+      frame.gasLeft ==
+        BigInt(1000) - schedule.veryLow * 5 - GasCost.MemoryPerWord - schedule.logBase - schedule.logDataPerByte,
+      "the store costs four pushes, its own base and a word of memory; the entry costs its base plus its one byte"
     )
   }
 
@@ -694,7 +725,10 @@ class InterpreterSpec extends AnyFlatSpec:
 
   it should "cost one topic more than an entry with none" in {
     val (frame, _) = exec(1000, 0x60, 0x07, 0x60, 0x00, 0x60, 0x00, 0xa1)
-    assert(frame.gasLeft == BigInt(1000 - 3 - 3 - 3 - 375 - 375), "three pushes at 3, a settled 375, one topic at 375")
+    assert(
+      frame.gasLeft == BigInt(1000) - schedule.veryLow * 3 - schedule.logBase - schedule.logTopic,
+      "three pushes, the entry's settled part, and one topic"
+    )
   }
 
   "LOG4" should "take four topics in the order the stack lists them" in {
@@ -712,7 +746,7 @@ class InterpreterSpec extends AnyFlatSpec:
       Seq(0x60, 0x04, 0x60, 0x03, 0x60, 0x02, 0x60, 0x01, 0x60, 0x00, 0x60, 0x00, 0xa4)
     val (frame, _) = exec(4000, program*)
     assert(
-      frame.gasLeft == BigInt(4000 - 6 * 3 - 375 - 4 * 375),
+      frame.gasLeft == BigInt(4000) - schedule.veryLow * 6 - schedule.logBase - schedule.logTopic * 4,
       "six pushes at 3, a settled 375, and four topics at 375 each"
     )
   }
@@ -731,7 +765,12 @@ class InterpreterSpec extends AnyFlatSpec:
   "RETURN" should "hand back the bytes the region holds" in {
     val (_, outcome) = exec(100, 0x60, 0x2a, 0x60, 0x00, 0x53, 0x60, 0x01, 0x60, 0x00, 0xf3)
     assert(
-      outcome == Right(Outcome.Stopped(BigInt(100 - 3 - 3 - 3 - 3 - 3 - 3), EvmFixtures.bytesOf("2a"))),
+      outcome == Right(
+        Outcome.Stopped(
+          BigInt(100) - schedule.veryLow * 5 - GasCost.MemoryPerWord - schedule.zero,
+          EvmFixtures.bytesOf("2a")
+        )
+      ),
       "the answer is read from memory and the operation itself has no settled price"
     )
   }
@@ -748,5 +787,8 @@ class InterpreterSpec extends AnyFlatSpec:
 
   it should "hand back nothing where the region is empty" in {
     val (_, outcome) = exec(100, 0x60, 0x00, 0x60, 0x00, 0xf3)
-    assert(outcome == Right(Outcome.Stopped(BigInt(100 - 3 - 3), Bytes.Empty)), "an empty answer is not a missing one")
+    assert(
+      outcome == Right(Outcome.Stopped(BigInt(100) - schedule.veryLow * 2 - schedule.zero, Bytes.Empty)),
+      "an empty answer is not a missing one"
+    )
   }

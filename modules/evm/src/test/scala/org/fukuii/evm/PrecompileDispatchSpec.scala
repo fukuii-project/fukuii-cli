@@ -21,7 +21,7 @@ import org.scalatest.flatspec.AnyFlatSpec
   */
 class PrecompileDispatchSpec extends AnyFlatSpec:
 
-  private val schedule = GasSchedule.Baseline
+  private val schedule = EvmFixtures.schedule
 
   private val caller = EvmFixtures.address(0x11)
   private val runner = EvmFixtures.address(0x22)

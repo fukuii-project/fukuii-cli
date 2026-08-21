@@ -41,8 +41,7 @@ import org.scalatest.prop.TableDrivenPropertyChecks
   */
 class PrecompilePropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
-  private val schedule = GasSchedule.Baseline
-  private val precompiles = PrecompileSet.baseline(schedule)
+  private val precompiles = EvmFixtures.precompiles
 
   private def of(address: org.fukuii.bytes.Address): Precompile = precompiles.at(address).get
 
@@ -173,16 +172,25 @@ class PrecompilePropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     * whole one — an implementation dividing without rounding up prices a
     * three-byte input at zero words and passes every whole-word case.
     */
+  /** How many whole words an input of this many bytes is charged for.
+    *
+    * The word count is the rule under test; what a word costs is a network's and
+    * is read from the schedule beside it. Written as precomputed prices this
+    * table certified one network's figures instead, and could not fail for a
+    * machine that ignored its schedule.
+    */
   private val perWordPrices = Table(
-    ("bytes", "sha256Gas", "ripemd160Gas", "identityGas"),
-    (0, 60, 600, 15),
-    (1, 72, 720, 18),
-    (31, 72, 720, 18),
-    (32, 72, 720, 18),
-    (33, 84, 840, 21),
-    (64, 84, 840, 21),
-    (65, 96, 960, 24)
+    ("bytes", "words"),
+    (0, 0),
+    (1, 1),
+    (31, 1),
+    (32, 1),
+    (33, 2),
+    (64, 2),
+    (65, 3)
   )
+
+  private val schedule = EvmFixtures.schedule
 
   property("ecrecover answers what go-ethereum and besu publish") {
     forAll(recoveries) { (name: String, input: String, expectedHex: String) =>
@@ -192,7 +200,10 @@ class PrecompilePropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
   property("ecrecover charges the same for every one of them") {
     forAll(recoveries) { (name: String, input: String, _: String) =>
-      assert(of(PrecompileSet.EcRecover).gasFor(bytes(input)) == BigInt(3000), "flat price for " + name)
+      assert(
+        of(PrecompileSet.EcRecover).gasFor(bytes(input)) == EvmFixtures.schedule.precompileEcRecover,
+        "flat price for " + name
+      )
     }
   }
 
@@ -215,24 +226,30 @@ class PrecompilePropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
   }
 
   property("sha256 charges its base plus one per started word") {
-    forAll(perWordPrices) { (size: Int, sha256Gas: Int, _: Int, _: Int) =>
-      assert(of(PrecompileSet.Sha256).gasFor(filling(size)) == BigInt(sha256Gas), "sha256 over " + size + " bytes")
+    forAll(perWordPrices) { (size: Int, words: Int) =>
+      assert(
+        of(PrecompileSet.Sha256).gasFor(filling(size)) ==
+          schedule.precompileSha256Base + schedule.precompileSha256PerWord * words,
+        "sha256 over " + size + " bytes"
+      )
     }
   }
 
   property("ripemd160 charges its base plus one per started word") {
-    forAll(perWordPrices) { (size: Int, _: Int, ripemd160Gas: Int, _: Int) =>
+    forAll(perWordPrices) { (size: Int, words: Int) =>
       assert(
-        of(PrecompileSet.Ripemd160).gasFor(filling(size)) == BigInt(ripemd160Gas),
+        of(PrecompileSet.Ripemd160).gasFor(filling(size)) ==
+          schedule.precompileRipemd160Base + schedule.precompileRipemd160PerWord * words,
         "ripemd160 over " + size + " bytes"
       )
     }
   }
 
   property("identity charges its base plus one per started word") {
-    forAll(perWordPrices) { (size: Int, _: Int, _: Int, identityGas: Int) =>
+    forAll(perWordPrices) { (size: Int, words: Int) =>
       assert(
-        of(PrecompileSet.Identity).gasFor(filling(size)) == BigInt(identityGas),
+        of(PrecompileSet.Identity).gasFor(filling(size)) ==
+          schedule.precompileIdentityBase + schedule.precompileIdentityPerWord * words,
         "identity over " + size + " bytes"
       )
     }

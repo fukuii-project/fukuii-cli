@@ -20,15 +20,18 @@ import org.fukuii.types.{Log, Sender, Transaction}
   */
 object StateFixtureRunner:
 
-  /** The rules a fixture is run under when the caller names none.
+  /** Runs `fixture` under `rules`.
     *
-    * The baseline, carrying the precompiles the harness prices. A corpus filled
-    * for a later fork passes that fork's rules instead, which is the whole of
-    * what certifying against one costs here.
+    * ==No default, deliberately==
+    *
+    * This took one network's genesis rules when the caller named none, which
+    * made the harness quietly opinionated about which chain a corpus belonged
+    * to: a caller that forgot to say certified something other than what it
+    * meant to, and nothing reported it. The rules a corpus is read under are
+    * part of what the corpus IS, so naming them is the caller's job and there
+    * is no answer to fall back on.
     */
-  val Baseline: ChainRules = ChainRules.Baseline.copy(precompiles = VmFixtureRunner.precompiles)
-
-  def run(fixture: StateFixture, rules: ChainRules = Baseline): Verdict =
+  def run(fixture: StateFixture, rules: ChainRules): Verdict =
     val trie = VmFixtureRunner.freshTrie()
     val base = new StateTrieWorldState(trie)
     FixtureValues.seed(base, fixture.pre) match

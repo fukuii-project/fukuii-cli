@@ -105,8 +105,112 @@ object EvmFixtures:
       transfersValue: Boolean
   ): Message = Message(caller, currentTarget, Some(currentTarget), value, data, transfersValue)
 
-  /** The precompiles the baseline schedule prices. */
-  val precompiles: PrecompileSet = PrecompileSet.baseline(GasSchedule.Baseline)
+  /** A schedule for testing the machine, whose prices are deliberately NOT any
+    * network's.
+    *
+    * ==What a machine spec is actually for==
+    *
+    * These specs certify that the interpreter charges what the schedule it was
+    * handed says. They are not certifying the numbers -- no network's prices
+    * live in this module any more, and a suite that certified some would be
+    * asserting one network's configuration from inside the machine.
+    *
+    * **Written against a network's real prices the distinction is untestable.**
+    * `gasLeft == 100 - 3 - 3 - 3` passes for an interpreter that reads
+    * `veryLow` from the schedule AND for one that has 3 compiled into it, so
+    * the assertion cannot tell the two apart -- and the second is the defect.
+    * Every field below therefore differs from the value the networks this
+    * project targets launched with.
+    *
+    * ==Every field holds a DISTINCT value, and that is load-bearing==
+    *
+    * A spec naming the wrong field would still pass if the two fields happened
+    * to agree, which under a real schedule they often do -- `veryLow`,
+    * `copyPerWord` and the memory word all cost three. Distinct values make a
+    * mis-named field a failure instead of a coincidence.
+    *
+    * `GasCost.MemoryPerWord` is deliberately not here: memory expansion is
+    * parameterized where the function that uses it lives, and repeating it
+    * would give one price two homes.
+    */
+  val schedule: GasSchedule = GasSchedule(
+    base = BigInt(4),
+    veryLow = BigInt(5),
+    low = BigInt(7),
+    mid = BigInt(9),
+    high = BigInt(11),
+    zero = BigInt(1),
+    jumpDest = BigInt(2),
+    blockHash = BigInt(22),
+    balance = BigInt(24),
+    externalBase = BigInt(26),
+    storageLoad = BigInt(52),
+    storageSet = BigInt(20002),
+    storageReset = BigInt(5002),
+    refundStorageClear = BigInt(15002),
+    refundSelfDestruct = BigInt(24002),
+    callBase = BigInt(42),
+    callValue = BigInt(9002),
+    callStipend = BigInt(2302),
+    newAccount = BigInt(25002),
+    createBase = BigInt(32002),
+    codeDepositPerByte = BigInt(202),
+    expBase = BigInt(12),
+    expPerByte = BigInt(13),
+    keccak256Base = BigInt(32),
+    keccak256PerWord = BigInt(8),
+    copyPerWord = BigInt(6),
+    logBase = BigInt(377),
+    logDataPerByte = BigInt(10),
+    logTopic = BigInt(378),
+    precompileEcRecover = BigInt(3002),
+    precompileSha256Base = BigInt(62),
+    precompileSha256PerWord = BigInt(14),
+    precompileRipemd160Base = BigInt(602),
+    precompileRipemd160PerWord = BigInt(122),
+    precompileIdentityBase = BigInt(17),
+    precompileIdentityPerWord = BigInt(15),
+    transactionBase = BigInt(21002),
+    transactionDataPerZeroByte = BigInt(19),
+    transactionDataPerNonZeroByte = BigInt(70),
+    transactionCreate = BigInt(21),
+    selfDestruct = BigInt(23),
+    selfDestructNewAccount = BigInt(25)
+  )
+
+  /** The natives [[schedule]] prices, placed where the ecosystem places them.
+    *
+    * Declared above [[rules]], which reads it: a `val` referring to one below it
+    * is read before it is assigned.
+    */
+  val precompiles: PrecompileSet =
+    PrecompileSet.Empty
+      .adding(PrecompileSet.EcRecover, Precompile.EcRecover(schedule.precompileEcRecover))
+      .adding(PrecompileSet.Sha256, Precompile.Sha256(schedule.precompileSha256Base, schedule.precompileSha256PerWord))
+      .adding(
+        PrecompileSet.Ripemd160,
+        Precompile.Ripemd160(schedule.precompileRipemd160Base, schedule.precompileRipemd160PerWord)
+      )
+      .adding(
+        PrecompileSet.Identity,
+        Precompile.Identity(schedule.precompileIdentityBase, schedule.precompileIdentityPerWord)
+      )
+
+  /** The rules a machine spec runs under: the original instruction set at
+    * [[schedule]]'s prices, the four natives, and no proposal adopted.
+    *
+    * Assembled here rather than taken from a chain configuration, which this
+    * module cannot see and should not: a spec about the machine names a
+    * configuration it made up, and that is the whole point.
+    */
+  val rules: ChainRules = ChainRules(
+    table = OpcodeTable.original(schedule),
+    schedule = schedule,
+    precompiles = precompiles,
+    gasForwarded = GasForwarding.Whole,
+    codeDepositMustSucceed = false,
+    signatureSMustBeLow = false
+  )
 
   val block: BlockContext = BlockContext(
     coinbase = address(0xcc),
@@ -134,8 +238,8 @@ object EvmFixtures:
       world: WorldState = new MapWorldState,
       inBlock: BlockContext = block,
       ofTransaction: TransactionContext = transaction,
-      withTable: OpcodeTable = OpcodeTable.baseline(GasSchedule.Baseline),
-      withSchedule: GasSchedule = GasSchedule.Baseline,
+      withTable: OpcodeTable = OpcodeTable.original(schedule),
+      withSchedule: GasSchedule = schedule,
       withPrecompiles: PrecompileSet = precompiles
   ): Environment =
     // The three stay separate parameters here rather than one set of rules,
@@ -146,7 +250,7 @@ object EvmFixtures:
       blockHashAt,
       inBlock,
       ofTransaction,
-      ChainRules.Baseline.copy(table = withTable, schedule = withSchedule, precompiles = withPrecompiles)
+      rules.copy(table = withTable, schedule = withSchedule, precompiles = withPrecompiles)
     )
 
   /** An environment running `rules` whole.
@@ -155,7 +259,7 @@ object EvmFixtures:
     * cannot be derived from an earlier parameter in the same list, so a `rules`
     * parameter beside the three overrides would have to default them
     * independently -- and a caller passing rules would then have their table and
-    * schedule silently replaced by the baseline's. Two helpers say which one the
+    * schedule silently replaced by this object's. Two helpers say which one the
     * caller means.
     */
   def environmentUnder(rules: ChainRules, world: WorldState = new MapWorldState): Environment =
