@@ -26,12 +26,12 @@ class UpgradeIdSpec extends AnyFlatSpec:
 
   "a network that never named its launching configuration" should "render a composed label" in
     assert(
-      UpgradeId.synthesized(beta).show == "Beta Baseline",
+      UpgradeId.synthesized(beta).show == "Beta Genesis",
       "the form is composed once here so that every such network reads the same rather than each inventing a string"
     )
 
   it should "not be the same identifier as one that named it those words" in
     assert(
-      UpgradeId.synthesized(alpha) != UpgradeId.named(alpha, "Baseline"),
+      UpgradeId.synthesized(alpha) != UpgradeId.named(alpha, "Genesis"),
       "one records that the network supplied no name; the other records that it supplied this one"
     )

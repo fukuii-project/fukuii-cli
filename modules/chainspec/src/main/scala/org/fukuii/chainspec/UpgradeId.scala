@@ -53,7 +53,7 @@ final case class UpgradeId(network: Network, label: UpgradeId.Label):
     */
   def show: String = label match
     case UpgradeId.Label.Named(text) => s"${network.name} $text"
-    case UpgradeId.Label.Synthesized => s"${network.name} Baseline"
+    case UpgradeId.Label.Synthesized => s"${network.name} Genesis"
 
 object UpgradeId:
 

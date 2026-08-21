@@ -110,7 +110,7 @@ enum Upgrade:
   * [[at]] answers for every height and timestamp rather than returning an
   * option, and what makes that honest is [[UpgradeSchedule.of]] refusing a
   * schedule whose first scheduled entry is not a rule set at block zero.
-  * **That entry is this network's [[baseline]]** -- the rules it starts from --
+  * **That entry is this network's [[genesisRules]]** -- the rules it starts from --
   * which differs per network and is the reason this module exists rather than
   * the machine holding one network's starting configuration for everybody.
   *
@@ -124,7 +124,7 @@ enum Upgrade:
 final class UpgradeSchedule private (
     val network: Network,
     val entries: Vector[UpgradeSchedule.Entry],
-    val baseline: UpgradeRules
+    val genesisRules: UpgradeRules
 ):
 
   private val scheduled: Vector[UpgradeSchedule.Entry] = entries.filter(_.activation.point.isDefined)
@@ -146,7 +146,7 @@ final class UpgradeSchedule private (
   def at(number: UInt64, timestamp: UInt64): UpgradeRules =
     scheduled
       .takeWhile(entry => UpgradeSchedule.hasActivated(entry.activation, number, timestamp))
-      .foldLeft(baseline) { (held, entry) =>
+      .foldLeft(genesisRules) { (held, entry) =>
         entry.upgrade match
           case Upgrade.RuleChange(rules)    => rules
           case Upgrade.IrregularStateChange => held
@@ -286,9 +286,9 @@ object UpgradeSchedule:
       _ <- distinctUpgrades(entries)
       scheduled = entries.filter(_.activation.point.isDefined)
       genesis <- scheduled.headOption.toRight(Error.NoScheduledEntry)
-      baseline <- startsAtGenesis(genesis)
+      genesisRules <- startsAtGenesis(genesis)
       _ <- ordered(scheduled)
-    yield new UpgradeSchedule(network, entries, baseline)
+    yield new UpgradeSchedule(network, entries, genesisRules)
 
   private def oneNetwork(expected: Network, entries: Vector[Entry]): Either[Error, Unit] =
     entries

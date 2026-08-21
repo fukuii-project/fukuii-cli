@@ -46,7 +46,7 @@ class UpgradeScheduleSpec extends AnyFlatSpec:
     assert(
       refused(entry(atBlock(0), "Start", Upgrade.IrregularStateChange))
         .contains(UpgradeSchedule.Error.GenesisWithoutRules(UpgradeId.named(alpha, "Start"))),
-      "an irregular state change states no rules, so a network whose first entry is one has no baseline"
+      "an irregular state change states no rules, so a network whose first entry is one has no genesis rules"
     )
 
   "entries that go backwards" should "be refused" in
@@ -84,8 +84,8 @@ class UpgradeScheduleSpec extends AnyFlatSpec:
 
   "a schedule" should "start from the rules its own genesis entry states" in
     assert(
-      built(genesis, later).baseline eq firstRules,
-      "the baseline is resolved per network by its schedule, which is the whole reason this layer exists"
+      built(genesis, later).genesisRules eq firstRules,
+      "the genesis rules are resolved per network by the schedule, which is the whole reason this layer exists"
     )
 
   it should "take the network from the entries rather than being told it" in
@@ -160,7 +160,7 @@ class UpgradeScheduleSpec extends AnyFlatSpec:
     assert(
       refused(entry(atBlock(0), "Start", Upgrade.Unenforced))
         .contains(UpgradeSchedule.Error.GenesisWithoutRules(UpgradeId.named(alpha, "Start"))),
-      "an upgrade that enforces nothing states no rules, so a network whose first entry is one has no baseline"
+      "an upgrade that enforces nothing states no rules, so a network whose first entry is one has no genesis rules"
     )
 
   "an upgrade that enforces nothing" should "leave the rules in force alone" in
