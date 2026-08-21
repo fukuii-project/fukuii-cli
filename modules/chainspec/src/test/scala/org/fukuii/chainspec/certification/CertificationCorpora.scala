@@ -6,7 +6,7 @@ import java.nio.file.Path
 import scala.util.control.NonFatal
 
 import org.fukuii.bytes.UInt64
-import org.fukuii.chainspec.{Network, UpgradeSchedule}
+import org.fukuii.chainspec.{Network, UpgradeRules, UpgradeSchedule}
 import org.fukuii.chainspec.networks.{KnownNetworks, ethereum, ethereumclassic}
 import org.fukuii.evm.EvmRules
 
@@ -166,9 +166,14 @@ object CertificationCorpora:
     * The whole of the indirection between a corpus and the rules it runs under.
     * Nothing downstream names a composition, so every corpus below is certifying
     * an activation as well as a machine.
+    *
+    * The whole rule set is carried rather than the machine's facet alone: a
+    * state fixture is settled around an invocation, so it is read under what
+    * admits a transaction as well as under what executes it, and taking one
+    * facet here would put the two resolutions in different places.
     */
-  private def rulesAt(schedule: UpgradeSchedule, height: Long): EvmRules =
-    schedule.at(UInt64.fromBits(height), UInt64.Zero).evm
+  private def rulesAt(schedule: UpgradeSchedule, height: Long): UpgradeRules =
+    schedule.at(UInt64.fromBits(height), UInt64.Zero)
 
   private def assemble(root: Path, ethereum: UpgradeSchedule, classic: UpgradeSchedule): Vector[CorpusReport] =
     val frontier = rulesAt(ethereum, EthereumFrontierStarts)
@@ -183,7 +188,7 @@ object CertificationCorpora:
     val gasReprice = rulesAt(classic, ClassicGasRepriceStarts)
 
     Vector(
-      vmReport(FixtureCorpus.legacy(root).resolve("VMTests"), frontier),
+      vmReport(FixtureCorpus.legacy(root).resolve("VMTests"), frontier.evm),
       stateReport(LegacyFrontierStateCorpus, FixtureCorpus.legacy(root).resolve("GeneralStateTests"), rules = frontier),
       stateReport(
         GeneratedStateCorpus,
@@ -266,7 +271,7 @@ object CertificationCorpora:
       name: String,
       directory: Path,
       fork: String = StateFixture.Fork,
-      rules: EvmRules
+      rules: UpgradeRules
   ): CorpusReport =
     val files = FixtureCorpus.jsonFilesUnder(directory)
     val outcomes = files.flatMap { file =>
@@ -280,7 +285,11 @@ object CertificationCorpora:
             CaseOutcome(case_, Verdict.Skipped(SkipReason.NoExpectationAtThisFork))
           }
           val run =
-            contents.fixtures.map(fixture => outcomeOf(fixture.name)(StateFixtureRunner.run(fixture, rules)))
+            contents.fixtures.map { fixture =>
+              outcomeOf(fixture.name)(
+                StateFixtureRunner.run(fixture, rules.evm, rules.admission.signatureSMustBeLow)
+              )
+            }
           skipped ++ run
     }
     CorpusReport(name, files.length, outcomes)

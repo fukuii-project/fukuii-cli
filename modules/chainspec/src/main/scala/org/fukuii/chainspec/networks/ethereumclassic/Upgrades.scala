@@ -3,6 +3,7 @@ package org.fukuii.chainspec.networks.ethereumclassic
 import org.fukuii.chainspec.UpgradeRules
 import org.fukuii.chainspec.proposals.eip.{Eip150, Eip2, Eip7}
 import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, OpcodeTable, Precompile, PrecompileSet}
+import org.fukuii.execution.{AdmissionRules, ExecutionRules}
 
 /** The configuration Ethereum Classic launched with, and the rule sets it
   * reached from it by adopting proposals.
@@ -162,6 +163,10 @@ object Upgrades:
     * one. `params/config_classic.go` at `4185df450` carries no transition
     * earlier than block 1,150,000, which is that statement in the form its
     * reference implementation writes it.
+    *
+    * The two settlement rules are both the earlier of their pair, and this
+    * network held the first of them back far longer than the one it shares a
+    * history with: the same file puts `EIP161FBlock` at 8,772,000.
     */
   val frontier: UpgradeRules =
     UpgradeRules(
@@ -171,9 +176,13 @@ object Upgrades:
         schedule = genesisPrices,
         precompiles = genesisPrecompiles,
         gasForwarded = GasForwarding.Whole,
-        codeDepositMustSucceed = false,
-        signatureSMustBeLow = false
-      )
+        codeDepositMustSucceed = false
+      ),
+      execution = ExecutionRules(
+        touchedEmptyAccountsAreDeleted = false,
+        receiptCarriesStatus = false
+      ),
+      admission = AdmissionRules(signatureSMustBeLow = false)
     )
 
   /** [[frontier]] with EIP-7 and EIP-2 adopted.

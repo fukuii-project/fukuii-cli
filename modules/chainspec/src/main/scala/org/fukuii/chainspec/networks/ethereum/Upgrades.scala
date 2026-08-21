@@ -3,6 +3,7 @@ package org.fukuii.chainspec.networks.ethereum
 import org.fukuii.chainspec.UpgradeRules
 import org.fukuii.chainspec.proposals.eip.{Eip150, Eip2, Eip7}
 import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, OpcodeTable, Precompile, PrecompileSet}
+import org.fukuii.execution.{AdmissionRules, ExecutionRules}
 
 /** The configuration Ethereum launched with, and the rule sets it reached from
   * it by adopting proposals.
@@ -139,6 +140,12 @@ object Upgrades:
     * of one.** Every later network's configuration is this same root with a
     * list of proposals over it, and the list being empty is what makes this
     * genesis rather than a fork.
+    *
+    * The two settlement rules are both the earlier of their pair, and both are
+    * read from `ethereum/execution-specs` @ `ccaaaba58` rather than inferred
+    * from the proposals being unadopted: `forks/frontier/fork.py` calls nothing
+    * that destroys a touched empty account, and `forks/frontier/blocks.py`
+    * gives a receipt's first field as `post_state: Root`.
     */
   val frontier: UpgradeRules =
     UpgradeRules(
@@ -148,9 +155,13 @@ object Upgrades:
         schedule = genesisPrices,
         precompiles = genesisPrecompiles,
         gasForwarded = GasForwarding.Whole,
-        codeDepositMustSucceed = false,
-        signatureSMustBeLow = false
-      )
+        codeDepositMustSucceed = false
+      ),
+      execution = ExecutionRules(
+        touchedEmptyAccountsAreDeleted = false,
+        receiptCarriesStatus = false
+      ),
+      admission = AdmissionRules(signatureSMustBeLow = false)
     )
 
   /** [[frontier]] with EIP-7 and EIP-2 adopted.

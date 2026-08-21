@@ -10,7 +10,7 @@ class UpgradeScheduleSpec extends AnyFlatSpec:
 
   private val genesis = entry(atBlock(0), "Start")
 
-  private val later = entry(atBlock(100), "Later", Upgrade.ProtocolChange(secondRules))
+  private val later = entry(atBlock(100), "Later", Upgrade.RuleChange(secondRules))
 
   /** An upgrade that states the rules already in force: it has a name and an
     * activation and gates nothing, which every canonical fork enumeration in
@@ -70,7 +70,7 @@ class UpgradeScheduleSpec extends AnyFlatSpec:
 
   "entries from two networks" should "be refused" in
     assert(
-      refused(genesis, entry(atBlock(100), "Later", Upgrade.ProtocolChange(secondRules), beta))
+      refused(genesis, entry(atBlock(100), "Later", Upgrade.RuleChange(secondRules), beta))
         .contains(UpgradeSchedule.Error.MixedNetworks(alpha, beta)),
       "one network's rules reaching another's schedule under a shared label is the failure this module exists to stop"
     )
@@ -121,14 +121,14 @@ class UpgradeScheduleSpec extends AnyFlatSpec:
 
   "an upgrade a network will never take" should "never come into force" in
     assert(
-      built(genesis, entry(Activation.Never, "Refused", Upgrade.ProtocolChange(secondRules)))
+      built(genesis, entry(Activation.Never, "Refused", Upgrade.RuleChange(secondRules)))
         .at(UInt64.MaxValue, UInt64.MaxValue) eq firstRules,
       "a permanent refusal is recorded so it is not mistaken for an activation still to come"
     )
 
   "an upgrade not yet scheduled" should "never come into force" in
     assert(
-      built(genesis, entry(Activation.Unscheduled, "Pending", Upgrade.ProtocolChange(secondRules)))
+      built(genesis, entry(Activation.Unscheduled, "Pending", Upgrade.RuleChange(secondRules)))
         .at(UInt64.MaxValue, UInt64.MaxValue) eq firstRules,
       "an upgrade with no activation point has none, however far the chain has run"
     )
@@ -140,7 +140,7 @@ class UpgradeScheduleSpec extends AnyFlatSpec:
     */
   "a low height with a late timestamp" should "not reach past an upgrade the chain has not passed" in
     assert(
-      built(genesis, later, entry(atTimestamp(1000), "ByTime", Upgrade.ProtocolChange(thirdRules)))
+      built(genesis, later, entry(atTimestamp(1000), "ByTime", Upgrade.RuleChange(thirdRules)))
         .at(number(5), number(2000)) eq firstRules,
       "resolution stops at the first activation that has not happened, which is what the ordering invariant buys"
     )
@@ -149,8 +149,8 @@ class UpgradeScheduleSpec extends AnyFlatSpec:
     assert(
       built(
         genesis,
-        entry(atBlock(100), "First", Upgrade.ProtocolChange(secondRules)),
-        entry(atBlock(100), "Second", Upgrade.ProtocolChange(thirdRules))
+        entry(atBlock(100), "First", Upgrade.RuleChange(secondRules)),
+        entry(atBlock(100), "Second", Upgrade.RuleChange(thirdRules))
       )
         .at(number(100), UInt64.Zero) eq thirdRules,
       "EIP-2124 contemplates several upgrades at one point, so which of them states the rules is the author's to say"
@@ -227,7 +227,7 @@ class UpgradeScheduleSpec extends AnyFlatSpec:
     assert(
       built(
         entry(atBlock(0), "Start"),
-        entry(atBlock(0), "Alongside", Upgrade.ProtocolChange(secondRules))
+        entry(atBlock(0), "Alongside", Upgrade.RuleChange(secondRules))
       ).at(number(0), UInt64.Zero) eq secondRules,
       "the entry written last at block zero did not state the rules in force there"
     )
@@ -236,8 +236,8 @@ class UpgradeScheduleSpec extends AnyFlatSpec:
     assert(
       built(
         genesis,
-        entry(atBlock(100), "First", Upgrade.ProtocolChange(secondRules)),
-        entry(atBlock(100), "Second", Upgrade.ProtocolChange(thirdRules))
+        entry(atBlock(100), "First", Upgrade.RuleChange(secondRules)),
+        entry(atBlock(100), "Second", Upgrade.RuleChange(thirdRules))
       ).forkPoints == Vector(atBlock(100)),
       "the identifier is computed over the points that have passed, and one point reached twice is one point"
     )

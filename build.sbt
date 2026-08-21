@@ -481,6 +481,28 @@ lazy val evm = (project in file("modules/evm"))
     )
   )
 
+// L4 -- what settling a transaction does around the machine, and what makes a
+// transaction acceptable before it runs.
+//
+// NO DEPENDENCY EDGE AT ALL, and that is a claim rather than an omission. What
+// this module holds today is two records of fork-settled rules, and every
+// member of both is a boolean: nothing here names a byte string, an address, a
+// transaction or a receipt, so declaring `bytes` or `types` would be declaring
+// an edge against a type this module might grow rather than one it has. The
+// edges arrive with the phase that brings the settlement itself, which is what
+// `crypto` and `trie` above each did.
+//
+// It sits BELOW chainspec and beside evm, never above either. A rule set is
+// something a schedule resolves TO, so the module that composes schedules
+// depends on the modules that own the rules -- exactly as it already does for
+// the machine's. The direction is one-way and a cycle is a build error rather
+// than a review comment.
+lazy val execution = (project in file("modules/execution"))
+  .settings(
+    name := "fukuii-execution",
+    libraryDependencies ++= testDeps
+  )
+
 // chainspec -- which rules a network runs, and from when.
 //
 // It sits ABOVE the EVM and the edge is one-way, which is the boundary the
@@ -495,8 +517,12 @@ lazy val evm = (project in file("modules/evm"))
 //           found by its chain id -- all three are the protocol's machine
 //           word, and this module names it directly rather than reaching it
 //           through evm
-//   evm     the one facet a spec currently populates IS the machine's rules,
-//           and a component's delta is written in terms of them
+//   evm     one of the facets a rule set populates IS the machine's rules, and
+//           a component's delta is written in terms of them
+//   execution
+//           the other two facets -- what settling a transaction does, and what
+//           admits one at all. A rule set holds all three, so this module names
+//           each of them directly
 //
 // `types` is deliberately absent: nothing here names a header, an account or a
 // transaction. A schedule answers questions ABOUT a block's height and
@@ -517,7 +543,7 @@ lazy val evm = (project in file("modules/evm"))
 // The direction is unchanged and still one-way: nothing in `evm` names anything
 // here, at either scope.
 lazy val chainspec = (project in file("modules/chainspec"))
-  .dependsOn(bytes, evm % "compile->compile;test->test")
+  .dependsOn(bytes, execution, evm % "compile->compile;test->test")
   .settings(
     name := "fukuii-chainspec",
     libraryDependencies ++= testDeps
@@ -531,7 +557,7 @@ lazy val chainspec = (project in file("modules/chainspec"))
 // org.fukuii:fukuii_3, so the repo name must not leak into it. Lowercase
 // because this is a Maven artifactId, not a display name.
 lazy val root = (project in file("."))
-  .aggregate(bytes, rlp, crypto, types, storage, trie, evm, chainspec)
+  .aggregate(bytes, rlp, crypto, types, storage, trie, evm, execution, chainspec)
   .settings(
     name := "fukuii",
     libraryDependencies ++= testDeps

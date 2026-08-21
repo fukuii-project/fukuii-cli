@@ -27,16 +27,17 @@ object ChainspecFixtures:
 
   def atTimestamp(value: Long): Activation = Activation.AtTimestamp(number(value))
 
-  val firstRules: UpgradeRules = UpgradeRules(Vector.empty, ethereum.Upgrades.frontier.evm)
+  val firstRules: UpgradeRules = ethereum.Upgrades.frontier.copy(components = Vector.empty)
 
-  val secondRules: UpgradeRules = UpgradeRules(Vector(ProposalId.Eip(7)), ethereum.Upgrades.homestead.evm)
+  val secondRules: UpgradeRules = ethereum.Upgrades.homestead.copy(components = Vector(ProposalId.Eip(7)))
 
-  val thirdRules: UpgradeRules = UpgradeRules(Vector(ProposalId.Eip(150)), ethereum.Upgrades.tangerineWhistle.evm)
+  val thirdRules: UpgradeRules =
+    ethereum.Upgrades.tangerineWhistle.copy(components = Vector(ProposalId.Eip(150)))
 
   def entry(
       activation: Activation,
       label: String,
-      upgrade: Upgrade = Upgrade.ProtocolChange(firstRules),
+      upgrade: Upgrade = Upgrade.RuleChange(firstRules),
       network: Network = alpha
   ): UpgradeSchedule.Entry =
     UpgradeSchedule.Entry(activation, UpgradeId.named(network, label), upgrade)

@@ -30,13 +30,21 @@ object StateFixtureRunner:
     * meant to, and nothing reported it. The rules a corpus is read under are
     * part of what the corpus IS, so naming them is the caller's job and there
     * is no answer to fall back on.
+    *
+    * @param signatureSMustBeLow
+    *   whether this fork refuses a signature whose `s` is above half the curve
+    *   order. It arrives beside the machine's rules rather than on them because
+    *   it is an admission rule and this module cannot see the record that holds
+    *   one. **The parameter goes away with the driver**, whose admission
+    *   behaviors belong to a layer above this module rather than to a test
+    *   fixture inside it.
     */
-  def run(fixture: StateFixture, rules: EvmRules): Verdict =
+  def run(fixture: StateFixture, rules: EvmRules, signatureSMustBeLow: Boolean): Verdict =
     val trie = VmFixtureRunner.freshTrie()
     val base = new StateTrieWorldState(trie)
     FixtureValues.seed(base, fixture.pre) match
       case Left(error) => Verdict.Skipped(SkipReason.Undecodable(error))
-      case Right(())   => executeSeeded(fixture, rules, trie, base)
+      case Right(())   => executeSeeded(fixture, rules, signatureSMustBeLow, trie, base)
 
   /** What reading the published signature established.
     *
@@ -71,7 +79,7 @@ object StateFixtureRunner:
     * degrades quietly, because wherever bytes are present they settle the
     * question in both directions.
     */
-  private def signerOf(transaction: StateTransaction, rules: EvmRules): Signer =
+  private def signerOf(transaction: StateTransaction, signatureSMustBeLow: Boolean): Signer =
     // A transaction of a type this fork predates is refused for its TYPE, and
     // admission is where that is said. Its envelope is not the legacy shape, so
     // attempting recovery reports an unreadable file rather than a refused
@@ -92,7 +100,7 @@ object StateFixtureRunner:
               // different transaction hashes, so this is a duplicate the curve
               // cannot suppress and only a fork can refuse. The comparison is
               // strict, so exactly half the order stays valid.
-              if rules.signatureSMustBeLow &&
+              if signatureSMustBeLow &&
                 Sender.signatureOf(signed).exists(_.s > Secp256k1.halfCurveOrder)
               then Signer.Refused(Rejection.InvalidSignature)
               else
@@ -103,10 +111,11 @@ object StateFixtureRunner:
   private def executeSeeded(
       fixture: StateFixture,
       rules: EvmRules,
+      signatureSMustBeLow: Boolean,
       trie: StateTrie,
       base: StateTrieWorldState
   ): Verdict =
-    signerOf(fixture.transaction, rules) match
+    signerOf(fixture.transaction, signatureSMustBeLow) match
       case Signer.Unreadable(detail) => Verdict.Skipped(SkipReason.Undecodable(detail))
       case Signer.Refused(reason)    =>
         val journal = new JournaledWorldState(base)

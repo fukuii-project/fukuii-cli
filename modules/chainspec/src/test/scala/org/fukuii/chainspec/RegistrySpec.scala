@@ -12,7 +12,7 @@ class RegistrySpec extends AnyFlatSpec:
   private val forAlpha = UpgradeSchedule.of(genesisOnly).toOption.get
 
   private val forBeta =
-    UpgradeSchedule.of(Vector(entry(atBlock(0), "Start", Upgrade.ProtocolChange(secondRules), beta))).toOption.get
+    UpgradeSchedule.of(Vector(entry(atBlock(0), "Start", Upgrade.RuleChange(secondRules), beta))).toOption.get
 
   private val registry = Registry.of(Vector(forAlpha, forBeta)).toOption.get
 

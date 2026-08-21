@@ -193,21 +193,13 @@ enum GasForwarding:
   *   a network has not adopted EIP-2 it does not: the account is left with no
   *   code, the gas already spent stays spent, and the creating operation is told
   *   the address as though code had been stored. EIP-2 reverses this.
-  * @param signatureSMustBeLow
-  *   whether a signature whose `s` exceeds half the curve order is refused.
-  *   Before EIP-2 it is not, and both values of an `s` and its mirror image
-  *   recover the same account under two different transaction hashes. EIP-2
-  *   refuses the upper half. **This one is settled outside the machine**, by
-  *   whatever admits a transaction, and is held here because it is the fork's
-  *   rule and not that layer's preference.
   */
 final case class EvmRules(
     table: OpcodeTable,
     schedule: GasSchedule,
     precompiles: PrecompileSet,
     gasForwarded: GasForwarding,
-    codeDepositMustSucceed: Boolean,
-    signatureSMustBeLow: Boolean
+    codeDepositMustSucceed: Boolean
 ):
 
   /** These rules with each proposal applied, in the order given.

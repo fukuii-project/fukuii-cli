@@ -92,7 +92,7 @@ object Mainnet:
     * could not answer for the block below it.
     */
   private val frontier: UpgradeSchedule.Entry =
-    UpgradeSchedule.Entry(atBlock(0), upgrade("Frontier"), Upgrade.ProtocolChange(Upgrades.frontier))
+    UpgradeSchedule.Entry(atBlock(0), upgrade("Frontier"), Upgrade.RuleChange(Upgrades.frontier))
 
   /** Block 200,000, gating nothing.
     *
@@ -125,7 +125,7 @@ object Mainnet:
     * from the outside.
     */
   private val homestead: UpgradeSchedule.Entry =
-    UpgradeSchedule.Entry(atBlock(1150000), upgrade("Homestead"), Upgrade.ProtocolChange(Upgrades.homestead))
+    UpgradeSchedule.Entry(atBlock(1150000), upgrade("Homestead"), Upgrade.RuleChange(Upgrades.homestead))
 
   /** Block 2,500,000.
     *
@@ -143,7 +143,7 @@ object Mainnet:
     * under a flag, and chooses a separate activation for this network.
     */
   private val gasReprice: UpgradeSchedule.Entry =
-    UpgradeSchedule.Entry(atBlock(2500000), upgrade("Gas Reprice"), Upgrade.ProtocolChange(Upgrades.gasReprice))
+    UpgradeSchedule.Entry(atBlock(2500000), upgrade("Gas Reprice"), Upgrade.RuleChange(Upgrades.gasReprice))
 
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.

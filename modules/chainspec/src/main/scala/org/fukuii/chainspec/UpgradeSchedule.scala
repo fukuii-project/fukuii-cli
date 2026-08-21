@@ -28,11 +28,25 @@ import org.fukuii.bytes.UInt64
   * modelled**: it needs a layer that can mutate state, which does not exist,
   * and a nullary case is what forces whoever builds that layer to add the
   * payload deliberately rather than find a plausible field already waiting.
+  *
+  * ==The first case says "rule" where the quotation above says "protocol"==
+  *
+  * Deliberately, and the quotation is left exactly as its proposal wrote it,
+  * because editing a citation to match local vocabulary falsifies it. The two
+  * words are used for different things by the two authorities: the proposal
+  * means the consensus rules, while six of six surveyed clients reserve
+  * *protocol* for the wire protocol -- `eth/protocols` in go-ethereum, erigon,
+  * core-geth and op-geth, `Network/P2P/Subprotocols` in nethermind,
+  * `EthProtocol.java` in besu. A reader inside a client meets both senses and a
+  * reader of the proposal meets one, so the client vocabulary is the one that
+  * has to win here. What EIP-779 contrasts is kept intact either way: rules
+  * against state, which is exactly [[RuleChange]] against
+  * [[IrregularStateChange]].
   */
 enum Upgrade:
 
   /** The rules the network runs from this activation onward. */
-  case ProtocolChange(spec: UpgradeRules)
+  case RuleChange(rules: UpgradeRules)
 
   /** A one-time change to state that leaves the rules exactly as they were. */
   case IrregularStateChange
@@ -64,7 +78,7 @@ enum Upgrade:
     * has none, so its own vectors move from `0x97c2c34c` to `0x91d1f948` at
     * block 1,920,000 and never move at 200,000 (`core/forkid/forkid_test.go`).
     *
-    * So a projection keyed on [[ProtocolChange]] would drop the DAO fork, and
+    * So a projection keyed on [[RuleChange]] would drop the DAO fork, and
     * one keyed on every entry would keep this. Neither is right, and no
     * two-valued type can express the difference.
     *
@@ -134,7 +148,7 @@ final class UpgradeSchedule private (
       .takeWhile(entry => UpgradeSchedule.hasActivated(entry.activation, number, timestamp))
       .foldLeft(baseline) { (held, entry) =>
         entry.upgrade match
-          case Upgrade.ProtocolChange(spec) => spec
+          case Upgrade.RuleChange(rules)    => rules
           case Upgrade.IrregularStateChange => held
           case Upgrade.Unenforced           => held
       }
@@ -296,7 +310,7 @@ object UpgradeSchedule:
     genesis.activation match
       case Activation.AtBlock(number) if number == UInt64.Zero =>
         genesis.upgrade match
-          case Upgrade.ProtocolChange(spec) => Right(spec)
+          case Upgrade.RuleChange(rules)    => Right(rules)
           case Upgrade.IrregularStateChange => Left(Error.GenesisWithoutRules(genesis.id))
           case Upgrade.Unenforced           => Left(Error.GenesisWithoutRules(genesis.id))
       case first => Left(Error.MissingGenesis(first))
@@ -319,7 +333,7 @@ object UpgradeSchedule:
     * defaulted, and a new case must be decided rather than inherited.
     */
   private def divergesAt(upgrade: Upgrade): Boolean = upgrade match
-    case Upgrade.ProtocolChange(_)    => true
+    case Upgrade.RuleChange(_)        => true
     case Upgrade.IrregularStateChange => true
     case Upgrade.Unenforced           => false
 

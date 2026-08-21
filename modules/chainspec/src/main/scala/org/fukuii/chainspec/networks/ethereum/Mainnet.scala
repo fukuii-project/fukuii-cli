@@ -96,7 +96,7 @@ object Mainnet:
     * schedule starting at block one cannot answer for block zero.
     */
   private val frontier: UpgradeSchedule.Entry =
-    UpgradeSchedule.Entry(atBlock(0), upgrade("Frontier"), Upgrade.ProtocolChange(Upgrades.frontier))
+    UpgradeSchedule.Entry(atBlock(0), upgrade("Frontier"), Upgrade.RuleChange(Upgrades.frontier))
 
   /** Block 200,000, gating nothing.
     *
@@ -150,7 +150,7 @@ object Mainnet:
     * network's upgrade; it does not claim to implement all of it.
     */
   private val homestead: UpgradeSchedule.Entry =
-    UpgradeSchedule.Entry(atBlock(1150000), upgrade("Homestead"), Upgrade.ProtocolChange(Upgrades.homestead))
+    UpgradeSchedule.Entry(atBlock(1150000), upgrade("Homestead"), Upgrade.RuleChange(Upgrades.homestead))
 
   /** Block 2,463,000.
     *
@@ -165,7 +165,7 @@ object Mainnet:
     UpgradeSchedule.Entry(
       atBlock(2463000),
       upgrade("Tangerine Whistle"),
-      Upgrade.ProtocolChange(Upgrades.tangerineWhistle)
+      Upgrade.RuleChange(Upgrades.tangerineWhistle)
     )
 
   /** This network's upgrades in order, or the first reason they are not a

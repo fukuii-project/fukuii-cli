@@ -1,10 +1,11 @@
 package org.fukuii.chainspec
 
 import org.fukuii.evm.{EvmRules, Proposal}
+import org.fukuii.execution.{AdmissionRules, ExecutionRules}
 
 /** Everything one upgrade settles, held as one value per facet.
   *
-  * ==Why an enclosing type exists while only one facet does==
+  * ==Why an enclosing type rather than the machine's rules alone==
   *
   * An upgrade is not confined to a layer. ECIP-1054 adopts ten Ethereum
   * proposals at once, and they land in four different places: six of them
@@ -14,25 +15,32 @@ import org.fukuii.evm.{EvmRules, Proposal}
   * until the first of those arrives and would then have to be reshaped at every
   * call site that had learned to read it.
   *
-  * Building the enclosing value now costs one indirection. Retrofitting it
-  * costs every consumer. So the facet that exists is declared and the ones that
-  * do not are named below rather than guessed at.
+  * Three of the four now have a home. What settles when state is cleared and
+  * what a receipt contains are both
+  * [[org.fukuii.execution.ExecutionRules]]; what admits a transaction at all is
+  * [[org.fukuii.execution.AdmissionRules]]; the machine's own rules are where
+  * they always were.
   *
   * ==The facets not here yet, and what brings each one==
   *
   * Named so that a deferred layer is a row rather than a gap. Each arrives with
   * the layer that reads it, never before -- a facet with no consumer is a shape
-  * chosen against no evidence, and the three clients surveyed for this
-  * boundary carry these outside their EVM module in every case.
+  * chosen against no evidence.
   *
   *   - **consensus** -- difficulty targeting, header and ommer validation, the
-  *     seal rule. Arrives with the consensus engine.
-  *   - **execution** -- the transaction processor, the block processor, the
-  *     block reward and who receives it. Arrives with block execution.
-  *   - **receipts** -- what a receipt states and how it is encoded. Arrives
-  *     with the layer that builds one.
-  *   - **admission** -- what makes a transaction acceptable at all. Arrives
-  *     with the layer that admits transactions.
+  *     seal rule, and where a block's reward goes. Arrives with the consensus
+  *     engine, which is also the layer the surveyed clients put every one of
+  *     those in: a reward is set by which engine a network runs far more than
+  *     by which fork it is at.
+  *
+  * **A receipts facet was forecast here and is deliberately not being built.**
+  * The one fork-varying thing a receipt carries is settled where the
+  * transaction is settled, and no surveyed client separates the two:
+  * `ethereum/go-ethereum` @ `6bb0588ad` chooses the shape inline in
+  * `core/state_processor.go`, and `besu-eth/besu` @ `c2addd9424` carries its
+  * receipt factory flat on the same specification as its transaction
+  * processor. So the rule sits on the execution facet and a fourth facet
+  * holding one member no other layer reads is not drawn.
   *
   * ==What a rule set does NOT carry==
   *
@@ -42,24 +50,64 @@ import org.fukuii.evm.{EvmRules, Proposal}
   * copy that differs only in its label. That is the ordinary case for a test
   * network, which runs its mainnet's compositions at its own activations.
   *
-  * ==Equality is not a value comparison, and it never was==
+  * ==The component list is a JOURNAL, and reading it as a set is wrong on a
+  * live network==
   *
-  * [[org.fukuii.evm.EvmRules]] carries a function member and two members that
-  * are plain classes with no equality of their own, so comparing two of these
-  * with `==` compares those three by reference. A caller wanting to know
-  * whether two networks run the same rules has to say what *same* means; this
-  * type does not answer it, and a test written as though it did would pass or
-  * fail on whether a value was built once or twice.
+  * The natural reading of [[components]] is *the proposals in force here*, and
+  * a production chain already falsifies it. `gnosischain/configs` @
+  * `e542d13234` carries `eip1283Transition` at 1,604,400,
+  * `eip1283DisableTransition` at 2,508,800 and `eip1283ReenableTransition` at
+  * 7,298,030 in its mainnet genesis -- one proposal turned on, off, and on
+  * again, on a chain that ran every one of those heights.
+  * `NethermindEth/nethermind` @ `c35ce1b1ab` reads all three keys in
+  * `ChainSpecStyle/ChainParameters.cs` and evaluates them in order rather than
+  * as membership.
+  *
+  * [[adopting]] appends, so a network reaching that state records the same
+  * proposal three times. **That is the correct behavior and is why the type
+  * needs no change**: a set cannot represent the middle state at all, while an
+  * ordered record of adoptions replays to the right answer. What such a record
+  * cannot do is answer *is this proposal in force* by membership, and nothing
+  * here offers that.
+  *
+  * ==Equality is a value comparison in every member, with one documented
+  * residual==
+  *
+  * *"Do these two networks run the same rules"* is a question this project has
+  * to answer, and it is answerable on this type: [[components]] is a vector of
+  * an enum, the two facets that are records of booleans compare field by field,
+  * and [[org.fukuii.evm.EvmRules]] was made comparable member by member for
+  * exactly this reason. The residual is
+  * [[org.fukuii.evm.PrecompileSet.equals]]'s -- a chain supplying its own
+  * native as an anonymous class contributes reference equality -- and that
+  * type documents why erring toward *different* is the safe direction.
+  *
+  * **A facet added here has to keep that.** A member typed as a function or as
+  * an open interface would put the whole comparison back where the machine's
+  * rules started, silently: two identical configurations built separately would
+  * compare unequal, and the answer would then depend on how a caller happened
+  * to construct its inputs rather than on the rules.
   *
   * @param components
-  *   every proposal adopted to reach these rules, in the order they were
-  *   adopted. This is what determines the rules -- never the label the network
-  *   put on them, which two networks can share while running different rules.
+  *   the proposals adopted to reach these rules, in the order they were
+  *   adopted. **What a network's rules follow from is which proposals it
+  *   adopted, never the label it put on them** -- two networks can share a
+  *   label and run different rules. This is a record of what was applied and
+  *   not a set of what is in force; see above.
   * @param evm
   *   the machine's rules: its operations, its prices, its precompiles and the
-  *   behaviors a fork settles.
+  *   behaviors a fork settles inside it.
+  * @param execution
+  *   what settling a transaction does around the machine.
+  * @param admission
+  *   what makes a transaction acceptable before any of that happens.
   */
-final case class UpgradeRules(components: Vector[ProposalId], evm: EvmRules):
+final case class UpgradeRules(
+    components: Vector[ProposalId],
+    evm: EvmRules,
+    execution: ExecutionRules,
+    admission: AdmissionRules
+):
 
   /** These rules with each component adopted, in the order given.
     *
@@ -83,9 +131,15 @@ final case class UpgradeRules(components: Vector[ProposalId], evm: EvmRules):
   *
   * The delta is written over the whole rule set rather than over one facet,
   * because a proposal is not confined to one: the same document that adds
-  * operations to the machine can also change how a receipt is written. A
+  * operations to the machine can also settle what admits a transaction. A
   * component that only touches the machine is built through [[Component.evm]],
   * which cannot reach any other facet.
+  *
+  * **EIP-2 is the worked case and it is why no per-facet constructor is offered
+  * for the other two.** That document moves a price and settles a behavior in
+  * the machine, and settles a third rule outside it, so it is built from this
+  * constructor directly. A constructor scoped to admission alone would have no
+  * caller, which is the shape this module does not build.
   *
   * ==The delta is an arbitrary function, and that is a decision==
   *
@@ -93,6 +147,9 @@ final case class UpgradeRules(components: Vector[ProposalId], evm: EvmRules):
   * so a component can pair one proposal's number with another's rules -- or
   * with no proposal's. [[UpgradeRules.adopting]] rebuilds the component list
   * from the ids it was passed, so the RECORD cannot be forged; the rules can.
+  * **That is also why the record does not determine the rules**: it states
+  * which proposals were adopted and in what order, and the rules state what
+  * adopting them did.
   *
   * **It is left open because the field's shape is the same one.**
   * `ethereumclassic/core-geth` @ `4185df450` gates each proposal on a predicate
