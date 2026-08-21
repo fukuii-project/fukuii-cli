@@ -22,8 +22,8 @@ import org.fukuii.bytes.UInt64
   * EIP-6122 § Additional rules: *"Forks by timestamp MUST be scheduled at or
   * after the forks by block (on mainnet as well as on private networks)."* So
   * [[Activation.AtBlock]] precedes [[Activation.AtTimestamp]] whatever the two
-  * numbers are, and that is the rule [[Schedule]] enforces rather than a tidy
-  * default this module chose.
+  * numbers are, and that is the rule [[UpgradeSchedule]] enforces rather than a
+  * tidy default this module chose.
   *
   * ==Two ways of not activating, and they are NOT the same fact==
   *

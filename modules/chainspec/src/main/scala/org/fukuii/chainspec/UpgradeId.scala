@@ -16,7 +16,7 @@ package org.fukuii.chainspec
   * So an identifier here carries the network it belongs to, two identifiers
   * from different networks are never equal however they are spelled, and
   * nothing anywhere maps one of these to a rule set. What a network runs is
-  * decided by [[ProtocolSpec]] and the components that produced it; this says
+  * decided by [[UpgradeRules]] and the components that produced it; this says
   * only what that network's own documents call the moment it started running
   * them.
   *

@@ -1,6 +1,6 @@
 package org.fukuii.chainspec
 
-import org.fukuii.evm.{ChainRules, Proposal}
+import org.fukuii.evm.{EvmRules, Proposal}
 
 /** Everything one upgrade settles, held as one value per facet.
   *
@@ -10,7 +10,7 @@ import org.fukuii.evm.{ChainRules, Proposal}
   * proposals at once, and they land in four different places: six of them
   * change the machine, one changes how difficulty is targeted, one changes when
   * state is cleared, and one changes what a receipt contains. A schedule whose
-  * entries resolved directly to [[org.fukuii.evm.ChainRules]] would be correct
+  * entries resolved directly to [[org.fukuii.evm.EvmRules]] would be correct
   * until the first of those arrives and would then have to be reshaped at every
   * call site that had learned to read it.
   *
@@ -34,7 +34,7 @@ import org.fukuii.evm.{ChainRules, Proposal}
   *   - **admission** -- what makes a transaction acceptable at all. Arrives
   *     with the layer that admits transactions.
   *
-  * ==What a spec does NOT carry==
+  * ==What a rule set does NOT carry==
   *
   * No identity. A network's word for an upgrade is [[UpgradeId]] and it lives
   * on the schedule entry, not here, so that two networks running the same rules
@@ -44,7 +44,7 @@ import org.fukuii.evm.{ChainRules, Proposal}
   *
   * ==Equality is not a value comparison, and it never was==
   *
-  * [[org.fukuii.evm.ChainRules]] carries a function member and two members that
+  * [[org.fukuii.evm.EvmRules]] carries a function member and two members that
   * are plain classes with no equality of their own, so comparing two of these
   * with `==` compares those three by reference. A caller wanting to know
   * whether two networks run the same rules has to say what *same* means; this
@@ -59,9 +59,9 @@ import org.fukuii.evm.{ChainRules, Proposal}
   *   the machine's rules: its operations, its prices, its precompiles and the
   *   behaviors a fork settles.
   */
-final case class ProtocolSpec(components: Vector[ProposalId], evm: ChainRules):
+final case class UpgradeRules(components: Vector[ProposalId], evm: EvmRules):
 
-  /** This spec with each component adopted, in the order given.
+  /** These rules with each component adopted, in the order given.
     *
     * Order is the caller's to state and is not always free: two components
     * touching one price compose to whichever ran last.
@@ -75,24 +75,24 @@ final case class ProtocolSpec(components: Vector[ProposalId], evm: ChainRules):
     * it leaves alone survive as the same values rather than as equal copies --
     * which is what makes that testable rather than merely intended.
     */
-  def adopting(added: Component*): ProtocolSpec =
-    val changed = added.foldLeft(this)((spec, component) => component.delta(spec))
+  def adopting(added: Component*): UpgradeRules =
+    val changed = added.foldLeft(this)((rules, component) => component.delta(rules))
     changed.copy(components = this.components ++ added.map(_.id))
 
 /** One proposal, and what adopting it changes.
   *
-  * The delta is written over the whole spec rather than over one facet, because
-  * a proposal is not confined to one: the same document that adds operations to
-  * the machine can also change how a receipt is written. A component that only
-  * touches the machine is built through [[Component.evm]], which cannot reach
-  * any other facet.
+  * The delta is written over the whole rule set rather than over one facet,
+  * because a proposal is not confined to one: the same document that adds
+  * operations to the machine can also change how a receipt is written. A
+  * component that only touches the machine is built through [[Component.evm]],
+  * which cannot reach any other facet.
   *
   * ==The delta is an arbitrary function, and that is a decision==
   *
   * Nothing constrains it to produce rules that have anything to do with [[id]],
-  * so a component can pair one proposal's number with another's rules -- or with
-  * no proposal's. [[ProtocolSpec.adopting]] rebuilds the component list from the
-  * ids it was passed, so the RECORD cannot be forged; the rules can.
+  * so a component can pair one proposal's number with another's rules -- or
+  * with no proposal's. [[UpgradeRules.adopting]] rebuilds the component list
+  * from the ids it was passed, so the RECORD cannot be forged; the rules can.
   *
   * **It is left open because the field's shape is the same one.**
   * `ethereumclassic/core-geth` @ `4185df450` gates each proposal on a predicate
@@ -112,16 +112,16 @@ final case class ProtocolSpec(components: Vector[ProposalId], evm: ChainRules):
   * produces rules a certification corpus runs against and disagrees with. One
   * needs the type to refuse it; the other is caught by running it.
   */
-final case class Component(id: ProposalId, delta: ProtocolSpec => ProtocolSpec)
+final case class Component(id: ProposalId, delta: UpgradeRules => UpgradeRules)
 
 object Component:
 
   /** A component that changes the machine and nothing else.
     *
     * The proposals compose left to right, exactly as
-    * [[org.fukuii.evm.ChainRules.applying]] composes them, and no other facet
+    * [[org.fukuii.evm.EvmRules.applying]] composes them, and no other facet
     * is reachable from here -- which is the point of the constructor rather
     * than an incidental property of it.
     */
   def evm(id: ProposalId, proposals: Proposal*): Component =
-    Component(id, spec => spec.copy(evm = spec.evm.applying(proposals*)))
+    Component(id, rules => rules.copy(evm = rules.evm.applying(proposals*)))

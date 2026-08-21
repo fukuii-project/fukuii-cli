@@ -1,9 +1,9 @@
-package org.fukuii.chainspec.networks
+package org.fukuii.chainspec.networks.ethereumclassic
 
 import org.fukuii.bytes.UInt64
-import org.fukuii.chainspec.{Activation, Network, Schedule, ScheduleEntry, Upgrade, UpgradeId}
+import org.fukuii.chainspec.{Activation, Network, Upgrade, UpgradeId, UpgradeSchedule}
 
-/** Ethereum Classic mainnet: which of [[EthereumClassic]]'s rule sets it runs,
+/** Ethereum Classic mainnet: which of [[Upgrades]]'s rule sets it runs,
   * and from when.
   *
   * ==Every activation here is an EXTERNAL fact, sourced one at a time==
@@ -40,11 +40,11 @@ import org.fukuii.chainspec.{Activation, Network, Schedule, ScheduleEntry, Upgra
   * its first 1,920,000 blocks it *was* that chain. So its Frontier and Frontier
   * Thawing entries are not activations it chose, and `params/config_classic.go`
   * at `4185df450` carries no field for either -- its earliest is block
-  * 1,150,000. Both entries take the sourcing [[EthereumMainnet]] states for
+  * 1,150,000. Both entries take the sourcing [[ethereum.Mainnet]] states for
   * its own two, and the enumeration carries them for the reason it carries
   * every entry: one omitted misnumbers everything after it.
   */
-object EthereumClassicMainnet:
+object Mainnet:
 
   /** A block number stated as a literal from a specification.
     *
@@ -83,7 +83,7 @@ object EthereumClassicMainnet:
   /** The rules this network launched with, in force from its first block.
     *
     * Inherited rather than chosen, per this object's own documentation, so the
-    * figure is Ethereum mainnet's and is sourced in [[EthereumMainnet]]. This
+    * figure is Ethereum mainnet's and is sourced in [[ethereum.Mainnet]]. This
     * network's own enumeration -- ECIP-1066,
     * `ethereumclassic/ECIPs` @ `e36ef7f10166769aa3ac469aaf27ba5b0cacb198`
     * (2026-07-05) -- tabulates `Frontier | 1`, and the entry is block zero here
@@ -91,8 +91,8 @@ object EthereumClassicMainnet:
     * a height* and is asked at height zero, so a schedule starting at block one
     * could not answer for the block below it.
     */
-  private val frontier: ScheduleEntry =
-    ScheduleEntry(atBlock(0), upgrade("Frontier"), Upgrade.ProtocolChange(EthereumClassic.frontier))
+  private val frontier: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(0), upgrade("Frontier"), Upgrade.ProtocolChange(Upgrades.frontier))
 
   /** Block 200,000, gating nothing.
     *
@@ -105,11 +105,11 @@ object EthereumClassicMainnet:
     * **No implementation carries the value** -- it appears in no chain
     * configuration in core-geth, and besu-etc does not name the upgrade at all
     * -- so the sourcing is documentary, exactly as it is in
-    * [[EthereumMainnet]], where what it changed and why that is not a rule are
+    * [[ethereum.Mainnet]], where what it changed and why that is not a rule are
     * stated.
     */
-  private val frontierThawing: ScheduleEntry =
-    ScheduleEntry(atBlock(200000), upgrade("Frontier Thawing"), Upgrade.Unenforced)
+  private val frontierThawing: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(200000), upgrade("Frontier Thawing"), Upgrade.Unenforced)
 
   /** Block 1,150,000.
     *
@@ -124,8 +124,8 @@ object EthereumClassicMainnet:
     * name it at, which is [[org.fukuii.chainspec.ProposalId]]'s two levels seen
     * from the outside.
     */
-  private val homestead: ScheduleEntry =
-    ScheduleEntry(atBlock(1150000), upgrade("Homestead"), Upgrade.ProtocolChange(EthereumClassic.homestead))
+  private val homestead: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(1150000), upgrade("Homestead"), Upgrade.ProtocolChange(Upgrades.homestead))
 
   /** Block 2,500,000.
     *
@@ -142,8 +142,8 @@ object EthereumClassicMainnet:
     * in the field, including one already repricing at the other network's block
     * under a flag, and chooses a separate activation for this network.
     */
-  private val gasReprice: ScheduleEntry =
-    ScheduleEntry(atBlock(2500000), upgrade("Gas Reprice"), Upgrade.ProtocolChange(EthereumClassic.gasReprice))
+  private val gasReprice: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(2500000), upgrade("Gas Reprice"), Upgrade.ProtocolChange(Upgrades.gasReprice))
 
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
@@ -154,8 +154,8 @@ object EthereumClassicMainnet:
     * with itself and no run could be correct. It is still returned: a `val`
     * that throws fails at class initialization, which surfaces as an unrelated
     * error in whatever first touched the object, and the checks
-    * [[Schedule.of]] performs are exactly the ones worth reading in a failure
-    * message.
+    * [[UpgradeSchedule.of]] performs are exactly the ones worth reading in a
+    * failure message.
     *
     * ==What this network declined is not an entry here==
     *
@@ -177,5 +177,5 @@ object EthereumClassicMainnet:
     * divergence belongs in: it degrades correctly, because at the point the two
     * stop agreeing it is deleted with a reason rather than quietly left true.
     */
-  val schedule: Either[Schedule.Error, Schedule] =
-    Schedule.of(Vector(frontier, frontierThawing, homestead, gasReprice))
+  val schedule: Either[UpgradeSchedule.Error, UpgradeSchedule] =
+    UpgradeSchedule.of(Vector(frontier, frontierThawing, homestead, gasReprice))

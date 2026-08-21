@@ -1,7 +1,7 @@
 package org.fukuii.chainspec.networks
 
 import org.fukuii.bytes.UInt64
-import org.fukuii.chainspec.Schedule
+import org.fukuii.chainspec.UpgradeSchedule
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Ethereum mainnet and Ethereum Classic mainnet run the same rules through
@@ -18,12 +18,12 @@ import org.scalatest.flatspec.AnyFlatSpec
   *
   * ==What makes this refutable==
   *
-  * [[EthereumClassic]] composes its own rule sets from the proposal vocabulary
-  * and names nothing in [[Ethereum]]. Two configurations built from one value
-  * are equal however either was authored, so an assertion over shared values
-  * would report the sharing and never the agreement. The first test below is
-  * what holds that open, and it is the one to read before trusting any of the
-  * others.
+  * [[ethereumclassic.Upgrades]] composes its own rule sets from the proposal
+  * vocabulary and names nothing in [[ethereum.Upgrades]]. Two configurations
+  * built from one value are equal however either was authored, so an assertion
+  * over shared values would report the sharing and never the agreement. The
+  * first test below is what holds that open, and it is the one to read before
+  * trusting any of the others.
   *
   * ==The boundary is a divergence of STATE, not of rules==
   *
@@ -65,26 +65,26 @@ import org.scalatest.flatspec.AnyFlatSpec
   */
 class SharedHistorySpec extends AnyFlatSpec:
 
-  private val ethereum: Schedule =
-    EthereumMainnet.schedule.getOrElse(fail("Ethereum mainnet's authored entries do not form a schedule"))
+  private val ethereumSchedule: UpgradeSchedule =
+    ethereum.Mainnet.schedule.getOrElse(fail("Ethereum mainnet's authored entries do not form a schedule"))
 
-  private val classic: Schedule =
-    EthereumClassicMainnet.schedule.getOrElse(fail("Ethereum Classic's authored entries do not form a schedule"))
+  private val classicSchedule: UpgradeSchedule =
+    ethereumclassic.Mainnet.schedule.getOrElse(fail("Ethereum Classic's authored entries do not form a schedule"))
 
   /** The last block at which the two networks were one chain. */
   private val lastSharedBlock: UInt64 = UInt64.fromBits(1919999L)
 
-  private def ethereumAt(height: Long) = ethereum.at(UInt64.fromBits(height), UInt64.Zero)
-  private def classicAt(height: Long) = classic.at(UInt64.fromBits(height), UInt64.Zero)
+  private def ethereumAt(height: Long) = ethereumSchedule.at(UInt64.fromBits(height), UInt64.Zero)
+  private def classicAt(height: Long) = classicSchedule.at(UInt64.fromBits(height), UInt64.Zero)
 
   "the two networks' rule sets" should "be separately built values rather than one value twice" in
     // Everything below compares by value, and value comparison cannot tell a
     // genuine agreement from a shared reference. This is the only test here
     // that can, and without it the rest are satisfied by construction.
     assert(
-      (EthereumClassic.frontier ne Ethereum.frontier) &&
-        (EthereumClassic.homestead ne Ethereum.homestead) &&
-        (EthereumClassic.gasReprice ne Ethereum.tangerineWhistle),
+      (ethereumclassic.Upgrades.frontier ne ethereum.Upgrades.frontier) &&
+        (ethereumclassic.Upgrades.homestead ne ethereum.Upgrades.homestead) &&
+        (ethereumclassic.Upgrades.gasReprice ne ethereum.Upgrades.tangerineWhistle),
       "one network's configuration is the other's, so every agreement asserted here is a tautology"
     )
 
@@ -95,7 +95,7 @@ class SharedHistorySpec extends AnyFlatSpec:
     assert(
       classicAt(0L) == ethereumAt(0L) &&
         classicAt(1150000L) == ethereumAt(1150000L) &&
-        classic.at(lastSharedBlock, UInt64.Zero) == ethereum.at(lastSharedBlock, UInt64.Zero),
+        classicSchedule.at(lastSharedBlock, UInt64.Zero) == ethereumSchedule.at(lastSharedBlock, UInt64.Zero),
       "two networks that were one chain at this height disagree about what it ran"
     )
 
@@ -122,13 +122,13 @@ class SharedHistorySpec extends AnyFlatSpec:
     // not. besu-etc has to express this by re-parenting its inheritance graph at
     // the divergence point; composing from components needs no parent at all.
     assert(
-      EthereumClassic.gasReprice == Ethereum.tangerineWhistle &&
-        classic.forkPoints.last != ethereum.forkPoints.last,
+      ethereumclassic.Upgrades.gasReprice == ethereum.Upgrades.tangerineWhistle &&
+        classicSchedule.forkPoints.last != ethereumSchedule.forkPoints.last,
       "the same proposal produced different rules, or two networks adopted it at one block"
     )
 
   "the component list alone" should "be unable to see a divergence at genesis" in
-    // Why the assertions above compare whole specs. A launch configuration
+    // Why the assertions above compare whole rule sets. A launch configuration
     // adopts nothing, so both networks' component lists are empty there and
     // would agree whatever their prices, tables or precompiles were.
     assert(

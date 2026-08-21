@@ -1,9 +1,9 @@
-package org.fukuii.chainspec.networks
+package org.fukuii.chainspec.networks.ethereum
 
 import org.fukuii.bytes.UInt64
-import org.fukuii.chainspec.{Activation, Network, Schedule, ScheduleEntry, Upgrade, UpgradeId}
+import org.fukuii.chainspec.{Activation, Network, Upgrade, UpgradeId, UpgradeSchedule}
 
-/** Ethereum mainnet: which of [[Ethereum]]'s rule sets it runs, and from when.
+/** Ethereum mainnet: which of [[Upgrades]]'s rule sets it runs, and from when.
   *
   * ==Every activation here is an EXTERNAL fact, sourced one at a time==
   *
@@ -19,7 +19,7 @@ import org.fukuii.chainspec.{Activation, Network, Schedule, ScheduleEntry, Upgra
   *
   * ==What the schedule holds that the rule sets cannot==
   *
-  * [[Ethereum]] states this network's rule sets and says outright that it holds
+  * [[Upgrades]] states this network's rule sets and says outright that it holds
   * no activation and no schedule. This is the other half, and the two are
   * separate files because the halves have different lifetimes: a rule set is a
   * composition another network can reach independently and be asserted equal
@@ -27,7 +27,7 @@ import org.fukuii.chainspec.{Activation, Network, Schedule, ScheduleEntry, Upgra
   * them apart is what stops a network that runs the same rules from inheriting
   * these activations with them.
   */
-object EthereumMainnet:
+object Mainnet:
 
   /** A block number stated as a literal from a specification.
     *
@@ -92,11 +92,11 @@ object EthereumMainnet:
     * 1,149,999 one fork identifier, `0xfc64ec04`, labelling the second *"Last
     * Frontier block"* (`core/forkid/forkid_test.go`).
     *
-    * [[Schedule.of]] would refuse the tabulated figure outright, since a
+    * [[UpgradeSchedule.of]] would refuse the tabulated figure outright, since a
     * schedule starting at block one cannot answer for block zero.
     */
-  private val frontier: ScheduleEntry =
-    ScheduleEntry(atBlock(0), upgrade("Frontier"), Upgrade.ProtocolChange(Ethereum.frontier))
+  private val frontier: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(0), upgrade("Frontier"), Upgrade.ProtocolChange(Upgrades.frontier))
 
   /** Block 200,000, gating nothing.
     *
@@ -130,10 +130,10 @@ object EthereumMainnet:
     * `GasLimitBoundDivisor = 1024`, and this network's own genesis block sets
     * `GasLimit: 5000`, the floor. Participants raised it; nothing began
     * validating differently. That is [[Upgrade.Unenforced]], and it is why this
-    * entry does not reach [[Schedule.forkPoints]].
+    * entry does not reach [[UpgradeSchedule.forkPoints]].
     */
-  private val frontierThawing: ScheduleEntry =
-    ScheduleEntry(atBlock(200000), upgrade("Frontier Thawing"), Upgrade.Unenforced)
+  private val frontierThawing: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(200000), upgrade("Frontier Thawing"), Upgrade.Unenforced)
 
   /** Block 1,150,000.
     *
@@ -146,11 +146,11 @@ object EthereumMainnet:
     *
     * **EIP-606 includes EIP-8, which is not here.** It is devp2p forward
     * compatibility rather than a rule the machine runs, so the EVM facet of
-    * [[Ethereum.homestead]] is EIP-2 and EIP-7 only. This entry names the
+    * [[Upgrades.homestead]] is EIP-2 and EIP-7 only. This entry names the
     * network's upgrade; it does not claim to implement all of it.
     */
-  private val homestead: ScheduleEntry =
-    ScheduleEntry(atBlock(1150000), upgrade("Homestead"), Upgrade.ProtocolChange(Ethereum.homestead))
+  private val homestead: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(1150000), upgrade("Homestead"), Upgrade.ProtocolChange(Upgrades.homestead))
 
   /** Block 2,463,000.
     *
@@ -161,11 +161,11 @@ object EthereumMainnet:
     * proposal's number rather than the fork's name, which is
     * [[org.fukuii.chainspec.ProposalId]]'s point made by a client.
     */
-  private val tangerineWhistle: ScheduleEntry =
-    ScheduleEntry(
+  private val tangerineWhistle: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(
       atBlock(2463000),
       upgrade("Tangerine Whistle"),
-      Upgrade.ProtocolChange(Ethereum.tangerineWhistle)
+      Upgrade.ProtocolChange(Upgrades.tangerineWhistle)
     )
 
   /** This network's upgrades in order, or the first reason they are not a
@@ -177,15 +177,16 @@ object EthereumMainnet:
     * with itself and no run could be correct. It is still returned: a `val`
     * that throws fails at class initialization, which surfaces as an unrelated
     * error in whatever first touched the object, and the checks
-    * [[Schedule.of]] performs are exactly the ones worth reading in a failure
-    * message.
+    * [[UpgradeSchedule.of]] performs are exactly the ones worth reading in a
+    * failure message.
     *
     * **This does not carry the DAO fork**, which is the next entry in this
     * network's enumeration and is an irregular state change requiring a layer
     * that can mutate state. Its absence is why the schedule stops where it
     * does, rather than at any property of Tangerine Whistle.
     *
-    * ==So [[Schedule.forkPoints]] on this schedule is not yet this network's==
+    * ==So [[UpgradeSchedule.forkPoints]] on this schedule is not yet this
+    * network's==
     *
     * EIP-2124's worked example for this network runs `uint64(1150000)` then
     * `uint64(1920000)`; the second is the DAO fork and is not here yet, so the
@@ -196,5 +197,5 @@ object EthereumMainnet:
     * The projection is right; the schedule it runs over is deliberately partial
     * until the layer the DAO fork needs exists.
     */
-  val schedule: Either[Schedule.Error, Schedule] =
-    Schedule.of(Vector(frontier, frontierThawing, homestead, tangerineWhistle))
+  val schedule: Either[UpgradeSchedule.Error, UpgradeSchedule] =
+    UpgradeSchedule.of(Vector(frontier, frontierThawing, homestead, tangerineWhistle))

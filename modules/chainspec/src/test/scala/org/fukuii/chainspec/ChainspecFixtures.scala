@@ -1,7 +1,7 @@
 package org.fukuii.chainspec
 
 import org.fukuii.bytes.UInt64
-import org.fukuii.chainspec.networks.Ethereum
+import org.fukuii.chainspec.networks.ethereum
 
 /** Values the specs in this package build schedules out of.
   *
@@ -27,20 +27,20 @@ object ChainspecFixtures:
 
   def atTimestamp(value: Long): Activation = Activation.AtTimestamp(number(value))
 
-  val firstRules: ProtocolSpec = ProtocolSpec(Vector.empty, Ethereum.frontier.evm)
+  val firstRules: UpgradeRules = UpgradeRules(Vector.empty, ethereum.Upgrades.frontier.evm)
 
-  val secondRules: ProtocolSpec = ProtocolSpec(Vector(ProposalId.Eip(7)), Ethereum.homestead.evm)
+  val secondRules: UpgradeRules = UpgradeRules(Vector(ProposalId.Eip(7)), ethereum.Upgrades.homestead.evm)
 
-  val thirdRules: ProtocolSpec = ProtocolSpec(Vector(ProposalId.Eip(150)), Ethereum.tangerineWhistle.evm)
+  val thirdRules: UpgradeRules = UpgradeRules(Vector(ProposalId.Eip(150)), ethereum.Upgrades.tangerineWhistle.evm)
 
   def entry(
       activation: Activation,
       label: String,
       upgrade: Upgrade = Upgrade.ProtocolChange(firstRules),
       network: Network = alpha
-  ): ScheduleEntry =
-    ScheduleEntry(activation, UpgradeId.named(network, label), upgrade)
+  ): UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(activation, UpgradeId.named(network, label), upgrade)
 
   /** The smallest schedule that satisfies every construction invariant. */
-  val genesisOnly: Vector[ScheduleEntry] =
+  val genesisOnly: Vector[UpgradeSchedule.Entry] =
     Vector(entry(atBlock(0), "Start"))

@@ -4,9 +4,9 @@ import org.fukuii.evm.fixtures.*
 
 import org.scalatest.flatspec.AnyFlatSpec
 
-import org.fukuii.chainspec.networks.Ethereum
+import org.fukuii.chainspec.networks.ethereum
 import org.fukuii.chainspec.proposals.eip.Eip2
-import org.fukuii.evm.ChainRules
+import org.fukuii.evm.EvmRules
 
 /** The harness read against fixtures held here rather than on disk, so that it
   * is exercised in a clone that has no corpus at all.
@@ -137,13 +137,13 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
       case Left(error)     => Verdict.Diverged(Vector(error))
       case Right(fixtures) =>
         fixtures
-          .map(fixture => VmFixtureRunner.run(fixture, Ethereum.frontier.evm))
+          .map(fixture => VmFixtureRunner.run(fixture, ethereum.Upgrades.frontier.evm))
           .headOption
           .getOrElse(Verdict.Diverged(Vector("no case")))
 
   private def stateVerdict(
       contents: String,
-      rules: ChainRules = Ethereum.frontier.evm
+      rules: EvmRules = ethereum.Upgrades.frontier.evm
   ): Verdict =
     StateFixture.decodeFile("calibration", contents) match
       case Left(error)     => Verdict.Diverged(Vector(error))
@@ -310,7 +310,7 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
     // refusal for want of funds and now gets one for the signature -- so both
     // runs refuse, and a check comparing only WHETHER the case was refused
     // agrees with the fixture here. Only comparing the reason reports it.
-    val bounded = Ethereum.frontier.evm.applying(Eip2.lowSignatureS)
+    val bounded = ethereum.Upgrades.frontier.evm.applying(Eip2.lowSignatureS)
     assert(diverges(stateVerdict(highSignature, bounded)), stateVerdict(highSignature, bounded).toString)
   }
 

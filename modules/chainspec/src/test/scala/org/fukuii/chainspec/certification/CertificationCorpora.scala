@@ -6,9 +6,9 @@ import java.nio.file.Path
 import scala.util.control.NonFatal
 
 import org.fukuii.bytes.UInt64
-import org.fukuii.chainspec.{Network, Schedule}
-import org.fukuii.chainspec.networks.{EthereumClassicMainnet, EthereumMainnet, KnownNetworks}
-import org.fukuii.evm.ChainRules
+import org.fukuii.chainspec.{Network, UpgradeSchedule}
+import org.fukuii.chainspec.networks.{KnownNetworks, ethereum, ethereumclassic}
+import org.fukuii.evm.EvmRules
 
 /** The published corpora this layer is certified against, run once and reported
   * as counts.
@@ -50,8 +50,8 @@ object CertificationCorpora:
     for
       root <- FixtureCorpus.root
       registry <- KnownNetworks.registry.toOption
-      ethereum <- registry.at(EthereumMainnet.network.chainId)
-      classic <- registry.at(EthereumClassicMainnet.network.chainId)
+      ethereum <- registry.at(ethereum.Mainnet.network.chainId)
+      classic <- registry.at(ethereumclassic.Mainnet.network.chainId)
     yield assemble(root, ethereum, classic)
 
   /** The legacy hand-written interpreter tier: an invocation stated directly,
@@ -155,10 +155,10 @@ object CertificationCorpora:
     */
   private[certification] val resolutionPoints: Vector[(Network, Long)] =
     Vector(
-      EthereumMainnet.network -> EthereumFrontierStarts,
-      EthereumMainnet.network -> EthereumHomesteadStarts,
-      EthereumMainnet.network -> EthereumTangerineWhistleStarts,
-      EthereumClassicMainnet.network -> ClassicGasRepriceStarts
+      ethereum.Mainnet.network -> EthereumFrontierStarts,
+      ethereum.Mainnet.network -> EthereumHomesteadStarts,
+      ethereum.Mainnet.network -> EthereumTangerineWhistleStarts,
+      ethereumclassic.Mainnet.network -> ClassicGasRepriceStarts
     )
 
   /** What a network runs at a height, taken from that network's schedule.
@@ -167,10 +167,10 @@ object CertificationCorpora:
     * Nothing downstream names a composition, so every corpus below is certifying
     * an activation as well as a machine.
     */
-  private def rulesAt(schedule: Schedule, height: Long): ChainRules =
+  private def rulesAt(schedule: UpgradeSchedule, height: Long): EvmRules =
     schedule.at(UInt64.fromBits(height), UInt64.Zero).evm
 
-  private def assemble(root: Path, ethereum: Schedule, classic: Schedule): Vector[CorpusReport] =
+  private def assemble(root: Path, ethereum: UpgradeSchedule, classic: UpgradeSchedule): Vector[CorpusReport] =
     val frontier = rulesAt(ethereum, EthereumFrontierStarts)
     val homestead = rulesAt(ethereum, EthereumHomesteadStarts)
 
@@ -249,7 +249,7 @@ object CertificationCorpora:
           Verdict.Diverged(Vector("threw " + cause.getClass.getName + ": " + cause.getMessage))
     CaseOutcome(name, verdict)
 
-  private def vmReport(directory: Path, rules: ChainRules): CorpusReport =
+  private def vmReport(directory: Path, rules: EvmRules): CorpusReport =
     val files = FixtureCorpus.jsonFilesUnder(directory)
     val outcomes = files.flatMap { file =>
       FixtureCorpus
@@ -266,7 +266,7 @@ object CertificationCorpora:
       name: String,
       directory: Path,
       fork: String = StateFixture.Fork,
-      rules: ChainRules
+      rules: EvmRules
   ): CorpusReport =
     val files = FixtureCorpus.jsonFilesUnder(directory)
     val outcomes = files.flatMap { file =>

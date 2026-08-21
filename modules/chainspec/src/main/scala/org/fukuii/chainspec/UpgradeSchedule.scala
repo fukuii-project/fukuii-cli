@@ -9,8 +9,8 @@ import org.fukuii.bytes.UInt64
   * An upgrade states rules, or mutates state without touching the rules, or
   * does neither and is on the schedule because the network's own canonical
   * enumeration has it there. The second and third look alike from the rules'
-  * point of view and are told apart by [[Schedule.forkPoints]], which is the
-  * one place the difference is observable.
+  * point of view and are told apart by [[UpgradeSchedule.forkPoints]], which is
+  * the one place the difference is observable.
   *
   * ==Not every upgrade is a rule change, and two networks demand the second
   * case==
@@ -32,7 +32,7 @@ import org.fukuii.bytes.UInt64
 enum Upgrade:
 
   /** The rules the network runs from this activation onward. */
-  case ProtocolChange(spec: ProtocolSpec)
+  case ProtocolChange(spec: UpgradeRules)
 
   /** A one-time change to state that leaves the rules exactly as they were. */
   case IrregularStateChange
@@ -78,17 +78,6 @@ enum Upgrade:
     */
   case Unenforced
 
-/** One upgrade on one network's schedule: when it activates, what that network
-  * calls it, and what it does.
-  *
-  * The three are separate on purpose. An upgrade that gates no rule is an entry
-  * whose spec is the one already in force -- it has a name and an activation
-  * and changes nothing, which is a state every canonical fork enumeration in
-  * the field contains and which a schedule keyed on rule changes alone could
-  * not represent without renumbering everything after it.
-  */
-final case class ScheduleEntry(activation: Activation, id: UpgradeId, upgrade: Upgrade)
-
 /** One network's upgrades, in order, with the rules in force at any point
   * derivable from them.
   *
@@ -105,11 +94,11 @@ final case class ScheduleEntry(activation: Activation, id: UpgradeId, upgrade: U
   * ==Total, because the genesis entry is required==
   *
   * [[at]] answers for every height and timestamp rather than returning an
-  * option, and what makes that honest is [[Schedule.of]] refusing a schedule
-  * whose first scheduled entry is not a rule set at block zero. **That entry is
-  * this network's [[baseline]]** -- the rules it starts from -- which differs
-  * per network and is the reason this module exists rather than the machine
-  * holding one network's starting configuration for everybody.
+  * option, and what makes that honest is [[UpgradeSchedule.of]] refusing a
+  * schedule whose first scheduled entry is not a rule set at block zero.
+  * **That entry is this network's [[baseline]]** -- the rules it starts from --
+  * which differs per network and is the reason this module exists rather than
+  * the machine holding one network's starting configuration for everybody.
   *
   * ==Order is checked, never imposed==
   *
@@ -118,13 +107,13 @@ final case class ScheduleEntry(activation: Activation, id: UpgradeId, upgrade: U
   * activation is meaningful -- EIP-2124 contemplates several upgrades at one
   * point, and which of them states the rules is then the author's to say.
   */
-final class Schedule private (
+final class UpgradeSchedule private (
     val network: Network,
-    val entries: Vector[ScheduleEntry],
-    val baseline: ProtocolSpec
+    val entries: Vector[UpgradeSchedule.Entry],
+    val baseline: UpgradeRules
 ):
 
-  private val scheduled: Vector[ScheduleEntry] = entries.filter(_.activation.point.isDefined)
+  private val scheduled: Vector[UpgradeSchedule.Entry] = entries.filter(_.activation.point.isDefined)
 
   /** The rules in force for a block at this height with this timestamp.
     *
@@ -140,9 +129,9 @@ final class Schedule private (
     * mutates state or does nothing at all. Those two are indistinguishable
     * here and are separated by [[forkPoints]].
     */
-  def at(number: UInt64, timestamp: UInt64): ProtocolSpec =
+  def at(number: UInt64, timestamp: UInt64): UpgradeRules =
     scheduled
-      .takeWhile(entry => Schedule.hasActivated(entry.activation, number, timestamp))
+      .takeWhile(entry => UpgradeSchedule.hasActivated(entry.activation, number, timestamp))
       .foldLeft(baseline) { (held, entry) =>
         entry.upgrade match
           case Upgrade.ProtocolChange(spec) => spec
@@ -193,7 +182,7 @@ final class Schedule private (
     */
   def forkPoints: Vector[Activation] =
     scheduled
-      .filter(entry => Schedule.divergesAt(entry.upgrade))
+      .filter(entry => UpgradeSchedule.divergesAt(entry.upgrade))
       .map(_.activation)
       .filter {
         case Activation.AtBlock(number) => number != UInt64.Zero
@@ -201,7 +190,18 @@ final class Schedule private (
       }
       .distinct
 
-object Schedule:
+object UpgradeSchedule:
+
+  /** One upgrade on one network's schedule: when it activates, what that
+    * network calls it, and what it does.
+    *
+    * The three are separate on purpose. An upgrade that gates no rule is an
+    * entry whose rules are the ones already in force -- it has a name and an
+    * activation and changes nothing, which is a state every canonical fork
+    * enumeration in the field contains and which a schedule keyed on rule
+    * changes alone could not represent without renumbering everything after it.
+    */
+  final case class Entry(activation: Activation, id: UpgradeId, upgrade: Upgrade)
 
   /** Why a set of entries is not a schedule. */
   enum Error:
@@ -247,7 +247,8 @@ object Schedule:
     * ==This is the only way to build one, and that assumption has a trigger==
     *
     * The class constructor is private, so every invariant above holds of every
-    * [[Schedule]] that exists. **A derived decoder does not go through here.**
+    * [[UpgradeSchedule]] that exists. **A derived decoder does not go through
+    * here.**
     * Scala's structural derivation builds a product from its fields directly,
     * so a `Mirror` for a type reaches past a private constructor and past every
     * check written beside it. That is a property of the language rather than an
@@ -264,7 +265,7 @@ object Schedule:
     * only door. Hand-write the decoder, or re-establish these checks on the far
     * side of it.
     */
-  def of(entries: Vector[ScheduleEntry]): Either[Error, Schedule] =
+  def of(entries: Vector[Entry]): Either[Error, UpgradeSchedule] =
     for
       network <- entries.headOption.map(_.id.network).toRight(Error.NoScheduledEntry)
       _ <- oneNetwork(network, entries)
@@ -273,9 +274,9 @@ object Schedule:
       genesis <- scheduled.headOption.toRight(Error.NoScheduledEntry)
       baseline <- startsAtGenesis(genesis)
       _ <- ordered(scheduled)
-    yield new Schedule(network, entries, baseline)
+    yield new UpgradeSchedule(network, entries, baseline)
 
-  private def oneNetwork(expected: Network, entries: Vector[ScheduleEntry]): Either[Error, Unit] =
+  private def oneNetwork(expected: Network, entries: Vector[Entry]): Either[Error, Unit] =
     entries
       .map(_.id.network)
       .find(_ != expected)
@@ -283,7 +284,7 @@ object Schedule:
       .left
       .map(found => Error.MixedNetworks(expected, found))
 
-  private def distinctUpgrades(entries: Vector[ScheduleEntry]): Either[Error, Unit] =
+  private def distinctUpgrades(entries: Vector[Entry]): Either[Error, Unit] =
     val ids = entries.map(_.id)
     ids.zipWithIndex
       .collectFirst { case (id, index) if ids.indexOf(id) < index => id }
@@ -291,7 +292,7 @@ object Schedule:
       .left
       .map(Error.DuplicateUpgrade.apply)
 
-  private def startsAtGenesis(genesis: ScheduleEntry): Either[Error, ProtocolSpec] =
+  private def startsAtGenesis(genesis: Entry): Either[Error, UpgradeRules] =
     genesis.activation match
       case Activation.AtBlock(number) if number == UInt64.Zero =>
         genesis.upgrade match
@@ -300,7 +301,7 @@ object Schedule:
           case Upgrade.Unenforced           => Left(Error.GenesisWithoutRules(genesis.id))
       case first => Left(Error.MissingGenesis(first))
 
-  private def ordered(scheduled: Vector[ScheduleEntry]): Either[Error, Unit] =
+  private def ordered(scheduled: Vector[Entry]): Either[Error, Unit] =
     scheduled
       .sliding(2)
       .collectFirst {

@@ -1,6 +1,6 @@
 package org.fukuii.chainspec.networks
 
-import org.fukuii.chainspec.{Network, Registry, Schedule}
+import org.fukuii.chainspec.{Network, Registry, UpgradeSchedule}
 
 /** The networks authored under this package, assembled into one registry.
   *
@@ -26,7 +26,7 @@ object KnownNetworks:
   enum Error:
 
     /** One network's entries are not a schedule. */
-    case Unschedulable(network: Network, reason: Schedule.Error)
+    case Unschedulable(network: Network, reason: UpgradeSchedule.Error)
 
     /** The schedules are individually valid and collide with each other. */
     case Unregisterable(reason: Registry.Error)
@@ -35,14 +35,17 @@ object KnownNetworks:
     * form a registry.
     *
     * The failure is returned rather than thrown for the reason
-    * [[EthereumMainnet.schedule]] gives: a throwing `val` fails at class
+    * [[ethereum.Mainnet.schedule]] gives: a throwing `val` fails at class
     * initialization and surfaces somewhere unrelated.
     */
   val registry: Either[Error, Registry] =
     for
-      ethereum <- EthereumMainnet.schedule.left
-        .map[Error](reason => Error.Unschedulable(EthereumMainnet.network, reason))
-      classic <- EthereumClassicMainnet.schedule.left
-        .map[Error](reason => Error.Unschedulable(EthereumClassicMainnet.network, reason))
-      assembled <- Registry.of(Vector(ethereum, classic)).left.map[Error](Error.Unregisterable.apply)
+      ethereumSchedule <- ethereum.Mainnet.schedule.left
+        .map[Error](reason => Error.Unschedulable(ethereum.Mainnet.network, reason))
+      classicSchedule <- ethereumclassic.Mainnet.schedule.left
+        .map[Error](reason => Error.Unschedulable(ethereumclassic.Mainnet.network, reason))
+      assembled <- Registry
+        .of(Vector(ethereumSchedule, classicSchedule))
+        .left
+        .map[Error](Error.Unregisterable.apply)
     yield assembled

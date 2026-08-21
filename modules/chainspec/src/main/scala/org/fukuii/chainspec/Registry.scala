@@ -7,8 +7,8 @@ import org.fukuii.bytes.UInt64
   * ==The key is derived from the schedule, never supplied beside it==
   *
   * A schedule already knows which network it is for -- every entry names it,
-  * and [[Schedule.of]] refuses a schedule whose entries disagree. Taking the
-  * key from the schedule rather than pairing the two by hand removes the
+  * and [[UpgradeSchedule.of]] refuses a schedule whose entries disagree. Taking
+  * the key from the schedule rather than pairing the two by hand removes the
   * failure where a schedule is filed under the wrong chain id, which is a
   * mistake nothing downstream could detect: every lookup would succeed and
   * answer with another network's rules.
@@ -16,10 +16,10 @@ import org.fukuii.bytes.UInt64
   * So the only way to build this wrongly is to offer two schedules for one
   * chain id, and that is refused.
   */
-final class Registry private (val schedules: Map[UInt64, Schedule]):
+final class Registry private (val schedules: Map[UInt64, UpgradeSchedule]):
 
   /** The schedule for a chain id, where this node has one. */
-  def at(chainId: UInt64): Option[Schedule] = schedules.get(chainId)
+  def at(chainId: UInt64): Option[UpgradeSchedule] = schedules.get(chainId)
 
 object Registry:
 
@@ -37,9 +37,10 @@ object Registry:
     * and the difference follows from what each type promises rather than from
     * either being more careful.
     *
-    * [[Schedule.at]] is TOTAL -- it answers for every height and timestamp, with
-    * no option around it -- so a schedule with nothing in it could not keep that
-    * promise, and [[Schedule.of]] refuses one for exactly that reason.
+    * [[UpgradeSchedule.at]] is TOTAL -- it answers for every height and
+    * timestamp, with no option around it -- so a schedule with nothing in it
+    * could not keep that promise, and [[UpgradeSchedule.of]] refuses one for
+    * exactly that reason.
     * [[Registry.at]] is PARTIAL: it returns an option because a node not running
     * a network is an ordinary state rather than an error. An empty registry
     * answers `None` to every chain id, which is truthful -- this node runs no
@@ -48,7 +49,7 @@ object Registry:
     * So the pair is consistent at the level that matters: each constructor
     * refuses exactly the inputs its own lookup could not answer for.
     */
-  def of(schedules: Vector[Schedule]): Either[Error, Registry] =
+  def of(schedules: Vector[UpgradeSchedule]): Either[Error, Registry] =
     val ids = schedules.map(_.network.chainId)
     ids.zipWithIndex
       .collectFirst { case (chainId, index) if ids.indexOf(chainId) < index => Error.DuplicateNetwork(chainId) }

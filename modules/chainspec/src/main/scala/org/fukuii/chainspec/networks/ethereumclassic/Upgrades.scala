@@ -1,8 +1,8 @@
-package org.fukuii.chainspec.networks
+package org.fukuii.chainspec.networks.ethereumclassic
 
-import org.fukuii.chainspec.ProtocolSpec
+import org.fukuii.chainspec.UpgradeRules
 import org.fukuii.chainspec.proposals.eip.{Eip150, Eip2, Eip7}
-import org.fukuii.evm.{ChainRules, GasForwarding, GasSchedule, OpcodeTable, Precompile, PrecompileSet}
+import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, OpcodeTable, Precompile, PrecompileSet}
 
 /** The configuration Ethereum Classic launched with, and the rule sets it
   * reached from it by adopting proposals.
@@ -43,11 +43,11 @@ import org.fukuii.evm.{ChainRules, GasForwarding, GasSchedule, OpcodeTable, Prec
   *
   * ==No activation and no schedule==
   *
-  * A `ProtocolSpec` carries neither. Which block each of these starts at is a
+  * A rule set carries neither. Which block each of these starts at is a
   * separate fact, external to this file and to this module's types, and is
   * stated where a schedule is authored.
   */
-object EthereumClassic:
+object Upgrades:
 
   /** The prices this network launched with, and the floor its later schedules
     * are a change to.
@@ -163,10 +163,10 @@ object EthereumClassic:
     * earlier than block 1,150,000, which is that statement in the form its
     * reference implementation writes it.
     */
-  val frontier: ProtocolSpec =
-    ProtocolSpec(
+  val frontier: UpgradeRules =
+    UpgradeRules(
       components = Vector.empty,
-      evm = ChainRules(
+      evm = EvmRules(
         table = OpcodeTable.original(genesisPrices),
         schedule = genesisPrices,
         precompiles = genesisPrecompiles,
@@ -184,7 +184,7 @@ object EthereumClassic:
     * -- the four deltas between them touch disjoint fields -- and it is stated
     * because two deltas touching one field compose to whichever ran last.
     */
-  val homestead: ProtocolSpec = frontier.adopting(Eip7.component, Eip2.component)
+  val homestead: UpgradeRules = frontier.adopting(Eip7.component, Eip2.component)
 
   /** [[homestead]] with EIP-150 adopted.
     *
@@ -199,4 +199,4 @@ object EthereumClassic:
     * later, where this network takes EIP-155 with EIP-160 and defers EIP-161
     * and EIP-170 by nearly six million blocks.
     */
-  val gasReprice: ProtocolSpec = homestead.adopting(Eip150.component)
+  val gasReprice: UpgradeRules = homestead.adopting(Eip150.component)

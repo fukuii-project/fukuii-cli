@@ -18,9 +18,9 @@ import org.scalatest.flatspec.AnyFlatSpec
   * failing, and it fails quietly: the fork it produces is still correct, and the
   * next fork derived from the same rules is not.
   */
-class ChainRulesSpec extends AnyFlatSpec:
+class EvmRulesSpec extends AnyFlatSpec:
 
-  private val base: ChainRules = EvmFixtures.rules
+  private val base: EvmRules = EvmFixtures.rules
 
   /** Changes one price and nothing else, so what survives is observable. */
   private val repricing: Proposal =
@@ -126,7 +126,7 @@ class ChainRulesSpec extends AnyFlatSpec:
     // depending on whether a caller built one value or two. Every member is
     // rebuilt here rather than shared, so nothing in this comparison is
     // reference identity.
-    val rebuilt = ChainRules(
+    val rebuilt = EvmRules(
       table = OpcodeTable.original(EvmFixtures.schedule),
       schedule = EvmFixtures.schedule,
       precompiles = EvmFixtures.precompiles,
@@ -147,7 +147,7 @@ class ChainRulesSpec extends AnyFlatSpec:
 
   it should "give two separately built tables one hash as well as one equality" in {
     // `equals` and `hashCode` are hand-written on the table and nothing else
-    // pins them together. `ChainRules` is a case class whose generated hash
+    // pins them together. `EvmRules` is a case class whose generated hash
     // chains through this member, so an edit touching one override and not the
     // other breaks every Set and Map keyed on a rule set -- silently, because
     // equality would still answer correctly.

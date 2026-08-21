@@ -203,7 +203,7 @@ object EvmFixtures:
     * module cannot see and should not: a spec about the machine names a
     * configuration it made up, and that is the whole point.
     */
-  val rules: ChainRules = ChainRules(
+  val rules: EvmRules = EvmRules(
     table = OpcodeTable.original(schedule),
     schedule = schedule,
     precompiles = precompiles,
@@ -262,5 +262,5 @@ object EvmFixtures:
     * schedule silently replaced by this object's. Two helpers say which one the
     * caller means.
     */
-  def environmentUnder(rules: ChainRules, world: WorldState = new MapWorldState): Environment =
+  def environmentUnder(rules: EvmRules, world: WorldState = new MapWorldState): Environment =
     new Environment(new JournaledWorldState(world), blockHashAt, block, transaction, rules)

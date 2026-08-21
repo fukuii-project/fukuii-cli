@@ -7,7 +7,7 @@ package org.fukuii.evm
   * and a behavior settled by a flag have nothing in common except that each
   * turns one set of rules into another.
   */
-type Proposal = ChainRules => ChainRules
+type Proposal = EvmRules => EvmRules
 
 /** How much of what a caller has left a nested invocation is given.
   *
@@ -19,7 +19,7 @@ type Proposal = ChainRules => ChainRules
   *
   *   - **Equality on a function is unspecified.** A lambda capturing nothing
   *     may or may not be the same instance from one evaluation to the next, so
-  *     [[ChainRules]] could not be compared as a whole while one of its members
+  *     [[EvmRules]] could not be compared as a whole while one of its members
   *     was one -- and *"do these two networks run the same rules"* is a
   *     question this project has to answer.
   *   - **A later proposal could replace this rule by accident.** Written
@@ -201,7 +201,7 @@ enum GasForwarding:
   *   whatever admits a transaction, and is held here because it is the fork's
   *   rule and not that layer's preference.
   */
-final case class ChainRules(
+final case class EvmRules(
     table: OpcodeTable,
     schedule: GasSchedule,
     precompiles: PrecompileSet,
@@ -215,5 +215,5 @@ final case class ChainRules(
     * Order is the caller's to state and is not always free: two proposals
     * touching one price compose to whichever ran last.
     */
-  def applying(proposals: Proposal*): ChainRules =
+  def applying(proposals: Proposal*): EvmRules =
     proposals.foldLeft(this)((held, change) => change(held))

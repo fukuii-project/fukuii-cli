@@ -18,13 +18,13 @@ class KnownNetworksSpec extends AnyFlatSpec:
 
   "chain id 1" should "resolve to Ethereum mainnet's schedule" in
     assert(
-      registry.at(UInt64.fromBits(1L)).map(_.network).contains(EthereumMainnet.network),
+      registry.at(UInt64.fromBits(1L)).map(_.network).contains(ethereum.Mainnet.network),
       "the registry keys on the id carried by the schedule, so this is the lookup a node performs at startup"
     )
 
   "chain id 61" should "resolve to Ethereum Classic mainnet's schedule" in
     assert(
-      registry.at(UInt64.fromBits(61L)).map(_.network).contains(EthereumClassicMainnet.network),
+      registry.at(UInt64.fromBits(61L)).map(_.network).contains(ethereumclassic.Mainnet.network),
       "two networks in one registry is the case a lookup by id exists for, and each must reach its own schedule"
     )
 

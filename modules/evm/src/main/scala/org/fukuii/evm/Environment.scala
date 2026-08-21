@@ -73,7 +73,7 @@ final class Environment(
     // `ProtocolSpec` a fork builds from the `MessageFrame` an invocation
     // carries. What a fork decides and what an invocation carries are different
     // lifetimes, and this is the seam between them.
-    val rules: ChainRules
+    val rules: EvmRules
 ):
 
   /** The three the machine reads most, forwarded so an operation asks the

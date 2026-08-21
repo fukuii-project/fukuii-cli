@@ -62,7 +62,7 @@ final class PrecompileSet private (private val entries: Map[Address, Precompile]
     * ==Why a class with no equality was not good enough==
     *
     * Two networks running the same rules is a question this project has to
-    * answer -- [[ChainRules]] is compared as a whole to establish it -- and
+    * answer -- [[EvmRules]] is compared as a whole to establish it -- and
     * every member of that record has to answer by value for the whole to. This
     * was one of the two that did not, so two identical configurations built
     * separately compared unequal while two references to one build compared

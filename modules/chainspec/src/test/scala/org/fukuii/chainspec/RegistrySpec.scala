@@ -9,10 +9,10 @@ class RegistrySpec extends AnyFlatSpec:
 
   import ChainspecFixtures.*
 
-  private val forAlpha = Schedule.of(genesisOnly).toOption.get
+  private val forAlpha = UpgradeSchedule.of(genesisOnly).toOption.get
 
   private val forBeta =
-    Schedule.of(Vector(entry(atBlock(0), "Start", Upgrade.ProtocolChange(secondRules), beta))).toOption.get
+    UpgradeSchedule.of(Vector(entry(atBlock(0), "Start", Upgrade.ProtocolChange(secondRules), beta))).toOption.get
 
   private val registry = Registry.of(Vector(forAlpha, forBeta)).toOption.get
 

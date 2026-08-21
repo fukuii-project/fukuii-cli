@@ -64,7 +64,7 @@ trait Precompile:
   * so structural equality is the right equality for one: two entries agree when
   * they are the same native at the same prices. Written as anonymous classes
   * these compared by reference, which made [[PrecompileSet]] -- and through it
-  * [[ChainRules]] -- answer *different* for two identical configurations built
+  * [[EvmRules]] -- answer *different* for two identical configurations built
   * separately. [[PrecompileSet.equals]] records what that costs and why the
   * residual is safe.
   *

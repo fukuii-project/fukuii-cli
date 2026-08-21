@@ -1,7 +1,7 @@
 package org.fukuii.chainspec.proposals.eip
 
-import org.fukuii.chainspec.networks.Ethereum
-import org.fukuii.evm.{ChainRules, Cost, Opcode, OpcodeTable, Operation}
+import org.fukuii.chainspec.networks.ethereum
+import org.fukuii.evm.{EvmRules, Cost, Opcode, OpcodeTable, Operation}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** What adopting EIP-150 actually changes, and what it must leave alone.
@@ -15,9 +15,9 @@ import org.scalatest.flatspec.AnyFlatSpec
   */
 class Eip150Spec extends AnyFlatSpec:
 
-  private val base: ChainRules = Ethereum.homestead.evm
+  private val base: EvmRules = ethereum.Upgrades.homestead.evm
 
-  private val repriced: ChainRules = base.applying(Eip150.stateReadRepricing)
+  private val repriced: EvmRules = base.applying(Eip150.stateReadRepricing)
 
   /** What a table charges for `opcode` before it runs, where that is settled. */
   private def settledCost(table: OpcodeTable, opcode: Opcode): Option[BigInt] =

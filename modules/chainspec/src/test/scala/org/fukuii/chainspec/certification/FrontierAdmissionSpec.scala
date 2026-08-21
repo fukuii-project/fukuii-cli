@@ -5,7 +5,7 @@ import org.fukuii.evm.fixtures.*
 import org.scalatest.flatspec.AnyFlatSpec
 
 import org.fukuii.bytes.{Address, Bytes, UInt64}
-import org.fukuii.chainspec.networks.Ethereum
+import org.fukuii.chainspec.networks.ethereum
 import org.fukuii.chainspec.proposals.eip.Eip2
 import org.fukuii.evm.{BlockContext, EvmFixtures, GasSchedule, Word}
 
@@ -87,7 +87,7 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
     StateTransaction(nonce, gasPrice, gasLimit, to, value, data, sender, None, kind)
 
   /** The rules with EIP-2's creation surcharge applied. */
-  private val charging: GasSchedule = Ethereum.frontier.evm.applying(Eip2.creationCharge).schedule
+  private val charging: GasSchedule = ethereum.Upgrades.frontier.evm.applying(Eip2.creationCharge).schedule
 
   private def charged(transaction: StateTransaction, schedule: GasSchedule): BigInt =
     FrontierTransaction.intrinsicCost(schedule, transaction.data, transaction.to.isEmpty)
@@ -106,11 +106,11 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
       transaction: StateTransaction,
       state: EvmFixtures.MapWorldState = world()
   ): Admission =
-    FrontierTransaction.admit(state, block, transaction, Ethereum.genesisPrices)
+    FrontierTransaction.admit(state, block, transaction, ethereum.Upgrades.genesisPrices)
 
   "admission" should "admit a transaction that breaks none of its rules" in
     assert(
-      verdict(admissible()) == Admission.Admitted(Ethereum.genesisPrices.transactionBase),
+      verdict(admissible()) == Admission.Admitted(ethereum.Upgrades.genesisPrices.transactionBase),
       verdict(admissible()).toString
     )
 
@@ -123,18 +123,18 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
   it should "refuse a transaction whose limit cannot pay the intrinsic charge" in
     // One below the charge, so the boundary is pinned and not merely the region.
     assert(
-      verdict(admissible(gasLimit = Ethereum.genesisPrices.transactionBase - 1)) ==
+      verdict(admissible(gasLimit = ethereum.Upgrades.genesisPrices.transactionBase - 1)) ==
         Admission.Rejected(Rejection.IntrinsicGasTooLow),
-      verdict(admissible(gasLimit = Ethereum.genesisPrices.transactionBase - 1)).toString
+      verdict(admissible(gasLimit = ethereum.Upgrades.genesisPrices.transactionBase - 1)).toString
     )
 
   it should "admit a transaction whose limit exactly meets the intrinsic charge" in
     // The other side of the same boundary. Without it, an inverted comparison
     // refusing one gas too much would pass the test above.
     assert(
-      verdict(admissible(gasLimit = Ethereum.genesisPrices.transactionBase)) ==
-        Admission.Admitted(Ethereum.genesisPrices.transactionBase),
-      verdict(admissible(gasLimit = Ethereum.genesisPrices.transactionBase)).toString
+      verdict(admissible(gasLimit = ethereum.Upgrades.genesisPrices.transactionBase)) ==
+        Admission.Admitted(ethereum.Upgrades.genesisPrices.transactionBase),
+      verdict(admissible(gasLimit = ethereum.Upgrades.genesisPrices.transactionBase)).toString
     )
 
   it should "refuse a transaction whose nonce cannot be signed for" in
@@ -182,13 +182,13 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
     // a base plus the data, so the two shapes cost the same. Without this the
     // surcharge below would have nothing to be a delta over.
     assert(
-      charged(admissible(to = None), Ethereum.genesisPrices) ==
-        charged(admissible(), Ethereum.genesisPrices)
+      charged(admissible(to = None), ethereum.Upgrades.genesisPrices) ==
+        charged(admissible(), ethereum.Upgrades.genesisPrices)
     )
 
   it should "ask a deployment thirty-two thousand more once the proposal is applied" in
     assert(
-      charged(admissible(to = None), charging) - charged(admissible(to = None), Ethereum.genesisPrices) ==
+      charged(admissible(to = None), charging) - charged(admissible(to = None), ethereum.Upgrades.genesisPrices) ==
         BigInt(32000)
     )
 
@@ -196,7 +196,7 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
     // The control. A surcharge applied to every transaction rather than only to
     // a deployment would satisfy both cases above and be wrong for every call on
     // the network.
-    assert(charged(admissible(), charging) == charged(admissible(), Ethereum.genesisPrices))
+    assert(charged(admissible(), charging) == charged(admissible(), ethereum.Upgrades.genesisPrices))
 
   it should "still charge a deployment for the data it carries" in
     // The surcharge is added to the data charge rather than replacing it, so a

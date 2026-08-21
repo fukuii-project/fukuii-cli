@@ -87,7 +87,7 @@ final class OpcodeTable private (private val entries: Map[Int, Operation]):
     *
     * ==Two networks running the same rules is a question with an answer==
     *
-    * [[ChainRules]] is compared as a whole to establish it, and a record
+    * [[EvmRules]] is compared as a whole to establish it, and a record
     * answers by value only if every member does. This was one of the two that
     * did not: two identical tables built separately compared unequal, so
     * whether the answer came out right depended on whether a caller had built

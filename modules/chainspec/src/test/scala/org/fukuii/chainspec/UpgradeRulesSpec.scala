@@ -4,7 +4,7 @@ import org.fukuii.evm.Proposal
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** What adopting a component does, and what it must not be able to do. */
-class ProtocolSpecSpec extends AnyFlatSpec:
+class UpgradeRulesSpec extends AnyFlatSpec:
 
   import ChainspecFixtures.firstRules
 
@@ -22,7 +22,7 @@ class ProtocolSpecSpec extends AnyFlatSpec:
     * which is the one thing the fold must not let it do.
     */
   private val forgesTheRecord =
-    Component(ProposalId.Eip(1), spec => spec.copy(components = Vector(ProposalId.Eip(9999))))
+    Component(ProposalId.Eip(1), rules => rules.copy(components = Vector(ProposalId.Eip(9999))))
 
   "adopting components" should "record their proposals in the order adopted" in
     assert(

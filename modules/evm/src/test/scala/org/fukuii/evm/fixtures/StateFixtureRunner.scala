@@ -31,7 +31,7 @@ object StateFixtureRunner:
     * part of what the corpus IS, so naming them is the caller's job and there
     * is no answer to fall back on.
     */
-  def run(fixture: StateFixture, rules: ChainRules): Verdict =
+  def run(fixture: StateFixture, rules: EvmRules): Verdict =
     val trie = VmFixtureRunner.freshTrie()
     val base = new StateTrieWorldState(trie)
     FixtureValues.seed(base, fixture.pre) match
@@ -71,7 +71,7 @@ object StateFixtureRunner:
     * degrades quietly, because wherever bytes are present they settle the
     * question in both directions.
     */
-  private def signerOf(transaction: StateTransaction, rules: ChainRules): Signer =
+  private def signerOf(transaction: StateTransaction, rules: EvmRules): Signer =
     // A transaction of a type this fork predates is refused for its TYPE, and
     // admission is where that is said. Its envelope is not the legacy shape, so
     // attempting recovery reports an unreadable file rather than a refused
@@ -102,7 +102,7 @@ object StateFixtureRunner:
 
   private def executeSeeded(
       fixture: StateFixture,
-      rules: ChainRules,
+      rules: EvmRules,
       trie: StateTrie,
       base: StateTrieWorldState
   ): Verdict =
@@ -117,7 +117,7 @@ object StateFixtureRunner:
   private def executeSigned(
       fixture: StateFixture,
       transaction: StateTransaction,
-      rules: ChainRules,
+      rules: EvmRules,
       trie: StateTrie,
       base: StateTrieWorldState
   ): Verdict =
@@ -131,7 +131,7 @@ object StateFixtureRunner:
   private def settle(
       fixture: StateFixture,
       transaction: StateTransaction,
-      rules: ChainRules,
+      rules: EvmRules,
       trie: StateTrie,
       journal: JournaledWorldState,
       intrinsicGas: BigInt

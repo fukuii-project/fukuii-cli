@@ -1,4 +1,4 @@
-package org.fukuii.chainspec.networks
+package org.fukuii.chainspec.networks.ethereum
 
 import org.fukuii.evm.{Cost, Opcode, OpcodeTable, Operation}
 
@@ -38,9 +38,9 @@ import org.scalatest.prop.TableDrivenPropertyChecks
   * fork is nothing, and `InvocationSpec` is where that is stated, since a
   * conditional charge is only observable by running it.
   */
-class EthereumGasScheduleSpec extends AnyPropSpec with TableDrivenPropertyChecks:
+class GasScheduleSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
-  private val table = Ethereum.frontier.evm.table
+  private val table = Upgrades.frontier.evm.table
 
   private val expected = Table(
     ("opcode", "cost"),
@@ -226,7 +226,7 @@ class EthereumGasScheduleSpec extends AnyPropSpec with TableDrivenPropertyChecks
   }
 
   property("a schedule change moves every operation priced from what changed") {
-    val dearer = OpcodeTable.original(Ethereum.genesisPrices.copy(veryLow = BigInt(30)))
+    val dearer = OpcodeTable.original(Upgrades.genesisPrices.copy(veryLow = BigInt(30)))
     assert(
       dearer.operationAt(Opcode.Add.code) == Some(Operation(Opcode.Add, Cost.Fixed(BigInt(30)))) &&
         dearer.operationAt(Opcode.Mul.code) == table.operationAt(Opcode.Mul.code),

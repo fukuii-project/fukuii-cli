@@ -13,9 +13,9 @@ import org.fukuii.bytes.UInt64
   * a label reads as something a human recognizes.
   *
   * Both are held on one value rather than split, because every consumer that
-  * has one wants the other: an [[UpgradeId]] needs the name to render and the id
-  * to scope, and a [[Schedule]] needs the id to be found and the name to be
-  * reported.
+  * has one wants the other: an [[UpgradeId]] needs the name to render and the
+  * id to scope, and an [[UpgradeSchedule]] needs the id to be found and the
+  * name to be reported.
   *
   * ==This is deliberately NOT the devp2p network identifier==
   *
@@ -31,7 +31,8 @@ import org.fukuii.bytes.UInt64
   * @param name
   *   what the network is called. It is compared as well as displayed, so two
   *   entries spelling it differently are two networks as far as
-  *   [[Schedule.of]] is concerned -- which is the intended reading, because a
-  *   schedule that mixes networks is the failure this module exists to prevent.
+  *   [[UpgradeSchedule.of]] is concerned -- which is the intended reading,
+  *   because a schedule that mixes networks is the failure this module exists
+  *   to prevent.
   */
 final case class Network(chainId: UInt64, name: String)

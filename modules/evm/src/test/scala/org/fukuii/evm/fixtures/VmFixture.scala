@@ -155,7 +155,7 @@ object VmFixtureRunner:
     * quietly opinionated about which chain a corpus belonged to. What a corpus
     * is read under is part of what the corpus IS, so it arrives from the caller.
     */
-  def run(fixture: VmFixture, rules: ChainRules): Verdict =
+  def run(fixture: VmFixture, rules: EvmRules): Verdict =
     val trie = freshTrie()
     val base = new StateTrieWorldState(trie)
     FixtureValues.seed(base, fixture.pre) match
@@ -164,7 +164,7 @@ object VmFixtureRunner:
 
   private def runSeeded(
       fixture: VmFixture,
-      rules: ChainRules,
+      rules: EvmRules,
       trie: StateTrie,
       base: StateTrieWorldState
   ): Verdict =

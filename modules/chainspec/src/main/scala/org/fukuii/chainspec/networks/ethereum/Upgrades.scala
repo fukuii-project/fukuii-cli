@@ -1,8 +1,8 @@
-package org.fukuii.chainspec.networks
+package org.fukuii.chainspec.networks.ethereum
 
-import org.fukuii.chainspec.ProtocolSpec
+import org.fukuii.chainspec.UpgradeRules
 import org.fukuii.chainspec.proposals.eip.{Eip150, Eip2, Eip7}
-import org.fukuii.evm.{ChainRules, GasForwarding, GasSchedule, OpcodeTable, Precompile, PrecompileSet}
+import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, OpcodeTable, Precompile, PrecompileSet}
 
 /** The configuration Ethereum launched with, and the rule sets it reached from
   * it by adopting proposals.
@@ -32,8 +32,8 @@ import org.fukuii.evm.{ChainRules, GasForwarding, GasSchedule, OpcodeTable, Prec
   * same proposals rather than by naming these, which is what makes *"the two
   * agree"* a claim a test can refute: values built from one value are equal
   * however either was authored, so an assertion over them would report the
-  * sharing rather than the agreement. [[EthereumClassic]] holds the other
-  * composition and `SharedHistorySpec` holds the assertion.
+  * sharing rather than the agreement. [[ethereumclassic.Upgrades]] holds the
+  * other composition and `SharedHistorySpec` holds the assertion.
   *
   * What differs between the two is when each switched a rule set on and what
   * each calls it, and neither of those is here: an activation belongs to a
@@ -46,11 +46,11 @@ import org.fukuii.evm.{ChainRules, GasForwarding, GasSchedule, OpcodeTable, Prec
   *
   * ==No activation and no schedule==
   *
-  * A `ProtocolSpec` carries neither. Which block each of these starts at is a
+  * A rule set carries neither. Which block each of these starts at is a
   * separate fact, external to this file and to this module's types, and is
   * stated where a schedule is authored.
   */
-object Ethereum:
+object Upgrades:
 
   /** The prices Ethereum launched with, and the floor its later schedules are a
     * change to.
@@ -140,10 +140,10 @@ object Ethereum:
     * list of proposals over it, and the list being empty is what makes this
     * genesis rather than a fork.
     */
-  val frontier: ProtocolSpec =
-    ProtocolSpec(
+  val frontier: UpgradeRules =
+    UpgradeRules(
       components = Vector.empty,
-      evm = ChainRules(
+      evm = EvmRules(
         table = OpcodeTable.original(genesisPrices),
         schedule = genesisPrices,
         precompiles = genesisPrecompiles,
@@ -159,7 +159,7 @@ object Ethereum:
     * deltas between them touch disjoint fields -- and it is stated because two
     * deltas touching one field compose to whichever ran last.
     */
-  val homestead: ProtocolSpec = frontier.adopting(Eip7.component, Eip2.component)
+  val homestead: UpgradeRules = frontier.adopting(Eip7.component, Eip2.component)
 
   /** [[homestead]] with EIP-150 adopted.
     *
@@ -173,4 +173,4 @@ object Ethereum:
     * defers `EIP161FBlock` and `EIP170FBlock` to 8,772,000 -- which is what
     * makes a fork name a family's label rather than a description of a rule set.
     */
-  val tangerineWhistle: ProtocolSpec = homestead.adopting(Eip150.component)
+  val tangerineWhistle: UpgradeRules = homestead.adopting(Eip150.component)

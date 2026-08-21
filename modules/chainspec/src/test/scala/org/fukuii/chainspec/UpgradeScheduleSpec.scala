@@ -4,7 +4,7 @@ import org.fukuii.bytes.UInt64
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** What a schedule refuses at construction, and what it answers once built. */
-class ScheduleSpec extends AnyFlatSpec:
+class UpgradeScheduleSpec extends AnyFlatSpec:
 
   import ChainspecFixtures.*
 
@@ -18,41 +18,41 @@ class ScheduleSpec extends AnyFlatSpec:
     */
   private val gatesNothing = entry(atBlock(50), "Thawing")
 
-  private def built(entries: ScheduleEntry*): Schedule =
-    Schedule.of(entries.toVector).toOption.get
+  private def built(entries: UpgradeSchedule.Entry*): UpgradeSchedule =
+    UpgradeSchedule.of(entries.toVector).toOption.get
 
-  private def refused(entries: ScheduleEntry*): Option[Schedule.Error] =
-    Schedule.of(entries.toVector).left.toOption
+  private def refused(entries: UpgradeSchedule.Entry*): Option[UpgradeSchedule.Error] =
+    UpgradeSchedule.of(entries.toVector).left.toOption
 
   "entries that activate nowhere" should "not form a schedule" in
     assert(
-      refused(entry(Activation.Unscheduled, "Pending")).contains(Schedule.Error.NoScheduledEntry),
+      refused(entry(Activation.Unscheduled, "Pending")).contains(UpgradeSchedule.Error.NoScheduledEntry),
       "a schedule with nothing in force cannot answer for any height, so it is not total"
     )
 
   "no entries at all" should "not form a schedule" in
     assert(
-      Schedule.of(Vector.empty) == Left(Schedule.Error.NoScheduledEntry),
+      UpgradeSchedule.of(Vector.empty) == Left(UpgradeSchedule.Error.NoScheduledEntry),
       "there is no network to derive and no rules to start from"
     )
 
   "a schedule whose earliest entry is not block zero" should "be refused" in
     assert(
-      refused(entry(atBlock(1), "Late")).contains(Schedule.Error.MissingGenesis(atBlock(1))),
+      refused(entry(atBlock(1), "Late")).contains(UpgradeSchedule.Error.MissingGenesis(atBlock(1))),
       "a height below the earliest entry would have no rules, and the lookup promises an answer for every height"
     )
 
   "a genesis entry that changes state rather than rules" should "be refused" in
     assert(
       refused(entry(atBlock(0), "Start", Upgrade.IrregularStateChange))
-        .contains(Schedule.Error.GenesisWithoutRules(UpgradeId.named(alpha, "Start"))),
+        .contains(UpgradeSchedule.Error.GenesisWithoutRules(UpgradeId.named(alpha, "Start"))),
       "an irregular state change states no rules, so a network whose first entry is one has no baseline"
     )
 
   "entries that go backwards" should "be refused" in
     assert(
       refused(genesis, entry(atBlock(100), "Later"), entry(atBlock(50), "Earlier"))
-        .contains(Schedule.Error.OutOfOrder(atBlock(100), UpgradeId.named(alpha, "Earlier"))),
+        .contains(UpgradeSchedule.Error.OutOfOrder(atBlock(100), UpgradeId.named(alpha, "Earlier"))),
       "order is checked rather than imposed, because sorting would accept the schedule silently"
     )
 
@@ -64,21 +64,21 @@ class ScheduleSpec extends AnyFlatSpec:
   "a timestamp activation before a block activation" should "be refused even where the figures ascend" in
     assert(
       refused(genesis, entry(atTimestamp(0), "ByTime"), entry(atBlock(5), "ByHeight"))
-        .contains(Schedule.Error.TimestampBeforeBlock(atTimestamp(0), UpgradeId.named(alpha, "ByHeight"))),
+        .contains(UpgradeSchedule.Error.TimestampBeforeBlock(atTimestamp(0), UpgradeId.named(alpha, "ByHeight"))),
       "EIP-6122 requires every timestamp fork at or after every block fork, on private networks as well as public ones"
     )
 
   "entries from two networks" should "be refused" in
     assert(
       refused(genesis, entry(atBlock(100), "Later", Upgrade.ProtocolChange(secondRules), beta))
-        .contains(Schedule.Error.MixedNetworks(alpha, beta)),
+        .contains(UpgradeSchedule.Error.MixedNetworks(alpha, beta)),
       "one network's rules reaching another's schedule under a shared label is the failure this module exists to stop"
     )
 
   "two entries a network calls the same thing" should "be refused" in
     assert(
       refused(genesis, entry(atBlock(100), "Start"))
-        .contains(Schedule.Error.DuplicateUpgrade(UpgradeId.named(alpha, "Start"))),
+        .contains(UpgradeSchedule.Error.DuplicateUpgrade(UpgradeId.named(alpha, "Start"))),
       "a network does not name two of its upgrades the same, and a duplicate is a paste rather than a decision"
     )
 
@@ -159,7 +159,7 @@ class ScheduleSpec extends AnyFlatSpec:
   "a genesis entry that is scheduled but enforces nothing" should "be refused" in
     assert(
       refused(entry(atBlock(0), "Start", Upgrade.Unenforced))
-        .contains(Schedule.Error.GenesisWithoutRules(UpgradeId.named(alpha, "Start"))),
+        .contains(UpgradeSchedule.Error.GenesisWithoutRules(UpgradeId.named(alpha, "Start"))),
       "an upgrade that enforces nothing states no rules, so a network whose first entry is one has no baseline"
     )
 
@@ -195,7 +195,7 @@ class ScheduleSpec extends AnyFlatSpec:
   "a height with the high bit set" should "resolve through the activations below it" in
     // The comparison in `hasActivated` reads a height as UNSIGNED, and nothing
     // else pins that: `Activation` summons its own `Ordering[UInt64]` and its
-    // property spec pins that one, while `Schedule` summons a second
+    // property spec pins that one, while `UpgradeSchedule` summons a second
     // independently. Read as signed, every height at or above 2^63 is negative,
     // so no activation below it has been reached and the answer falls back to
     // genesis -- a wrong rule set, returned without throwing, which is the

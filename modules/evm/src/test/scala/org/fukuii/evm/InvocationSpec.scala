@@ -126,7 +126,7 @@ class InvocationSpec extends AnyFlatSpec:
     * this spec is about what the MACHINE does with the flag, and which document
     * supplied it is a chain configuration's business.
     */
-  private def strictDeposit: ChainRules = EvmFixtures.rules.copy(codeDepositMustSucceed = true)
+  private def strictDeposit: EvmRules = EvmFixtures.rules.copy(codeDepositMustSucceed = true)
 
   /** The table with the delegating byte in it, which is the only way it runs. */
   private def admitting: OpcodeTable =
@@ -192,7 +192,7 @@ class InvocationSpec extends AnyFlatSpec:
   /** The rules with a forwarding cap and nothing else moved, so only what is
     * forwarded differs from the uncapped run beside it.
     */
-  private def capping: ChainRules =
+  private def capping: EvmRules =
     EvmFixtures.rules.copy(gasForwarded = GasForwarding.AllButOneSixtyFourth)
 
   /** What ending an invocation costs under [[charging]], and the surcharge for a
@@ -208,13 +208,13 @@ class InvocationSpec extends AnyFlatSpec:
   private val destructionSurcharge: BigInt = BigInt(25053)
 
   /** The rules with ending an invocation charged for. */
-  private def charging: ChainRules =
+  private def charging: EvmRules =
     EvmFixtures.rules.copy(
       schedule = schedule.copy(selfDestruct = destructionCharge, selfDestructNewAccount = destructionSurcharge)
     )
 
   /** The same cap, over a table that makes the delegating byte run at all. */
-  private def cappingDelegation: ChainRules = capping.copy(table = admitting)
+  private def cappingDelegation: EvmRules = capping.copy(table = admitting)
 
   // ── What an invocation is given, and what it leaves behind ───────────────
 

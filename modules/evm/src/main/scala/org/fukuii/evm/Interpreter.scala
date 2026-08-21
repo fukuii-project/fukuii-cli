@@ -616,7 +616,7 @@ object Interpreter:
     *
     * ==How much is forwarded is the fork's to say, and it is settled first==
     *
-    * The caller asks for an amount; [[ChainRules.gasForwarded]] decides how much
+    * The caller asks for an amount; [[EvmRules.gasForwarded]] decides how much
     * of it the callee gets, out of what the caller would still hold once this
     * operation's own price and its memory were paid. That is why the memory cost
     * is worked out here rather than left to `reach` to fold in: the figure has

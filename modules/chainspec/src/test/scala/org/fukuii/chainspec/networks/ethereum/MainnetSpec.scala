@@ -1,30 +1,30 @@
-package org.fukuii.chainspec.networks
+package org.fukuii.chainspec.networks.ethereum
 
 import org.fukuii.bytes.UInt64
-import org.fukuii.chainspec.{Activation, Schedule, Upgrade, UpgradeId}
+import org.fukuii.chainspec.{Activation, Upgrade, UpgradeId, UpgradeSchedule}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** What this network's schedule is made of, and the one entry that must be in
   * it without reaching anything derived from it.
   *
   * The activation figures themselves are a matrix and live in
-  * [[EthereumMainnetPropSpec]]; this holds the structural facts.
+  * [[MainnetPropSpec]]; this holds the structural facts.
   */
-class EthereumMainnetSpec extends AnyFlatSpec:
+class MainnetSpec extends AnyFlatSpec:
 
-  private val schedule: Schedule =
-    EthereumMainnet.schedule.getOrElse(fail("the authored entries do not form a schedule"))
+  private val schedule: UpgradeSchedule =
+    Mainnet.schedule.getOrElse(fail("the authored entries do not form a schedule"))
 
-  private def label(entry: org.fukuii.chainspec.ScheduleEntry): String = entry.id.label match
+  private def label(entry: org.fukuii.chainspec.UpgradeSchedule.Entry): String = entry.id.label match
     case UpgradeId.Label.Named(text) => text
     case UpgradeId.Label.Synthesized => "Synthesized"
 
-  private val thawing: org.fukuii.chainspec.ScheduleEntry =
+  private val thawing: org.fukuii.chainspec.UpgradeSchedule.Entry =
     schedule.entries.find(entry => label(entry) == "Frontier Thawing").getOrElse(fail("no thawing entry"))
 
   "the authored entries" should "form a schedule" in
     assert(
-      EthereumMainnet.schedule.isRight,
+      Mainnet.schedule.isRight,
       "every construction invariant is checked here, so a Left is this file disagreeing with itself"
     )
 

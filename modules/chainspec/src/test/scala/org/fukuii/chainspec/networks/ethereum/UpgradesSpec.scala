@@ -1,13 +1,13 @@
-package org.fukuii.chainspec.networks
+package org.fukuii.chainspec.networks.ethereum
 
 import org.fukuii.chainspec.ProposalId
 import org.fukuii.evm.{Cost, Opcode, OpcodeTable, Operation}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Properties every rule set this network composed has to hold. */
-class EthereumSpec extends AnyFlatSpec:
+class UpgradesSpec extends AnyFlatSpec:
 
-  private val composed = Vector(Ethereum.frontier, Ethereum.homestead, Ethereum.tangerineWhistle)
+  private val composed = Vector(Upgrades.frontier, Upgrades.homestead, Upgrades.tangerineWhistle)
 
   /** What a table charges for `opcode` before it runs, where that is settled. */
   private def settledCost(table: OpcodeTable, opcode: Opcode): Option[BigInt] =
@@ -22,7 +22,7 @@ class EthereumSpec extends AnyFlatSpec:
     // mismatch is the interpreter reporting an operation it cannot price; there
     // is none in this direction, so it is asserted across every composition
     // rather than at the first alone.
-    val settled = composed.filter(spec => settledCost(spec.evm.table, Opcode.SelfDestruct).isDefined)
+    val settled = composed.filter(rules => settledCost(rules.evm.table, Opcode.SelfDestruct).isDefined)
     assert(settled.isEmpty, "a fork settled a price for an operation that works out its own")
   }
 
@@ -31,9 +31,9 @@ class EthereumSpec extends AnyFlatSpec:
     // list disagrees with what it applied cannot be compared against another
     // network's meaningfully.
     assert(
-      Ethereum.frontier.components == Vector.empty &&
-        Ethereum.homestead.components == Vector(ProposalId.Eip(7), ProposalId.Eip(2)) &&
-        Ethereum.tangerineWhistle.components == Vector(ProposalId.Eip(7), ProposalId.Eip(2), ProposalId.Eip(150)),
+      Upgrades.frontier.components == Vector.empty &&
+        Upgrades.homestead.components == Vector(ProposalId.Eip(7), ProposalId.Eip(2)) &&
+        Upgrades.tangerineWhistle.components == Vector(ProposalId.Eip(7), ProposalId.Eip(2), ProposalId.Eip(150)),
       "a composition's recorded components are not the ones it adopted"
     )
 
@@ -43,7 +43,7 @@ class EthereumSpec extends AnyFlatSpec:
     // the delegating byte -- which arrived with EIP-7 -- is the observable
     // difference between that and its next rule set.
     assert(
-      !Ethereum.frontier.evm.table.contains(Opcode.DelegateCall) &&
-        Ethereum.homestead.evm.table.contains(Opcode.DelegateCall),
+      !Upgrades.frontier.evm.table.contains(Opcode.DelegateCall) &&
+        Upgrades.homestead.evm.table.contains(Opcode.DelegateCall),
       "the genesis table already ran an operation a later proposal introduced"
     )
