@@ -179,41 +179,72 @@ behaves, never an adopted dependency; this table remains the authority for what
 is declared.
 
 **Whether a dependency-update (Dependabot) configuration exists for `build.sbt`
-is answered by looking for `.github/dependabot.yml`, not by this paragraph.**
-What is durable is why one is expressible and what it would and would not
-cover. `build.sbt` is a real manifest, and GitHub's Dependabot has
-carried a dedicated [`sbt` ecosystem](https://docs.github.com/en/code-security/reference/supply-chain-security/supported-ecosystems-and-repositories#sbt)
+is answered by looking for `.github/dependabot.yml`, not by this paragraph —
+and the file exists.** What is durable is why one is expressible, what it
+covers, and why it is disabled. `build.sbt` is a real manifest, and GitHub's
+Dependabot has carried a dedicated [`sbt` ecosystem](https://docs.github.com/en/code-security/reference/supply-chain-security/supported-ecosystems-and-repositories#sbt)
 since it [shipped 2026-05-26](https://github.blog/changelog/2026-05-26-dependabot-version-updates-now-support-the-sbt-ecosystem/);
 it fetches `build.sbt` at the repository root as a required file. Coverage has
 a real limit, though: GitHub's own wording is *"This applies to version
-updates, not security updates,"* so a configured `sbt` entry opens scheduled
-pull requests for newer upstream releases but does not plug into Dependabot's
-advisory-triggered security-update path the way some other ecosystems do.
+updates, not security updates,"* so an `sbt` entry can only ever open scheduled
+pull requests for newer upstream releases. No repository-level toggle changes
+that: this repository's Dependabot alerts and its automated security-fix
+setting are both enabled (confirmed via the GitHub API, 2026-08-21), and
+neither reaches `build.sbt`, because the ecosystem itself carries no
+security-update mechanism for Dependabot to run at any setting.
 
-**So an entry for this manifest is expressible, and it is GATED — not merely
-undecided.** The operator has deferred it until the rebuild completes and this
-repository is organized for public contributions and release, which is the same
-signal `## Branching` names and is declared by the operator alone. **Until that
-is declared: do not write one, do not propose one as ready work, and do not
-report its absence as drift or as a finding.** A live config starts opening pull
+**The file carries `open-pull-requests-limit: 0` and no `cooldown:` block — the
+disabled form every wired repo gets by default, not a gap and not ready work
+proposed early.** Writing that disabled form was not gated: the manifest is
+real and the `sbt` key names it, so this repository carries the file the way
+every wired repo does. **What stays gated is enabling it** — raising the
+limit, which brings a `cooldown:` block with it. The operator has deferred
+that until the rebuild completes and this repository is organized for public
+contributions and release, which is the same signal `## Branching` names and
+is declared by the operator alone. **Until that is declared: do not raise the
+limit, do not propose raising it as ready work, and do not report the limit
+being zero as drift or as a finding.** A raised limit starts opening pull
 requests on the next scheduled run — outward-facing, against a release process
 that does not exist yet and a branch policy explicitly not in effect.
 
-**Do not reduce this back to "it is the operator's call."** That framing is true,
-omits the gate, and reads as unblocked — which is why sessions kept resurfacing
-this as available work. The security half stays uncovered by Dependabot whenever
-such an entry does eventually exist, and falls to the ecosystem's own tooling.
+**Do not reduce this back to "it is the operator's call."** That framing is
+true, omits the gate, and reads as unblocked — which is why sessions kept
+resurfacing this as available work. Raising the limit would still leave the
+security half uncovered by Dependabot, permanently and at any setting —
+GitHub's own sbt support never plugs into it.
 
-[Scala Steward](https://github.com/scala-steward-org/scala-steward) no longer
-covers this surface *instead of* Dependabot — that framing depended on
-Dependabot having nothing to offer sbt at all, and it now does. Scala Steward
-is complementary at most: a separate, general-purpose version-bump mechanism
-that would overlap with a configured `sbt` entry on routine updates rather
-than substitute for one, and it does not close the gap Dependabot's own sbt
-support explicitly leaves open — the security-update half. **Adopting either
-mechanism, and any CI either needs, sits behind the same gate** — this is
-recorded so the reasoning survives until the gate opens, never as a backlog item
-to pick up.
+**So today, at zero, Dependabot delivers nothing at all for `build.sbt` — no
+version updates, because the limit withholds them, and no security updates,
+because the ecosystem was never covered.**
+
+**That second half is a RELIANCE, not a property of this configuration, and it
+is the one thing here worth re-checking rather than re-reading.** GitHub's own
+options reference says a zero limit *"temporarily disable[s] version updates"*
+— and, in the same passage, that security update pull requests are **"not
+subject to this limit and do not count toward it."** So the limit does not
+withhold the security half; **the ecosystem's absence of a security-update path
+does.** The file is inert because of something outside it.
+
+**The reliance can end in two ways, neither of which involves editing anything
+here.** GitHub could extend `sbt` the way it extended version updates on
+2026-05-26. Or a repository-level toggle could be flipped. **When it ends it is
+the REPOSITORY that becomes outward-facing, not this file** — the disabled form
+still opens nothing, anywhere, which is why writing it needs no per-repo ask.
+The hazard is a reader taking the repository to be closed because the file is.
+
+**Do not restate the count of ecosystems that lack a security path here.** `sbt`
+is not unusual in this and the figure moves as GitHub adds ecosystems; the
+supply-chain rules own it and carry the re-derivation. **What belongs here is
+the named dependency and what would end it**, so the next agent re-checks a
+condition rather than re-reading a settled-sounding sentence.
+[Scala Steward](https://github.com/scala-steward-org/scala-steward) or an
+equivalent is therefore this manifest's entire coverage, not a complement to
+something else that is running. That stays true once enabling is decided too:
+a raised `sbt` entry would pick up the version-update half Scala Steward also
+covers, but the security half stays Scala Steward's alone either way.
+**Raising the limit, and adopting Scala Steward or an equivalent, plus any CI
+either would need, sit behind the same gate** — this is recorded so the
+reasoning survives until it opens, never as a backlog item to pick up.
 
 ## Setup
 

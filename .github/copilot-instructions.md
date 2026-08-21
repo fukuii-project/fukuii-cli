@@ -68,11 +68,29 @@ with no present need is not an entry** — do not add one because another projec
 has it. The compile-scope set is deliberately small: a cryptography provider is
 the only entry so far, earned against a named list of primitives. **`build.sbt`
 is the authority for what is declared**; where it and this file disagree,
-believe the build. Whether a dependency-update configuration exists is answered
-by looking for `.github/dependabot.yml`, not by this sentence — and **writing
-one is GATED** until the rebuild completes and this repository is organized for
-public contributions and release, a signal the operator declares. Until then its
-absence is intended: do not add one, propose one, or report it as missing.
+believe the build.
+
+`.github/dependabot.yml` exists, naming the `sbt` ecosystem, and carries
+`open-pull-requests-limit: 0` with no `cooldown:` block — the disabled form
+this repository carries by default. Writing it was not gated: `build.sbt` is a
+real manifest and `sbt` is a documented Dependabot key. **What stays gated is
+enabling it** — raising the limit above zero, which brings a `cooldown:` block
+with it — deferred until the rebuild completes and this repository is
+organized for public contributions and release, the same signal `## Branching`
+names, declared by the operator alone. Until then: ask before raising the
+limit or adding a `cooldown:` block, do not propose either as ready work, and
+do not report the zero limit as missing configuration.
+
+**Raising it would not add security coverage.** GitHub's sbt support is
+version updates only — no security-update path exists for this ecosystem at
+any setting. Confirmed via the GitHub API, 2026-08-21: this repository's
+Dependabot alerts and automated security-fix setting are both enabled, and
+neither reaches `build.sbt`. So today, at zero, Dependabot delivers nothing at
+all here, and [Scala Steward](https://github.com/scala-steward-org/scala-steward)
+or an equivalent is this manifest's entire coverage — version and security
+alike. That stays true once the limit is raised: an active `sbt` entry would
+only pick up the version half, leaving Scala Steward the security half
+permanently.
 
 ## Commands
 

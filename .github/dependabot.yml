@@ -1,0 +1,15 @@
+version: 2
+# Version updates are off. Raising the limit turns them on and brings a
+# cooldown block with it.
+# Security updates: repository-level Dependabot alerts and automated
+# security-fix PRs are both enabled (confirmed via the GitHub API,
+# 2026-08-21) — but neither reaches this manifest. GitHub's sbt ecosystem
+# support covers version updates only, not security updates, so this key has
+# no security-update path at all, at any setting. See AGENTS.md for what
+# actually covers it.
+updates:
+  - package-ecosystem: "sbt"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
