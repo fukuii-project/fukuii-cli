@@ -809,19 +809,19 @@ object Interpreter:
     * that asked for the creation, before this runs, so a failed deposit does not
     * hand it back.
     *
-    * ==Two callers, one of them not built yet==
+    * ==Two callers, and the second one is outside this module==
     *
-    * Visible within this module rather than to this file, because deployment
-    * has two entry points and only one of them is an operation. `CREATE` is the
-    * first; a transaction whose recipient is absent is the second, and the
-    * layer that settles such a transaction does not exist here yet. The
-    * specification treats them as one path for the same reason -- its
-    * `process_message_call` dispatches on an empty target and both arms reach
-    * the same creation -- and go-ethereum publishes its `Create` so the state
-    * transition can call what the operation calls. Copying this into whatever
-    * stands in for that layer would put a fork-varying rule in two places.
+    * Visible rather than internal to this file, because deployment has two
+    * entry points and only one of them is an operation. `CREATE` is the first;
+    * a transaction whose recipient is absent is the second, and the layer that
+    * settles such a transaction sits above this one. The specification treats
+    * them as one path for the same reason -- its `process_message_call`
+    * dispatches on an empty target and both arms reach the same creation -- and
+    * go-ethereum publishes its `Create` so the state transition can call what
+    * the operation calls. Copying this into that layer would put a fork-varying
+    * rule in two places.
     */
-  private[evm] def deploy(
+  def deploy(
       nested: Frame,
       environment: Environment
   ): Either[Unsupported, Outcome] =
@@ -938,7 +938,7 @@ object Interpreter:
     * already admits. A fixture reversal is no longer a live trigger, the
     * published fixture having landed on this side.
     */
-  private[evm] def deployableAt(world: WorldState, address: Address): Boolean =
+  def deployableAt(world: WorldState, address: Address): Boolean =
     world.nonceOf(address) == UInt64.Zero && world.codeOf(address).isEmpty && !world.hasStorage(address)
 
   /** Takes what a nested invocation earned into the invocation that started it.

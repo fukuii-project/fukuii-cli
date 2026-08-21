@@ -175,7 +175,37 @@ object CertificationCorpora:
   private def rulesAt(schedule: UpgradeSchedule, height: Long): UpgradeRules =
     schedule.at(UInt64.fromBits(height), UInt64.Zero)
 
-  private def assemble(root: Path, ethereum: UpgradeSchedule, classic: UpgradeSchedule): Vector[CorpusReport] =
+  /** One state corpus: where its files are, which fork's expectations they are
+    * read under, and the rules they are resolved to.
+    *
+    * Named as a value so that the list of them can be handed to a second runner
+    * whole. What a corpus IS -- the files, the fork key and the rules -- is the
+    * part two runners must share exactly, because a comparison between them says
+    * nothing unless both read the same material at the same rules.
+    */
+  final private[certification] case class StateCorpus(
+      name: String,
+      directory: Path,
+      fork: String,
+      rules: UpgradeRules
+  )
+
+  /** Every state corpus, or nothing at all where the harness cannot be
+    * assembled, on the same terms [[reports]] states.
+    */
+  private[certification] lazy val stateCorpora: Option[Vector[StateCorpus]] =
+    for
+      root <- FixtureCorpus.root
+      registry <- KnownNetworks.registry.toOption
+      ethereum <- registry.at(ethereum.Mainnet.network.chainId)
+      classic <- registry.at(ethereumclassic.Mainnet.network.chainId)
+    yield stateCorporaAt(root, ethereum, classic)
+
+  private def stateCorporaAt(
+      root: Path,
+      ethereum: UpgradeSchedule,
+      classic: UpgradeSchedule
+  ): Vector[StateCorpus] =
     val frontier = rulesAt(ethereum, EthereumFrontierStarts)
     val homestead = rulesAt(ethereum, EthereumHomesteadStarts)
 
@@ -188,38 +218,48 @@ object CertificationCorpora:
     val gasReprice = rulesAt(classic, ClassicGasRepriceStarts)
 
     Vector(
-      vmReport(FixtureCorpus.legacy(root).resolve("VMTests"), frontier.evm),
-      stateReport(LegacyFrontierStateCorpus, FixtureCorpus.legacy(root).resolve("GeneralStateTests"), rules = frontier),
-      stateReport(
+      StateCorpus(
+        LegacyFrontierStateCorpus,
+        FixtureCorpus.legacy(root).resolve("GeneralStateTests"),
+        StateFixture.Fork,
+        frontier
+      ),
+      StateCorpus(
         GeneratedStateCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_frontier"),
-        rules = frontier
+        StateFixture.Fork,
+        frontier
       ),
-      stateReport(
+      StateCorpus(
         LegacyEip150StateCorpus,
         FixtureCorpus.legacy(root).resolve("GeneralStateTests"),
-        fork = "EIP150",
-        rules = tangerineWhistle
+        "EIP150",
+        tangerineWhistle
       ),
-      stateReport(
+      StateCorpus(
         GeneratedHomesteadCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_homestead"),
-        fork = "Homestead",
-        rules = homestead
+        "Homestead",
+        homestead
       ),
-      stateReport(
+      StateCorpus(
         GeneratedTangerineWhistleCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_tangerinewhistle"),
-        fork = "TangerineWhistle",
-        rules = tangerineWhistle
+        "TangerineWhistle",
+        tangerineWhistle
       ),
-      stateReport(
+      StateCorpus(
         ClassicTangerineWhistleCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_tangerinewhistle"),
-        fork = "TangerineWhistle",
-        rules = gasReprice
+        "TangerineWhistle",
+        gasReprice
       )
     )
+
+  private def assemble(root: Path, ethereum: UpgradeSchedule, classic: UpgradeSchedule): Vector[CorpusReport] =
+    val frontier = rulesAt(ethereum, EthereumFrontierStarts)
+    vmReport(FixtureCorpus.legacy(root).resolve("VMTests"), frontier.evm) +:
+      stateCorporaAt(root, ethereum, classic).map(stateReport)
 
   /** What running one case established, with a case that THREW recorded as a
     * divergence rather than as a skip.
@@ -267,12 +307,8 @@ object CertificationCorpora:
     }
     CorpusReport(LegacyVmCorpus, files.length, outcomes)
 
-  private def stateReport(
-      name: String,
-      directory: Path,
-      fork: String = StateFixture.Fork,
-      rules: UpgradeRules
-  ): CorpusReport =
+  private def stateReport(corpus: StateCorpus): CorpusReport =
+    val StateCorpus(name, directory, fork, rules) = corpus
     val files = FixtureCorpus.jsonFilesUnder(directory)
     val outcomes = files.flatMap { file =>
       FixtureCorpus

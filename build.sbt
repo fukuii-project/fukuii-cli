@@ -484,20 +484,37 @@ lazy val evm = (project in file("modules/evm"))
 // L4 -- what settling a transaction does around the machine, and what makes a
 // transaction acceptable before it runs.
 //
-// NO DEPENDENCY EDGE AT ALL, and that is a claim rather than an omission. What
-// this module holds today is two records of fork-settled rules, and every
-// member of both is a boolean: nothing here names a byte string, an address, a
-// transaction or a receipt, so declaring `bytes` or `types` would be declaring
-// an edge against a type this module might grow rather than one it has. The
-// edges arrive with the phase that brings the settlement itself, which is what
-// `crypto` and `trie` above each did.
+// Every edge is used by a type here rather than declared against one this
+// module might grow, which is the same test the layers below are declared by:
 //
-// It sits BELOW chainspec and beside evm, never above either. A rule set is
-// something a schedule resolves TO, so the module that composes schedules
-// depends on the modules that own the rules -- exactly as it already does for
-// the machine's. The direction is one-way and a cycle is a build error rather
-// than a review comment.
+//   bytes   a sender is an address, a transaction's input is a byte string, and
+//           an earlier block is named by its digest
+//   types   a transaction emits logs, which is what a settlement hands back and
+//           what a receipt is built from
+//   evm     settling a transaction is what happens AROUND an invocation, so the
+//           frame, the environment, the journal and the interpreter are what
+//           this layer arranges. The prices it charges before the machine runs
+//           are the machine's schedule too, which is where both authorities
+//           keep them
+//
+// `trie` is deliberately absent. The one thing settlement needs of state that
+// the machine does not -- destroying a registered account -- arrives as a
+// function it calls, so nothing here names a trie or a store.
+//
+// It sits ABOVE evm and BELOW chainspec, and both directions follow from what
+// the things are rather than from which arrived first. A settlement RUNS the
+// machine, so it depends on it. A rule set is something a schedule resolves TO,
+// so the module composing schedules depends on this. Each direction is one-way
+// and a cycle is a build error rather than a review comment.
+//
+// The `test->test` half of the evm edge, for the reason chainspec declares the
+// same edge below: what a settlement test needs to observe is a world state and
+// a state trie built for a test, and that machinery lives in evm's test tree
+// beside the machine it was written for. Duplicating a world double here would
+// give one contract two implementations, and a double that drifted from the
+// machine's would agree with the real one for the wrong reason.
 lazy val execution = (project in file("modules/execution"))
+  .dependsOn(bytes, types, evm % "compile->compile;test->test")
   .settings(
     name := "fukuii-execution",
     libraryDependencies ++= testDeps
