@@ -97,6 +97,75 @@ Not "I looked." A survey answers, per client:
 prior recommendation.** The survey is worth nothing if its conclusion was fixed
 before it ran.
 
+### And one question about the SURVEY, which none of the three asks
+
+The three above are answered *per client*. **A survey can answer all three, for
+every client it read, and still have seen one network family.** So it must also
+state:
+
+4. **Which network families does this survey cover, and which falsifier did it
+   try?** In those words, in the report.
+
+**Breadth reported as a count of clients hides this, which is why it needs its
+own line.** A table of nine refs reads as nine independent readings. It is not,
+if eight of them are one family's derivatives — and nothing about the table
+shows that.
+
+**Worked instance.** A survey of the execution seam covered the executable
+specification and eight production clients, every ref immutable, every sweep
+calibrated, all three questions answered per client. Every client was an
+Ethereum or Ethereum Classic family client. It produced a universal — *"five of
+six independent lineages put this on consensus"* — which a second pass across
+six other families refined in two places and refuted in one. **The first survey
+satisfied every requirement this section stated.** That is the point: it was not
+careless, and no amount of care would have caught it, because the question was
+not being asked.
+
+**A universal claim needs a named falsifier**, and this is
+`.claude/rules/evidence-and-citation.md` §3's absence discipline arriving from
+the other direction. *"Every client does X"* is a claim about a corpus, not
+about the clients you happened to open. **"Every client I read does X" and
+"every client does X" are different claims**, and only the first is ever cheap.
+Name the family that would break it and go look, or write the smaller claim.
+
+## A name adopted with a shape is a second decision, and it is usually unmade
+
+**"What it is called" is already on the structural-decision list above, and that
+is not sufficient — because the failure is not forgetting to survey a name.** It
+is surveying a client for its **shape**, finding the shape sound, and taking its
+**name** along with it, so the name is never separately decided at all.
+
+**Adopting a client's shape does not license adopting its word.** A name that
+reads as unambiguous inside a single-family client can collide inside a
+multi-network one, and that client had no reason to notice.
+
+**So when a shape is adopted, ask three things the shape survey does not:**
+
+- **Does this word already mean something else here, or will it?** Check the
+  **planned** layers, not only the built ones. A collision with a module that
+  does not exist yet is still a collision, and it is cheapest to avoid before
+  either side is written.
+- **Does the source client use this word for more than one concept?** If so, its
+  name is carrying a problem you are about to inherit along with the shape.
+- **Is the word already claimed by a convention that is not negotiable?** A test
+  framework's class suffix, a build tool's directory, a language's reserved
+  sense. Losing to one of those produces a name that doubles a word.
+
+**Worked instance.** A type was named after a client that uses the same word for
+two different concepts — a fork-resolved rule set, and the peer-to-peer wire
+protocol. Other clients read at the time reserved it for the wire alone. The
+shape was surveyed and was correct; the name rode in with it unexamined. **The
+tell surfaced much later and in a different file** — a test class whose name
+doubled a word — by which time the word had spread through a landed layer and
+the correction was a cross-module rename. A second defect surfaced with it: a
+name borrowed from another client had been given a **narrower** scope than it
+carries there, so a reader who knew that client would look for the outer thing
+and find it nested inside.
+
+**The check costs minutes before the type exists.** Both defects above were
+found in four commands, and neither was visible from the symptom that prompted
+them.
+
 ## Deriving beats recalling, and both beat a count
 
 Never state how many clients do something from memory, and never write a roster
