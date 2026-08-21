@@ -310,6 +310,29 @@ question and the one fukuii's architecture actually poses. Read across at least
 two families and two languages; a single implementation is the seam plus that
 codebase's habits.
 
+**A NETWORK'S OWN REFERENCE IMPLEMENTATION IS NOT WHAT THIS PARAGRAPH IS ABOUT,
+and reading it as though it were produces exactly the wrong answer.** The rule
+above governs a *modern client cited for shape* — one this project reads to learn
+how a multi-family client is structured. It does not govern the client that
+**defines what a network runs**. For Ethereum Classic through Spiral that is
+`ethereumclassic/core-geth`, frozen at `4185df450` (`v1.12.20-8-g4185df450`), and
+for a settled Ethereum Classic activation it is the byte authority rather than a
+corroborating reading.
+
+**The two rules point opposite ways and both are right, because they are about
+different classes of client.** Cited-for-shape: structure yes, values no. The
+network's own implementation: values yes, and its *shape* carries no more weight
+than any other client's. **Establish which kind you are holding before you cite
+it** — the same repository can be one for one question and the other for the
+next, and nothing about the path says which.
+
+**Recorded because a session got it backwards on 2026-08-21**, quoting this
+paragraph to route an Ethereum Classic activation block away from `core-geth` and
+toward a proposal document, on the reasoning that a client is never an authority
+for a value. The proposal names the change; the frozen implementation is what the
+network actually ran. **Cite both where both exist, and treat a disagreement
+between them as a finding rather than something to resolve in passing.**
+
 ---
 
 ## Other EVM networks — evidence about what the seams must admit
@@ -331,6 +354,9 @@ trusting a row; a clone moves.
 | `optimism/optimism` | [ethereum-optimism/optimism](https://github.com/ethereum-optimism/optimism) | `develop` | The OP Stack monorepo — `op-node`, `op-core`, end-to-end tests. **Filed under the org key `optimism`, which does not match its upstream org `ethereum-optimism`** — recorded rather than silently corrected, because a reader looking under the right org will not find it |
 | `0xPolygon/bor` | [0xPolygon/bor](https://github.com/0xPolygon/bor) | `develop` | **Polygon PoS's actual execution client.** Not to be confused with `0xPolygonHermez/cdk-erigon` below, which is the zkEVM/CDK line and a **different client** — the two are routinely conflated, and only one of them is EVM-equivalent |
 | `ava-labs/subnet-evm` | [ava-labs/subnet-evm](https://github.com/ava-labs/subnet-evm) | `master` | **The strongest EVM-equivalence reading in the set: ZERO chain-specific files under `core/vm`.** Its stateful precompiles and allowlists are registered entirely outside the interpreter, which is the shape a precompile registry has to admit |
+| `gnosischain/configs` | [gnosischain/configs](https://github.com/gnosischain/configs) | `main` | **A network's launch configuration stated by the NETWORK, not by a client that implements it** — and the only member of this table for which that distinction has been measured. `mainnet/genesis.json` carries **35 params, 28 of them per-EIP, and ZERO fork-named keys**; the Byzantium EIP set sits at `0x0`. So Gnosis's own format has no slot for a fork name, and `Byzantium` — which nethermind and erigon independently use for it — is each client's label rather than Gnosis's. **Read this before citing any client for what a non-Ethereum network calls its own configuration** |
+| `gnosischain/specs` | [gnosischain/specs](https://github.com/gnosischain/specs) | `main` | **Gnosis's own upgrade documents, and they settle two things a client cannot.** Gnosis names its upgrades `constantinople`, `istanbul`, `berlin`, `london`, `merge`, `shapella`, `dencun`, `pectra`, `fusaka`, `glamsterdam` — **Ethereum's vocabulary adopted as Gnosis's own**, not a client borrowing, so a mirrored name is a native name. Its earliest document is `constantinople.md`, later than launch, which is why the launch config has no name at all. `network-upgrades/balancer.md`, *"unique to Gnosis"*, is an **unscheduled irregular state change** — a schedule entry that is neither a rule set nor a proposal bundle, the same kind as the DAO fork and the second network to demand one |
+| `ava-labs/coreth` | [ava-labs/coreth](https://github.com/ava-labs/coreth) | `master` | **Avalanche's C-Chain client — the mainnet EVM, and a DIFFERENT artifact from `ava-labs/subnet-evm` above**, which is the subnet toolkit. Conflating them is how a C-Chain claim gets sourced from a subnet file. Its launch configuration is the **zero value of the Avalanche-series struct**, every later upgrade adding one timestamp, so the C-Chain is *named by absence* — the shape a schedule must admit when a network never named what it launched with. **Caveat, recorded because it bounds every C-Chain claim here: no production C-Chain config literal exists in the tree**, so the Muir-Glacier-equivalent reading comes from a test fixture, and `avalanchego` is not cloned |
 | `ronin/ronin` | [ronin/ronin](https://github.com/ronin/ronin) | `master` | **A proof-of-authority network as a geth fork.** Its three `core/vm` files are all *added* precompiles (`consortium_precompiled_contracts.go`) — so even a consensus-divergent network reaches the interpreter only through the registry |
 
 **Excluded from the target set, and cloned so that the exclusion stays
