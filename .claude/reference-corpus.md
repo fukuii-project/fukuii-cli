@@ -215,9 +215,28 @@ documents below.** `openethereum`'s `etc-frozen` is **not** an ancestor of
 `origin/main` — verified, and it is a property of that repository's history
 rather than a defect in the freeze. The ancestry assertion applies to
 `multi-geth` and `parity-ethereum`, which are ancestors of their upstream
-defaults, and not to `openethereum`. **All four carry the protection that
-matters**: none has an upstream tracking branch, so a bare `git pull` cannot
-fast-forward a freeze.
+defaults, and not to `openethereum`.
+
+**And what protects these three freezes is NOT what protects besu-etc's, which
+matters because the shared convention invites the wrong inference.** None of the
+four has an upstream tracking branch, so a bare `git pull` cannot fast-forward
+any of them — but that control is load-bearing for exactly one. **`besu-eth/besu`
+is an actively developed Ethereum client**: its newest remote ref is days old, so
+besu-etc's freeze sits beside a moving upstream and the missing tracking branch
+is a live guard.
+
+**These three upstreams have stopped.** Newest remote ref of any kind:
+`parity-ethereum` **2020-10-21**, `openethereum` **2022-05-10**, `multi-geth`
+**2023-02-25** — and that last one is a dependency-bump branch rather than
+development. There is nothing upstream to fast-forward *to*. **Their freeze is
+protected by the projects being over, which is a fact about the world rather
+than a configuration anyone can undo** — and it is why a freeze here needs less
+defending than besu-etc's, not more.
+
+**Do not read that as "these cannot move."** A deprecated repository is not an
+archived one, and the measurement above is a reading of fetched refs at a date,
+not a guarantee. It is the reason to re-check the newest remote ref rather than
+to assume the freeze is safe forever.
 
 ### What they are a second oracle for
 
