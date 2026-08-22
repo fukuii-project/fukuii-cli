@@ -169,7 +169,7 @@ object Mainnet:
     *
     * That the upgrade activated at this block, and that validity can diverge
     * across it. [[Upgrade.IrregularStateChange]] carries no payload, so the
-    * transfer itself is not modelled: EIP-779 moves the ether in a list of
+    * transfer itself is not modeled: EIP-779 moves the ether in a list of
     * accounts into one recipient at the beginning of this block, which is work
     * for a layer that processes a block rather than a transaction. **The entry
     * is a description of this network's history and not a claim about what this

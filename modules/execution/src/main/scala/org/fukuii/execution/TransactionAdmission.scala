@@ -244,7 +244,7 @@ object TransactionAdmission:
 
   /** Whether a block at these rules would carry `offered`.
     *
-    * ==The four reads are lazy, and the laziness is not an optimisation==
+    * ==The four reads are lazy, and the laziness is not an optimization==
     *
     * Each of them is deferred to the branch that wants it, so a transaction
     * refused for its format costs no state lookup and no arithmetic.

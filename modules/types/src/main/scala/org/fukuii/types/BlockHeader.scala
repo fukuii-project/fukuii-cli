@@ -47,7 +47,7 @@ import org.fukuii.rlp.{RlpCodec, RlpError, RlpItem}
   *
   * This is not a hypothetical allowance. The executable specification's newest
   * fork already defines a header of twenty-three elements — two more than
-  * anything modelled here — so the tolerance is exercised by a fork that
+  * anything modeled here — so the tolerance is exercised by a fork that
   * exists, and the field order below was checked position by position against
   * that same definition.
   *

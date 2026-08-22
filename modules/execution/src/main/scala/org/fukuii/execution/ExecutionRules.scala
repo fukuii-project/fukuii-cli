@@ -7,7 +7,7 @@ package org.fukuii.execution
   *
   * The obvious contents of a facet with this name are a transaction processor
   * and a block processor, and the field says otherwise. `besu-eth/besu` @
-  * `c2addd9424` is the only surveyed client modelling either as a member of a
+  * `c2addd9424` is the only surveyed client modeling either as a member of a
   * fork-resolved specification at all, and its own definitions show how little
   * they vary: in `MainnetProtocolSpecs.java` the block-processor builder is set
   * three times against twenty-three for the gas calculator, and two of those

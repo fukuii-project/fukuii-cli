@@ -25,7 +25,7 @@ import org.fukuii.bytes.UInt64
   * A schedule that could only hold rule sets would have to leave those out, and
   * an upgrade missing from a schedule is missing from everything derived from
   * it. So the case is admitted here. **What such an upgrade does is not
-  * modelled**: it needs a layer that can mutate state, which does not exist,
+  * modeled**: it needs a layer that can mutate state, which does not exist,
   * and a nullary case is what forces whoever builds that layer to add the
   * payload deliberately rather than find a plausible field already waiting.
   *

@@ -25,7 +25,7 @@ import org.scalatest.flatspec.AnyFlatSpec
   * first test below is what holds that open, and it is the one to read before
   * trusting any of the others.
   *
-  * ==The boundary is a divergence of STATE, not of the rules modelled here==
+  * ==The boundary is a divergence of STATE, not of the rules modeled here==
   *
   * This is the half that reads backwards and is the reason the range below
   * stops where it does rather than where the rules part. EIP-779 states it
@@ -114,7 +114,7 @@ class SharedHistorySpec extends AnyFlatSpec:
       "two networks that were one chain at this height disagree about what it ran"
     )
 
-  it should "still agree at the block their chains parted, because that fork changed no modelled rule" in
+  it should "still agree at the block their chains parted, because that fork changed no modeled rule" in
     // The fact that keeps the boundary honest. Read the other way -- rules
     // diverging here -- the assertion above would be given a false upper bound
     // and would stop testing the range it exists for.
