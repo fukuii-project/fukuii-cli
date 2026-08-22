@@ -178,9 +178,25 @@ object TransactionAdmission:
     *
     * **An unprotected signature carries no identifier and is valid on every
     * network by construction**, so it is not a case this comparison decides and
-    * it is skipped rather than defaulted. Whether such a signature is admitted
-    * at a given height is a separate fork rule, and no member of
-    * [[AdmissionRules]] expresses one.
+    * it is skipped rather than defaulted. No member of [[AdmissionRules]]
+    * governs whether such a signature is admitted, because no fork refuses one:
+    * EIP-155 adds a scheme beside the earlier one rather than replacing it.
+    *
+    * ==Whether an identifier may be named at all is asked BEFORE which one it
+    * names==
+    *
+    * The two rules answer differently and the order between them is observable,
+    * because a signature can break both at once -- naming another network's
+    * chain at rules that admit no identifier from anyone. Below EIP-155 the
+    * refusal is the signature's and not the chain's, which is the answer both
+    * the specification and the clients give:
+    * `forks/frontier/transactions.py` has no `chain_id` function to reach, so
+    * `recover_sender` refuses on `v` alone, and `ethereumclassic/core-geth` @
+    * `4185df450` cannot report `ErrInvalidChainId` at all below the transition
+    * because `MakeSigner` never selects the signer that raises it.
+    * [[AdmissionRules.signatureMayCarryChainId]] is therefore read ahead of the
+    * comparison, and reversing the two would report a chain mismatch for a
+    * transaction the fork refuses without ever reading which chain it named.
     *
     * ==EIP-2's bound is applied before recovery, not inside it==
     *
@@ -195,6 +211,7 @@ object TransactionAdmission:
     */
   def senderOf(transaction: Transaction, chainId: UInt64, rules: AdmissionRules): Either[Refusal, Address] =
     if !admitsFormat(transaction.transactionType, rules) then Left(Refusal.TypeNotAdmitted)
+    else if !rules.signatureMayCarryChainId && namesChainInSignature(transaction) then Left(Refusal.InvalidSignature)
     else if signedForAnotherChain(transaction, chainId) then Left(Refusal.WrongChainId)
     else if rules.signatureSMustBeLow && Sender.signatureOf(transaction).exists(_.s > Secp256k1.halfCurveOrder)
     then Left(Refusal.InvalidSignature)
@@ -258,6 +275,30 @@ object TransactionAdmission:
 
   private def signedForAnotherChain(transaction: Transaction, chainId: UInt64): Boolean =
     chainIdOf(transaction).exists(_ != chainId)
+
+  /** Whether the SIGNATURE names a chain, which only a legacy one can.
+    *
+    * EIP-155 folds the identifier into `v` instead of adding a field, so naming
+    * a chain is a property of how the signature was made. A typed transaction
+    * states `chainId` as a field its envelope requires of it, and every fork
+    * that admits such a format admits the field with it -- so reading one here
+    * would let a rule about the legacy encoding refuse a format the rule was
+    * never about. [[chainIdOf]] reads both because the comparison it feeds is
+    * about the value; this is about the encoding, and the two part company on
+    * exactly that.
+    */
+  private def namesChainInSignature(transaction: Transaction): Boolean = transaction match
+    case t: Transaction.Legacy =>
+      SignatureScheme
+        .of(t.v)
+        .toOption
+        .exists:
+          case SignatureScheme.Protected(_) => true
+          case SignatureScheme.Unprotected  => false
+    case _: Transaction.AccessList => false
+    case _: Transaction.DynamicFee => false
+    case _: Transaction.Blob       => false
+    case _: Transaction.SetCode    => false
 
   /** What an admitted transaction hands to settlement. */
   private def settling(offered: OfferedTransaction): AdmittedTransaction =

@@ -10,22 +10,24 @@ import org.fukuii.types.{Sender, SigningPreimage, Transaction, TransactionType}
 /** What admission decides about a SIGNATURE, which no published fixture at the
   * forks this build carries can reach.
   *
-  * ==The chain identifier is a rule no published case reaches==
+  * ==The chain identifier is TWO rules, and no published case reaches either==
   *
-  * Measured over every `txbytes` in the three generated state corpora at the
-  * `tests@v20.0.1` release, by decoding each one rather than by matching its
-  * text: two per corpus are typed envelopes, which these forks refuse by
-  * format, and every legacy signature carries a `v` of 27 or 28 -- unprotected,
-  * naming no chain -- but for a single case in each of the two later corpora
-  * whose `v` is 34, which names no signing scheme at all and is refused as an
-  * invalid signature. **So nothing on disk carries an identifier the comparison
-  * can read**, in either direction.
+  * Whether a signature may name a chain, and whether the one it named is this
+  * network's. Measured over every `txbytes` in the three generated state
+  * corpora at the `tests@v20.0.1` release, by decoding each one rather than by
+  * matching its text: two per corpus are typed envelopes, which these forks
+  * refuse by format, and every legacy signature carries a `v` of 27 or 28 --
+  * unprotected, naming no chain -- but for a single case in each of the two
+  * later corpora whose `v` is 34, which names no signing scheme at all and is
+  * refused as an invalid signature. **So nothing on disk names a chain**, which
+  * puts both rules out of the corpus's reach at once: the comparison has no
+  * identifier to read, and the rule above it no protected signature to refuse.
   *
   * **A rule the corpus cannot reach is a rule that can be inverted with every
   * signal green**, and that was confirmed by inverting it: the whole
   * certification stayed green and only the cases below reported it. They are
   * written against rule values directly rather than against a network's,
-  * because the comparison belongs to no one fork.
+  * because neither rule belongs to any one fork.
   *
   * The bound on `s` is in a different position and is not stated as though it
   * were the same: the corpus signs canonically, so nothing published carries an
@@ -104,10 +106,30 @@ class TransactionAdmissionSpec extends AnyFlatSpec:
   private val ethereum: UInt64 = UInt64.fromBits(1)
   private val classic: UInt64 = UInt64.fromBits(61)
 
+  /** Rules to read a signature against, defaulting to the earliest set any
+    * network in this build carries.
+    *
+    * The defaults are the values every rule set in the tree holds today, so a
+    * case that says nothing about a rule is read at the fork that refuses the
+    * most -- and a case about a later rule has to name it, which is what keeps
+    * the height a case is written at visible in the case itself. Every argument
+    * is named, because two of the three are booleans and transposing them would
+    * compile.
+    */
   private def rules(
       admittedTypes: Set[TransactionType] = Set(TransactionType.Legacy),
+      signatureMayCarryChainId: Boolean = false,
       signatureSMustBeLow: Boolean = false
-  ): AdmissionRules = AdmissionRules(admittedTypes, signatureSMustBeLow)
+  ): AdmissionRules = AdmissionRules(
+    admittedTypes = admittedTypes,
+    signatureMayCarryChainId = signatureMayCarryChainId,
+    signatureSMustBeLow = signatureSMustBeLow
+  )
+
+  /** Rules that let a signature name a chain, which is what makes comparing the
+    * one it named a question at all.
+    */
+  private val naming: AdmissionRules = rules(signatureMayCarryChainId = true)
 
   // ── Whose account a signature names ───────────────────────────────────────
 
@@ -120,22 +142,25 @@ class TransactionAdmissionSpec extends AnyFlatSpec:
     )
 
   // ── The chain identifier ──────────────────────────────────────────────────
+  //
+  // Every case here reads [[naming]], because which chain a signature named is
+  // a question only rules that let it name one ever ask.
 
   "a transaction signed for another network" should "be refused" in
     // Signed naming chain 61 and offered to chain 1. Admitting it splits the
     // chain: it would settle here and be rejected by every node that made the
     // comparison.
     assert(
-      TransactionAdmission.senderOf(signedFor(Some(classic)), ethereum, rules()) == Left(Refusal.WrongChainId),
-      TransactionAdmission.senderOf(signedFor(Some(classic)), ethereum, rules()).toString
+      TransactionAdmission.senderOf(signedFor(Some(classic)), ethereum, naming) == Left(Refusal.WrongChainId),
+      TransactionAdmission.senderOf(signedFor(Some(classic)), ethereum, naming).toString
     )
 
   it should "be accepted by the network it names" in
     // The other side of the same comparison. Without it, a comparison that
     // refused every protected signature would satisfy the case above.
     assert(
-      TransactionAdmission.senderOf(signedFor(Some(classic)), classic, rules()) == Right(signer),
-      TransactionAdmission.senderOf(signedFor(Some(classic)), classic, rules()).toString
+      TransactionAdmission.senderOf(signedFor(Some(classic)), classic, naming) == Right(signer),
+      TransactionAdmission.senderOf(signedFor(Some(classic)), classic, naming).toString
     )
 
   "an unprotected signature" should "be accepted whichever network asks" in
@@ -144,8 +169,41 @@ class TransactionAdmissionSpec extends AnyFlatSpec:
     // reading absence as a mismatch would refuse every legacy transaction
     // signed before EIP-155.
     assert(
-      TransactionAdmission.senderOf(signedFor(None), classic, rules()) == Right(signer),
-      TransactionAdmission.senderOf(signedFor(None), classic, rules()).toString
+      TransactionAdmission.senderOf(signedFor(None), classic, naming) == Right(signer),
+      TransactionAdmission.senderOf(signedFor(None), classic, naming).toString
+    )
+
+  // ── Whether a signature may name a chain at all ───────────────────────────
+
+  "a signature naming a chain" should "be refused where these rules admit none" in
+    // Signed naming chain 1 and offered to chain 1, so the comparison above has
+    // nothing to refuse it by and only this rule can. Before EIP-155 the only
+    // `v` a signature may carry is 27 or 28, and one naming a chain recovers a
+    // well-formed address that the network it was offered to must not settle.
+    assert(
+      TransactionAdmission.senderOf(signedFor(Some(ethereum)), ethereum, rules()) ==
+        Left(Refusal.InvalidSignature),
+      TransactionAdmission.senderOf(signedFor(Some(ethereum)), ethereum, rules()).toString
+    )
+
+  "a signature naming no chain" should "be admitted where these rules admit none" in
+    // The other side of the same rule, at the same rules. EIP-155 does not make
+    // the earlier scheme invalid -- it adds a second one -- so a rule that
+    // refused both would refuse every transaction these forks ever carried.
+    assert(
+      TransactionAdmission.senderOf(signedFor(None), ethereum, rules()) == Right(signer),
+      TransactionAdmission.senderOf(signedFor(None), ethereum, rules()).toString
+    )
+
+  "a signature naming another network's chain" should "be refused by the rule it breaks first" in
+    // It breaks both rules at once, and which refusal that reports is the thing
+    // a corpus states. Below EIP-155 the fork has no identifier to compare
+    // against, so the refusal is the signature's: a rule set reporting a chain
+    // mismatch here would be answering a question it cannot yet ask.
+    assert(
+      TransactionAdmission.senderOf(signedFor(Some(classic)), ethereum, rules()) ==
+        Left(Refusal.InvalidSignature),
+      TransactionAdmission.senderOf(signedFor(Some(classic)), ethereum, rules()).toString
     )
 
   // ── EIP-2's bound on `s` ──────────────────────────────────────────────────

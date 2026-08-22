@@ -26,7 +26,11 @@ class RuleFacetSpec extends AnyFlatSpec:
     ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = false)
 
   private val admission: AdmissionRules =
-    AdmissionRules(admittedTypes = Set(TransactionType.Legacy), signatureSMustBeLow = false)
+    AdmissionRules(
+      admittedTypes = Set(TransactionType.Legacy),
+      signatureMayCarryChainId = false,
+      signatureSMustBeLow = false
+    )
 
   "two execution rule sets" should "compare equal when they were built separately from the same parts" in
     assert(
@@ -42,7 +46,11 @@ class RuleFacetSpec extends AnyFlatSpec:
 
   "two admission rule sets" should "compare equal when they were built separately from the same parts" in
     assert(
-      AdmissionRules(admittedTypes = Set(TransactionType.Legacy), signatureSMustBeLow = false) == admission,
+      AdmissionRules(
+        admittedTypes = Set(TransactionType.Legacy),
+        signatureMayCarryChainId = false,
+        signatureSMustBeLow = false
+      ) == admission,
       "two identical admission rule sets built separately compared as different rules"
     )
 

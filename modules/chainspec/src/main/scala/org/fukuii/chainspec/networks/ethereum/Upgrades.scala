@@ -169,6 +169,7 @@ object Upgrades:
       ),
       admission = AdmissionRules(
         admittedTypes = Set(TransactionType.Legacy),
+        signatureMayCarryChainId = false,
         signatureSMustBeLow = false
       )
     )

@@ -116,7 +116,11 @@ class UpgradeRulesSpec extends AnyFlatSpec:
       components = firstRules.components,
       evm = firstRules.evm,
       execution = ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = false),
-      admission = AdmissionRules(admittedTypes = Set(TransactionType.Legacy), signatureSMustBeLow = false)
+      admission = AdmissionRules(
+        admittedTypes = Set(TransactionType.Legacy),
+        signatureMayCarryChainId = false,
+        signatureSMustBeLow = false
+      )
     )
     assert(rebuilt == firstRules, "a facet built separately made two identical rule sets compare as different")
   }

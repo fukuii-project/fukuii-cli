@@ -36,6 +36,39 @@ import org.fukuii.types.TransactionType
   *   same shape, as `MainnetTransactionValidator`'s
   *   `Set<TransactionType> acceptedTransactionTypes`, and refuses on
   *   `!acceptedTransactionTypes.contains(transactionType)`.
+  * @param signatureMayCarryChainId
+  *   whether a legacy signature may fold a chain identifier into its `v`. EIP-155
+  *   added the identifier to `v` rather than as a field, so the encoding is the
+  *   only evidence a legacy transaction gives of which scheme signed it, and
+  *   before that proposal a `v` naming anything but the two parities is refused.
+  *   **The rule permits the later scheme; it does not require it.** Both remain
+  *   valid afterwards, so this gates only the form that names a chain and the
+  *   earlier form is admitted at every height on every network -- a rule reading
+  *   the absence of an identifier as a refusal would refuse every transaction
+  *   these forks ever carried. `ethereum/execution-specs` @ `ccaaaba58` states
+  *   both halves by replacement rather than by a flag:
+  *   `forks/frontier/transactions.py`'s `recover_sender` opens `if v != 27 and v
+  *   != 28: raise InvalidSignatureError("bad v")`, and
+  *   `forks/spurious_dragon/transactions.py` drops that line for a `chain_id`
+  *   that answers `None` to 27 and 28 and parses anything else.
+  *
+  *   Two clients reach the refusal from the other side, which is what settles
+  *   that it is the SIGNATURE this is refused by rather than the chain named:
+  *   `ethereumclassic/core-geth` @ `4185df450` selects `HomesteadSigner` below
+  *   the transition, whose `recoverPlain` subtracts 27 from `v` and requires the
+  *   remainder to be 0 or 1, so a `v` naming a chain fails as `ErrInvalidSig`
+  *   and never as `ErrInvalidChainId`; `NethermindEth/nethermind` @ `c35ce1b1ab`
+  *   sends a `v` that is not 27 or 28 to `LegacySignatureTxValidator`, which
+  *   answers `InvalidTxSignature` wherever `IsEip155Enabled` is unset.
+  *
+  *   **Named for what the signature may carry, not for "replay protection",
+  *   though that is the proposal's own title.** `besu-eth/besu` @ `c2addd9424`
+  *   spends that phrase on two different things -- `ProtocolSpec`'s
+  *   `isReplayProtectionSupported`, which only its transaction pool reads, and
+  *   `strictTxReplayProtectionEnabled`, an operator's choice about what to relay
+  *   -- and the second is the policy this record's own contract excludes. The
+  *   word is doubly spent here too: an ordered record of adoptions *replays* to
+  *   a rule set, and a nonce is a count of increments to *replay*.
   * @param signatureSMustBeLow
   *   whether a signature whose `s` exceeds half the curve order is refused.
   *   Before EIP-2 it is not, and an `s` and its mirror image then recover the
@@ -46,5 +79,6 @@ import org.fukuii.types.TransactionType
   */
 final case class AdmissionRules(
     admittedTypes: Set[TransactionType],
+    signatureMayCarryChainId: Boolean,
     signatureSMustBeLow: Boolean
 )
