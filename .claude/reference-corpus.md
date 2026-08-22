@@ -390,6 +390,38 @@ ECIP-1010 pause window, **which the two express differently** — one as a start
 and an end, the other as a start plus a duration. Agreement across two
 expressions of the same window is stronger evidence than agreement on a number.
 
+### What the early range can now be checked against
+
+**The additions of 2026-08-21 change what is answerable for Frontier through the
+early Classic-specific forks — which is exactly the range under construction.**
+Before them, an early Ethereum Classic activation had one production reference in
+the corpus, `ethereumclassic/core-geth`, which **shares a maintainer with this
+project**: agreement with it is one judgment made twice, not corroboration.
+
+Independent implementations of that range now present, by language:
+
+| Language | Clone | Ref |
+|---|---|---|
+| Go | `ethereum/go-ethereum-dao` | `v1.4.9` — before either network existed separately |
+| Go | `multi-geth/multi-geth` | `etc-frozen` — `core-geth`'s own earlier name |
+| Go | `ethereumclassic/core-geth` | current — the successor |
+| Rust | `openethereum/parity-ethereum` | `etc-frozen` — Classic support from 2016-07-25 |
+| Rust | `openethereum/openethereum` | `etc-frozen` — reaching Phoenix |
+| JVM | `besu-eth/besu-etc` | `etc-frozen` — reference client, weaker weight |
+
+**So the two-source rule is satisfiable across implementation languages for the
+early range, without either source being this project's own lineage.** That was
+not true yesterday. For a value in this range, prefer one Go and one Rust reading
+over two Go ones — an agreement that survives a different language and a
+different team is worth more than one inside a single codebase's history.
+
+**And read the shape of the disagreement, not only its presence.** Where the
+early activations were checked, the Rust and Go lines agreed on every point but
+**expressed the difficulty-bomb window differently** — one as a start and an end,
+the other as a start plus a duration. Agreement across two expressions is
+stronger than agreement on a transcribed number, because a transcription error
+cannot survive the translation.
+
 ### Three measurements that contradict the obvious search
 
 **The fork NAMES return zero while every mechanism is present.** `diehard` → 0
@@ -515,6 +547,7 @@ client. A citation naming only the repository is unusable. The former
 | `lambdaclass/ethrex` | [lambdaclass/ethrex](https://github.com/lambdaclass/ethrex) | `main` | **Framework structure** — a recent ground-up client, useful as a second reading of the same seams |
 | `bluealloy/revm` | [bluealloy/revm](https://github.com/bluealloy/revm) | `main` | **A dependency of a client above, not a client.** Cloned because reading that client alone answers some questions wrongly: its transaction validation, including the chain-identifier check, lives here rather than in its own tree. Authoritative for nothing on its own — cite it as what the depending client executes |
 | `ethereum/go-ethereum-pow` | [ethereum/go-ethereum](https://github.com/ethereum/go-ethereum) | **`v1.10.26`, detached — frozen deliberately** | **go-ethereum as it was while it ran proof-of-work mainnet.** The same upstream as the row above at a different ref, kept as a separate checkout because the name is the signal: reading `master` and taking it for proof-of-work geth is the mistake this entry exists to prevent. `v1.10.26` is the last release of the pre-Merge 1.10 line and the most patched; `consensus/ethash/{sealer,consensus}.go` are both present, and `dde2da0ef` — *"all: remove ethash pow"*, 2023-05-03, first released in v1.12.0 — is verified **not** an ancestor. Being behind `master` is correct and permanent. **Authoritative for proof-of-work behavior that current geth no longer contains** |
+| `ethereum/go-ethereum-dao` | [ethereum/go-ethereum](https://github.com/ethereum/go-ethereum) | **`v1.4.9`, branch `pre-dao` — frozen deliberately** | **go-ethereum before either network existed separately — the last client Ethereum and Ethereum Classic shared.** The third checkout of the same upstream, on the same reasoning as the row above: the name is the signal. `v1.4.9` (2016-06-29) is the last release carrying **no** DAO fork code at all — verified, **0 files naming `DAOForkBlock`** against 35 naming `ethash` as a positive control. The next release shipped **both chains in one binary** behind `--support-dao-fork` / `--oppose-dao-fork`, defaulting to support. **Authoritative for what a single client did at the range this project is building** — Frontier through the divergence — and for nothing after it. See the Ethereum Classic section for which of the three refs answers which question |
 | `besu-eth/besu-native` | [besu-eth/besu-native](https://github.com/besu-eth/besu-native) | `main` | **The native backends behind besu's precompiles, not a client and not a word type** — `arithmetic`, `blake2bf`, `gnark`, `secp256k1`, `secp256r1`, `boringssl`, `constantine`. Authoritative for how a JVM client binds a native precompile implementation and for what each backend actually covers, which the depending client's own tree does not show. Everything here is Byzantium-or-later except `secp256k1`, so it bears on no Frontier precompile. **Its artifacts are not on Maven Central**, which is why reading the source is the only way to answer a question about them |
 
 ### Reading order: proof-of-stake Ethereum first, Ethereum Classic as the downstream addition
