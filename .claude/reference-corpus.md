@@ -247,17 +247,35 @@ created `ethcore/res/ethereum/classic.json`. **EIP-779 places the fork at block
 **2016-11-05**, `2a19c33b8`, *"delay bomb for Classic (ECIP-1010) (#3179)"* —
 ahead of that rule activating at block 3,000,000.
 
+**Block 1,920,000 was mined `2016-07-20T13:20:39Z`**, so that commit lands
+**five days after the chains diverged.**
+
+**Where that timestamp comes from, because the specification does not carry it.**
+EIP-779 states the block and no date — its own `created:` header is **2017-11-26**,
+written more than a year afterwards, and the only 2016 string in it is a Solidity
+compiler version. The timestamp is a block-header field, so it is read from the
+chain rather than from a document:
+
+```
+curl -s https://etc.blockscout.com/api/v2/blocks/1920000    # timestamp, hash, miner
+curl -s https://etc.blockscout.com/api/v2/blocks/1919999    # the control
+```
+
+**Calibrate it** — the preceding block returns `2016-07-20T13:20:38Z`, one second
+earlier, which is what shows the endpoint is resolving distinct blocks rather
+than echoing a request. **This reads Ethereum Classic's block 1,920,000**, the
+unforked continuation, hash `0x94365e3a…`; Ethereum's block at that height is a
+different block, mined within seconds on the forked chain.
+
 **So this clone contains a production client implementing Ethereum Classic
-within the network's first months, by the developers doing it at the time.**
-For the range this project is building, that is as close to a contemporaneous
+inside the network's first week, by the developers doing it at the time.** For
+the range this project is building, that is as close to a contemporaneous
 implementation as the corpus holds.
 
-**The fork's DATE is deliberately not stated here, and the reason is worth
-carrying.** EIP-779 specifies the block and no date; its own `created:` header is
-**2017-11-26**, written more than a year afterwards, and the only 2016 string in
-it is a Solidity compiler version. **The block is sourceable and the date is
-not** — from this document — so the distance between the fork and Parity's commit
-is left uncomputed rather than asserted from recollection.
+**One source, named and repeatable — not two.** A header field read from one
+explorer is enough for a historical note and is *not* the two-source standard
+this file requires of a value that reaches an implementation. Anything
+consensus-bearing goes through that rule instead.
 
 **`multi-geth`'s first-support date is NOT established here**, and the reason is
 an instrument failure worth recording. Its history reaches **2013-12-26** because
