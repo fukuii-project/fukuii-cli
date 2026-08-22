@@ -287,3 +287,62 @@ circularity this section exists to prevent, made invisible by the abbreviation.
 Name the thing being cited, so the circularity is visible on the surface of the
 citation rather than recoverable only by someone who already knows what the
 shorthand stands for.
+
+## 5. An inference from a verified fact is not verified
+
+**Failure it prevents:** four claims in one section, each built on something
+genuinely measured, each wrong in the step past the measurement — and each
+stated with the confidence the measurement earned.
+
+**The mechanism, because it is not carelessness and does not feel like
+guessing.** You check something. You then state a second thing that stands next
+to it: what the checked thing is *for*, what it is a *part* of, whether it is
+*still* true, what it *generalizes* to. **The second thing inherits the felt
+certainty of the first without inheriting its verification**, and the adjacency
+is the disguise. Nothing about it reads as a guess, because you were holding
+real evidence a moment earlier.
+
+The four shapes, which recur:
+
+| Checked | Stated, unchecked |
+|---|---|
+| Several counts inside a file | the **denominator** they are counts *of* |
+| A record says a defect exists | that the record is **still current** |
+| One implementation does X | that **every** implementation does |
+| A field exists and is named N | what that field is **for** |
+
+**The last one is the sharpest, because a name is the most persuasive
+unverified thing in a codebase.** A field named for a concept is not evidence
+that it implements that concept, and in one measured instance a field whose
+name matched a consensus rule exactly had a single reader, in a component that
+decides no consensus question at all. `reference-first.md` states the same
+hazard for a name adopted along with a shape; this is that hazard arriving
+through summary rather than through survey.
+
+### The remedy: mark what you did not check, especially in a brief
+
+**A claim handed to another agent is acted on, not evaluated.** Prose in a brief
+carries no gradation — a measurement and an assumption sit in the same sentence
+shape, and the agent has no way to tell them apart. So the brief must:
+
+- **Say which claims may be relied on**, in the form *verified here, do not
+  re-derive* — and mean it, having actually run the check.
+- **Say which are open**, in the form *not verified, treat as a hypothesis* —
+  naming the instrument the agent should use if it matters.
+
+Two lines, not per-claim tagging. **Where this split has been written, agents
+have re-derived the open half and found the error. Where it was dropped, the
+inference reached the work as an instruction.** That difference has been
+observed in both directions in a single section.
+
+**The same marking belongs on any durable record another reader will act on.**
+A survey record that tags each finding as verified, attributed, or bounded
+is the same discipline at document scale, and it is the reason a reader can
+trust the strong claims in one — the weak ones are visible as weak.
+
+### Do not resolve to be more careful
+
+Care is what produced these: every one came from a session actively checking
+things. **The failure is structural — verification does not transfer across an
+inference — so the remedy has to be structural too.** Marking is cheap and
+survives fatigue; resolve is neither.
