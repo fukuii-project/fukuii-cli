@@ -152,6 +152,60 @@ object Mainnet:
   private val homestead: UpgradeSchedule.Entry =
     UpgradeSchedule.Entry(atBlock(1150000), upgrade("Homestead"), Upgrade.RuleChange(Upgrades.homestead))
 
+  /** Block 1,920,000.
+    *
+    * `ethereum/EIPs` @ `9c915ee494c05069945f4e1018fa0854e2d3fb38`, EIP-779
+    * *Hardfork Meta: DAO Fork* (Final): *"Block == 1,920,000 on Mainnet"*.
+    * `ethereum/execution-specs` @ `ccaaaba58c748c072ca0ef9a09e91f9e3dcd277a`
+    * states it executably as `ByBlockNumber(1920000)` in
+    * `src/ethereum/forks/dao_fork/__init__.py`. Two clients from different
+    * language families implement it: `ethereum/go-ethereum` @
+    * `6bb0588ad8e7f922e4ad5580f51265a4097af08f` as
+    * `DAOForkBlock: big.NewInt(1_920_000)` in `params/config.go`, and
+    * `besu-eth/besu` @ `c2addd94244196d4713e38ea659be0d2581082e9` as
+    * `"daoForkBlock": 1920000` in `config/src/main/resources/mainnet.json`.
+    *
+    * ==What this entry states, and what nothing here performs==
+    *
+    * That the upgrade activated at this block, and that validity can diverge
+    * across it. [[Upgrade.IrregularStateChange]] carries no payload, so the
+    * transfer itself is not modelled: EIP-779 moves the ether in a list of
+    * accounts into one recipient at the beginning of this block, which is work
+    * for a layer that processes a block rather than a transaction. **The entry
+    * is a description of this network's history and not a claim about what this
+    * build executes**, which is the standing [[frontierThawing]] has too. The
+    * two part company at [[UpgradeSchedule.forkPoints]], which this one reaches
+    * and that one does not.
+    *
+    * ==It also carries a rule, and the proposal's own summary says it does
+    * not==
+    *
+    * EIP-779 opens by stating that *"all EVM opcodes, transaction format, block
+    * structure, and so on remained the same"*, and its § *Specification* then
+    * requires every block in `[1_920_000, 1_920_009]` to carry `dao-hard-fork`
+    * in `extraData`. Both clients cited above enforce that: go-ethereum in
+    * `consensus/misc/dao.go`, whose own comment calls it a *"DAO hard-fork
+    * extension to the header validity"*, and besu by swapping its block-header
+    * validator for `createDaoValidator()` across the same ten blocks.
+    *
+    * It is a header rule, and [[org.fukuii.chainspec.UpgradeRules]] holds the
+    * machine, settlement and admission facets and no header facet, so nothing
+    * here can express it and no facet of the rules in force changes at this
+    * block. That is what keeps the case above the accurate one rather than
+    * [[Upgrade.RuleChange]].
+    *
+    * ==One entry, where besu writes three==
+    *
+    * besu adds a milestone at this block, another at the block after it, and
+    * the preceding specification again at plus ten, because the transfer lasts
+    * one block and the header rule lasts ten. **None of that reaches a fork
+    * identifier**: its `getForkBlockNumbers` takes `getDaoForkBlock` once, and
+    * go-ethereum gathers the one configuration field, so both clients put a
+    * single point at 1,920,000 and neither puts one after it.
+    */
+  private val daoFork: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(1920000), upgrade("DAO Fork"), Upgrade.IrregularStateChange)
+
   /** Block 2,463,000.
     *
     * `ethereum/EIPs` @ `9c915ee494c05069945f4e1018fa0854e2d3fb38`, EIP-608
@@ -180,22 +234,15 @@ object Mainnet:
     * [[UpgradeSchedule.of]] performs are exactly the ones worth reading in a
     * failure message.
     *
-    * **This does not carry the DAO fork**, which is the next entry in this
-    * network's enumeration and is an irregular state change requiring a layer
-    * that can mutate state. Its absence is why the schedule stops where it
-    * does, rather than at any property of Tangerine Whistle.
-    *
-    * ==So [[UpgradeSchedule.forkPoints]] on this schedule is not yet this
-    * network's==
+    * ==[[UpgradeSchedule.forkPoints]] over this schedule is this network's own,
+    * as far as the enumeration reaches==
     *
     * EIP-2124's worked example for this network runs `uint64(1150000)` then
-    * `uint64(1920000)`; the second is the DAO fork and is not here yet, so the
-    * points this schedule yields skip from Homestead to Tangerine Whistle. That
-    * is correct for what is authored and **wrong for a handshake** -- a real
-    * identifier computed from a schedule that stops short would be rejected by
-    * every peer, and rejected in a way that reads as unrelated network trouble.
-    * The projection is right; the schedule it runs over is deliberately partial
-    * until the layer the DAO fork needs exists.
+    * `uint64(1920000)`, and [[daoFork]] is what makes the second of those
+    * appear. A schedule that omitted it would still yield points, still produce
+    * an identifier and still be a number every peer accepts the shape of --
+    * and every peer would reject the value, in a way that reads as unrelated
+    * network trouble rather than as a missing entry.
     */
   val schedule: Either[UpgradeSchedule.Error, UpgradeSchedule] =
-    UpgradeSchedule.of(Vector(frontier, frontierThawing, homestead, tangerineWhistle))
+    UpgradeSchedule.of(Vector(frontier, frontierThawing, homestead, daoFork, tangerineWhistle))

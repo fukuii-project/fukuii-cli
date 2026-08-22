@@ -1,7 +1,7 @@
 package org.fukuii.chainspec.networks
 
 import org.fukuii.bytes.UInt64
-import org.fukuii.chainspec.UpgradeSchedule
+import org.fukuii.chainspec.{Activation, UpgradeSchedule}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Ethereum mainnet and Ethereum Classic mainnet run the same rules through
@@ -25,7 +25,7 @@ import org.scalatest.flatspec.AnyFlatSpec
   * first test below is what holds that open, and it is the one to read before
   * trusting any of the others.
   *
-  * ==The boundary is a divergence of STATE, not of rules==
+  * ==The boundary is a divergence of STATE, not of the rules modelled here==
   *
   * This is the half that reads backwards and is the reason the range below
   * stops where it does rather than where the rules part. EIP-779 states it
@@ -33,26 +33,36 @@ import org.scalatest.flatspec.AnyFlatSpec
   * protocol; all EVM opcodes, transaction format, block structure, and so on
   * remained the same. Rather, the DAO Fork was an 'irregular state change'"*.
   *
+  * **That sentence is a summary and the same proposal contradicts it**, so the
+  * assertions below are worded against the facets rather than against it: §
+  * *Specification* requires every block in `[1_920_000, 1_920_009]` to carry
+  * `dao-hard-fork` in `extraData`, which is a header rule and which
+  * `ethereum/go-ethereum` @ `6bb0588ad8e7f922e4ad5580f51265a4097af08f` enforces
+  * in `consensus/misc/dao.go`. `UpgradeRules` holds the machine, settlement and
+  * admission facets and no header facet, so what is equal below is every rule
+  * this build models -- not every rule a node validates.
+  *
   * So at block 1,920,000 the two networks began building different state under
-  * identical rules, and their RULES stayed equal for another 543,000 blocks
-  * until Ethereum mainnet repriced first. A test asserting that the rules
-  * diverge at the DAO fork would be asserting something false, and one
-  * asserting they agree wherever they agree would run past the point the two
-  * chains stopped being one chain. The range below is the second bound: the
-  * last height at which both networks were the same chain.
+  * rules that stayed equal for another 543,000 blocks, until Ethereum mainnet
+  * repriced first. A test asserting that those rules diverge at the DAO fork
+  * would be asserting something false, and one asserting they agree wherever
+  * they agree would run past the point the two chains stopped being one chain.
+  * The range below is the second bound: the last height at which both networks
+  * were the same chain.
   *
-  * ==This assertion is the only place the parting is recorded==
+  * ==The parting is an asymmetry between two schedules, and it is asserted from
+  * both sides==
   *
-  * Neither schedule holds it, and neither should: Ethereum mainnet's DAO fork
-  * entry needs a layer that can mutate state, and Ethereum Classic declined the
-  * upgrade, which is not a schedule entry at all -- an entry that never
-  * activates resolves nothing, orders nothing and reaches nothing, so it would
-  * be documentation filed in a configuration.
+  * Ethereum mainnet carries the upgrade as an entry that changes no rule and
+  * still reaches its fork identifier. Ethereum Classic carries nothing, and
+  * should not: it declined the upgrade, and an entry that never activates
+  * resolves nothing, orders nothing and reaches nothing, so it would be
+  * documentation filed in a configuration.
   *
-  * So the block below is stated here and sourced here, and if this assertion is
-  * ever deleted the figure and its reason leave the build with it. That is the
-  * intended trade: an assertion that must be deleted deliberately, against a
-  * schedule entry that could rot unnoticed.
+  * A test over the rules alone cannot see that difference -- both networks
+  * resolve to the same rule set on both sides of the block. The fork
+  * identifier is where it is visible, and the assertion over it is the only
+  * thing in this build that fails if either network's entry moves to the other.
   *
   * `ethereumclassic/core-geth` @
   * `4185df450364973bbf99efa3923791f5ba40b351` carries it as
@@ -73,6 +83,11 @@ class SharedHistorySpec extends AnyFlatSpec:
 
   /** The last block at which the two networks were one chain. */
   private val lastSharedBlock: UInt64 = UInt64.fromBits(1919999L)
+
+  /** The first block at which they were not, sourced on the entry that carries
+    * it in [[ethereum.Mainnet]].
+    */
+  private val partingBlock: Activation = Activation.AtBlock(UInt64.fromBits(1920000L))
 
   private def ethereumAt(height: Long) = ethereumSchedule.at(UInt64.fromBits(height), UInt64.Zero)
   private def classicAt(height: Long) = classicSchedule.at(UInt64.fromBits(height), UInt64.Zero)
@@ -99,13 +114,23 @@ class SharedHistorySpec extends AnyFlatSpec:
       "two networks that were one chain at this height disagree about what it ran"
     )
 
-  it should "still agree at the block their chains parted, because that fork changed no rule" in
+  it should "still agree at the block their chains parted, because that fork changed no modelled rule" in
     // The fact that keeps the boundary honest. Read the other way -- rules
     // diverging here -- the assertion above would be given a false upper bound
     // and would stop testing the range it exists for.
     assert(
       classicAt(1920000L) == ethereumAt(1920000L),
-      "the DAO fork was an irregular state change, so no rule a node validates differs across it"
+      "the DAO fork altered no machine, settlement or admission rule, so neither network's rule set moves at it"
+    )
+
+  "only one of the two schedules" should "carry the upgrade they parted over" in
+    // Where the parting is actually visible. Both networks resolve to the same
+    // rules on both sides of this block, so nothing above can distinguish them
+    // here; the fork identifier is the one projection that can.
+    assert(
+      ethereumSchedule.forkPoints.contains(partingBlock) &&
+        !classicSchedule.forkPoints.contains(partingBlock),
+      "the network that took the upgrade and the network that declined it agree about their fork identifiers"
     )
 
   it should "disagree once either has adopted a proposal the other has not" in

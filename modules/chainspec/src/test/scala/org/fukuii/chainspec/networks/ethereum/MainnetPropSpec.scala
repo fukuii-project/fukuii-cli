@@ -11,9 +11,10 @@ import org.scalatest.propspec.AnyPropSpec
   * ==Two tables rather than one, because they fail on different mistakes==
   *
   * The first pins the numbers. The second pins what they do. An activation that
-  * gates no rule -- this network has one -- moves without perturbing any
-  * resolution, so the second table alone cannot see it move; a resolution read
-  * from the wrong rule set at a correct block is invisible to the first.
+  * gates no rule -- this network has two, and [[MainnetSpec]] is where they are
+  * told apart -- moves without perturbing any resolution, so the second table
+  * alone cannot see it move; a resolution read from the wrong rule set at a
+  * correct block is invisible to the first.
   */
 class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
@@ -32,12 +33,18 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     ("Frontier", 0L),
     ("Frontier Thawing", 200000L),
     ("Homestead", 1150000L),
+    ("DAO Fork", 1920000L),
     ("Tangerine Whistle", 2463000L)
   )
 
   /** The last height under the old rules and the first under the new, per
     * boundary, so an activation moved by one is caught in one direction or the
     * other rather than only when it is moved far.
+    *
+    * The pair at the DAO fork is the opposite assertion to the rest of this
+    * table: both sides resolve to the same rule set, because that upgrade
+    * changes none. A row here that differed across it would mean the entry had
+    * been given the wrong case.
     */
   private val boundaries = Table(
     ("height", "rules"),
@@ -46,6 +53,8 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     (200000L, Upgrades.frontier),
     (1149999L, Upgrades.frontier),
     (1150000L, Upgrades.homestead),
+    (1919999L, Upgrades.homestead),
+    (1920000L, Upgrades.homestead),
     (2462999L, Upgrades.homestead),
     (2463000L, Upgrades.tangerineWhistle)
   )
