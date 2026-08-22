@@ -13,6 +13,13 @@ import org.fukuii.evm.GasSchedule
   * rather than on either -- a copy on each would be one number with two
   * definitions, and a fork moving it would have to move both.
   *
+  * **Admission is nonetheless the only caller, and that is the invariant rather
+  * than a reason to fold this into it.** The charge is worked out once, where a
+  * transaction is admitted, and handed to settlement on
+  * [[AdmittedTransaction]]; settlement spends that figure and never asks for it
+  * again. Moving this beside admission would put the number back inside the one
+  * facet, where the other has to reach through a fork's rules to recover it.
+  *
   * ==Every figure comes from the schedule, so a repricing is a value==
   *
   * Nothing here is a literal. `ethereum/execution-specs` @ `ccaaaba58` names

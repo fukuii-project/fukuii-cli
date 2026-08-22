@@ -290,8 +290,8 @@ object BlockProcessor:
           admission,
           evm.schedule
         ) match
-          case Admission.Refused(reason)       => Left(reason)
-          case Admission.Admitted(settling, _) => Right(settling)
+          case Admission.Refused(reason)    => Left(reason)
+          case Admission.Admitted(settling) => Right(settling)
       yield settling
     admitted.left
       .map(reason => BlockRejection(index, reason))

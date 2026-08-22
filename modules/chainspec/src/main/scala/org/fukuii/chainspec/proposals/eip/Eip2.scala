@@ -4,7 +4,7 @@ import org.fukuii.chainspec.{Component, ProposalId}
 import org.fukuii.evm.Proposal
 import org.fukuii.execution.AdmissionRules
 
-/** EIP-2 -- three changes under one document number.
+/** EIP-2 -- four changes under one document number, of which three are here.
   *
   * ==One proposal is not one delta, and flattening them loses the difference==
   *
@@ -15,8 +15,25 @@ import org.fukuii.execution.AdmissionRules
   * which of them a network could adopt alone, and which layer enforces each.
   *
   * So the deltas are named individually and the document is what bundles them.
-  * [[component]] is the adoption of the whole, which is the only form any
-  * network in this project's scope actually took.
+  * [[component]] is the adoption of the whole of what is modeled, which is the
+  * only form any network in this project's scope actually took.
+  *
+  * ==The fourth item is the difficulty formula, and it is not modeled here==
+  *
+  * `ethereum/EIPs` @ `9c915ee494c05069945f4e1018fa0854e2d3fb38`, EIP-2
+  * *Homestead Hard-fork Changes* (Final), states four numbered items under
+  * *Specification*, and the fourth replaces the difficulty adjustment
+  * algorithm. It belongs to the consensus facet, which
+  * [[org.fukuii.chainspec.UpgradeRules]] names as arriving with the consensus
+  * engine and which does not exist yet -- so the rule sets this component
+  * composes are Homestead's first three items and not Homestead.
+  *
+  * **Recorded because nothing else records it.** The three deltas below read as
+  * the whole document, so a reader has no way to tell a proposal fully modeled
+  * from one modeled as far as its layers exist, and whoever builds the
+  * consensus facet has nothing pointing at the rule this proposal owes it.
+  * `ethereum.Mainnet`'s Homestead entry states the same kind of omission for
+  * EIP-606's own.
   */
 object Eip2:
 
@@ -51,7 +68,7 @@ object Eip2:
     */
   val lowSignatureS: AdmissionRules => AdmissionRules = _.copy(signatureSMustBeLow = true)
 
-  /** Adopting the document, which is adopting all three of its deltas.
+  /** Adopting the document, which is adopting all three of the deltas above.
     *
     * ==Built from the general constructor, because this document spans facets==
     *

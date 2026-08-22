@@ -96,12 +96,15 @@ enum Admission:
   /** @param transaction
     *   the values settling it spends, which is the whole of what settlement
     *   needs and is produced here so that no caller assembles its own.
-    * @param intrinsicGas
-    *   what it is charged before any of it runs. Settlement computes the same
-    *   figure from the same schedule; it is reported because a caller that
-    *   wants it should not have to.
+    *
+    *   **The intrinsic charge is among them rather than beside them.** Reported
+    *   as a second member it is a figure every caller may drop on the way to
+    *   settlement -- and one settlement would then have to work out again, from
+    *   a schedule the caller chose, which is the same number acquiring a second
+    *   definition. Carried on the record it cannot be separated from the
+    *   transaction it was computed for.
     */
-  case Admitted(transaction: AdmittedTransaction, intrinsicGas: BigInt)
+  case Admitted(transaction: AdmittedTransaction)
 
   case Refused(reason: Refusal)
 
@@ -280,7 +283,7 @@ object TransactionAdmission:
     else if counted != offered.nonce then Admission.Refused(Refusal.NonceMismatch)
     else if held < maximumFee + offered.value then Admission.Refused(Refusal.InsufficientAccountFunds)
     else if world.codeOf(offered.sender).nonEmpty then Admission.Refused(Refusal.SenderNotEoa)
-    else Admission.Admitted(settling(offered), intrinsic)
+    else Admission.Admitted(settling(offered, intrinsic))
 
   /** The identifier the signature was made for, where it names one.
     *
@@ -325,8 +328,13 @@ object TransactionAdmission:
     case _: Transaction.Blob       => false
     case _: Transaction.SetCode    => false
 
-  /** What an admitted transaction hands to settlement. */
-  private def settling(offered: OfferedTransaction): AdmittedTransaction =
+  /** What an admitted transaction hands to settlement.
+    *
+    * The charge is passed in rather than computed here, so that the figure this
+    * record carries is the one the branch above compared against the limit. A
+    * second call would be a second definition of it.
+    */
+  private def settling(offered: OfferedTransaction, intrinsicGas: BigInt): AdmittedTransaction =
     AdmittedTransaction(
       sender = offered.sender,
       nonce = offered.nonce,
@@ -334,5 +342,6 @@ object TransactionAdmission:
       gasLimit = offered.gasLimit,
       to = offered.to,
       value = offered.value,
-      data = offered.data
+      data = offered.data,
+      intrinsicGas = intrinsicGas
     )

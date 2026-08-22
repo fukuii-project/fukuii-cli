@@ -61,7 +61,7 @@ import org.fukuii.types.TransactionType
   *
   * None of these admits what it should refuse; the risk is that **nothing shows
   * a branch refuses for the reason it states.** A condition never executed can
-  * be inverted, or made to answer with its neighbour's reason, and every test
+  * be inverted, or made to answer with its neighbor's reason, and every test
   * that exists would still pass -- the more so because a refused transaction
   * leaves the state root at its pre-state value whichever branch refused it, so
   * the corpus's own strongest check cannot tell two reasons apart.
@@ -131,9 +131,9 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
         transaction.gasLimit,
         transaction.to,
         transaction.value,
-        transaction.data
-      ),
-      intrinsic
+        transaction.data,
+        intrinsic
+      )
     )
 
   "admission" should "admit a transaction that breaks none of its rules" in

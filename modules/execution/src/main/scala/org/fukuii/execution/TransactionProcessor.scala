@@ -42,6 +42,17 @@ import org.fukuii.types.Log
   *   the recipient, absent when the transaction deploys. Absence is what makes
   *   it a deployment -- there is no separate flag, in this type or in any
   *   surveyed client.
+  * @param intrinsicGas
+  *   what the transaction is charged before any of it runs, as admission
+  *   computed it.
+  *
+  *   **It is carried rather than recomputed, because it is one number.** The
+  *   charge is priced from fields this record does not carry the moment a fork
+  *   prices it from anything but the input and the recipient -- EIP-2930
+  *   charges per access-list entry -- so a second computation over these fields
+  *   alone would answer a different figure, and the two would disagree with
+  *   nothing to say which of them the chain charged. [[IntrinsicGas]] states
+  *   the same rule from the side that owns the number.
   */
 final case class AdmittedTransaction(
     sender: Address,
@@ -50,7 +61,8 @@ final case class AdmittedTransaction(
     gasLimit: BigInt,
     to: Option[Address],
     value: BigInt,
-    data: Bytes
+    data: Bytes,
+    intrinsicGas: BigInt
 )
 
 /** What settling one transaction produced.
@@ -166,7 +178,7 @@ object TransactionProcessor:
     val sender = transaction.sender
     val signedAt = world.nonceOf(sender)
     world.setNonce(sender, nextNonce(transaction.nonce))
-    world.setBalance(sender, world.balanceOf(sender).sub(Word(transaction.gasLimit * transaction.gasPrice)))
+    moveBalance(world, sender, -(transaction.gasLimit * transaction.gasPrice))
     val environment = new Environment(
       world,
       blockHashAt = blockHashAt,
@@ -174,7 +186,7 @@ object TransactionProcessor:
       transaction = TransactionContext(sender, transaction.gasPrice),
       rules = rules
     )
-    val available = transaction.gasLimit - IntrinsicGas.of(rules.schedule, transaction.data, transaction.to.isEmpty)
+    val available = transaction.gasLimit - transaction.intrinsicGas
     val (frame, outcome) = invoke(transaction, world, environment, signedAt, available)
     account(transaction, world, destroyAccount, block, frame, outcome)
 
@@ -263,11 +275,39 @@ object TransactionProcessor:
     val refunded = (spent / 2).min(earned)
     val used = spent - refunded
     val returned = transaction.gasLimit - used
-    world.setBalance(transaction.sender, world.balanceOf(transaction.sender).add(Word(returned * transaction.gasPrice)))
-    world.setBalance(block.coinbase, world.balanceOf(block.coinbase).add(Word(used * transaction.gasPrice)))
+    moveBalance(world, transaction.sender, returned * transaction.gasPrice)
+    moveBalance(world, block.coinbase, used * transaction.gasPrice)
     world.commit()
     if succeeded then frame.accountsToDelete.foreach(destroyAccount)
     Settlement(used, if succeeded then frame.logs else Vector.empty, succeeded, unbuilt)
+
+  /** `account`'s balance moved by `delta`, refusing a result no account can
+    * hold.
+    *
+    * ==The word wraps by contract, so every fee move needs this==
+    *
+    * [[org.fukuii.evm.Word]] is the machine's word and is modular in both
+    * directions: a debit below zero answers a near-2^256 CREDIT, and a credit
+    * past the ceiling answers a small balance. Either is a fee no network ever
+    * charged, arriving as a plausible figure with nothing to distinguish it
+    * from one the chain agreed on -- so the arithmetic is done in arbitrary
+    * precision and the result is bounded before the word is built from it.
+    *
+    * Admission establishes that the sender holds the whole fee it offers plus
+    * the value it sends, and what comes back afterwards is bounded by what was
+    * taken, so neither end is a state a chain reaches. A caller that settled a
+    * transaction admission would have refused is what makes it one, which is a
+    * broken precondition and is raised as one. [[nextNonce]] and
+    * [[BlockProcessor]]'s cumulative gas carry their contracts the same way and
+    * for the same reason.
+    */
+  private def moveBalance(world: JournaledWorldState, account: Address, delta: BigInt): Unit =
+    val moved = world.balanceOf(account).toBigInt + delta
+    if moved < 0 || moved > Word.MaxValue.toBigInt then
+      throw new IllegalStateException(
+        "a settled transaction moved " + account.toString + " to a balance no account can hold: " + moved.toString
+      )
+    world.setBalance(account, Word(moved))
 
   /** The transaction count the sender holds afterwards.
     *

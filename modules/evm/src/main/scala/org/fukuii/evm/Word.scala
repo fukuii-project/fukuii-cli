@@ -22,7 +22,7 @@ import org.fukuii.bytes.Bytes
   * `Nethermind.Int256`, reth through `alloy-primitives`, ethrex through
   * `ethereum-types`, and besu — the JVM peer — through its own in-tree
   * `record UInt256(long u3, long u2, long u1, long u0)` at `c2addd9424`,
-  * described there as "an optimised version of BigInteger for fixed width
+  * described there as "an optimized version of BigInteger for fixed width
   * 256-bits integers". besu is visibly mid-migration: its BigInteger-backed
   * Tuweni word still serves the API surface while the four-long record serves
   * the `*Optimized` and `v2/operation/` arithmetic — the same operation set

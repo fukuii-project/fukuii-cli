@@ -85,6 +85,13 @@ class TransactionProcessorSpec extends AnyFlatSpec:
   private val cannotRunAdd: EvmRules =
     EvmFixtures.rules.copy(table = EvmFixtures.rules.table.adding(Operation(Opcode.Add, Cost.Computed)))
 
+  /** What admission would hand settlement for a transaction of this shape.
+    *
+    * The intrinsic charge is worked out here because admission is what works it
+    * out, and a test standing in for admission owes the same figure. A case
+    * wanting a charge this schedule does not price says so with `copy`, which
+    * is the shape a later fork's admission produces.
+    */
   private def transaction(
       nonce: BigInt = 0,
       gasPrice: BigInt = 3,
@@ -92,7 +99,17 @@ class TransactionProcessorSpec extends AnyFlatSpec:
       to: Option[Address] = Some(recipient),
       value: BigInt = 1000,
       data: Bytes = Bytes.Empty
-  ): AdmittedTransaction = AdmittedTransaction(sender, nonce, gasPrice, gasLimit, to, value, data)
+  ): AdmittedTransaction =
+    AdmittedTransaction(
+      sender,
+      nonce,
+      gasPrice,
+      gasLimit,
+      to,
+      value,
+      data,
+      IntrinsicGas.of(schedule, data, to.isEmpty)
+    )
 
   /** What one settlement did, as the three things a case below asks about. */
   final private case class Ran(
@@ -104,10 +121,11 @@ class TransactionProcessorSpec extends AnyFlatSpec:
   private def settle(
       admitted: AdmittedTransaction,
       code: Map[Address, Bytes] = Map.empty,
-      rules: EvmRules = EvmFixtures.rules
+      rules: EvmRules = EvmFixtures.rules,
+      funded: BigInt = Funded
   ): Ran =
     val base = new EvmFixtures.MapWorldState
-    base.setBalance(sender, Word(Funded))
+    base.setBalance(sender, Word(funded))
     code.foreach((address, bytes) => base.setCode(address, bytes))
     val destroyed = mutable.ArrayBuffer.empty[Address]
     def record(address: Address): Unit =
@@ -156,6 +174,19 @@ class TransactionProcessorSpec extends AnyFlatSpec:
       "the address is derived from the count the sender held when it signed, not from the one it holds after"
     )
 
+  "the intrinsic charge" should "be the figure admission stated, not one settlement works out" in
+    // The whole of what carrying the number buys, made reachable at this fork.
+    // A later fork prices the charge from fields this record does not hold --
+    // EIP-2930 charges per access-list entry -- so admission hands settlement a
+    // figure no computation over the input and the recipient reproduces, and
+    // spending anything but that figure is spending a second definition of one
+    // number.
+    assert(
+      settle(transaction().copy(intrinsicGas = schedule.transactionBase + 4242)).settlement.gasUsed ==
+        schedule.transactionBase + 4242,
+      "settlement worked the charge out from its own rules instead of spending the one it was handed"
+    )
+
   // ── What moves ────────────────────────────────────────────────────────────
 
   "a settled transaction" should "move its sender's transaction count on by one" in
@@ -185,6 +216,44 @@ class TransactionProcessorSpec extends AnyFlatSpec:
     assert(
       settle(transaction()).world.balanceOf(recipient).toBigInt == BigInt(1000),
       "a transfer to an account with no code still transfers"
+    )
+
+  // ── What the fee arithmetic refuses to do quietly ─────────────────────────
+  //
+  // The machine's word is modular, so every one of these would otherwise answer
+  // a plausible figure: a debit below zero becomes a near-2^256 credit and a
+  // credit past the ceiling becomes a small balance. Each is a fee no network
+  // charged, and nothing downstream can tell one from a figure a chain agreed
+  // on -- so each is asserted at its own site rather than once at the helper.
+
+  "the upfront fee" should "be refused rather than taken from a sender that cannot cover it" in
+    // Admission refuses a sender that cannot fund the whole fee it offers, so
+    // this is a caller settling a transaction it would have turned away.
+    assertThrows[IllegalStateException](settle(transaction(gasPrice = Funded)))
+
+  "the beneficiary's credit" should "be refused rather than wrapped past what a word holds" in {
+    val base = new EvmFixtures.MapWorldState
+    base.setBalance(sender, Word(Funded))
+    base.setBalance(coinbase, Word.MaxValue)
+    assertThrows[IllegalStateException](
+      TransactionProcessor.settle(
+        transaction(),
+        new JournaledWorldState(base),
+        (_: Address) => (),
+        block,
+        EvmFixtures.blockHashAt,
+        EvmFixtures.rules
+      )
+    )
+  }
+
+  "the sender's refund" should "be refused rather than wrapped when the charge exceeded the limit" in
+    // Admission refuses a limit that cannot pay the intrinsic charge, so what
+    // comes back is bounded by what was taken. Settling one it would have
+    // refused makes the remainder negative, and the sender is funded to exactly
+    // the fee so that the negative credit has nothing left to hide in.
+    assertThrows[IllegalStateException](
+      settle(transaction(value = 0).copy(intrinsicGas = BigInt(100001)), funded = BigInt(300000))
     )
 
   // ── The refund, and the bound on it ───────────────────────────────────────

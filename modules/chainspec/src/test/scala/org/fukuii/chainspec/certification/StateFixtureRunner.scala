@@ -171,8 +171,8 @@ object StateFixtureRunner:
       rules.admission,
       rules.evm.schedule
     ) match
-      case Admission.Refused(reason)       => judge(fixture, base, trie, Left(reason))
-      case Admission.Admitted(admitted, _) =>
+      case Admission.Refused(reason)    => judge(fixture, base, trie, Left(reason))
+      case Admission.Admitted(admitted) =>
         val settlement = TransactionProcessor.settle(
           admitted,
           journal,

@@ -50,9 +50,9 @@ object CertificationCorpora:
     for
       root <- FixtureCorpus.root
       registry <- KnownNetworks.registry.toOption
-      ethereum <- registry.at(ethereum.Mainnet.network.chainId)
-      classic <- registry.at(ethereumclassic.Mainnet.network.chainId)
-    yield assemble(root, ethereum, classic)
+      ethereumSchedule <- registry.at(ethereum.Mainnet.network.chainId)
+      classicSchedule <- registry.at(ethereumclassic.Mainnet.network.chainId)
+    yield assemble(root, ethereumSchedule, classicSchedule)
 
   /** The legacy hand-written interpreter tier: an invocation stated directly,
     * with no transaction around it.
@@ -130,7 +130,7 @@ object CertificationCorpora:
     * BELIEVES it begins, which is what makes the two comparable: the corpus is
     * filled for a named fork, it is run at the height that fork is supposed to
     * start at, and the schedule answers with whatever it actually holds there.
-    * When the two disagree the corpus is resolved under a neighbouring fork's
+    * When the two disagree the corpus is resolved under a neighboring fork's
     * rules and diverges.
     *
     * **So do not replace these by reading the activation off the schedule.**
@@ -198,24 +198,24 @@ object CertificationCorpora:
 
   private def stateCorporaAt(
       root: Path,
-      ethereum: UpgradeSchedule,
-      classic: UpgradeSchedule
+      ethereumSchedule: UpgradeSchedule,
+      classicSchedule: UpgradeSchedule
   ): Vector[StateCorpus] =
-    val frontier = rulesAt(ethereum, EthereumFrontierStarts)
-    val homestead = rulesAt(ethereum, EthereumHomesteadStarts)
+    val frontier = rulesAt(ethereumSchedule, EthereumFrontierStarts)
+    val homestead = rulesAt(ethereumSchedule, EthereumHomesteadStarts)
 
     // Bound once, because the two tiers below reach these rules through corpora
     // that name the fork differently -- `TangerineWhistle` in the generated
     // tier, `EIP150` in the legacy one. Two resolutions would let the two drift
     // into certifying different machines under one section's name.
-    val tangerineWhistle = rulesAt(ethereum, EthereumTangerineWhistleStarts)
+    val tangerineWhistle = rulesAt(ethereumSchedule, EthereumTangerineWhistleStarts)
 
-    val gasReprice = rulesAt(classic, ClassicGasRepriceStarts)
+    val gasReprice = rulesAt(classicSchedule, ClassicGasRepriceStarts)
 
     // Taken from the same schedule the rules are taken from, so the pair cannot
     // drift into asking one network's rules as though it were the other.
-    val ethereumChain = ethereum.network.chainId
-    val classicChain = classic.network.chainId
+    val ethereumChain = ethereumSchedule.network.chainId
+    val classicChain = classicSchedule.network.chainId
 
     Vector(
       StateCorpus(
@@ -262,10 +262,14 @@ object CertificationCorpora:
       )
     )
 
-  private def assemble(root: Path, ethereum: UpgradeSchedule, classic: UpgradeSchedule): Vector[CorpusReport] =
-    val frontier = rulesAt(ethereum, EthereumFrontierStarts)
+  private def assemble(
+      root: Path,
+      ethereumSchedule: UpgradeSchedule,
+      classicSchedule: UpgradeSchedule
+  ): Vector[CorpusReport] =
+    val frontier = rulesAt(ethereumSchedule, EthereumFrontierStarts)
     vmReport(FixtureCorpus.legacy(root).resolve("VMTests"), frontier.evm) +:
-      stateCorporaAt(root, ethereum, classic).map(stateReport)
+      stateCorporaAt(root, ethereumSchedule, classicSchedule).map(stateReport)
 
   /** What running one case established, with a case that THREW recorded as a
     * divergence rather than as a skip.
