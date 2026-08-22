@@ -238,6 +238,37 @@ archived one, and the measurement above is a reading of fetched refs at a date,
 not a guarantee. It is the reason to re-check the newest remote ref rather than
 to assume the freeze is safe forever.
 
+### How early: read from their own history, not from recollection
+
+**`openethereum/parity-ethereum` added Ethereum Classic on 2016-07-25** —
+commit `e73481029`, *"Ethereum classic (#1706)"*, which is the commit that
+created `ethcore/res/ethereum/classic.json`. **EIP-779 places the fork at block
+1,920,000.** Support for ECIP-1010's difficulty-bomb delay followed on
+**2016-11-05**, `2a19c33b8`, *"delay bomb for Classic (ECIP-1010) (#3179)"* —
+ahead of that rule activating at block 3,000,000.
+
+**So this clone contains a production client implementing Ethereum Classic
+within the network's first months, by the developers doing it at the time.**
+For the range this project is building, that is as close to a contemporaneous
+implementation as the corpus holds.
+
+**The fork's DATE is deliberately not stated here, and the reason is worth
+carrying.** EIP-779 specifies the block and no date; its own `created:` header is
+**2017-11-26**, written more than a year afterwards, and the only 2016 string in
+it is a Solidity compiler version. **The block is sourceable and the date is
+not** — from this document — so the distance between the fork and Parity's commit
+is left uncomputed rather than asserted from recollection.
+
+**`multi-geth`'s first-support date is NOT established here**, and the reason is
+an instrument failure worth recording. Its history reaches **2013-12-26** because
+it is go-ethereum forked, carrying that project's whole lineage — so an "earliest
+commit" reads as 2013 and means nothing about Ethereum Classic. And a log search
+for `ETC` matches **`fetcher`, `fetch` and `fetching`** far more often than the
+network: 58, 16 and 6 against 9 real hits. Its `params/config_classic.go` dates
+only to **2019-05-27**, and that commit is *"params: extract chain configs to
+separate files"* — a refactor, not an arrival. **Establishing when this lineage
+first ran Ethereum Classic needs an instrument none of the above supplies.**
+
 ### What they are a second oracle for
 
 **Within their range they state the early activations independently of
