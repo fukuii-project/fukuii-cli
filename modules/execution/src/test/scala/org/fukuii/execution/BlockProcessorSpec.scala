@@ -4,7 +4,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 import org.fukuii.bytes.{Address, Bytes, Hash, UInt256, UInt64}
 import org.fukuii.crypto.Secp256k1
-import org.fukuii.evm.{EvmFixtures, Word, WorldState}
+import org.fukuii.evm.{Cost, EvmFixtures, EvmRules, Opcode, Operation, Unsupported, Word, WorldState}
 import org.fukuii.types.{PostStateOrStatus, Sender, SigningPreimage, Transaction, TransactionType}
 
 /** What a block does that one transaction cannot show.
@@ -31,10 +31,14 @@ import org.fukuii.types.{PostStateOrStatus, Sender, SigningPreimage, Transaction
 class BlockProcessorSpec extends AnyFlatSpec:
 
   private val schedule = EvmFixtures.schedule
-  private val evm = EvmFixtures.rules
 
   private val recipient: Address = EvmFixtures.address(0x22)
   private val coinbase: Address = EvmFixtures.address(0x33)
+
+  /** A second account holding code, so two transactions in one block can reach
+    * different operations.
+    */
+  private val otherRecipient: Address = EvmFixtures.address(0x44)
 
   private val signing: BigInt = BigInt("4a2ffc8867fd8d1773481cf13f36e44f033133c579520d2745e46c3bbbf21e6a", 16)
 
@@ -125,6 +129,28 @@ class BlockProcessorSpec extends AnyFlatSpec:
     */
   private val emitsALog: Bytes = EvmFixtures.bytesOf("0x60006000a0")
 
+  /** Adds two operands, so an invocation over it reaches `ADD`. */
+  private val adds: Bytes = EvmFixtures.bytesOf("0x6003600501")
+
+  /** Multiplies two operands, so an invocation over it reaches `MUL`. */
+  private val multiplies: Bytes = EvmFixtures.bytesOf("0x6003600502")
+
+  /** Rules whose table says `ADD` and `MUL` each work out their own price,
+    * where this build prices both from the table.
+    *
+    * Two of them rather than one, because which gap a block keeps is only
+    * answerable where the transactions met different ones -- with a single
+    * operation in the table, reporting the first and reporting the last are the
+    * same value. `InterpreterSpec` states the same construction for one
+    * operation where the machine is the subject.
+    */
+  private val cannotRunAddOrMul: EvmRules =
+    EvmFixtures.rules.copy(table =
+      EvmFixtures.rules.table
+        .adding(Operation(Opcode.Add, Cost.Computed))
+        .adding(Operation(Opcode.Mul, Cost.Computed))
+    )
+
   /** What one block run produced, together with the three things only an
     * observer outside the processor can see.
     */
@@ -143,7 +169,8 @@ class BlockProcessorSpec extends AnyFlatSpec:
       funded: BigInt = Funded,
       execution: ExecutionRules = statusReceipts,
       irregularStateChange: Option[WorldState => Unit] = None,
-      code: Map[Address, Bytes] = Map.empty
+      code: Map[Address, Bytes] = Map.empty,
+      evm: EvmRules = EvmFixtures.rules
   ): Ran =
     val world = new EvmFixtures.MapWorldState
     world.setBalance(signer, Word(funded))
@@ -363,3 +390,29 @@ class BlockProcessorSpec extends AnyFlatSpec:
 
   "a block none of whose transactions met an unbuilt operation" should "report none" in
     assert(run(Seq(transfer(nonce = 0))).output.unbuilt.isEmpty, "nothing unbuilt was reached, and nothing is reported")
+
+  "a block whose transactions met different unbuilt operations" should "report the one the earlier of them met" in
+    // One is enough to say the block is not a chain result, so the block keeps
+    // the first and discards the rest. A processor keeping the last reports the
+    // other operation here, and one keeping none reports nothing.
+    assert(
+      run(
+        Seq(transfer(nonce = 0), transfer(nonce = 1, to = Some(otherRecipient))),
+        code = Map(recipient -> adds, otherRecipient -> multiplies),
+        evm = cannotRunAddOrMul
+      ).output.unbuilt == Some(Unsupported(Opcode.Add)),
+      "the block reports the first gap any of its transactions reached, in the order it carries them"
+    )
+
+  it should "report the other one when the block carries them the other way round" in
+    // The control. The same two operations, the same two transactions, the code
+    // swapped between the recipients -- so both gaps are reachable and what the
+    // case above observes is position rather than which operation it is.
+    assert(
+      run(
+        Seq(transfer(nonce = 0), transfer(nonce = 1, to = Some(otherRecipient))),
+        code = Map(recipient -> multiplies, otherRecipient -> adds),
+        evm = cannotRunAddOrMul
+      ).output.unbuilt == Some(Unsupported(Opcode.Mul)),
+      "both operations must be reachable, or the case above holds for a processor that always names the same one"
+    )

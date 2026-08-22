@@ -118,14 +118,39 @@ enum Admission:
   * runs both in that order; a caller that already knows the sender runs the
   * second alone.
   *
-  * ==The order the checks run in is the specification's and is load-bearing==
+  * ==Each entry point runs the specification's order; the two composed do not==
   *
-  * Two transactions can break two rules at once, and which refusal a client
-  * reports is what the corpus states. `forks/frontier/fork.py`'s
-  * `check_transaction` raises `GasUsedExceedsLimitError`, `NonceMismatchError`,
-  * `InsufficientBalanceError` and `InvalidSenderError` in that order, with
-  * `frontier/transactions.py`'s `validate_transaction` supplying the intrinsic
-  * charge and the nonce ceiling ahead of them.
+  * A transaction can break two rules at once, and which refusal a client
+  * reports is what the corpus states, so the order is load-bearing within each
+  * of them. [[admit]] takes its six from `ethereum/execution-specs` @
+  * `ccaaaba58` in that document's own order: `frontier/transactions.py`'s
+  * `validate_transaction` supplies the intrinsic charge and the nonce ceiling,
+  * and `frontier/fork.py`'s `check_transaction` follows with
+  * `GasUsedExceedsLimitError`, `NonceMismatchError`,
+  * `InsufficientBalanceError` and `InvalidSenderError`. [[senderOf]] compares
+  * the chain identifier before it recovers, as `spurious_dragon/fork.py` does.
+  *
+  * **Composed, they are not.** That document's `process_transaction` calls
+  * `validate_transaction` first and reaches the chain identifier only inside
+  * `check_transaction`, after the intrinsic charge, the nonce ceiling and the
+  * gas allowance have all been read; a caller here runs the whole of
+  * [[senderOf]] before any of them. So a transaction that both underpays its
+  * intrinsic charge and names another network is
+  * `InsufficientTransactionGasError` there and `WrongChainId` here. The
+  * specification's order is reachable only by a caller that can offer a
+  * transaction before its sender is settled, which is a property of what
+  * [[OfferedTransaction]] requires rather than of the order below.
+  *
+  * **What differs is the reason, never a state root.** A refusal leaves the
+  * world exactly as it was whichever rule produced it, and a block carrying
+  * such a transaction is one this network does not accept either way -- so the
+  * two orders condemn the same blocks and reach the same state, and only a
+  * comparison of reasons can see the difference at all.
+  *
+  * **Nothing published at the forks this build carries reaches it**, because
+  * both refusals have to be broken at once and no case on disk names a chain:
+  * `TransactionAdmissionSpec` holds that measurement, taken by decoding every
+  * `txbytes` in the generated state corpora rather than by matching their text.
   *
   * Every branch below reads a member of [[AdmissionRules]] or a rule that
   * document states applies to every fork, which is what keeps the policy an

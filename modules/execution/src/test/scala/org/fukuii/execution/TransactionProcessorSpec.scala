@@ -5,7 +5,17 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 import org.fukuii.bytes.{Address, Bytes, UInt64}
-import org.fukuii.evm.{ContractAddress, EvmFixtures, JournaledWorldState, Word}
+import org.fukuii.evm.{
+  ContractAddress,
+  Cost,
+  EvmFixtures,
+  EvmRules,
+  JournaledWorldState,
+  Opcode,
+  Operation,
+  Unsupported,
+  Word
+}
 
 /** What settling a transaction does that running one does not.
   *
@@ -60,6 +70,21 @@ class TransactionProcessorSpec extends AnyFlatSpec:
   private val selfDestructSpend: BigInt =
     schedule.transactionBase + schedule.veryLow + schedule.selfDestruct + schedule.selfDestructNewAccount
 
+  /** Adds two operands, so an invocation over it reaches `ADD`. */
+  private val adds: Bytes = EvmFixtures.bytesOf("0x6003600501")
+
+  /** Rules whose table says `ADD` works out its own price, where this build
+    * prices it from the table.
+    *
+    * That mismatch is the reachable form of an operation this build cannot run:
+    * it needs no unimplemented opcode, so it goes on being reachable once every
+    * operation is built. `InterpreterSpec` states the same construction where
+    * the machine is the subject; here the subject is what a settlement does
+    * around one.
+    */
+  private val cannotRunAdd: EvmRules =
+    EvmFixtures.rules.copy(table = EvmFixtures.rules.table.adding(Operation(Opcode.Add, Cost.Computed)))
+
   private def transaction(
       nonce: BigInt = 0,
       gasPrice: BigInt = 3,
@@ -76,7 +101,11 @@ class TransactionProcessorSpec extends AnyFlatSpec:
       destroyed: Vector[Address]
   )
 
-  private def settle(admitted: AdmittedTransaction, code: Map[Address, Bytes] = Map.empty): Ran =
+  private def settle(
+      admitted: AdmittedTransaction,
+      code: Map[Address, Bytes] = Map.empty,
+      rules: EvmRules = EvmFixtures.rules
+  ): Ran =
     val base = new EvmFixtures.MapWorldState
     base.setBalance(sender, Word(Funded))
     code.foreach((address, bytes) => base.setCode(address, bytes))
@@ -89,9 +118,12 @@ class TransactionProcessorSpec extends AnyFlatSpec:
       record,
       block,
       EvmFixtures.blockHashAt,
-      EvmFixtures.rules
+      rules
     )
     Ran(settlement, base, destroyed.toVector)
+
+  /** A settlement whose invocation reached [[cannotRunAdd]]'s gap. */
+  private def overAGap: Ran = settle(transaction(), Map(recipient -> adds), cannotRunAdd)
 
   // ── What is charged before the machine runs ────────────────────────────────
 
@@ -210,4 +242,47 @@ class TransactionProcessorSpec extends AnyFlatSpec:
       settle(transaction(), Map(recipient -> callsThenHalts, callee -> selfDestructs)).settlement.gasUsed ==
         BigInt(100000),
       "an exceptional halt at this fork keeps nothing, so the limit is what the sender pays for"
+    )
+
+  // ── What this build cannot run is carried out whole ──────────────────────
+  //
+  // All four fields are asserted, separately, because a settlement over a gap is
+  // the one shape whose other three fields are not a chain result and are read
+  // as though they were. Nothing downstream can tell a fabricated figure from a
+  // settled one, so each is stated here rather than inferred from the gap.
+
+  "a transaction that reached an operation this build cannot run" should "name that operation" in
+    assert(
+      overAGap.settlement.unbuilt == Some(Unsupported(Opcode.Add)),
+      "a gap is carried out by name, because a caller comparing this against a chain must know which one it met"
+    )
+
+  it should "be charged its whole limit" in
+    // What the machine had left is not the sender's to keep: the run did not
+    // reach an end a chain reaches, so there is no remainder to hand back and
+    // the settlement is the one an exceptional halt would have produced.
+    assert(
+      overAGap.settlement.gasUsed == BigInt(100000),
+      "a settlement over a gap charges what a halt would, which is the whole limit"
+    )
+
+  it should "report that it did not succeed" in
+    assert(
+      !overAGap.settlement.succeeded,
+      "nothing this build could not run ended normally, and a receipt built from this must not say it did"
+    )
+
+  it should "emit no logs" in
+    assert(
+      overAGap.settlement.logs.isEmpty,
+      "what an invocation emitted before it met the gap is discarded with it, as it is when one halts"
+    )
+
+  it should "have run the operation at rules that price it, or the four cases above test nothing" in
+    // The control. The same code and the same transaction under the shipped
+    // table settle normally, so what the four above observe is the table's
+    // mismatch and not something else about the fixture.
+    assert(
+      settle(transaction(), Map(recipient -> adds)).settlement.unbuilt.isEmpty,
+      "the gap must come from the table saying ADD computes its own price, and from nothing else"
     )
