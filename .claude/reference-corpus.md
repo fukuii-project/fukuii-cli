@@ -194,6 +194,85 @@ and Rust production clients disagree, that is a finding to investigate, not a
 network fact, and `.claude/rules/evidence-and-citation.md` §3's absence
 discipline still governs the sweep that establishes either.
 
+### Ethereum Classic's first client is `ethereum/go-ethereum`, and it is already here
+
+**The fork was opt-in, so the client that continued the original chain was
+go-ethereum as already installed.** Nodes that did not upgrade stayed on the
+unforked chain at block 1,920,000, and that chain is Ethereum Classic. **For the
+weeks around the divergence, geth-as-shipped *was* the network's client** — not
+by anyone's design, but by what was already running.
+
+**That client needs no new clone: the corpus geth is full**, 17,267 commits back
+to 2013-12-26, so every pre-fork release is a checkout away.
+
+**Which release is the boundary, measured by content:**
+
+| Release | Date | Files naming `DAOForkBlock` |
+|---|---|---|
+| `v1.4.8` | 2016-06-24 | 0 |
+| **`v1.4.9`** | **2016-06-29** | **0** — the last release without it |
+| **`v1.4.10`** | **2016-07-16** | **15** — the first with it |
+
+Control: a nonsense token returns 0 at `v1.4.10`. The fork support landed on
+mainline at `2c2e389b7`, *"cmd, core, eth, miner, params, tests: finalize the DAO
+fork"*, 2016-07-14 — **four days before block 1,920,000 was mined.**
+
+**But "what Ethereum Classic ran" has three answers, not one, and only the third
+is the deliberate one.** `v1.4.10` shipped **both chains in one binary**, selected
+by flag (`cmd/utils/flags.go`):
+
+```go
+config.DAOForkSupport = true            // the DEFAULT
+switch {
+case ctx.GlobalBool(SupportDAOFork.Name):  config.DAOForkSupport = true
+case ctx.GlobalBool(OpposeDAOFork.Name):   config.DAOForkSupport = false
+}
+```
+
+| What an operator did | Chain at block 1,920,000 |
+|---|---|
+| Did not update (`v1.4.9` or earlier) | the original chain — **no fork code exists to run** |
+| Updated, set no flag | **forked** — the default is support |
+| Updated with **`--oppose-dao-fork`** | the original chain — **Ethereum Classic, by choice** |
+
+The binary said so at startup: *"Geth is currently configured to SUPPORT/OPPOSE
+the DAO hard-fork!"*, with *"After the hard-fork block #%v passed, changing chains
+requires a resync from scratch!"*
+
+**So cite by which question is being asked.** `v1.4.9` is the **last client
+before either path existed** — Ethereum and Ethereum Classic as one program,
+which is what `ethereum/go-ethereum-dao` holds. **`v1.4.10` with
+`--oppose-dao-fork` is the first client that implements Ethereum Classic
+deliberately**, and is what its operators actually ran once they upgraded.
+`v1.4.9` is Ethereum Classic by *absence of code*; `v1.4.10` opposing is
+Ethereum Classic by *configuration*.
+
+**`ethereum/go-ethereum-dao` — the frozen pre-fork checkout.** Branch `pre-dao`
+at `v1.4.9` (`b7e3dfc5a`, 2016-06-29), full history, no upstream tracking, cloned
+from the corpus geth so it carries the same objects and the real upstream remote.
+It exists for the same reason `go-ethereum-pow` does — **so the state is
+greppable as a directory rather than only through `git show`** — and this section
+is itself the argument for that, since three separate instrument failures here
+came from asking a question with the wrong tool. Verified at creation: **0 files
+naming `DAOForkBlock`**, 35 naming `ethash` as the positive control, 0 for a
+nonsense token.
+
+| Path under the corpus root | Ref | Holds |
+|---|---|---|
+| `ethereum/go-ethereum` | current | Ethereum today; no proof-of-work, no fork choice |
+| `ethereum/go-ethereum-pow` | `v1.10.26` | geth while it still ran proof-of-work |
+| `ethereum/go-ethereum-dao` | `v1.4.9`, branch `pre-dao` | **the last client shared by both networks** |
+
+**An instrument trap sits directly on this question, and it returns a confident
+wrong answer.** Testing whether a release carries the fork by commit ancestry —
+`git merge-base --is-ancestor 2c2e389b7 v1.4.10` — reports **no**, for `v1.4.10`
+and for every later tag checked. **The release branch cherry-picked the change**
+(`1b2941cd5`, *"[release/1.4.10] … finalize the DAO fork"*), so the mainline
+commit is not an ancestor of the tag while its content plainly is. **Ask what a
+ref CONTAINS, not what it descends from** — the same shape as searching for an
+invariant rather than a name, arriving through git history instead of through
+source text.
+
 ### Choosing a freeze point: three candidate refs gave three different answers
 
 **This is the transferable lesson and it cost a wrong answer to find.** For
