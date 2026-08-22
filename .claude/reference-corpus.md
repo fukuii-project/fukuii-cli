@@ -152,6 +152,110 @@ attached to a citation.
 | `ethereumclassic/core-geth` | [ethereumclassic/core-geth](https://github.com/ethereumclassic/core-geth) | `master` | **ETC consensus, Frontier through Spiral** — the reference implementation, and what mainnet runs. **The sole external authority for MESS**, which client code spells `ecbp1100` (the registry spells it ECIP-1100; searching the registry's spelling returns zero here). Silent on post-Spiral and Olympia work, which is not disagreement |
 | `besu-eth/besu-etc` | [besu-eth/besu](https://github.com/besu-eth/besu) | `etc-frozen` — **pinned, see below** | **JVM implementation shape on the historical ETC era, and nothing else.** It carries ETC's fork schedule and it carries no MESS. An absence here is evidence about besu-etc: it was a reference client during ETC development, never a mainstream deployment, and was never asked to be complete |
 
+### The retired clients — cloned for the historical Ethereum Classic record
+
+**Added 2026-08-21.** Three clients that ran Ethereum Classic during the era its
+test corpus was generated. **None is maintained and none is a current
+implementation** — they are read for what Ethereum Classic *was* asked to do,
+which is the material a portable conformance suite has to be translated from.
+They do not speak to Olympia, to post-Spiral work, or to anything current.
+
+| Path under the corpus root | Upstream | Ref | Carries |
+|---|---|---|---|
+| `multi-geth/multi-geth` | [multi-geth/multi-geth](https://github.com/multi-geth/multi-geth) | `v1.9.21` (exact tag, full, 41 tags) | **`ethereumclassic/core-geth`'s direct ancestor, and the richest ETC source of the three.** `params/config_classic.go`, `core/genesis_classic.go`, `consensus/ethash/consensus_classic.go`, `params/bootnodes_classic.go` — the same file names core-geth still uses |
+| `openethereum/parity-ethereum` | [openethereum/parity-ethereum](https://github.com/openethereum/parity-ethereum) | `55c90d401`, branch `v2.7.2-stable` (2020-02-05, full, 297 tags) | **The Rust line while it still shipped Ethereum Classic**, and the origin of the chain-spec JSON format the field still uses. Ships `classic.json`, `morden.json`, `mordor.json`, `kotti.json` — the whole ETC family — beside a wide set of ETC-lineage and proof-of-authority chains |
+| `openethereum/openethereum` | [openethereum/openethereum](https://github.com/openethereum/openethereum) | `v3.3.5` (exact tag, full, 331 tags) | **AuRa, more than the other two** — and see the correction below before treating it as an ETC source |
+
+**One correction, measured rather than assumed, because the natural reading of
+"three legacy ETC clients" is wrong for one of them.** `openethereum` @ `v3.3.5`
+**ships no `classic.json` at all** — nor `mordor.json` or `kotti.json`. Its
+chainspec directory retains `morden.json`, `ellaism.json`, `callisto.json` and
+`musicoin.json`, which are ETC-lineage chains rather than Ethereum Classic
+mainnet. **Ethereum Classic support was dropped between `parity-ethereum` and
+`openethereum`.** Verified by listing both chainspec directories, with a
+negative control returning zero across all three clones.
+
+So for the historical Ethereum Classic record the Rust source is
+**`parity-ethereum`, not `openethereum`**. What `openethereum` is worth reading
+for is **AuRa** — it carries the most of the three, and `.claude/protocols/consensus-aura.md`
+has no other Rust-line reference.
+
+**Why they are worth reading: they ran the era this project is building.** The
+layers under construction are Frontier through Tangerine Whistle, and these are
+implementations that ran exactly that range in production, on a network whose
+current client did not exist yet. **`multi-geth` is not a separate client from
+`core-geth` — it is the same lineage under its earlier name**, so reading it
+shows what that code was before the rename, in the same files (`config_classic.go`,
+`genesis_classic.go`, `consensus_classic.go`).
+
+**What makes them worth citing: they state the EARLY activations independently.**
+`parity-ethereum`'s `classic.json` declares, in one file:
+
+```
+homesteadTransition          0x118c30  = 1,150,000
+eip150Transition             0x2625a0  = 2,500,000    Gas Reprice (ECIP-1015)
+eip160Transition             0x2dc6c0  = 3,000,000
+ecip1010PauseTransition      0x2dc6c0  = 3,000,000    Die Hard
+ecip1010ContinueTransition   0x4c4b40  = 5,000,000
+bombDefuseTransition         0x5a06e0  = 5,900,000    ECIP-1041
+eip161abcTransition          0x85d9a0  = 8,772,000    Atlantis
+```
+
+**`0x2625a0` is 2,500,000, which is exactly where Ethereum Classic's schedule
+stops in this repository today** — so this is a second, independent
+implementation stating an activation already authored here, in a different
+language, from a client that ran the network at the time. That is the two-source
+rule satisfiable for the early range without reaching for a client that shares a
+maintainer with this project.
+
+**The fork NAMES return zero while every mechanism is present, and it happens
+three times in one measurement.** `diehard` → 0 across all four trees;
+`gotham` → 0 across all four; `ecip1041` → 0 in three of them. Yet Die Hard is
+`ecip1010PauseTransition`, Gotham is `ecip1017` (12 files in `parity-ethereum`,
+more than `multi-geth`'s 6), and ECIP-1041 is `bombDefuseTransition`. **This is
+`.claude/rules/evidence-and-citation.md` §3's "search for an invariant, not a
+name" in its sharpest form yet: the activation block and the proposal number are
+invariants; the fork name is a label three clients declined to use.**
+
+**How far each one reaches, which is the currency bound.** Counted by fork name
+with a negative control returning zero — and read the caveat above before
+trusting a zero in it:
+
+| | Atlantis | Agharta | Phoenix | Thanos | Magneto | Mystique | Spiral |
+|---|---|---|---|---|---|---|---|
+| `parity-ethereum` | 4 | 3 | **0** | 0 | 0 | 0 | 0 |
+| `openethereum` | 4 | 3 | 1 | 0 | 0 | 0 | 0 |
+| `multi-geth` | 2 | 0 | 5 | 2 | 0 | 0 | 0 |
+| `ethereumclassic/core-geth` *(control)* | 6 | 9 | 13 | 1 | 9 | 8 | 4 |
+
+**Phoenix is where the Rust line stops, and its zero above is the name problem
+again.** `parity-ethereum`'s final transitions sit at `0xa03ae7` — **block
+10,500,839, Phoenix's activation** — implementing that fork's proposals by
+number (`eip1344Transition`, `eip2028Transition`, `eip2200AdvanceTransition`)
+and never writing the word. **It implements the fork its name count says it does
+not have.**
+
+**They carry ETC IMPLEMENTATION, not an ETC test suite — measured twice, and the
+natural expectation is wrong.** Two differently-patterned passes agree: test
+files naming an ECIP number are **0, 0 and 0** across the three, and test files
+mentioning `classic` are **2, 0 and 0**, while the same instruments return **30**
+and **14** against `ethereumclassic/core-geth`. **The first pass on a bare `ecip`
+pattern reported 11, 4 and 4 test files and every one of them was the substring
+in `recipient`** — a warning worth carrying, since that pattern is the obvious
+one to reach for. What is bounded here: these two instruments. Fixture JSON under
+test directories exists in all three and was not classified.
+
+**So read them against R181 for what its finding actually says.** ETC's own
+consensus is tested inside its clients rather than in any portable corpus — and
+the translation source is `core-geth`, which carries several times the ETC test
+material of all three of these combined. **These clients are corroboration for
+the early era and the second implementation language, not a second corpus.**
+
+**Do not read an absence here as evidence about Ethereum Classic.** Every one is
+retired, and the table above says precisely how far each stopped tracking the
+network — none reaches Magneto, and the current rules are years past all of them.
+That is the same bound `besu-eth/besu-etc` carries, with the reach made explicit.
+
 ### The Olympia work clients — reference them, and know what for
 
 **These are production Ethereum Classic clients being made Olympia-ready, and
