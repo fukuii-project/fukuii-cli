@@ -4,9 +4,16 @@ import io.circe.Json
 
 import org.fukuii.bytes.{Address, Bytes, Hash}
 import org.fukuii.evm.BlockContext
+import org.fukuii.types.TransactionType
 
 /** The transaction a state fixture asks to be executed, with one combination of
   * its data, gas and value arrays already selected.
+  *
+  * @param kind
+  *   which of EIP-2718's formats the fixture wrote. A format a fork predates is
+  *   named rather than rejected at the reader, because a fixture carrying one
+  *   is a legitimate test that the fork refuses it: an invalid transaction is
+  *   not an unreadable file.
   */
 final case class StateTransaction(
     nonce: BigInt,
@@ -17,31 +24,22 @@ final case class StateTransaction(
     data: Bytes,
     sender: Address,
     signed: Option[Bytes],
-    kind: TransactionKind
+    kind: TransactionType
 )
 
-/** Which transaction shape a fixture wrote.
+/** The corpus's own statement that a transaction must be refused, in the
+  * corpus's own words.
   *
-  * The two later shapes are named rather than rejected at the reader, because a
-  * fixture carrying one is a legitimate test that this fork refuses it: a type
-  * the fork predates is an invalid transaction, not an unreadable file.
-  */
-enum TransactionKind:
-  case Legacy
-  case WithAccessList
-  case WithFeeMarket
-
-/** The corpus's own statement that a transaction must be refused, and which of
-  * the reasons it names this build can actually produce.
+  * ==The words are kept unmapped, and the mapping lives with the runner==
   *
-  * Both halves are kept because they differ exactly where the corpus names a
-  * rule this fork has not implemented -- which is the state every rule is in
-  * before the fork introducing it lands. Keeping only the mapped half would
-  * turn "this build has no such refusal" into "no refusal is acceptable", and a
-  * divergence could then say a refusal was wrong without saying which rule was
-  * missing.
+  * A corpus names rules this build may not have implemented -- which is the
+  * state every rule is in before the fork introducing it lands -- so the
+  * reader records what the file said and nothing more. Whoever runs the case
+  * maps those words onto the refusals this build can produce and reports a case
+  * whose stated rule maps to none as a divergence, rather than as no
+  * expectation at all.
   */
-final case class ExpectedRejection(stated: Set[String], accepted: Set[Rejection]):
+final case class ExpectedRejection(stated: Set[String]):
 
   /** The corpus's wording, for a divergence a reader has to act on. */
   def describe: String = stated.toVector.sorted.mkString(" or ")
@@ -165,9 +163,9 @@ object StateFixture:
   private def transactionOf(json: Json, entry: Json, indexes: Indexes): Either[String, StateTransaction] =
     val cursor = json.hcursor
     val kind =
-      if cursor.downField("maxFeePerGas").focus.isDefined then TransactionKind.WithFeeMarket
-      else if cursor.downField("accessLists").focus.isDefined then TransactionKind.WithAccessList
-      else TransactionKind.Legacy
+      if cursor.downField("maxFeePerGas").focus.isDefined then TransactionType.DynamicFee
+      else if cursor.downField("accessLists").focus.isDefined then TransactionType.AccessList
+      else TransactionType.Legacy
     for
       nonce <- FixtureValues.quantityAt(json, "nonce")
       gasPrice <- priceOf(json, kind)
@@ -186,9 +184,9 @@ object StateFixture:
     * whatever it states, so the price it is charged at never matters and zero
     * keeps the reader total rather than making an unreadable field fatal.
     */
-  private def priceOf(json: Json, kind: TransactionKind): Either[String, BigInt] =
+  private def priceOf(json: Json, kind: TransactionType): Either[String, BigInt] =
     if json.hcursor.downField("gasPrice").focus.isDefined then FixtureValues.quantityAt(json, "gasPrice")
-    else if kind == TransactionKind.Legacy then Left("no gasPrice on a legacy transaction")
+    else if kind == TransactionType.Legacy then Left("no gasPrice on a legacy transaction")
     else Right(BigInt(0))
 
   private def recipientOf(json: Json): Either[String, Option[Address]] =
@@ -208,38 +206,12 @@ object StateFixture:
         case None => held.asString.toRight(field + " is neither an array nor a string")
     }
 
-  /** The corpus's vocabulary for an invalid transaction, against the refusals
-    * this fork's admission can produce.
-    *
-    * Only what admission decides appears here. A name absent from this map
-    * survives verbatim in [[ExpectedRejection.stated]], so a case naming a rule
-    * this build has not implemented diverges and says which one -- rather than
-    * passing because a refusal for some other reason left the state root where
-    * the fixture expected it.
-    */
-  private val RejectionVocabulary: Map[String, Rejection] =
-    Map(
-      "TransactionException.TYPE_1_TX_PRE_FORK" -> Rejection.TypePreFork,
-      "TransactionException.TYPE_2_TX_PRE_FORK" -> Rejection.TypePreFork,
-      "TransactionException.TYPE_3_TX_PRE_FORK" -> Rejection.TypePreFork,
-      "TransactionException.TYPE_4_TX_PRE_FORK" -> Rejection.TypePreFork,
-      "TransactionException.INTRINSIC_GAS_TOO_LOW" -> Rejection.IntrinsicGasTooLow,
-      "TransactionException.NONCE_IS_MAX" -> Rejection.NonceIsMax,
-      "TransactionException.GAS_ALLOWANCE_EXCEEDED" -> Rejection.GasAllowanceExceeded,
-      "TransactionException.NONCE_MISMATCH_TOO_LOW" -> Rejection.NonceMismatch,
-      "TransactionException.NONCE_MISMATCH_TOO_HIGH" -> Rejection.NonceMismatch,
-      "TransactionException.INSUFFICIENT_ACCOUNT_FUNDS" -> Rejection.InsufficientAccountFunds,
-      "TransactionException.INVALID_SIGNATURE_VRS" -> Rejection.InvalidSignature,
-      "TransactionException.SENDER_NOT_EOA" -> Rejection.SenderNotEoa
-    )
-
   /** A fixture may name more than one acceptable reason, separated by a bar,
     * where a client is free to refuse for either.
     */
   private def rejectionOf(entry: Json): Option[ExpectedRejection] =
     entry.hcursor.downField("expectException").as[String].toOption.map { text =>
-      val stated = text.split('|').map(_.trim).filter(_.nonEmpty).toSet
-      ExpectedRejection(stated, stated.flatMap(RejectionVocabulary.get))
+      ExpectedRejection(text.split('|').map(_.trim).filter(_.nonEmpty).toSet)
     }
 
   private def expectationOf(entry: Json): Either[String, StateExpectation] =

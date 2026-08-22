@@ -2,6 +2,8 @@ package org.fukuii.execution
 
 import org.scalatest.flatspec.AnyFlatSpec
 
+import org.fukuii.types.TransactionType
+
 /** That both facets answer by VALUE, which is the property a later member could
   * silently take away.
   *
@@ -23,7 +25,8 @@ class RuleFacetSpec extends AnyFlatSpec:
   private val execution: ExecutionRules =
     ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = false)
 
-  private val admission: AdmissionRules = AdmissionRules(signatureSMustBeLow = false)
+  private val admission: AdmissionRules =
+    AdmissionRules(admittedTypes = Set(TransactionType.Legacy), signatureSMustBeLow = false)
 
   "two execution rule sets" should "compare equal when they were built separately from the same parts" in
     assert(
@@ -39,7 +42,7 @@ class RuleFacetSpec extends AnyFlatSpec:
 
   "two admission rule sets" should "compare equal when they were built separately from the same parts" in
     assert(
-      AdmissionRules(signatureSMustBeLow = false) == admission,
+      AdmissionRules(admittedTypes = Set(TransactionType.Legacy), signatureSMustBeLow = false) == admission,
       "two identical admission rule sets built separately compared as different rules"
     )
 
@@ -47,4 +50,12 @@ class RuleFacetSpec extends AnyFlatSpec:
     assert(
       admission.copy(signatureSMustBeLow = true) != admission,
       "an admission rule set compared equal to one that refuses a signature it accepts"
+    )
+
+  it should "compare unequal when the formats they carry differ" in
+    // The member most likely to be compared by reference rather than by value,
+    // being a collection rather than a flag.
+    assert(
+      admission.copy(admittedTypes = admission.admittedTypes + TransactionType.AccessList) != admission,
+      "an admission rule set compared equal to one that carries a format it does not"
     )

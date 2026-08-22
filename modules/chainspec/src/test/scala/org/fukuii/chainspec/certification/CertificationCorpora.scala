@@ -176,30 +176,25 @@ object CertificationCorpora:
     schedule.at(UInt64.fromBits(height), UInt64.Zero)
 
   /** One state corpus: where its files are, which fork's expectations they are
-    * read under, and the rules they are resolved to.
+    * read under, which network is asked, and the rules they are resolved to.
     *
-    * Named as a value so that the list of them can be handed to a second runner
-    * whole. What a corpus IS -- the files, the fork key and the rules -- is the
-    * part two runners must share exactly, because a comparison between them says
-    * nothing unless both read the same material at the same rules.
+    * ==The network is carried as well as the rules, and it is not derivable
+    * from them==
+    *
+    * A rule set holds no identity by design, so it cannot say which chain it
+    * belongs to. Admission needs the chain identifier for a rule the rules
+    * themselves do not hold: a signature naming a chain must name this one.
+    * That makes the pairing part of what a corpus IS -- the same files at the
+    * same rules through two different networks are two different questions, and
+    * this project already asks exactly that of one tier.
     */
   final private[certification] case class StateCorpus(
       name: String,
       directory: Path,
       fork: String,
+      chainId: UInt64,
       rules: UpgradeRules
   )
-
-  /** Every state corpus, or nothing at all where the harness cannot be
-    * assembled, on the same terms [[reports]] states.
-    */
-  private[certification] lazy val stateCorpora: Option[Vector[StateCorpus]] =
-    for
-      root <- FixtureCorpus.root
-      registry <- KnownNetworks.registry.toOption
-      ethereum <- registry.at(ethereum.Mainnet.network.chainId)
-      classic <- registry.at(ethereumclassic.Mainnet.network.chainId)
-    yield stateCorporaAt(root, ethereum, classic)
 
   private def stateCorporaAt(
       root: Path,
@@ -217,41 +212,52 @@ object CertificationCorpora:
 
     val gasReprice = rulesAt(classic, ClassicGasRepriceStarts)
 
+    // Taken from the same schedule the rules are taken from, so the pair cannot
+    // drift into asking one network's rules as though it were the other.
+    val ethereumChain = ethereum.network.chainId
+    val classicChain = classic.network.chainId
+
     Vector(
       StateCorpus(
         LegacyFrontierStateCorpus,
         FixtureCorpus.legacy(root).resolve("GeneralStateTests"),
         StateFixture.Fork,
+        ethereumChain,
         frontier
       ),
       StateCorpus(
         GeneratedStateCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_frontier"),
         StateFixture.Fork,
+        ethereumChain,
         frontier
       ),
       StateCorpus(
         LegacyEip150StateCorpus,
         FixtureCorpus.legacy(root).resolve("GeneralStateTests"),
         "EIP150",
+        ethereumChain,
         tangerineWhistle
       ),
       StateCorpus(
         GeneratedHomesteadCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_homestead"),
         "Homestead",
+        ethereumChain,
         homestead
       ),
       StateCorpus(
         GeneratedTangerineWhistleCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_tangerinewhistle"),
         "TangerineWhistle",
+        ethereumChain,
         tangerineWhistle
       ),
       StateCorpus(
         ClassicTangerineWhistleCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_tangerinewhistle"),
         "TangerineWhistle",
+        classicChain,
         gasReprice
       )
     )
@@ -308,7 +314,7 @@ object CertificationCorpora:
     CorpusReport(LegacyVmCorpus, files.length, outcomes)
 
   private def stateReport(corpus: StateCorpus): CorpusReport =
-    val StateCorpus(name, directory, fork, rules) = corpus
+    val StateCorpus(name, directory, fork, chainId, rules) = corpus
     val files = FixtureCorpus.jsonFilesUnder(directory)
     val outcomes = files.flatMap { file =>
       FixtureCorpus
@@ -322,9 +328,7 @@ object CertificationCorpora:
           }
           val run =
             contents.fixtures.map { fixture =>
-              outcomeOf(fixture.name)(
-                StateFixtureRunner.run(fixture, rules.evm, rules.admission.signatureSMustBeLow)
-              )
+              outcomeOf(fixture.name)(StateFixtureRunner.run(fixture, chainId, rules))
             }
           skipped ++ run
     }

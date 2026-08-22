@@ -1,13 +1,20 @@
 package org.fukuii.chainspec.certification
 
-import org.fukuii.evm.fixtures.*
-
 import org.scalatest.flatspec.AnyFlatSpec
 
 import org.fukuii.bytes.{Address, Bytes, UInt64}
 import org.fukuii.chainspec.networks.ethereum
 import org.fukuii.chainspec.proposals.eip.Eip2
-import org.fukuii.evm.{BlockContext, EvmFixtures, GasSchedule, Word}
+import org.fukuii.evm.{EvmFixtures, GasSchedule, Word}
+import org.fukuii.execution.{
+  Admission,
+  AdmittedTransaction,
+  IntrinsicGas,
+  OfferedTransaction,
+  Refusal,
+  TransactionAdmission
+}
+import org.fukuii.types.TransactionType
 
 /** Every reason admission can refuse a transaction, each reached on purpose.
   *
@@ -61,36 +68,35 @@ import org.fukuii.evm.{BlockContext, EvmFixtures, GasSchedule, Word}
   *
   * ==The admitted case is the control and is not optional==
   *
-  * Seven tests that each expect a refusal are all satisfied by an admission that
-  * refuses everything. The first test below is what makes the other seven mean
-  * what they say.
+  * A file of tests that each expect a refusal is satisfied in its entirety by
+  * an admission that refuses everything. The first test below is what makes the
+  * rest of them mean what they say.
   */
 class FrontierAdmissionSpec extends AnyFlatSpec:
 
   private val sender: Address = EvmFixtures.address(0x11)
   private val recipient: Address = EvmFixtures.address(0x22)
-  private val coinbase: Address = EvmFixtures.address(0x33)
 
-  private val block: BlockContext =
-    BlockContext(coinbase, number = 1, timestamp = 1000, difficulty = 0x20000, gasLimit = 1000000)
+  /** What the block this transaction would go into has left to give. */
+  private val allowance: BigInt = 1000000
 
   /** A transaction this fork admits, from which each refusal is one edit away. */
   private def admissible(
-      kind: TransactionKind = TransactionKind.Legacy,
+      kind: TransactionType = TransactionType.Legacy,
       nonce: BigInt = 0,
       gasPrice: BigInt = 1,
       gasLimit: BigInt = 100000,
       value: BigInt = 0,
       to: Option[Address] = Some(recipient),
       data: Bytes = Bytes.Empty
-  ): StateTransaction =
-    StateTransaction(nonce, gasPrice, gasLimit, to, value, data, sender, None, kind)
+  ): OfferedTransaction =
+    OfferedTransaction(kind, sender, nonce, gasPrice, gasLimit, to, value, data)
 
   /** The rules with EIP-2's creation surcharge applied. */
   private val charging: GasSchedule = ethereum.Upgrades.frontier.evm.applying(Eip2.creationCharge).schedule
 
-  private def charged(transaction: StateTransaction, schedule: GasSchedule): BigInt =
-    FrontierTransaction.intrinsicCost(schedule, transaction.data, transaction.to.isEmpty)
+  private def charged(transaction: OfferedTransaction, schedule: GasSchedule): BigInt =
+    IntrinsicGas.of(schedule, transaction.data, transaction.to.isEmpty)
 
   /** A world in which [[admissible]] is admitted, from which each refusal is
     * likewise one edit away.
@@ -103,59 +109,93 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
     built
 
   private def verdict(
-      transaction: StateTransaction,
-      state: EvmFixtures.MapWorldState = world()
+      transaction: OfferedTransaction,
+      state: EvmFixtures.MapWorldState = world(),
+      available: BigInt = allowance
   ): Admission =
-    FrontierTransaction.admit(state, block, transaction, ethereum.Upgrades.genesisPrices)
+    TransactionAdmission.admit(
+      transaction,
+      state,
+      available,
+      ethereum.Upgrades.frontier.admission,
+      ethereum.Upgrades.genesisPrices
+    )
+
+  /** What an admitted transaction of the shape above hands to settlement. */
+  private def settling(transaction: OfferedTransaction, intrinsic: BigInt): Admission =
+    Admission.Admitted(
+      AdmittedTransaction(
+        transaction.sender,
+        transaction.nonce,
+        transaction.gasPrice,
+        transaction.gasLimit,
+        transaction.to,
+        transaction.value,
+        transaction.data
+      ),
+      intrinsic
+    )
 
   "admission" should "admit a transaction that breaks none of its rules" in
     assert(
-      verdict(admissible()) == Admission.Admitted(ethereum.Upgrades.genesisPrices.transactionBase),
+      verdict(admissible()) == settling(admissible(), ethereum.Upgrades.genesisPrices.transactionBase),
       verdict(admissible()).toString
     )
 
-  it should "refuse a transaction of a type this fork predates" in
+  it should "refuse a transaction of a format this fork does not carry" in
     assert(
-      verdict(admissible(kind = TransactionKind.WithAccessList)) == Admission.Rejected(Rejection.TypePreFork),
-      verdict(admissible(kind = TransactionKind.WithAccessList)).toString
+      verdict(admissible(kind = TransactionType.AccessList)) == Admission.Refused(Refusal.TypeNotAdmitted),
+      verdict(admissible(kind = TransactionType.AccessList)).toString
     )
 
   it should "refuse a transaction whose limit cannot pay the intrinsic charge" in
     // One below the charge, so the boundary is pinned and not merely the region.
     assert(
       verdict(admissible(gasLimit = ethereum.Upgrades.genesisPrices.transactionBase - 1)) ==
-        Admission.Rejected(Rejection.IntrinsicGasTooLow),
+        Admission.Refused(Refusal.IntrinsicGasTooLow),
       verdict(admissible(gasLimit = ethereum.Upgrades.genesisPrices.transactionBase - 1)).toString
     )
 
-  it should "admit a transaction whose limit exactly meets the intrinsic charge" in
+  it should "admit a transaction whose limit exactly meets the intrinsic charge" in {
     // The other side of the same boundary. Without it, an inverted comparison
     // refusing one gas too much would pass the test above.
+    val exact = admissible(gasLimit = ethereum.Upgrades.genesisPrices.transactionBase)
     assert(
-      verdict(admissible(gasLimit = ethereum.Upgrades.genesisPrices.transactionBase)) ==
-        Admission.Admitted(ethereum.Upgrades.genesisPrices.transactionBase),
-      verdict(admissible(gasLimit = ethereum.Upgrades.genesisPrices.transactionBase)).toString
+      verdict(exact) == settling(exact, ethereum.Upgrades.genesisPrices.transactionBase),
+      verdict(exact).toString
     )
+  }
 
   it should "refuse a transaction whose nonce cannot be signed for" in
     assert(
-      verdict(admissible(nonce = FrontierTransaction.NonceLimit)) == Admission.Rejected(Rejection.NonceIsMax),
-      verdict(admissible(nonce = FrontierTransaction.NonceLimit)).toString
+      verdict(admissible(nonce = TransactionAdmission.NonceLimit)) == Admission.Refused(Refusal.NonceIsMax),
+      verdict(admissible(nonce = TransactionAdmission.NonceLimit)).toString
     )
 
-  it should "refuse a transaction asking for more gas than the block allows" in
+  it should "refuse a transaction asking for more gas than the block has left" in
     // Funded well past the fee this asks for, so the allowance rule is the only
     // one broken. Left at the default balance it would break the funding rule
     // too, and the test would pass on whichever branch happened to come first.
     assert(
-      verdict(admissible(gasLimit = block.gasLimit + 1), world(balance = BigInt(10).pow(18))) ==
-        Admission.Rejected(Rejection.GasAllowanceExceeded),
-      verdict(admissible(gasLimit = block.gasLimit + 1), world(balance = BigInt(10).pow(18))).toString
+      verdict(admissible(gasLimit = allowance + 1), world(balance = BigInt(10).pow(18))) ==
+        Admission.Refused(Refusal.GasAllowanceExceeded),
+      verdict(admissible(gasLimit = allowance + 1), world(balance = BigInt(10).pow(18))).toString
+    )
+
+  it should "measure that allowance against what the block has left, not against its limit" in
+    // The same transaction, admissible against a whole empty block and refused
+    // once earlier transactions have taken all but a little of it. Nothing else
+    // about the transaction or the world changes, so only the remainder can
+    // account for the difference.
+    assert(
+      verdict(admissible(), world(balance = BigInt(10).pow(18)), available = 99999) ==
+        Admission.Refused(Refusal.GasAllowanceExceeded),
+      verdict(admissible(), world(balance = BigInt(10).pow(18)), available = 99999).toString
     )
 
   it should "refuse a transaction whose nonce is not the sender's next" in
     assert(
-      verdict(admissible(nonce = 5)) == Admission.Rejected(Rejection.NonceMismatch),
+      verdict(admissible(nonce = 5)) == Admission.Refused(Refusal.NonceMismatch),
       verdict(admissible(nonce = 5)).toString
     )
 
@@ -164,14 +204,14 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
     // reaches the branch through the term the fixture corpus never varies.
     assert(
       verdict(admissible(gasPrice = 2), world(balance = 1)) ==
-        Admission.Rejected(Rejection.InsufficientAccountFunds),
+        Admission.Refused(Refusal.InsufficientAccountFunds),
       verdict(admissible(gasPrice = 2), world(balance = 1)).toString
     )
 
   it should "refuse a transaction sent from an account holding code" in
     assert(
       verdict(admissible(), world(code = EvmFixtures.bytesOf("0x600160005500"))) ==
-        Admission.Rejected(Rejection.SenderNotEoa),
+        Admission.Refused(Refusal.SenderNotEoa),
       verdict(admissible(), world(code = EvmFixtures.bytesOf("0x600160005500"))).toString
     )
 

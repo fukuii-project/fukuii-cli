@@ -490,7 +490,16 @@ lazy val evm = (project in file("modules/evm"))
 //   bytes   a sender is an address, a transaction's input is a byte string, and
 //           an earlier block is named by its digest
 //   types   a transaction emits logs, which is what a settlement hands back and
-//           what a receipt is built from
+//           what a receipt is built from; and admission reads the signed
+//           envelope itself -- its format, its chain identifier and the account
+//           it recovers to
+//   crypto  EIP-2 refuses a signature whose `s` is above half the curve order,
+//           and half the curve order is a parameter of the curve. The crypto
+//           layer exposes it for exactly this caller and documents why it does
+//           not apply the bound itself: the bound takes effect at a stated
+//           fork, so the layer holding that fork's rules is the one that must
+//           apply it. Re-deriving the number from a curve of our own is the
+//           thing that edge exists to prevent
 //   evm     settling a transaction is what happens AROUND an invocation, so the
 //           frame, the environment, the journal and the interpreter are what
 //           this layer arranges. The prices it charges before the machine runs
@@ -514,7 +523,7 @@ lazy val evm = (project in file("modules/evm"))
 // give one contract two implementations, and a double that drifted from the
 // machine's would agree with the real one for the wrong reason.
 lazy val execution = (project in file("modules/execution"))
-  .dependsOn(bytes, types, evm % "compile->compile;test->test")
+  .dependsOn(bytes, types, crypto, evm % "compile->compile;test->test")
   .settings(
     name := "fukuii-execution",
     libraryDependencies ++= testDeps
@@ -540,10 +549,14 @@ lazy val execution = (project in file("modules/execution"))
 //           the other two facets -- what settling a transaction does, and what
 //           admits one at all. A rule set holds all three, so this module names
 //           each of them directly
-//
-// `types` is deliberately absent: nothing here names a header, an account or a
-// transaction. A schedule answers questions ABOUT a block's height and
-// timestamp without ever holding a block.
+//   types   which transaction FORMATS a network carries is one of the rules the
+//           admission facet holds, and the format tag is a type there. The
+//           earlier reading of this edge -- that `types` is absent because a
+//           schedule never holds a block -- still stands and is narrower than
+//           it looked: this module names the TAG and holds no header, no
+//           account and no transaction. The edge is declared because a type
+//           here names it, which is the same test every edge above is declared
+//           by, rather than left to arrive through `execution`
 // The `test->test` half of the evm edge, and why it is not a shortcut.
 //
 // The published fixture corpora are certified against a NETWORK's rules, so the
@@ -560,7 +573,7 @@ lazy val execution = (project in file("modules/execution"))
 // The direction is unchanged and still one-way: nothing in `evm` names anything
 // here, at either scope.
 lazy val chainspec = (project in file("modules/chainspec"))
-  .dependsOn(bytes, execution, evm % "compile->compile;test->test")
+  .dependsOn(bytes, types, execution, evm % "compile->compile;test->test")
   .settings(
     name := "fukuii-chainspec",
     libraryDependencies ++= testDeps

@@ -4,8 +4,9 @@ import org.fukuii.evm.fixtures.*
 
 import org.scalatest.flatspec.AnyFlatSpec
 
+import org.fukuii.bytes.UInt64
 import org.fukuii.chainspec.UpgradeRules
-import org.fukuii.chainspec.networks.ethereum
+import org.fukuii.chainspec.networks.{ethereum, ethereumclassic}
 import org.fukuii.chainspec.proposals.eip.Eip2
 
 /** The harness read against fixtures held here rather than on disk, so that it
@@ -74,11 +75,11 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
     * because the corpus is not in this repository and this suite must run in a
     * clone that has none of it.
     *
-    * Every other case here uses a fixture that is admitted, so
-    * `FrontierTransaction.admit`'s six rejection branches -- and the comparison
-    * branch that reads `expectException` -- were exercised by nothing that runs
-    * without the corpus. Dropping a rejection branch would have failed no test
-    * a clone can run.
+    * Every other case here uses a fixture that is admitted, so admission's
+    * refusal branches -- and the comparison branch that reads
+    * `expectException` -- were exercised by nothing that runs without the
+    * corpus. Dropping a refusal branch would have failed no test a clone can
+    * run.
     *
     * Taken verbatim from
     * `state_tests/for_frontier/frontier/validation/transaction/sender_balance_insufficient_state_test.json`
@@ -141,15 +142,21 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
           .headOption
           .getOrElse(Verdict.Diverged(Vector("no case")))
 
+  /** The network this fixture was filled for: it carries `"chainid":"0x01"`,
+    * and every published signature in it was made against that identifier.
+    */
+  private val filledFor: UInt64 = ethereum.Mainnet.network.chainId
+
   private def stateVerdict(
       contents: String,
-      rules: UpgradeRules = ethereum.Upgrades.frontier
+      rules: UpgradeRules = ethereum.Upgrades.frontier,
+      chainId: UInt64 = filledFor
   ): Verdict =
     StateFixture.decodeFile("calibration", contents) match
       case Left(error)     => Verdict.Diverged(Vector(error))
       case Right(contents) =>
         contents.fixtures
-          .map(fixture => StateFixtureRunner.run(fixture, rules.evm, rules.admission.signatureSMustBeLow))
+          .map(fixture => StateFixtureRunner.run(fixture, chainId, rules))
           .headOption
           .getOrElse(Verdict.Diverged(Vector("no case")))
 
@@ -203,7 +210,7 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
     assert(diverges(vmVerdict(altered)))
   }
 
-  "a published state fixture" should "agree with the machine and the transaction driver" in
+  "a published state fixture" should "agree with the machine and the transaction layer" in
     assert(stateVerdict(stateFixture) == Verdict.Agreed, stateVerdict(stateFixture).toString)
 
   it should "diverge when the expected state root is altered by one nibble" in {
@@ -222,7 +229,7 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
   it should "diverge when the transaction's gas limit is altered" in
     assert(diverges(stateVerdict(stateFixture.replace("\"0xcf1c\"", "\"0xcf1d\""))))
 
-  "a published fixture whose transaction is rejected" should "agree with the driver" in
+  "a published fixture whose transaction is refused" should "agree with the layer that refuses it" in
     assert(stateVerdict(rejectionFixture) == Verdict.Agreed, stateVerdict(rejectionFixture).toString)
 
   it should "diverge when the sender is funded enough for the rejection to stop happening" in {
@@ -247,7 +254,7 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
     assert(diverges(stateVerdict(altered)))
   }
 
-  it should "diverge when the fixture names a refusal other than the one the driver makes" in {
+  it should "diverge when the fixture names a refusal other than the one admission makes" in {
     // Renaming the expectation leaves the pre-state, and so the state root,
     // exactly as published. The transaction is still refused and still refused
     // at the same branch, so every other check on this case agrees -- which is
@@ -267,7 +274,7 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
     assert(diverges(stateVerdict(altered)))
   }
 
-  it should "diverge when the fixture expects execution and the driver refuses" in {
+  it should "diverge when the fixture expects execution and admission refuses" in {
     val altered =
       rejectionFixture.replace(",\"expectException\":\"TransactionException.INSUFFICIENT_ACCOUNT_FUNDS\"", "")
     val _ = assert(altered != rejectionFixture, "the expectation this test removes was not found")
@@ -277,7 +284,7 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
   it should "refuse the transaction when the published signature names no scheme" in {
     // `1b` is the v the fixture signed with. Moving it off 27 and 28 leaves a
     // value no legacy scheme reads and no chain identifier recovers, so the
-    // signature names no account at all. Under a driver that takes the stated
+    // signature names no account at all. Under a runner that takes the stated
     // sender on trust this edit changes nothing whatever -- which is what makes
     // it the case that pins recovery to being used.
     val altered = rejectionFixture.replace("80801ba0", "80801da0")
@@ -314,6 +321,18 @@ class FixtureCalibrationSpec extends AnyFlatSpec:
     val bounded = unbounded.copy(admission = Eip2.lowSignatureS(unbounded.admission))
     assert(diverges(stateVerdict(highSignature, bounded)), stateVerdict(highSignature, bounded).toString)
   }
+
+  it should "be admitted just the same when a different network asks" in
+    // Its signature is unprotected -- `1b` is a `v` of 27 -- so it names no
+    // chain identifier and is valid on every network by construction. The
+    // identifier is threaded through the whole harness and reaches admission's
+    // comparison; this is the case that comparison must NOT decide, and a
+    // comparison that treated an absent identifier as a mismatch would refuse
+    // every legacy transaction ever signed before EIP-155.
+    assert(
+      stateVerdict(rejectionFixture, chainId = ethereumclassic.Mainnet.network.chainId) == Verdict.Agreed,
+      stateVerdict(rejectionFixture, chainId = ethereumclassic.Mainnet.network.chainId).toString
+    )
 
   "the boundary around one case" should "pass a verdict that did not throw through unchanged" in
     // The negative control. Without it a boundary that reported a divergence

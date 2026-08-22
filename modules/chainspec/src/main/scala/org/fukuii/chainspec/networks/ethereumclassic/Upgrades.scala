@@ -4,6 +4,7 @@ import org.fukuii.chainspec.UpgradeRules
 import org.fukuii.chainspec.proposals.eip.{Eip150, Eip2, Eip7}
 import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, OpcodeTable, Precompile, PrecompileSet}
 import org.fukuii.execution.{AdmissionRules, ExecutionRules}
+import org.fukuii.types.TransactionType
 
 /** The configuration Ethereum Classic launched with, and the rule sets it
   * reached from it by adopting proposals.
@@ -167,6 +168,12 @@ object Upgrades:
     * The two settlement rules are both the earlier of their pair, and this
     * network held the first of them back far longer than the one it shares a
     * history with: the same file puts `EIP161FBlock` at 8,772,000.
+    *
+    * The one format admitted is the shape that predates the envelope. The same
+    * file states it in the form its reference implementation writes such
+    * things: `EIP2718FBlock`, the transition introducing a typed envelope at
+    * all, is set at 13,189,133 -- so no height these rules are in force at
+    * carries any other format.
     */
   val frontier: UpgradeRules =
     UpgradeRules(
@@ -182,7 +189,10 @@ object Upgrades:
         touchedEmptyAccountsAreDeleted = false,
         receiptCarriesStatus = false
       ),
-      admission = AdmissionRules(signatureSMustBeLow = false)
+      admission = AdmissionRules(
+        admittedTypes = Set(TransactionType.Legacy),
+        signatureSMustBeLow = false
+      )
     )
 
   /** [[frontier]] with EIP-7 and EIP-2 adopted.

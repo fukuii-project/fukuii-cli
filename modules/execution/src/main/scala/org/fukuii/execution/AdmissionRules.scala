@@ -1,5 +1,7 @@
 package org.fukuii.execution
 
+import org.fukuii.types.TransactionType
+
 /** What makes a transaction acceptable at all, as a value a fork produces
   * rather than a branch the check takes.
   *
@@ -23,6 +25,17 @@ package org.fukuii.execution
   * containing the transaction is valid or invalid by, so two nodes disagreeing
   * about it disagree about the chain.
   *
+  * @param admittedTypes
+  *   the transaction formats a block at these rules may carry. A format the set
+  *   does not hold is refused before anything else is read of the transaction,
+  *   which is why it is a set of formats rather than a bound on a tag number:
+  *   [[org.fukuii.types.Transaction]] decodes every format on every network so
+  *   that a malformed transaction and a well-formed one this network does not
+  *   carry are distinguishable, and it names this layer as the one that decides
+  *   between them. `besu-eth/besu` @ `c2addd9424` holds the same set under the
+  *   same shape, as `MainnetTransactionValidator`'s
+  *   `Set<TransactionType> acceptedTransactionTypes`, and refuses on
+  *   `!acceptedTransactionTypes.contains(transactionType)`.
   * @param signatureSMustBeLow
   *   whether a signature whose `s` exceeds half the curve order is refused.
   *   Before EIP-2 it is not, and an `s` and its mirror image then recover the
@@ -32,5 +45,6 @@ package org.fukuii.execution
   *   what is above it is refused.
   */
 final case class AdmissionRules(
+    admittedTypes: Set[TransactionType],
     signatureSMustBeLow: Boolean
 )

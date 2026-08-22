@@ -2,6 +2,7 @@ package org.fukuii.chainspec
 
 import org.fukuii.evm.Proposal
 import org.fukuii.execution.{AdmissionRules, ExecutionRules}
+import org.fukuii.types.TransactionType
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** What adopting a component does, and what it must not be able to do. */
@@ -115,7 +116,7 @@ class UpgradeRulesSpec extends AnyFlatSpec:
       components = firstRules.components,
       evm = firstRules.evm,
       execution = ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = false),
-      admission = AdmissionRules(signatureSMustBeLow = false)
+      admission = AdmissionRules(admittedTypes = Set(TransactionType.Legacy), signatureSMustBeLow = false)
     )
     assert(rebuilt == firstRules, "a facet built separately made two identical rule sets compare as different")
   }

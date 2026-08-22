@@ -4,6 +4,7 @@ import org.fukuii.chainspec.UpgradeRules
 import org.fukuii.chainspec.proposals.eip.{Eip150, Eip2, Eip7}
 import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, OpcodeTable, Precompile, PrecompileSet}
 import org.fukuii.execution.{AdmissionRules, ExecutionRules}
+import org.fukuii.types.TransactionType
 
 /** The configuration Ethereum launched with, and the rule sets it reached from
   * it by adopting proposals.
@@ -146,6 +147,11 @@ object Upgrades:
     * from the proposals being unadopted: `forks/frontier/fork.py` calls nothing
     * that destroys a touched empty account, and `forks/frontier/blocks.py`
     * gives a receipt's first field as `post_state: Root`.
+    *
+    * The one format admitted is the shape that predates the envelope. The same
+    * source states it: `forks/frontier/transactions.py` declares one
+    * `Transaction`, whose fields are the legacy nine, and the fork has no
+    * envelope to put a tag in.
     */
   val frontier: UpgradeRules =
     UpgradeRules(
@@ -161,7 +167,10 @@ object Upgrades:
         touchedEmptyAccountsAreDeleted = false,
         receiptCarriesStatus = false
       ),
-      admission = AdmissionRules(signatureSMustBeLow = false)
+      admission = AdmissionRules(
+        admittedTypes = Set(TransactionType.Legacy),
+        signatureSMustBeLow = false
+      )
     )
 
   /** [[frontier]] with EIP-7 and EIP-2 adopted.
