@@ -25,6 +25,25 @@ ThisBuild / scalaVersion := "3.3.8"
 
 ThisBuild / organization := "org.fukuii"
 
+// The ordinary suite does not run what costs minutes.
+//
+// A test carrying `org.fukuii.Heavy` is excluded from every `Test` invocation
+// here, so `test` and `testFull` stay cheap and a run that wants the expensive
+// coverage asks for it. That direction is the field's: execution-specs marks its
+// long cases `@pytest.mark.slow`, go-ethereum-pow exercises datasets at kilobyte
+// scale and puts real generation behind `makedag`, and besu-etc builds a real
+// cache while verifying only the light path. None of them pays a multi-minute
+// cost on an ordinary run.
+//
+// The cost of the choice is stated where the tag is defined: nothing runs the
+// heavy suite on a schedule, because this repository has no CI, so its coverage
+// is point-in-time rather than standing.
+//
+// `scripts/test-expected-total.txt` therefore holds the DEFAULT total. A heavy
+// run executes more and is checked against its own figure, which
+// `scripts/check-test-run.sh` takes as an optional second argument.
+ThisBuild / Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-l", "org.fukuii.Heavy")
+
 // Java 25 as the bytecode contract.
 //
 // This is half of the JDK pin, and not sufficient alone: -release fixes the API

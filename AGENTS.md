@@ -288,6 +288,8 @@ sbt compile        compile
 sbt test           run tests — may report success having run none or only
                    some of them, see below
 sbt testFull       run tests uncached; the one to trust for a pass/fail claim
+sbt 'set ThisBuild / Test / testOptions := Seq()' clean testFull
+                   the same, INCLUDING the tests tagged heavy
 ```
 
 **Run `sdk env` first, or you are not building against the declared toolchain.**
@@ -297,6 +299,24 @@ shell happens to provide, which may be a different vendor or major version.
 
 **`compile`, `test` and `testFull` are sbt's own tasks; the build defines none
 of its own.**
+
+**A test tagged `org.fukuii.Heavy` does NOT run by default, and that is why there
+are two expected totals.** `build.sbt` excludes the tag from every `Test`
+invocation, so an ordinary `testFull` stays cheap; the fourth command above
+clears the exclusion and runs everything. **The default suite's total is what
+`scripts/test-expected-total.txt` holds**, and a heavy run exceeds it, so it is
+checked by passing its own figure as `check-test-run.sh`'s optional second
+argument. Measured 2026-08-23: the default run executes 1,215 and the heavy run
+1,217, and the checker **fails** a heavy log read against the default total
+rather than accepting the over-count.
+
+**Nothing runs the heavy suite on a schedule** -- this repository has no
+continuous integration -- so what it covers is verified at the moment somebody
+last ran it rather than continuously. **Run it while working in the code it
+covers.** `modules/evm/src/test/scala/org/fukuii/evm/fixtures/Heavy.scala` states
+what the tag is for and what the field does; the tag exists because a full ethash
+dataset takes minutes to generate and no surveyed client pays that on an ordinary
+run either.
 
 **Use `testFull` before treating a run as evidence anything passed.** sbt 2
 caches the test result machine-wide, and that cache survives both `clean` and

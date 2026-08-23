@@ -3,7 +3,7 @@ package org.fukuii.consensus.pow.certification
 import org.scalatest.flatspec.AnyFlatSpec
 
 import org.fukuii.consensus.pow.{Ethash, EthashDataset}
-import org.fukuii.evm.fixtures.{FixtureCorpus, PoWFixture}
+import org.fukuii.evm.fixtures.{FixtureCorpus, Heavy, PoWFixture}
 
 /** The FULL dataset at a real epoch's size, against the published answers.
   *
@@ -72,7 +72,7 @@ class FullDatasetCertificationSpec extends AnyFlatSpec:
         "measured nothing, and set " + FixtureCorpus.RootVariable + " if this is a machine without the corpus"
     )
 
-  "a full dataset at the first epoch's real size" should "answer every published case exactly" in
+  "a full dataset at the first epoch's real size" should "answer every published case exactly" taggedAs Heavy in
     assert(
       cases.forall { fixture =>
         val answered = Ethash.evaluateFull(dataset, fixture.headerHash, fixture.nonce.toIArray)
@@ -81,7 +81,7 @@ class FullDatasetCertificationSpec extends AnyFlatSpec:
       "the dataset path disagrees with the published answers at a size no reference literal states"
     )
 
-  it should "hold exactly the bytes the size calls for" in
+  it should "hold exactly the bytes the size calls for" taggedAs Heavy in
     assert(
       dataset.size == Ethash.datasetSize(BigInt(0)),
       "answered " + dataset.size.toString + " rather than " + Ethash.datasetSize(BigInt(0)).toString
