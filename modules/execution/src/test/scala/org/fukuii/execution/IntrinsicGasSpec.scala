@@ -66,10 +66,15 @@ class IntrinsicGasSpec extends AnyFlatSpec:
       "init code is data and is paid for as data"
     )
 
-  "a call" should "not pay the creation surcharge" in
-    // The control. A surcharge applied to every transaction rather than only to
-    // a deployment satisfies both cases above and is wrong for every call.
+  "a call" should "be charged less than a deployment carrying the same data" in
+    // The control, and it varies the one input the cases above turn on rather
+    // than restating what an empty transaction costs. Three things make the two
+    // price alike and each leaves those cases holding over an input that
+    // decides nothing: a surcharge charged on every transaction, a surcharge
+    // charged on none, and a schedule whose surcharge is zero. What the
+    // surcharge amounts to is the case above; that it separates the two at all
+    // is this.
     assert(
-      charged(Bytes.Empty) == schedule.transactionBase,
-      "a transaction naming a recipient creates nothing, so the surcharge must not reach it"
+      charged(Bytes.Empty, deploys = true) > charged(Bytes.Empty),
+      "a transaction naming a recipient creates nothing, so it must not be priced as one that does"
     )

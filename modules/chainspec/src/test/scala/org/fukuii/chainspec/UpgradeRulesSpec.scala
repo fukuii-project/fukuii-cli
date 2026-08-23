@@ -45,6 +45,20 @@ class UpgradeRulesSpec extends AnyFlatSpec:
       rules => rules.copy(admission = rules.admission.copy(signatureSMustBeLow = false))
     )
 
+  /** [[firstRules]] with the two facets that carry a fork's settlement and
+    * admission rules authored here rather than taken from it.
+    */
+  private val rebuilt: UpgradeRules = UpgradeRules(
+    components = firstRules.components,
+    evm = firstRules.evm,
+    execution = ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = false),
+    admission = AdmissionRules(
+      admittedTypes = Set(TransactionType.Legacy),
+      signatureMayCarryChainId = false,
+      signatureSMustBeLow = false
+    )
+  )
+
   "adopting components" should "record their proposals in the order adopted" in
     assert(
       firstRules.adopting(first, second).components == Vector(ProposalId.Eip(2), ProposalId.Ecip(1017)),
@@ -107,20 +121,32 @@ class UpgradeRulesSpec extends AnyFlatSpec:
       "a rule a later component reversed was read back as still in force"
     )
 
-  "two rule sets" should "compare equal when the facets added last are built separately" in {
+  "two rule sets" should "compare equal when the facets added last are built separately" in
+    // *Do these two networks run the same rules* is answerable on this type only
+    // while every member of every facet answers by value. A facet member added
+    // later as a function, or as an open interface with a default
+    // implementation, would compile and would leave this comparison reporting
+    // two separately authored configurations as different rules.
+    //
     // The machine's facet is shared by reference here on purpose -- rebuilding
     // it member by member is `EvmRulesSpec`'s claim, and repeating it would
     // make this fail for that reason instead of this one. What is genuinely
     // rebuilt is the two records this comparison is being checked for.
-    val rebuilt = UpgradeRules(
-      components = firstRules.components,
-      evm = firstRules.evm,
-      execution = ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = false),
-      admission = AdmissionRules(
-        admittedTypes = Set(TransactionType.Legacy),
-        signatureMayCarryChainId = false,
-        signatureSMustBeLow = false
-      )
-    )
     assert(rebuilt == firstRules, "a facet built separately made two identical rule sets compare as different")
-  }
+
+  it should "have rebuilt those facets rather than shared them, or the case above tests nothing" in
+    // The control. Two values reached from one value are equal however either
+    // was authored, so an equality over shared references would report the
+    // sharing and never the comparison.
+    assert(
+      (rebuilt.execution ne firstRules.execution) && (rebuilt.admission ne firstRules.admission),
+      "the facets compared above are one value twice, so their agreement is a tautology"
+    )
+
+  it should "compare unequal when one member of a rebuilt facet differs" in
+    // The other direction. A comparison reporting equal whatever it was handed
+    // satisfies both cases above.
+    assert(
+      rebuilt.copy(execution = rebuilt.execution.copy(receiptCarriesStatus = true)) != firstRules,
+      "a rule set compared equal to one that settles a receipt differently"
+    )

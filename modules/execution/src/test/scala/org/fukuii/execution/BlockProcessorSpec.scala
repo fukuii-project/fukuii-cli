@@ -93,8 +93,9 @@ class BlockProcessorSpec extends AnyFlatSpec:
       s = quantity(signature.s)
     )
 
-  /** A typed envelope no rule set here admits, carried so that a block holding
-    * one exercises the refusal rather than the pricing.
+  /** A typed envelope, unsigned, so a block holding one under rules that do not
+    * admit the format exercises the refusal rather than the pricing -- the
+    * refusal is asked before anything is read of the signature.
     */
   private val typedEnvelope: Transaction.AccessList =
     Transaction.AccessList(
@@ -111,23 +112,52 @@ class BlockProcessorSpec extends AnyFlatSpec:
       s = quantity(BigInt(2))
     )
 
+  /** The same envelope, signed, so a block carrying one under rules that admit
+    * the format reaches a receipt rather than a refusal.
+    *
+    * The access-list format is the one typed shape this build can settle: it
+    * states a price rather than a cap and a tip, so [[BlockProcessor]] can work
+    * out what it offers without a base fee.
+    */
+  private def typedTransfer(nonce: Long): Transaction.AccessList =
+    val unsigned: Transaction.AccessList = typedEnvelope.copy(nonce = UInt64.fromBits(nonce))
+    val signature = Secp256k1
+      .sign(SigningPreimage.hashForSigning(unsigned, None), signing)
+      .getOrElse(fail("the fixture transaction could not be signed"))
+    unsigned.copy(
+      yParity = quantity(BigInt(signature.recoveryId)),
+      r = quantity(signature.r),
+      s = quantity(signature.s)
+    )
+
   private val statusReceipts: ExecutionRules =
     ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = true)
 
   private val rootReceipts: ExecutionRules =
     ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = false)
 
-  private val admission: AdmissionRules =
+  private val legacyOnly: AdmissionRules =
     AdmissionRules(
       admittedTypes = Set(TransactionType.Legacy),
       signatureMayCarryChainId = false,
       signatureSMustBeLow = false
     )
 
+  /** Rules carrying a second format, so that what a receipt says about the
+    * format its transaction had is answerable by more than one value.
+    */
+  private val alsoTypedEnvelopes: AdmissionRules =
+    legacyOnly.copy(admittedTypes = Set(TransactionType.Legacy, TransactionType.AccessList))
+
   /** Emits one empty log and stops, so a block's derived log sequence has
     * something in it that a receipt also holds.
     */
   private val emitsALog: Bytes = EvmFixtures.bytesOf("0x60006000a0")
+
+  /** Adds against an empty stack, so the invocation halts rather than
+    * stopping.
+    */
+  private val halts: Bytes = EvmFixtures.bytesOf("0x01")
 
   /** Adds two operands, so an invocation over it reaches `ADD`. */
   private val adds: Bytes = EvmFixtures.bytesOf("0x6003600501")
@@ -151,6 +181,25 @@ class BlockProcessorSpec extends AnyFlatSpec:
         .adding(Operation(Opcode.Mul, Cost.Computed))
     )
 
+  /** A stand-in for a state root, derived from the world rather than from the
+    * number of times a root has been asked for.
+    *
+    * The signer's transaction count moves once, at the moment a transaction
+    * settles, so this answers one value before a given transaction, another
+    * after it, and another again once the whole block has run. That is what
+    * lets a case naming a root say which moment the root was taken at -- a
+    * figure derived from the call alone answers the same sequence whenever it
+    * is called, so every such case would hold for a processor taking its roots
+    * at the wrong point.
+    */
+  private def rootOf(world: EvmFixtures.MapWorldState): Hash =
+    EvmFixtures.hash(world.nonceOf(signer).toBigInt.toInt)
+
+  /** The root [[rootOf]] answers once `settled` of the block's transactions
+    * have settled.
+    */
+  private def rootAfter(settled: Int): Hash = EvmFixtures.hash(settled)
+
   /** What one block run produced, together with the three things only an
     * observer outside the processor can see.
     */
@@ -170,7 +219,8 @@ class BlockProcessorSpec extends AnyFlatSpec:
       execution: ExecutionRules = statusReceipts,
       irregularStateChange: Option[WorldState => Unit] = None,
       code: Map[Address, Bytes] = Map.empty,
-      evm: EvmRules = EvmFixtures.rules
+      evm: EvmRules = EvmFixtures.rules,
+      admission: AdmissionRules = legacyOnly
   ): Ran =
     val world = new EvmFixtures.MapWorldState
     world.setBalance(signer, Word(funded))
@@ -179,7 +229,7 @@ class BlockProcessorSpec extends AnyFlatSpec:
     var coinbaseAtClose = BigInt(-1)
     def rootAfterTransaction(): Hash =
       rootsAsked += 1
-      EvmFixtures.hash(rootsAsked)
+      rootOf(world)
     val result = BlockProcessor.process(
       transactions = transactions,
       world = world,
@@ -281,6 +331,16 @@ class BlockProcessorSpec extends AnyFlatSpec:
       "a receipt carries the envelope its transaction had, and a receipts root is taken over that"
     )
 
+  it should "state the format of a typed envelope, where the rules admit one" in
+    // What makes the case above mean anything. Every other rule set here admits
+    // the legacy format alone, so nothing else can tell a receipt that reads
+    // the transaction it came from apart from one with that format written in.
+    assert(
+      run(Seq(typedTransfer(nonce = 0)), admission = alsoTypedEnvelopes).output.receipts
+        .map(_.transactionType) == Vector(TransactionType.AccessList),
+      "a receipt carries the envelope its own transaction had, and not the one its network's earlier ones had"
+    )
+
   it should "carry the logs its transaction emitted" in
     assert(
       run(Seq(transfer(nonce = 0)), code = Map(recipient -> emitsALog)).output.receipts.head.logs.length == 1,
@@ -301,6 +361,16 @@ class BlockProcessorSpec extends AnyFlatSpec:
       "EIP-658 replaced the intermediate root with a status, and the rule that says so is read here"
     )
 
+  it should "state that a transaction that halted did not succeed" in
+    // The other half of the field, which a receipts root commits to exactly as
+    // it commits to the first. Without it a status written as succeeded
+    // whatever the transaction did satisfies the case above.
+    assert(
+      run(Seq(transfer(nonce = 0)), code = Map(recipient -> halts)).output.receipts.head.postStateOrStatus ==
+        PostStateOrStatus.Failed,
+      "a receipt states how its own transaction ended, and a transaction that halted did not succeed"
+    )
+
   it should "never ask for an intermediate state root" in
     // The root is not merely unused at these rules -- it is not computed. A
     // processor taking one per transaction and discarding it would pass the case
@@ -314,7 +384,7 @@ class BlockProcessorSpec extends AnyFlatSpec:
     assert(
       run(Seq(transfer(nonce = 0), transfer(nonce = 1)), execution = rootReceipts).output.receipts
         .map(_.postStateOrStatus) ==
-        Vector(PostStateOrStatus.PostState(EvmFixtures.hash(1)), PostStateOrStatus.PostState(EvmFixtures.hash(2))),
+        Vector(PostStateOrStatus.PostState(rootAfter(1)), PostStateOrStatus.PostState(rootAfter(2))),
       "a receipt below EIP-658 carries the root as it stood after its own transaction, and each is a different root"
     )
 
