@@ -96,13 +96,69 @@ import org.fukuii.bytes.UInt256
   *   whether a JSON key is present. With no field consensus to depart from, this
   *   states what happens rather than what is skipped, so that a reader does not
   *   have to negate the name to reach the behavior.
+  * @param difficultyAdjustment
+  *   which published algorithm settles the difficulty of a block whose parent
+  *   these rules are read against. [[DifficultyAdjustment]] carries the evidence
+  *   for the three cases and for why the selector is a value.
+  * @param difficultyBombDelay
+  *   how many blocks the exponential term of that algorithm pretends have not
+  *   happened.
+  *
+  *   **This is the one genuinely fork-varying member of the three**, which is
+  *   what earns it a place here rather than a constant on the engine.
+  *   `ethereum/execution-specs` @ `ccaaaba58` declares `BOMB_DELAY_BLOCKS` as a
+  *   per-fork module constant taking seven distinct values and omits it entirely
+  *   from the five earliest fork modules, and
+  *   `ethereum/go-ethereum-pow` @ `v1.10.26` closes
+  *   `makeDifficultyCalculator(bombDelay)` over a literal per fork predicate.
+  *
+  *   **Singular, against an engine-side schedule that is plural.**
+  *   `NethermindEth/nethermind` @ `c35ce1b1ab` names the resolved member
+  *   `DifficultyBombDelay` on `IReleaseSpec` while its ethash engine holds a
+  *   *schedule* of them and writes the one in force. The compounding that
+  *   schedule expresses -- `openethereum/openethereum` @ `v3.0.1` subtracts
+  *   every applicable entry of `difficulty_bomb_delays` in turn, and
+  *   `ethereumclassic/core-geth` @ `4185df450` comments that its own values are
+  *   *"compounding"* rather than pre-compounded -- happens before a fork
+  *   resolves, so what a fork answers with is one figure.
+  *
+  *   Zero is *no delay*, which is what the forks predating the first delay
+  *   proposal answer. It is not a sentinel for *no bomb*: a network that removed
+  *   the term does not delay it by nothing, and nothing here expresses that.
+  * @param difficultyBoundDivisor
+  *   what the parent's difficulty is divided by to size one step of adjustment.
+  *
+  *   A resolved parameter in two of the surveyed clients --
+  *   `IReleaseSpec.DifficultyBoundDivisor` in nethermind and
+  *   `EthashParams.difficulty_bound_divisor` in OpenEthereum -- and a package
+  *   constant in the rest. **No network in this project's scope varies it**, so
+  *   it is here for the reason nethermind puts it there and not because a fork
+  *   has moved it.
+  *
+  *   It must not be zero. A rule set answering zero has no adjustment step to
+  *   state, which is a broken rule set rather than a network's answer.
   */
 final case class ConsensusRules(
     blockReward: UInt256,
-    zeroRewardCreditsBeneficiary: Boolean
+    zeroRewardCreditsBeneficiary: Boolean,
+    difficultyAdjustment: DifficultyAdjustment,
+    difficultyBombDelay: BigInt,
+    difficultyBoundDivisor: BigInt
 )
 
 object ConsensusRules:
+
+  /** The divisor every network in this project's scope sizes an adjustment step
+    * by.
+    *
+    * Two sources that do not derive from one another:
+    * `ethereum/execution-specs` @ `ccaaaba58` divides by a literal `2048` in
+    * `calculate_block_difficulty` in each of its thirteen fork modules that
+    * define one, and `besu-eth/besu-etc` @ `eb4248c99` declares
+    * `DIFFICULTY_BOUND_DIVISOR = BigInteger.valueOf(2_048L)` in both
+    * `MainnetDifficultyCalculators` and `ClassicDifficultyCalculators`.
+    */
+  val LaunchBoundDivisor: BigInt = BigInt(2048)
 
   /** A mechanism that credits nobody, and does not bring a beneficiary into
     * being by crediting it nothing.
@@ -114,6 +170,23 @@ object ConsensusRules:
     * `BlockProcessingModule.cs` registers `NoBlockRewards.Instance` as the
     * default reward source, which the ethash and AuRa plugins override and the
     * Clique plugin does not.
+    *
+    * ==Its difficulty members are the pre-proposal answers, not an absence==
+    *
+    * A mechanism that credits nobody may still target a difficulty -- a
+    * proof-of-authority network fixes one rather than adjusting it -- so this
+    * value cannot mean *no difficulty rule* and does not try to. It carries what
+    * a network answers before any proposal has changed the algorithm and before
+    * any delay has been voted, which is the same thing nethermind's uninitialized
+    * `ReleaseSpec` carries. **A mechanism that does not adjust difficulty reads
+    * none of the three**, exactly as a mechanism that credits nobody is handed
+    * ommers it does not read.
     */
   val Unrewarded: ConsensusRules =
-    ConsensusRules(blockReward = UInt256.Zero, zeroRewardCreditsBeneficiary = false)
+    ConsensusRules(
+      blockReward = UInt256.Zero,
+      zeroRewardCreditsBeneficiary = false,
+      difficultyAdjustment = DifficultyAdjustment.Original,
+      difficultyBombDelay = BigInt(0),
+      difficultyBoundDivisor = LaunchBoundDivisor
+    )

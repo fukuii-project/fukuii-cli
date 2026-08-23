@@ -39,7 +39,7 @@ class ConsensusEngineSpec extends AnyFlatSpec:
   private val ommerBeneficiary: Address = EvmFixtures.address(0x44)
 
   private def reward(of: Long): ConsensusRules =
-    ConsensusRules(blockReward = UInt256.fromLong(of).toOption.get, zeroRewardCreditsBeneficiary = false)
+    ConsensusRules.Unrewarded.copy(blockReward = UInt256.fromLong(of).toOption.get)
 
   private val creditsZero: ConsensusRules =
     ConsensusRules.Unrewarded.copy(zeroRewardCreditsBeneficiary = true)
@@ -145,7 +145,7 @@ class ConsensusEngineSpec extends AnyFlatSpec:
   it should "refuse a reward no account could hold rather than wrap into a small balance" in
     assertThrows[IllegalStateException](
       settledOverExisting(
-        ConsensusRules(blockReward = UInt256.MaxValue, zeroRewardCreditsBeneficiary = false),
+        ConsensusRules.Unrewarded.copy(blockReward = UInt256.MaxValue),
         held = 1
       )
     )

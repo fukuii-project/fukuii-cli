@@ -1,7 +1,7 @@
 package org.fukuii.consensus.pow
 
-import org.fukuii.bytes.Address
-import org.fukuii.chainspec.ConsensusRules
+import org.fukuii.bytes.{Address, UInt256, UInt64}
+import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment}
 import org.fukuii.consensus.ConsensusEngine
 import org.fukuii.evm.WorldState
 import org.fukuii.types.BlockHeader
@@ -112,6 +112,185 @@ final case class ProofOfWorkEngine(ecip1017EraLength: Option[BigInt] = None) ext
     */
   private def creditIfDue(world: WorldState, rules: ConsensusRules, to: Address, amount: BigInt): Unit =
     if amount != 0 || rules.zeroRewardCreditsBeneficiary then credit(world, to, amount)
+
+  /** What the block after `parent` must be mined against.
+    *
+    * ==One expression for all three algorithms, which is EIP-2's own framing==
+    *
+    * `ethereum/EIPs` @ `9c915ee494c05069945f4e1018fa0854e2d3fb38` writes the
+    * rule it replaces and the rule it introduces in the same shape -- a parent
+    * difficulty, plus one adjustment step multiplied by a figure read off the
+    * gap between the two blocks. So the algorithm chooses the multiplier and
+    * [[org.fukuii.chainspec.DifficultyAdjustment]] enumerates exactly that.
+    *
+    * ==The floor is applied to the adjustment and the bomb is added over it==
+    *
+    * **This is a real divergence in the field and the published corpus cannot
+    * settle it**, so the order is stated rather than inherited.
+    * `ethereum/execution-specs` @ `ccaaaba58` adds the exponential term first
+    * and takes `max(difficulty, MINIMUM_DIFFICULTY)` over the sum, and its own
+    * comment records that *"some clients raise the difficulty to
+    * `MINIMUM_DIFFICULTY` prior to adding the bomb"* and that the difference
+    * *"does not matter because the difficulty is always much greater than
+    * `MINIMUM_DIFFICULTY` on Mainnet"*.
+    *
+    * The order here is the other one, on three counts. Every surveyed
+    * implementation uses it, across three independent language lineages:
+    * `ethereum/go-ethereum-pow` @ `v1.10.26` floors with the comment
+    * *"minimum difficulty can ever be (before exponential factor)"*,
+    * `besu-eth/besu-etc` @ `eb4248c99` wraps the adjustment in
+    * `ensureMinimumDifficulty` before `adjustForPeriod`, and
+    * `openethereum/openethereum` @ `v3.0.1` floors the target and then floors
+    * the sum again, which is the same value. EIP-2 states it in prose --
+    * *"The `minDifficulty` still defines the minimum difficulty allowed and no
+    * ADJUSTMENT may take it below this"*. And the first of those is the client
+    * that produced the chain this rule is read against.
+    *
+    * **The two orders agree on every case of the published corpus**, because
+    * they differ only where an adjusted difficulty falls below the floor while
+    * the exponential term is not yet zero -- which no mainnet block of either
+    * family reaches. A network launching near the floor and running past the
+    * term's first period is where the choice becomes observable.
+    *
+    * @param parentHasOmmers
+    *   whether the parent block itself included any.
+    *
+    *   **A parameter rather than a reading of `parent.ommersHash`, which is what
+    *   every client does instead.** They compare against a hash of the empty
+    *   list -- `types.EmptyUncleHash` in the go-ethereum line,
+    *   `Hash.EMPTY_LIST_HASH` in besu -- and this build carries no such constant
+    *   because nothing has needed one. The executable specification takes the
+    *   same parameter for the same reason, declaring `parent_has_ommers: bool`
+    *   on `calculate_block_difficulty` from `forks/byzantium/fork.py` onward.
+    *   Ommer validation is what brings the constant, and this reads it off the
+    *   header once that lands.
+    *
+    *   It is read only under [[org.fukuii.chainspec.DifficultyAdjustment.Eip100]]
+    *   and is supplied at every call, which is the shape the seam already takes
+    *   for the block facts a mechanism may or may not read.
+    */
+  def difficulty(
+      rules: ConsensusRules,
+      parent: BlockHeader,
+      parentHasOmmers: Boolean,
+      timestamp: UInt64
+  ): UInt256 =
+    val parentDifficulty = parent.difficulty.toBigInt
+    val gap = gapAfter(parent, timestamp)
+    val step = parentDifficulty / boundDivisor(rules)
+    val adjusted = rules.difficultyAdjustment match
+      case DifficultyAdjustment.Original =>
+        if gap < ProofOfWorkEngine.DurationLimit then parentDifficulty + step else parentDifficulty - step
+      case DifficultyAdjustment.Eip2 =>
+        parentDifficulty + step * multiplier(BigInt(1), gap, ProofOfWorkEngine.Eip2GapDivisor)
+      case DifficultyAdjustment.Eip100 =>
+        val raised = if parentHasOmmers then BigInt(2) else BigInt(1)
+        parentDifficulty + step * multiplier(raised, gap, ProofOfWorkEngine.Eip100GapDivisor)
+    val floored = adjusted.max(ProofOfWorkEngine.MinimumDifficulty)
+    UInt256
+      .fromBigInt(floored + bomb(parent.number.toBigInt + 1, rules.difficultyBombDelay))
+      .getOrElse(
+        throw new IllegalStateException(
+          "a difficulty above what a header can carry was computed for the block after " + parent.number.toString
+        )
+      )
+
+  /** How long the block took, refused where it did not follow its parent in
+    * time.
+    *
+    * ==A broken precondition, and the caller is what upholds it==
+    *
+    * `ethereum/execution-specs` @ `ccaaaba58` refuses
+    * `header.timestamp <= parent_header.timestamp` in `validate_header` and
+    * calls `calculate_block_difficulty` several lines further down, so the
+    * formula is stated only for a block that already passed. This is the same
+    * division of labor [[ommerReward]] records for an ommer's age: validation
+    * refuses, and the arithmetic assumes.
+    *
+    * **Refused rather than assumed, because the two arithmetics part here and
+    * neither reports it.** Integer division truncates toward zero in this
+    * language and floors away from it in the specification's, so a negative gap
+    * would give a multiplier one larger here than the value every reference
+    * implementation computes -- a plausible difficulty, differing from the
+    * chain's, with nothing to distinguish it from the right one.
+    */
+  private def gapAfter(parent: BlockHeader, timestamp: UInt64): BigInt =
+    val gap = timestamp.toBigInt - parent.timestamp.toBigInt
+    if gap <= 0 then
+      throw new IllegalStateException(
+        "a block at " + timestamp.toBigInt.toString + " does not follow its parent at " +
+          parent.timestamp.toBigInt.toString
+      )
+    else gap
+
+  /** The signed figure one adjustment step is multiplied by, floored so that a
+    * very long gap cannot collapse the difficulty in one block.
+    *
+    * EIP-2 states the floor's purpose outright -- it *"serves to ensure that the
+    * difficulty does not fall extremely far if two blocks happen to be very far
+    * apart in time due to a client security bug or other black-swan issue"*.
+    */
+  private def multiplier(raised: BigInt, gap: BigInt, gapDivisor: BigInt): BigInt =
+    (raised - gap / gapDivisor).max(ProofOfWorkEngine.MultiplierFloor)
+
+  /** The divisor sizing one adjustment step, refused where a rule set states
+    * nothing to divide by.
+    *
+    * A zero would raise from the division itself, and it would raise naming
+    * arithmetic rather than the rule set that supplied it. The rules are read
+    * once per block, so asking here costs one comparison and answers with the
+    * fact a reader needs.
+    */
+  private def boundDivisor(rules: ConsensusRules): BigInt =
+    if rules.difficultyBoundDivisor <= 0 then
+      throw new IllegalStateException(
+        "a rule set states no difficulty adjustment step: " + rules.difficultyBoundDivisor.toString
+      )
+    else rules.difficultyBoundDivisor
+
+  /** The exponential term, which doubles every period once it starts.
+    *
+    * ==The delay is subtracted from the block, not from the period==
+    *
+    * `ethereum/execution-specs` @ `ccaaaba58` computes
+    * `((block_number - BOMB_DELAY_BLOCKS) // 100000) - 2` and raises two to that
+    * power where it is not negative. Subtracting whole periods instead would
+    * agree only where the delay is an exact multiple of the period -- which
+    * every delay read for this build happens to be, so the two are
+    * indistinguishable on the published corpus and part on the first delay that
+    * is not.
+    *
+    * ==The delayed block is floored at zero rather than divided while negative==
+    *
+    * `ethereum/go-ethereum-pow` @ `v1.10.26` floors it, keeping
+    * `fakeBlockNumber` at zero where the parent is below the delay. Dividing a
+    * negative instead reaches the same answer here, but only because integer
+    * division in this language truncates toward zero while the specification's
+    * floors away from it, and the two quotients differ by one -- a coincidence
+    * of both being discarded rather than a property to rely on.
+    *
+    * ==A period past what a header could hold is a broken precondition==
+    *
+    * Two raised to a period is unbounded, and a height far enough out would ask
+    * for a power no machine can hold long before the result is rejected for
+    * being too wide. `UInt256.MaxValue` is below two to the 256th, so a period
+    * at or above that is already unreachable and is refused as a nonsense
+    * height rather than computed -- the same bound, for the same reason,
+    * [[winnerReward]] puts on its own exponent.
+    *
+    * **Nothing here is a sentinel for a network that removed the term.** A delay
+    * of zero is no delay, and a network that removed it needs a rule this build
+    * does not carry.
+    */
+  private def bomb(number: BigInt, delay: BigInt): BigInt =
+    val delayed = (number - delay).max(BigInt(0))
+    val periods = delayed / ProofOfWorkEngine.ExponentialPeriod - 2
+    if periods < 0 then BigInt(0)
+    else if periods >= ProofOfWorkEngine.WidestExponent then
+      throw new IllegalStateException(
+        "block " + number.toString + " asks for a difficulty term of two to the " + periods.toString
+      )
+    else BigInt(2).pow(periods.toInt)
 
   /** Which era `number` falls in, counting the first as zero.
     *
@@ -247,3 +426,76 @@ object ProofOfWorkEngine:
   private val DisinflationQuotient: BigInt = BigInt(4)
 
   private val DisinflationDivisor: BigInt = BigInt(5)
+
+  /** The gap, in seconds, at or above which the original algorithm lowers the
+    * difficulty instead of raising it.
+    *
+    * Thirteen, from two sources that do not derive from one another. EIP-2
+    * quotes the rule it replaces as
+    * *"`(1 if block_timestamp - parent_timestamp < 13 else -1)`"*, and
+    * `ethereum/execution-specs` @ `ccaaaba58` compares
+    * `block_timestamp < parent_timestamp + U256(13)` in
+    * `forks/frontier/fork.py`. **The comparison is strict**, so a gap of exactly
+    * thirteen lowers the difficulty; both sources agree on that and it is the
+    * boundary an off-by-one moves.
+    *
+    * `openethereum/openethereum` @ `v3.0.1` reads it from
+    * `EthashParams.duration_limit` rather than a constant. **One client of four
+    * resolving it is thin evidence for a rule-set member**, which is why it sits
+    * here and not on [[org.fukuii.chainspec.ConsensusRules]]; no network in this
+    * project's scope varies it.
+    */
+  private val DurationLimit: BigInt = BigInt(13)
+
+  /** What the gap is divided by under EIP-2's algorithm.
+    *
+    * Ten, from EIP-2's own item 4 and from
+    * `ethereum/execution-specs` @ `ccaaaba58`'s `forks/homestead/fork.py`. It is
+    * `EIP2DifficultyIncrementDivisor` in `ethereumclassic/core-geth` @
+    * `4185df450` and `difficulty_increment_divisor` in OpenEthereum.
+    */
+  private val Eip2GapDivisor: BigInt = BigInt(10)
+
+  /** What the gap is divided by under EIP-100's algorithm.
+    *
+    * Nine, from `ethereum/execution-specs` @ `ccaaaba58`'s
+    * `forks/byzantium/fork.py`. It is `EIP100FDifficultyIncrementDivisor` in
+    * core-geth and `metropolis_difficulty_increment_divisor` in OpenEthereum,
+    * and the shortening of the interval is the half of EIP-100 that is easy to
+    * miss beside the ommer term.
+    */
+  private val Eip100GapDivisor: BigInt = BigInt(9)
+
+  /** How far one block may lower the difficulty, as a count of adjustment
+    * steps.
+    *
+    * Ninety-nine below, which every surveyed implementation writes as a floor of
+    * `-99` on the multiplier.
+    */
+  private val MultiplierFloor: BigInt = BigInt(-99)
+
+  /** The difficulty no adjustment may take a block below.
+    *
+    * `ethereum/execution-specs` @ `ccaaaba58` declares
+    * `MINIMUM_DIFFICULTY = Uint(131072)` in every fork module that adjusts a
+    * difficulty, and `besu-eth/besu-etc` @ `eb4248c99` declares
+    * `MINIMUM_DIFFICULTY = BigInteger.valueOf(131_072L)` in both of its
+    * calculator classes.
+    */
+  private val MinimumDifficulty: BigInt = BigInt(131072)
+
+  /** How many blocks one doubling of the exponential term lasts.
+    *
+    * `ethereum/execution-specs` @ `ccaaaba58` divides the block number by a
+    * literal `100000`; `ethereumclassic/core-geth` @ `4185df450` names the same
+    * figure `ExpDiffPeriod` and notes that ECIP-1010 reads it too.
+    */
+  private val ExponentialPeriod: BigInt = BigInt(100000)
+
+  /** The period at which the exponential term already exceeds any difficulty a
+    * header can carry.
+    *
+    * `org.fukuii.bytes.UInt256.MaxValue` is one below two to the 256th, so a
+    * term at that power cannot be carried whatever it is added to.
+    */
+  private val WidestExponent: BigInt = BigInt(256)

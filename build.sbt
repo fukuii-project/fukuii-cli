@@ -471,10 +471,18 @@ lazy val evm = (project in file("modules/evm"))
     name := "fukuii-evm",
     libraryDependencies ++= testDeps,
     // Declared HERE and not in `testDeps`, deliberately. That sequence is
-    // appended to every module, and only this one reads JSON -- a fixture
-    // corpus is certified against the EVM and nowhere else. Putting a JSON
+    // appended to every module, and only this one reads JSON. Putting a JSON
     // parser on `bytes`'s test classpath would be a dependency with no present
     // need, which this project does not do.
+    //
+    // The published fixture corpora are no longer certified against the EVM
+    // alone -- `DifficultyTests` is read against the proof-of-work engine --
+    // and the parser still sits here rather than moving or spreading. Every
+    // module that certifies against a corpus already takes this one as
+    // `evm % "compile->compile;test->test"`, so the readers live beside each
+    // other in one fixtures package and the modules under test consume decoded
+    // values. That keeps the number of test classpaths carrying a parser at
+    // one, which is the property this placement is for.
     libraryDependencies ++= Seq(
       "io.circe" %% "circe-core"   % circeVersion % Test,
       "io.circe" %% "circe-parser" % circeVersion % Test

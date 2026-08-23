@@ -58,7 +58,7 @@ class ProofOfWorkEnginePropSpec extends AnyPropSpec with TableDrivenPropertyChec
     */
   private def settling(engine: ProofOfWorkEngine, reward: BigInt, number: BigInt): EvmFixtures.MapWorldState =
     val world = new EvmFixtures.MapWorldState
-    val consensus = ConsensusRules(
+    val consensus = ConsensusRules.Unrewarded.copy(
       blockReward = UInt256.fromBigInt(reward).toOption.get,
       zeroRewardCreditsBeneficiary = false
     )

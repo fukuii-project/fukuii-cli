@@ -20,13 +20,25 @@ import org.fukuii.bytes.UInt256
 class ConsensusRulesSpec extends AnyFlatSpec:
 
   private val rewarding: ConsensusRules =
-    ConsensusRules(blockReward = UInt256.fromLong(7).toOption.get, zeroRewardCreditsBeneficiary = false)
+    ConsensusRules(
+      blockReward = UInt256.fromLong(7).toOption.get,
+      zeroRewardCreditsBeneficiary = false,
+      difficultyAdjustment = DifficultyAdjustment.Original,
+      difficultyBombDelay = BigInt(0),
+      difficultyBoundDivisor = BigInt(2048)
+    )
 
   /** [[rewarding]]'s members, written out again rather than copied, so that the
     * comparison below has two values to compare rather than one value twice.
     */
   private val rewardingAgain: ConsensusRules =
-    ConsensusRules(blockReward = UInt256.fromLong(7).toOption.get, zeroRewardCreditsBeneficiary = false)
+    ConsensusRules(
+      blockReward = UInt256.fromLong(7).toOption.get,
+      zeroRewardCreditsBeneficiary = false,
+      difficultyAdjustment = DifficultyAdjustment.Original,
+      difficultyBombDelay = BigInt(0),
+      difficultyBoundDivisor = BigInt(2048)
+    )
 
   private val frontier: UpgradeRules = ChainspecFixtures.firstRules
 
@@ -52,6 +64,24 @@ class ConsensusRulesSpec extends AnyFlatSpec:
     assert(
       ConsensusRules.Unrewarded != ConsensusRules.Unrewarded.copy(zeroRewardCreditsBeneficiary = true),
       "the two states differ in whether the beneficiary account exists, which no other member records"
+    )
+
+  it should "compare unequal when only the difficulty algorithm differs" in
+    assert(
+      rewarding != rewardingAgain.copy(difficultyAdjustment = DifficultyAdjustment.Eip2),
+      "the algorithm decides every block's target, so two networks differing in it do not run the same rules"
+    )
+
+  it should "compare unequal when only the bomb delay differs" in
+    assert(
+      rewarding != rewardingAgain.copy(difficultyBombDelay = BigInt(3000000)),
+      "a delay is the one genuinely fork-varying member here, and it moves every difficulty past its own period"
+    )
+
+  it should "compare unequal when only the bound divisor differs" in
+    assert(
+      rewarding != rewardingAgain.copy(difficultyBoundDivisor = BigInt(1024)),
+      "the divisor sizes every adjustment step, so a comparison dropping it would call two chains one"
     )
 
   "the unrewarded rules" should "credit nothing" in

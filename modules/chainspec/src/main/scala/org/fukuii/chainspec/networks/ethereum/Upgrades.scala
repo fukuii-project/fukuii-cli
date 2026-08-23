@@ -1,7 +1,7 @@
 package org.fukuii.chainspec.networks.ethereum
 
 import org.fukuii.bytes.UInt256
-import org.fukuii.chainspec.{ConsensusRules, UpgradeRules}
+import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment, UpgradeRules}
 import org.fukuii.chainspec.proposals.eip.{Eip150, Eip2, Eip7}
 import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, OpcodeTable, Precompile, PrecompileSet}
 import org.fukuii.execution.{AdmissionRules, ExecutionRules}
@@ -218,7 +218,13 @@ object Upgrades:
         signatureMayCarryChainId = false,
         signatureSMustBeLow = false
       ),
-      consensus = ConsensusRules(blockReward = launchReward, zeroRewardCreditsBeneficiary = true)
+      consensus = ConsensusRules(
+        blockReward = launchReward,
+        zeroRewardCreditsBeneficiary = true,
+        difficultyAdjustment = DifficultyAdjustment.Original,
+        difficultyBombDelay = BigInt(0),
+        difficultyBoundDivisor = ConsensusRules.LaunchBoundDivisor
+      )
     )
 
   /** [[frontier]] with EIP-7 and EIP-2 adopted.

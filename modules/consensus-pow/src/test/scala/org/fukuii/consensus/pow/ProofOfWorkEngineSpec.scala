@@ -37,7 +37,7 @@ class ProofOfWorkEngineSpec extends AnyFlatSpec:
   private val withoutLadder: ProofOfWorkEngine = ProofOfWorkEngine()
 
   private def rules(reward: Long, creditsZero: Boolean = false): ConsensusRules =
-    ConsensusRules(
+    ConsensusRules.Unrewarded.copy(
       blockReward = UInt256.fromLong(reward).toOption.get,
       zeroRewardCreditsBeneficiary = creditsZero
     )

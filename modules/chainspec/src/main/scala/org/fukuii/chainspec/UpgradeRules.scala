@@ -119,8 +119,10 @@ import org.fukuii.execution.{AdmissionRules, ExecutionRules}
   * @param admission
   *   what makes a transaction acceptable before any of that happens.
   * @param consensus
-  *   what a block owes the mechanism that produced it. Two members today, and
-  *   [[ConsensusRules]] carries the evidence for each.
+  *   what a block owes the mechanism that produced it. [[ConsensusRules]]
+  *   carries the evidence for each member, and the count is deliberately not
+  *   restated here -- a facet grows as the layers that read it land, and a
+  *   number written beside it goes stale on the commit that grows it.
   *
   *   **It is the one facet an engine may overwrite after the schedule has
   *   resolved it**, which is the join `org.fukuii.consensus.ConsensusEngine`
