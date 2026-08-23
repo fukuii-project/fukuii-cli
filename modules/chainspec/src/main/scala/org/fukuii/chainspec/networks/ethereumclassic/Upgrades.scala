@@ -1,6 +1,6 @@
 package org.fukuii.chainspec.networks.ethereumclassic
 
-import org.fukuii.chainspec.UpgradeRules
+import org.fukuii.chainspec.{ConsensusRules, UpgradeRules}
 import org.fukuii.chainspec.proposals.eip.{Eip150, Eip2, Eip7}
 import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, OpcodeTable, Precompile, PrecompileSet}
 import org.fukuii.execution.{AdmissionRules, ExecutionRules}
@@ -174,6 +174,16 @@ object Upgrades:
     * things: `EIP2718FBlock`, the transition introducing a typed envelope at
     * all, is set at 13,189,133 -- so no height these rules are in force at
     * carries any other format.
+    *
+    * **The consensus facet states no emission, and this network's emission is
+    * not zero.** This network's is additionally not a constant: it is the
+    * declining schedule its own proposal sets, which is a formula over an era
+    * rather than a figure a fork resolves, and neither the formula nor the era
+    * length is authored anywhere in this build yet.
+    * [[org.fukuii.chainspec.ConsensusRules.Unrewarded]] is what a rule set
+    * holds before either has been written, and it is the safe direction of the
+    * two: it credits nothing, so it cannot add to the state trie an account
+    * this network does not have.
     */
   val frontier: UpgradeRules =
     UpgradeRules(
@@ -193,7 +203,8 @@ object Upgrades:
         admittedTypes = Set(TransactionType.Legacy),
         signatureMayCarryChainId = false,
         signatureSMustBeLow = false
-      )
+      ),
+      consensus = ConsensusRules.Unrewarded
     )
 
   /** [[frontier]] with EIP-7 and EIP-2 adopted.

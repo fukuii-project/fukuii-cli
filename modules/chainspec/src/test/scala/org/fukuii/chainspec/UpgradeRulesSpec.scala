@@ -56,7 +56,8 @@ class UpgradeRulesSpec extends AnyFlatSpec:
       admittedTypes = Set(TransactionType.Legacy),
       signatureMayCarryChainId = false,
       signatureSMustBeLow = false
-    )
+    ),
+    consensus = firstRules.consensus
   )
 
   "adopting components" should "record their proposals in the order adopted" in
@@ -81,7 +82,8 @@ class UpgradeRulesSpec extends AnyFlatSpec:
     assert(
       (firstRules.adopting().evm eq firstRules.evm) &&
         (firstRules.adopting().execution eq firstRules.execution) &&
-        (firstRules.adopting().admission eq firstRules.admission),
+        (firstRules.adopting().admission eq firstRules.admission) &&
+        (firstRules.adopting().consensus eq firstRules.consensus),
       "a facet no component names survives as the same value rather than as an equal copy"
     )
 
@@ -97,12 +99,13 @@ class UpgradeRulesSpec extends AnyFlatSpec:
       "the constructor names the one facet it writes, which is what keeps a machine change from touching a consensus rule"
     )
 
-  it should "leave the settlement and admission facets as the same values" in
-    // The two facets added after that constructor was written. It cannot reach
-    // them by construction, and this is what would notice if it ever could.
+  it should "leave every facet outside the machine as the same value" in
+    // The facets added after that constructor was written. It cannot reach them
+    // by construction, and this is what would notice if it ever could.
     assert(
       (firstRules.adopting(first).execution eq firstRules.execution) &&
-        (firstRules.adopting(first).admission eq firstRules.admission),
+        (firstRules.adopting(first).admission eq firstRules.admission) &&
+        (firstRules.adopting(first).consensus eq firstRules.consensus),
       "a component built for the machine rebuilt a facet outside it"
     )
 

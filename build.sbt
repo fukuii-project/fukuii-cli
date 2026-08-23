@@ -579,6 +579,62 @@ lazy val chainspec = (project in file("modules/chainspec"))
     libraryDependencies ++= testDeps
   )
 
+// consensus -- the mechanism-neutral seam: a block's production expressed as a
+// transformation over the rules a schedule resolved, plus the state change no
+// transaction made. A mechanism leaf depends on this and never the reverse.
+//
+// It sits ABOVE chainspec, and the direction is forced rather than chosen. An
+// engine reads the resolved rule set, so it depends on the module that resolves
+// one; the facet it reads therefore CANNOT live here, and lives in `chainspec`
+// beside the type that holds it.
+//
+// The seam is a module of its own rather than the first leaf, and that is the
+// field's shape rather than a preference. `besu-eth/besu` @ `c2addd942`
+// declares seven consensus subprojects in `settings.gradle`, with
+// `consensus/clique/build.gradle` and `consensus/qbft/build.gradle` each taking
+// `implementation project(':consensus:common')`; `paradigmxyz/reth` carries
+// `crates/consensus/common`. The other four surveyed clients reach the same
+// separation without a second build unit, by putting the seam in the PARENT
+// package and each mechanism beneath it -- `ethereum/go-ethereum` and
+// `ethereumclassic/core-geth` in `consensus/consensus.go` over
+// `consensus/{ethash,clique,beacon}`, `erigontech/erigon` in
+// `execution/protocol/rules/rules.go` over `rules/{ethash,aura,merge}`, and
+// `NethermindEth/nethermind` in `Nethermind.Consensus` over
+// `Nethermind.Consensus.{Ethash,Clique,AuRa}`. This module takes the second
+// shape's naming and the first's enforcement.
+//
+// What the separation buys is structural rather than tidy: a mechanism leaf
+// cannot import another leaf's types, because leaves are siblings that depend
+// only on this. A guard that would otherwise be a review note is a compile
+// error.
+//
+// `api` was rejected as the name on measurement: no surveyed client uses it for
+// this seam, and it would collide with the Engine API a proof-of-stake leaf
+// would genuinely carry.
+//
+//   bytes   a beneficiary is an address, and a reward is the protocol's
+//           256-bit quantity
+//   chainspec
+//           the resolved rule set the transformation is over, and the facet
+//           the reward application reads
+//   evm     a change to state is written through `WorldState`, and the balance
+//           it writes is the machine's word at that boundary
+//
+// `execution` is reached transitively through chainspec and is not named: what
+// this module produces is the function `BlockProcessor.process` already takes,
+// and producing it names no type from that module.
+//
+// The `test->test` half of the evm edge, for the reason execution and chainspec
+// both declare the same edge: what a reward test must observe is whether an
+// account came into being, and the world-state double that answers it lives in
+// evm's test tree beside the machine it was written for.
+lazy val consensus = (project in file("modules/consensus"))
+  .dependsOn(bytes, chainspec, evm % "compile->compile;test->test")
+  .settings(
+    name := "fukuii-consensus",
+    libraryDependencies ++= testDeps
+  )
+
 // The aggregate. `aggregate` makes a task at the root fan out to every module;
 // it is NOT a dependency edge, so the root gains nothing on its classpath.
 //
@@ -587,7 +643,7 @@ lazy val chainspec = (project in file("modules/chainspec"))
 // org.fukuii:fukuii_3, so the repo name must not leak into it. Lowercase
 // because this is a Maven artifactId, not a display name.
 lazy val root = (project in file("."))
-  .aggregate(bytes, rlp, crypto, types, storage, trie, evm, execution, chainspec)
+  .aggregate(bytes, rlp, crypto, types, storage, trie, evm, execution, chainspec, consensus)
   .settings(
     name := "fukuii",
     libraryDependencies ++= testDeps

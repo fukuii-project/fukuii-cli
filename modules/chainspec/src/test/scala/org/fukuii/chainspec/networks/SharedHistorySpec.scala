@@ -38,9 +38,10 @@ import org.scalatest.flatspec.AnyFlatSpec
   * *Specification* requires every block in `[1_920_000, 1_920_009]` to carry
   * `dao-hard-fork` in `extraData`, which is a header rule and which
   * `ethereum/go-ethereum` @ `6bb0588ad8e7f922e4ad5580f51265a4097af08f` enforces
-  * in `consensus/misc/dao.go`. `UpgradeRules` holds the machine, settlement and
-  * admission facets and no header facet, so what is equal below is every rule
-  * this build models -- not every rule a node validates.
+  * in `consensus/misc/dao.go`. `UpgradeRules` holds no header facet -- the
+  * facets it does hold settle the machine, settlement, admission and what a
+  * block owes its consensus mechanism -- so what is equal below is every rule
+  * this build models, not every rule a node validates.
   *
   * So at block 1,920,000 the two networks began building different state under
   * rules that stayed equal for another 543,000 blocks, until Ethereum mainnet

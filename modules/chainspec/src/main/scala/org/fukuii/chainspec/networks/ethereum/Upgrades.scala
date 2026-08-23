@@ -1,6 +1,6 @@
 package org.fukuii.chainspec.networks.ethereum
 
-import org.fukuii.chainspec.UpgradeRules
+import org.fukuii.chainspec.{ConsensusRules, UpgradeRules}
 import org.fukuii.chainspec.proposals.eip.{Eip150, Eip2, Eip7}
 import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, OpcodeTable, Precompile, PrecompileSet}
 import org.fukuii.execution.{AdmissionRules, ExecutionRules}
@@ -152,6 +152,14 @@ object Upgrades:
     * source states it: `forks/frontier/transactions.py` declares one
     * `Transaction`, whose fields are the legacy nine, and the fork has no
     * envelope to put a tag in.
+    *
+    * **The consensus facet states no emission, and this network's emission is
+    * not zero.** What a block pays is read from the proposals that set it, by
+    * the layer that computes one, and no layer here does.
+    * [[org.fukuii.chainspec.ConsensusRules.Unrewarded]] is what a rule set
+    * holds before an emission has been authored onto it or an engine has
+    * written one, and it is the safe direction of the two: it credits nothing,
+    * so it cannot add to the state trie an account this network does not have.
     */
   val frontier: UpgradeRules =
     UpgradeRules(
@@ -171,7 +179,8 @@ object Upgrades:
         admittedTypes = Set(TransactionType.Legacy),
         signatureMayCarryChainId = false,
         signatureSMustBeLow = false
-      )
+      ),
+      consensus = ConsensusRules.Unrewarded
     )
 
   /** [[frontier]] with EIP-7 and EIP-2 adopted.

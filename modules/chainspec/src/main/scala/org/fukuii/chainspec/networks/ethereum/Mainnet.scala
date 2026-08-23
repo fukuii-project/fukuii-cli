@@ -188,11 +188,10 @@ object Mainnet:
     * extension to the header validity"*, and besu by swapping its block-header
     * validator for `createDaoValidator()` across the same ten blocks.
     *
-    * It is a header rule, and [[org.fukuii.chainspec.UpgradeRules]] holds the
-    * machine, settlement and admission facets and no header facet, so nothing
-    * here can express it and no facet of the rules in force changes at this
-    * block. That is what keeps the case above the accurate one rather than
-    * [[Upgrade.RuleChange]].
+    * It is a header rule, and [[org.fukuii.chainspec.UpgradeRules]] holds no
+    * header facet, so nothing here can express it and no facet of the rules in
+    * force changes at this block. That is what keeps the case above the
+    * accurate one rather than [[Upgrade.RuleChange]].
     *
     * ==One entry, where besu writes three==
     *
