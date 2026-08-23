@@ -1,10 +1,12 @@
 package org.fukuii.consensus.pow
 
-import org.fukuii.bytes.{Address, UInt256, UInt64}
+import org.fukuii.bytes.{Address, Hash, UInt256, UInt64}
 import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment}
 import org.fukuii.consensus.ConsensusEngine
+import org.fukuii.crypto.Keccak256
 import org.fukuii.evm.WorldState
-import org.fukuii.types.BlockHeader
+import org.fukuii.rlp.{Rlp, RlpCodec, RlpItem}
+import org.fukuii.types.{BlockHeader, Seal}
 
 /** The emission a proof-of-work network pays for a block and for the ommers
   * that block included.
@@ -51,8 +53,25 @@ import org.fukuii.types.BlockHeader
   *   OpenEthereum reads `ecip1017EraRounds` from its engine parameters. The
   *   proposal is named in the parameter for the reason all three name it there:
   *   the number means nothing except as that document's era.
+  *
+  * @param ecip1099Activation
+  *   the height at which the epoch length changes, and [[scala.None]] on a
+  *   network that never adopts the proposal. It sits beside the era length
+  *   rather than on a second engine because ECIP-1099 changes one constant --
+  *   *"Ethash transitions to a modified Dagger Hashimoto algorithm, referred to
+  *   hereby as Etchash"* is the proposal's own framing, and neither implementing
+  *   client builds a second engine for it. See [[Ethash.epochLengthAt]].
+  *
+  *   **The network's own height is not defaulted here.** The proposal states one
+  *   per network -- `11_700_000` for Ethereum Classic, `2_520_000` for Mordor,
+  *   and *"no upgrade is required"* for Kotti -- so a default would be one
+  *   network's answer wearing no network's name, which is what a chain
+  *   specification exists to state.
   */
-final case class ProofOfWorkEngine(ecip1017EraLength: Option[BigInt] = None) extends ConsensusEngine:
+final case class ProofOfWorkEngine(
+    ecip1017EraLength: Option[BigInt] = None,
+    ecip1099Activation: Option[BigInt] = None
+) extends ConsensusEngine:
 
   /** Credits the block's beneficiary, then each ommer's.
     *
@@ -194,6 +213,91 @@ final case class ProofOfWorkEngine(ecip1017EraLength: Option[BigInt] = None) ext
           "a difficulty above what a header can carry was computed for the block after " + parent.number.toString
         )
       )
+
+  /** Which ethash epoch a height falls in under this network's parameters. */
+  def epochOf(number: BigInt): BigInt = Ethash.epochAt(number, ecip1099Activation)
+
+  /** The cache a header at `number` is checked against.
+    *
+    * Generating one is tens of megabytes and roughly a million 512-bit digests,
+    * so a caller validating more than one block in an epoch generates it once
+    * and hands the same value to every [[verifySeal]] in that epoch. Nothing
+    * here retains it: see [[Ethash]] on why the cache is a parameter.
+    */
+  def cacheFor(number: BigInt): EthashCache =
+    Ethash.cacheFor(epochOf(number), Ethash.epochLengthAt(number, ecip1099Activation))
+
+  /** The digest a nonce is sought against: the header without its seal.
+    *
+    * ==Derived from the header's own encoder rather than by listing the fields
+    * again==
+    *
+    * Both surveyed clients that carry this write the field list out by hand,
+    * and `besu-eth/besu-etc` @ `eb4248c99` writes it out TWICE -- once in
+    * `EthHash.hashHeader` and once in `ProofOfWorkValidationRule.hashHeader` --
+    * where the two copies already disagree about the condition guarding the
+    * fee-market field. Two transcriptions of one field order is the defect
+    * shape, so the order is taken from the codec that defines it and the seal's
+    * own two elements are removed by the arity the seal declares.
+    *
+    * ==What is dropped is a position, and the position is the seal's own==
+    *
+    * [[org.fukuii.types.Seal.FieldCount]] elements ending where the mandatory
+    * fields end, which is where
+    * [[org.fukuii.types.BlockHeader.blockHeaderCodec]] splices them. A header
+    * carrying a tail keeps it: `ethereum/go-ethereum-pow` @ `v1.10.26` appends
+    * the fee-market field to its preimage when one is present and besu-etc does
+    * the same, and no field beyond that one is reachable on a header a
+    * proof-of-work network sealed.
+    */
+  def sealHash(header: BlockHeader): Hash =
+    RlpCodec[BlockHeader].encode(header) match
+      case RlpItem.Sequence(items) =>
+        val at = BlockHeader.MandatoryFields - Seal.FieldCount
+        Keccak256.hash(Rlp.encode(RlpItem.Sequence(items.patch(at, Vector.empty, Seal.FieldCount))))
+      case _: RlpItem.Bytes =>
+        throw new IllegalStateException("a block header encoded to a single element rather than to a sequence")
+
+  /** Whether this header's seal is the one its own difficulty demands.
+    *
+    * ==Two independent checks, reported apart, which is what the field does==
+    *
+    * `ethereum/go-ethereum-pow` @ `v1.10.26` answers `errInvalidMixDigest` and
+    * `errInvalidPoW` from the same method, and `besu-eth/besu-etc` @
+    * `eb4248c99` logs the two failures separately. They are different faults --
+    * one says the miner's own claimed mix is wrong, the other that the work is
+    * insufficient -- and collapsing them to one boolean discards which. **The
+    * two clients disagree about the ORDER they are checked in** and agree on
+    * the verdict, which is what shows the order carries nothing.
+    *
+    * ==Rejecting the other seal case is an obligation this discharges==
+    *
+    * [[org.fukuii.types.Seal]] records that widening the seal to a sum moved a
+    * refusal out of the decoder, so a network whose engine writes the two-slot
+    * seal must positively reject the authority-round case rather than decline
+    * to read it. This is a proof-of-work engine and the exhaustive match below
+    * is where that obligation is met.
+    *
+    * @param cache
+    *   the cache for this header's epoch. Its own epoch is checked rather than
+    *   trusted: a cache from the wrong epoch produces a well-formed digest that
+    *   matches nothing, which is indistinguishable from an invalid block and is
+    *   not the same finding.
+    */
+  def verifySeal(header: BlockHeader, cache: EthashCache): Either[SealFault, EthashSolution] =
+    header.seal match
+      case Seal.AuthorityRound(_, _)            => Left(SealFault.WrongEngine)
+      case Seal.MixHashAndNonce(mixHash, nonce) =>
+        val number = header.number.toBigInt
+        val epoch = epochOf(number)
+        if cache.epoch != epoch then Left(SealFault.WrongEpoch(epoch, cache.epoch))
+        else if header.difficulty.toBigInt <= 0 then Left(SealFault.NoDifficulty)
+        else
+          val answered = Ethash.evaluateLight(cache, Ethash.datasetSize(epoch), sealHash(header), nonce.toBytes)
+          if answered.mixHash != mixHash then Left(SealFault.WrongMixHash(mixHash, answered.mixHash))
+          else if !Ethash.clears(answered.result, header.difficulty.toBigInt) then
+            Left(SealFault.AboveTarget(answered.result, header.difficulty.toBigInt))
+          else Right(answered)
 
   /** How long the block took, refused where it did not follow its parent in
     * time.
@@ -499,3 +603,44 @@ object ProofOfWorkEngine:
     * term at that power cannot be carried whatever it is added to.
     */
   private val WidestExponent: BigInt = BigInt(256)
+
+/** Why a header's seal was refused.
+  *
+  * A sum rather than a boolean, because the surveyed clients distinguish these
+  * and a caller diagnosing a rejected block needs which one it was: an
+  * insufficient proof is a peer mining badly, a wrong mixed hash is a peer
+  * lying about its own work, and the two below it are not the peer's fault at
+  * all.
+  */
+enum SealFault:
+
+  /** The header carries the other seal case, which this engine does not write.
+    *
+    * A refusal rather than an omission: see
+    * [[org.fukuii.consensus.pow.ProofOfWorkEngine.verifySeal]] on why declining
+    * to interpret it would leave an obligation undischarged.
+    */
+  case WrongEngine
+
+  /** The header states no difficulty, so there is no bar for a result to clear.
+    *
+    * Both surveyed clients refuse this before dividing rather than after --
+    * `Difficulty.Sign() <= 0` in the go-ethereum line and `isZero()` in besu-etc
+    * -- because the division the target comes from is what would fail otherwise,
+    * and it would fail naming arithmetic rather than the header.
+    */
+  case NoDifficulty
+
+  /** The cache supplied belongs to a different epoch than the header does.
+    *
+    * Not a fact about the block. It is the one fault here that says the caller
+    * is wrong, and it exists because the alternative is a well-formed answer
+    * about nothing.
+    */
+  case WrongEpoch(headerEpoch: BigInt, cacheEpoch: BigInt)
+
+  /** The header's own mixed hash is not the one its nonce produces. */
+  case WrongMixHash(claimed: Hash, answered: Hash)
+
+  /** The work is well-formed and insufficient for the difficulty claimed. */
+  case AboveTarget(result: Hash, difficulty: BigInt)

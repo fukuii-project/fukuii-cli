@@ -664,19 +664,31 @@ lazy val consensus = (project in file("modules/consensus"))
 // than a tenant in it, so it cannot reach a type declared here, and the guard
 // is the build graph rather than a review note.
 //
-//   bytes   a beneficiary is an address
+//   bytes   a beneficiary is an address, and a seal digest is a hash
 //   chainspec
 //           the facet the emission reads its amount from
 //   consensus
 //           the seam this implements
+//   crypto  the seal reaches for BOTH digests -- Keccak-256 for the header's
+//           own hash, the seed chain and the final value, and Keccak-512 for
+//           every row of a cache and twice per dataset item. This is the only
+//           module outside `crypto` itself that names the 512-bit one, and its
+//           arrival is what brought that primitive into the project
 //   evm     the state a settlement writes through
-//   types   an ommer arrives as a block header
+//   rlp     the digest a nonce is sought against is the header's encoding with
+//           the seal's own two elements removed, so this names the item type
+//           and re-encodes one
+//   types   an ommer arrives as a block header, and the seal is a sum this
+//           mechanism must positively reject one case of
+//
+// crypto and rlp arrive transitively through `types` and are named anyway, by
+// the same test every edge above is declared by: a source here names the type.
 //
 // The `test->test` half of the evm edge is the seam's own reason unchanged:
 // what an emission test must observe is whether an account came into being, and
 // the world-state double that answers it lives in evm's test tree.
 lazy val consensusPow = (project in file("modules/consensus-pow"))
-  .dependsOn(bytes, types, chainspec, consensus, evm % "compile->compile;test->test")
+  .dependsOn(bytes, rlp, crypto, types, chainspec, consensus, evm % "compile->compile;test->test")
   .settings(
     name := "fukuii-consensus-pow",
     libraryDependencies ++= testDeps
