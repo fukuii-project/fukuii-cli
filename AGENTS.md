@@ -834,6 +834,7 @@ the one that matches before you act, not the ones you happen to remember.
 | `consensus-aura.md` | Before acting on anything AuRa-shaped — that mechanism's surveyed facts |
 | `consensus-qbft.md` | Before acting on anything QBFT-shaped — read with `consensus-ibft2.md` |
 | `consensus-ibft2.md` | Before acting on anything IBFT2-shaped — read with `consensus-qbft.md` |
+| `consensus-ethash.md` | Before acting on anything ethash-shaped, ECIP-1099 included — that mechanism's surveyed facts |
 
 **Where a protocol carries a fact you cannot afford to miss, that fact is also
 in a rule that loads on its own** — so the protocol holds the procedure and the
@@ -854,9 +855,13 @@ it. **That cost scales with the count**, and the count is no longer two.
 **Two kinds sit among them, and only one is keyed to a network fukuii runs.** A
 **family** protocol covers a family of networks this project runs. A
 **mechanism** protocol covers one consensus mechanism, written from a survey of
-production clients rather than from anything on the roadmap — **it commits this
-project to implementing nothing**, and must not be read as scheduling work. Each
-file says which it is, and states its own evidence weight, at its own head.
+production clients rather than from anything on the roadmap. **For a mechanism
+this project has not yet built, that survey commits it to nothing and must not
+be read as scheduling work** — true of Clique, AuRa, QBFT and IBFT2 today.
+**Where the mechanism is already built, the protocol is the field-survey record
+behind that build instead** — ethash is the first, and its own head says so
+rather than carrying the other four's "commits to nothing" framing unchanged.
+Each file says which it is, and states its own evidence weight, at its own head.
 
 **They also differ in how far their facts can be trusted, which is why each
 carries a header saying so.** The two family protocols inherited their domain

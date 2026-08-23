@@ -12,8 +12,8 @@ one fact two homes, which is the failure this file is shaped to avoid.
 
 ## Why this file exists, when four mechanism protocols already did
 
-**A mechanism protocol commits this project to implementing nothing** — that is
-stated at the head of each of the four, and it is why they could be written from a
+**Each of the four mechanism protocols named here commits this project to
+implementing nothing** — that is stated at the head of each of them, and it is why they could be written from a
 survey without scheduling any work.
 
 **That changed on 2026-08-19.** Private proof-of-authority networks became **stage 3

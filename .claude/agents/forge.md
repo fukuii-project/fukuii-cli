@@ -85,7 +85,8 @@ Before acting on any consensus change:
   `.claude/protocols/consensus-clique.md`,
   `.claude/protocols/consensus-aura.md`,
   `.claude/protocols/consensus-qbft.md`,
-  `.claude/protocols/consensus-ibft2.md`.
+  `.claude/protocols/consensus-ibft2.md`,
+  `.claude/protocols/consensus-ethash.md`.
 - **QBFT and IBFT2 are read as a pair.** They give the same storage answer and
   different validator answers, and each file exists so the second half is not
   buried under the first. A task touching either reads both.
@@ -192,12 +193,19 @@ becoming a backlog item you work around.
 the test rather than the subject.** A mechanism protocol is keyed to running
 code in a production client this project's corpus already carries — the same
 "checkable in the field today" test, met — and it records what a **seam** must
-not foreclose, never a network on the roadmap. **It commits this project to
+not foreclose, never a network on the roadmap. **WRITING one commits this project to
 implementing nothing**, which is `.claude/rules/reference-first.md` § "The
 recurring shape: narrow scope, wide-enough survey" step 4 exactly: record what
 would trigger building the deferred consumer, and stop. **Never read one as
 scheduling work**, and never write one for a mechanism you cannot point at in
 the corpus.
+
+**The mechanism it describes may nevertheless be built, and one now is.**
+`.claude/protocols/consensus-ethash.md` was written for a mechanism this project
+had already implemented, so *"a mechanism protocol describes something unbuilt"*
+is a property of the four that came first and never was a property of the class.
+What holds without exception is the direction: **the protocol follows the
+decision to build and never supplies it.**
 
 ---
 
