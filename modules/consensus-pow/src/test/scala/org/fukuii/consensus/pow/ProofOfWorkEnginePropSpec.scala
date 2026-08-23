@@ -49,14 +49,24 @@ class ProofOfWorkEnginePropSpec extends AnyPropSpec with TableDrivenPropertyChec
 
   private val classic: ProofOfWorkEngine = ProofOfWorkEngine(Some(eraLength))
 
-  private def paid(engine: ProofOfWorkEngine, reward: BigInt, number: BigInt): BigInt =
+  /** The state left by settling `number` on a network that does not bring an
+    * account into being by crediting it nothing.
+    *
+    * The world itself is returned rather than a figure, because the two
+    * questions asked of it below are not both answerable from a balance: an
+    * account written a zero and an account never written both hold nothing.
+    */
+  private def settling(engine: ProofOfWorkEngine, reward: BigInt, number: BigInt): EvmFixtures.MapWorldState =
     val world = new EvmFixtures.MapWorldState
     val consensus = ConsensusRules(
       blockReward = UInt256.fromBigInt(reward).toOption.get,
       zeroRewardCreditsBeneficiary = false
     )
     engine.settlement(consensus, beneficiary, number, Seq.empty)(world)
-    world.balanceOf(beneficiary).toBigInt
+    world
+
+  private def paid(engine: ProofOfWorkEngine, reward: BigInt, number: BigInt): BigInt =
+    settling(engine, reward, number).balanceOf(beneficiary).toBigInt
 
   /** Thousandths of an ether, as wei. Every reward on this ladder is exact at
     * this scale for the eras a row below names, so a figure reads as the
@@ -104,6 +114,7 @@ class ProofOfWorkEnginePropSpec extends AnyPropSpec with TableDrivenPropertyChec
 
   private val exhaustion = Table(
     ("what the height is", "block"),
+    ("the first era where four fifths drives five ether to nothing by arithmetic", eraLength * 193 + 1),
     ("far enough that four fifths has driven five ether below one wei", eraLength * 400 + 1),
     ("further still, where the exponent would be ruinous to compute", eraLength * 4000000 + 1)
   )
@@ -113,6 +124,15 @@ class ProofOfWorkEnginePropSpec extends AnyPropSpec with TableDrivenPropertyChec
       assert(
         paid(classic, launchReward, block) == BigInt(0),
         what + " did not answer zero, which is what a fixed-supply schedule means at its tail"
+      )
+    }
+  }
+
+  property("ECIP-1017 brings nobody into being once the ladder has exhausted the amount") {
+    forAll(exhaustion) { (what: String, block: BigInt) =>
+      assert(
+        !settling(classic, launchReward, block).accountExists(beneficiary),
+        what + " brought the beneficiary into being on a network that does not credit a reward of zero"
       )
     }
   }

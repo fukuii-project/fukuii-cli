@@ -56,7 +56,19 @@ final case class ProofOfWorkEngine(ecip1017EraLength: Option[BigInt] = None) ext
 
   /** Credits the block's beneficiary, then each ommer's.
     *
-    * ==Declining to credit covers the ommers too==
+    * ==The zero case is asked of each amount credited, not of the amount the
+    * fork resolved==
+    *
+    * [[org.fukuii.consensus.ConsensusEngine.credit]] brings an account into
+    * being, so whoever calls it decides the zero case -- and what this
+    * mechanism credits is not what the fork resolved. ECIP-1017 steps the
+    * winner's reward down until it reaches nothing, and every other figure here
+    * is a fraction of that stepped-down amount, so a resolved reward that is
+    * not zero still pays zero once the ladder has exhausted it. The question
+    * [[org.fukuii.chainspec.ConsensusRules.zeroRewardCreditsBeneficiary]] asks
+    * is therefore asked once per credit, of the figure that credit writes.
+    *
+    * ==Declining to credit covers the ommers too, and needs no check of its own==
     *
     * `besu-eth/besu` @ `c2addd9424` returns from `rewardCoinbase` on
     * `skipZeroBlockRewards && blockReward.isZero()` **before** its ommer loop,
@@ -64,6 +76,12 @@ final case class ProofOfWorkEngine(ecip1017EraLength: Option[BigInt] = None) ext
     * ommer either. The alternative would bring an ommer's beneficiary into
     * being on a network whose emission is nothing, which is a leaf in the state
     * trie that network does not have.
+    *
+    * A per-credit question reaches that outcome without a check of the resolved
+    * amount beside it, because a resolved reward of nothing leaves nothing for
+    * any figure here to be a fraction of: [[winnerReward]] answers zero at that
+    * amount for every era, the inclusion bonus is a thirty-second of it, and an
+    * ommer's share is taken over it under whichever of the two rules applies.
     *
     * ==Nothing here refuses a block==
     *
@@ -82,14 +100,18 @@ final case class ProofOfWorkEngine(ecip1017EraLength: Option[BigInt] = None) ext
       ommers: Seq[BlockHeader]
   ): WorldState => Unit =
     world =>
-      val base = rules.blockReward.toBigInt
-      if base != 0 || rules.zeroRewardCreditsBeneficiary then
-        val era = eraAt(number)
-        val winner = winnerReward(base, era)
-        credit(world, beneficiary, winner + winner / ProofOfWorkEngine.InclusionDivisor * ommers.size)
-        ommers.foreach(ommer =>
-          credit(world, ommer.beneficiary, ommerReward(winner, era, number, ommer.number.toBigInt))
-        )
+      val era = eraAt(number)
+      val winner = winnerReward(rules.blockReward.toBigInt, era)
+      creditIfDue(world, rules, beneficiary, winner + winner / ProofOfWorkEngine.InclusionDivisor * ommers.size)
+      ommers.foreach(ommer =>
+        creditIfDue(world, rules, ommer.beneficiary, ommerReward(winner, era, number, ommer.number.toBigInt))
+      )
+
+  /** Credits `to` unless the amount is nothing and this network declines to
+    * bring an account into being by crediting it nothing.
+    */
+  private def creditIfDue(world: WorldState, rules: ConsensusRules, to: Address, amount: BigInt): Unit =
+    if amount != 0 || rules.zeroRewardCreditsBeneficiary then credit(world, to, amount)
 
   /** Which era `number` falls in, counting the first as zero.
     *
@@ -165,6 +187,17 @@ final case class ProofOfWorkEngine(ecip1017EraLength: Option[BigInt] = None) ext
     * is six in `ethereum/execution-specs` @ `ccaaaba58`, which refuses a block
     * outside `1 <= ommer_age <= 6`, and besu's `MAX_GENERATION` is the same six
     * -- so an age this refuses is one no validated block carries.
+    *
+    * **The flat rule reads no age, so it has no range to check.** The numerator
+    * that turns negative belongs to the age-scaled expression alone and the
+    * guard sits with it. Both implementations of the proposal branch on the era
+    * the same way and validate an age in neither branch:
+    * `besu-eth/besu-etc` @ `eb4248c99` checks `MAX_GENERATION` in
+    * `ClassicBlockProcessor.rewardCoinbase`, outside `calculateOmmerReward` and
+    * for every era alike, and `ethereumclassic/core-geth` @ `4185df450` records
+    * the same division of labor in its own source, noting of the reward it
+    * takes per ommer that it *"[a]ssumes uncles have been validated and
+    * limited"*.
     */
   private def ommerReward(winner: BigInt, era: BigInt, number: BigInt, ommerNumber: BigInt): BigInt =
     if era > 0 then winner / ProofOfWorkEngine.InclusionDivisor

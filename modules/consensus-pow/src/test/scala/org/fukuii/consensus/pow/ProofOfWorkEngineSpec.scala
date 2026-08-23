@@ -86,6 +86,15 @@ class ProofOfWorkEngineSpec extends AnyFlatSpec:
     */
   private val shortEras: ProofOfWorkEngine = ProofOfWorkEngine(Some(BigInt(100)))
 
+  /** A height inside [[shortEras]]'s fortieth era, which is where four fifths
+    * applied that many times has driven a reward of five thousand to nothing.
+    *
+    * It is well below the era at which the exponent bound answers zero without
+    * computing, so the zero here is the arithmetic's own and the case exercises
+    * the path a bound would otherwise hide.
+    */
+  private val exhaustedHeight: BigInt = BigInt(3901)
+
   "a block with no ommers" should "credit its beneficiary exactly what the rules resolved" in
     assert(
       settled(withoutLadder, rules(32)).balanceOf(beneficiary) == Word(BigInt(32)),
@@ -118,10 +127,10 @@ class ProofOfWorkEngineSpec extends AnyFlatSpec:
       "the age is read per ommer, and reading one age for the set pays the wrong account the wrong amount"
     )
 
-  it should "pay nothing to a producer eight blocks behind, without refusing the block" in
+  it should "leave a producer eight blocks behind uncreated, without refusing the block" in
     assert(
-      settled(withoutLadder, rules(32), Seq(ommer(8, firstOmmerMiner))).balanceOf(firstOmmerMiner) == Word.Zero,
-      "eight is where the age-scaled rule reaches zero, and it is inside the range the rule is stated for"
+      !settled(withoutLadder, rules(32), Seq(ommer(8, firstOmmerMiner))).accountExists(firstOmmerMiner),
+      "eight is inside the range the rule states and pays nothing there, so a network declining zero gains no leaf"
     )
 
   it should "be refused as a broken precondition where it is older than the rule is stated for" in
@@ -132,6 +141,11 @@ class ProofOfWorkEngineSpec extends AnyFlatSpec:
   it should "be refused as a broken precondition where it does not precede the block" in
     assertThrows[IllegalStateException](
       settled(withoutLadder, rules(32), Seq(ommer(0, firstOmmerMiner)))
+    )
+
+  "an age the rule is not stated for" should "be refused whatever the mechanism pays" in
+    assertThrows[IllegalStateException](
+      settled(withoutLadder, ConsensusRules.Unrewarded, Seq(ommer(9, firstOmmerMiner)))
     )
 
   "a mechanism that credits nobody" should "leave an ommer's producer uncreated as well as the winner" in
@@ -185,4 +199,16 @@ class ProofOfWorkEngineSpec extends AnyFlatSpec:
       settledAt(shortEras, rules(5000), BigInt(101), Seq(ommerAt(BigInt(95), firstOmmerMiner)))
         .balanceOf(firstOmmerMiner) == Word(BigInt(125)),
       "the age-scaled rule stops at the boundary, so an age that would have mattered before it must not after"
+    )
+
+  it should "leave the beneficiary uncreated where it has exhausted an amount that was not zero" in
+    assert(
+      !settledAt(shortEras, rules(5000), exhaustedHeight, Seq.empty).accountExists(beneficiary),
+      "the amount the fork resolved is not the amount paid here, and it is the amount paid that decides the leaf"
+    )
+
+  it should "bring the beneficiary into being at an exhausted era where a reward of zero credits it" in
+    assert(
+      settledAt(shortEras, rules(5000, creditsZero = true), exhaustedHeight, Seq.empty).accountExists(beneficiary),
+      "the flag is the whole of what separates the two state roots, and an exhausted amount does not overrule it"
     )
