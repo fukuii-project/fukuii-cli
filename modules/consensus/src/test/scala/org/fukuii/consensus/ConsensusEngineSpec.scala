@@ -2,9 +2,10 @@ package org.fukuii.consensus
 
 import org.scalatest.flatspec.AnyFlatSpec
 
-import org.fukuii.bytes.{Address, UInt256}
+import org.fukuii.bytes.{Address, Bytes, UInt256, UInt64}
 import org.fukuii.chainspec.{ConsensusRules, UpgradeRules}
 import org.fukuii.evm.{EvmFixtures, Word, WorldState}
+import org.fukuii.types.{BlockHeader, BlockNonce, Bloom, Seal}
 
 /** What an engine writes into state, and what it must be able to leave alone.
   *
@@ -35,6 +36,7 @@ import org.fukuii.evm.{EvmFixtures, Word, WorldState}
 class ConsensusEngineSpec extends AnyFlatSpec:
 
   private val beneficiary: Address = EvmFixtures.address(0x33)
+  private val ommerBeneficiary: Address = EvmFixtures.address(0x44)
 
   private def reward(of: Long): ConsensusRules =
     ConsensusRules(blockReward = UInt256.fromLong(of).toOption.get, zeroRewardCreditsBeneficiary = false)
@@ -45,10 +47,33 @@ class ConsensusEngineSpec extends AnyFlatSpec:
   private def rulesPaying(of: Long): UpgradeRules =
     org.fukuii.chainspec.networks.ethereum.Upgrades.frontier.copy(consensus = reward(of))
 
+  /** An ommer at `number`, carrying only the two fields an emission reads. */
+  private def ommerAt(number: Long): BlockHeader =
+    BlockHeader(
+      parentHash = EvmFixtures.hash(0),
+      ommersHash = EvmFixtures.hash(0),
+      beneficiary = ommerBeneficiary,
+      stateRoot = EvmFixtures.hash(0),
+      transactionsRoot = EvmFixtures.hash(0),
+      receiptsRoot = EvmFixtures.hash(0),
+      logsBloom = Bloom.Empty,
+      difficulty = UInt256.Zero,
+      number = UInt64.fromBigInt(BigInt(number)).toOption.get,
+      gasLimit = UInt64.Zero,
+      gasUsed = UInt64.Zero,
+      timestamp = UInt64.Zero,
+      extraData = Bytes.Empty,
+      seal = Seal.MixHashAndNonce(mixHash = EvmFixtures.hash(0), nonce = BlockNonce.Zero)
+    )
+
   /** Runs an engine's settlement over a fresh world and answers that world. */
-  private def settled(engine: ConsensusEngine, rules: ConsensusRules): EvmFixtures.MapWorldState =
+  private def settled(
+      engine: ConsensusEngine,
+      rules: ConsensusRules,
+      ommers: Seq[BlockHeader] = Seq.empty
+  ): EvmFixtures.MapWorldState =
     val world = new EvmFixtures.MapWorldState
-    engine.settlement(rules, beneficiary)(world)
+    engine.settlement(rules, beneficiary, BigInt(10), ommers)(world)
     world
 
   /** A world in which the beneficiary already holds something, so a credit can
@@ -57,7 +82,7 @@ class ConsensusEngineSpec extends AnyFlatSpec:
   private def settledOverExisting(rules: ConsensusRules, held: Long): EvmFixtures.MapWorldState =
     val world = new EvmFixtures.MapWorldState
     world.setBalance(beneficiary, Word(BigInt(held)))
-    ConsensusEngine.Unmodifying.settlement(rules, beneficiary)(world)
+    ConsensusEngine.Unmodifying.settlement(rules, beneficiary, BigInt(10), Seq.empty)(world)
     world
 
   /** An engine that pays nobody whatever the rules it was handed resolved to.
@@ -79,7 +104,12 @@ class ConsensusEngineSpec extends AnyFlatSpec:
     * formula and is not meant to be one.
     */
   private val halvesTheReward: ConsensusEngine = new ConsensusEngine:
-    override def settlement(rules: ConsensusRules, to: Address): WorldState => Unit =
+    override def settlement(
+        rules: ConsensusRules,
+        to: Address,
+        number: BigInt,
+        ommers: Seq[BlockHeader]
+    ): WorldState => Unit =
       world => world.setBalance(to, Word(rules.blockReward.toBigInt / 2))
 
   "an engine's settlement" should "credit the beneficiary the reward the rules state" in
@@ -118,6 +148,12 @@ class ConsensusEngineSpec extends AnyFlatSpec:
         ConsensusRules(blockReward = UInt256.MaxValue, zeroRewardCreditsBeneficiary = false),
         held = 1
       )
+    )
+
+  it should "credit nobody for an ommer it was handed" in
+    assert(
+      !settled(ConsensusEngine.Unmodifying, reward(7), Seq(ommerAt(9))).accountExists(ommerBeneficiary),
+      "a mechanism that pays no ommer is handed them anyway, and paying one by default would be the seam deciding"
     )
 
   it should "be replaceable by an engine computing its own emission from the resolved amount" in

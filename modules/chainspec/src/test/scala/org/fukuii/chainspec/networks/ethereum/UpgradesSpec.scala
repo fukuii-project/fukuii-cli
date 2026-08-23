@@ -1,5 +1,6 @@
 package org.fukuii.chainspec.networks.ethereum
 
+import org.fukuii.bytes.UInt256
 import org.fukuii.chainspec.ProposalId
 import org.fukuii.evm.{Cost, Opcode, OpcodeTable, Operation}
 import org.scalatest.flatspec.AnyFlatSpec
@@ -46,4 +47,27 @@ class UpgradesSpec extends AnyFlatSpec:
       !Upgrades.frontier.evm.table.contains(Opcode.DelegateCall) &&
         Upgrades.homestead.evm.table.contains(Opcode.DelegateCall),
       "the genesis table already ran an operation a later proposal introduced"
+    )
+
+  it should "pay five ether for a block at every height this build reaches" in
+    // Two sources that do not derive from one another: BLOCK_REWARD in
+    // ethereum/execution-specs @ ccaaaba58 forks/frontier/fork.py:58, and
+    // FrontierBlockReward in ethereum/go-ethereum-pow @ v1.10.26
+    // consensus/ethash/consensus.go:42. The amount drops to three ether at
+    // Byzantium and two at Constantinople, neither of which is in this build.
+    assert(
+      composed.forall(rules =>
+        rules.consensus.blockReward == UInt256.fromBigInt(BigInt(5) * BigInt(10).pow(18)).toOption.get
+      ),
+      "a rule set here pays something other than the launch amount, which no proposal this build adopts changes"
+    )
+
+  it should "credit a beneficiary even where the amount is zero, at every height this build reaches" in
+    // besu writes it as .skipZeroBlockRewards(false) at its Frontier definition
+    // and flips it at Spurious Dragon, the fork that begins deleting touched
+    // empty accounts. Nothing here reaches that fork, and the specification and
+    // go-ethereum-pow both credit unconditionally at these heights.
+    assert(
+      composed.forall(rules => rules.consensus.zeroRewardCreditsBeneficiary),
+      "declining to credit before empty accounts are deleted would leave a leaf out of the state trie"
     )

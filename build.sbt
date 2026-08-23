@@ -619,6 +619,10 @@ lazy val chainspec = (project in file("modules/chainspec"))
 //           the reward application reads
 //   evm     a change to state is written through `WorldState`, and the balance
 //           it writes is the machine's word at that boundary
+//   types   the seam names a block header, because the ommers a mechanism is
+//           handed arrive as headers in every surveyed client and the two
+//           facts an emission reads off one are read straight off the header
+//           there
 //
 // `execution` is reached transitively through chainspec and is not named: what
 // this module produces is the function `BlockProcessor.process` already takes,
@@ -629,9 +633,44 @@ lazy val chainspec = (project in file("modules/chainspec"))
 // account came into being, and the world-state double that answers it lives in
 // evm's test tree beside the machine it was written for.
 lazy val consensus = (project in file("modules/consensus"))
-  .dependsOn(bytes, chainspec, evm % "compile->compile;test->test")
+  .dependsOn(bytes, types, chainspec, evm % "compile->compile;test->test")
   .settings(
     name := "fukuii-consensus",
+    libraryDependencies ++= testDeps
+  )
+
+// consensus-pow -- the proof-of-work mechanism, as a leaf of the seam above.
+//
+// It is the first leaf, and the first module here whose name is not one word.
+// The extra word is the MECHANISM FAMILY rather than a network, which is what
+// every surveyed client keys this level on: `ethereum/go-ethereum` and
+// `ethereumclassic/core-geth` under `consensus/{ethash,clique,beacon}`,
+// `besu-eth/besu` @ `c2addd942` under `consensus/{clique,ibft,qbft,merge}`,
+// `NethermindEth/nethermind` under `Nethermind.Consensus.{Ethash,Clique,AuRa}`.
+// Ethereum Classic's emission differs from Ethereum's by a proposal rather than
+// by a mechanism, so both networks are served from this one leaf and neither
+// gets a module named after it.
+//
+// The dependency list is the whole point of the leaf being separate: it names
+// `consensus` and no sibling. A second mechanism is a sibling of this rather
+// than a tenant in it, so it cannot reach a type declared here, and the guard
+// is the build graph rather than a review note.
+//
+//   bytes   a beneficiary is an address
+//   chainspec
+//           the facet the emission reads its amount from
+//   consensus
+//           the seam this implements
+//   evm     the state a settlement writes through
+//   types   an ommer arrives as a block header
+//
+// The `test->test` half of the evm edge is the seam's own reason unchanged:
+// what an emission test must observe is whether an account came into being, and
+// the world-state double that answers it lives in evm's test tree.
+lazy val consensusPow = (project in file("modules/consensus-pow"))
+  .dependsOn(bytes, types, chainspec, consensus, evm % "compile->compile;test->test")
+  .settings(
+    name := "fukuii-consensus-pow",
     libraryDependencies ++= testDeps
   )
 
@@ -643,7 +682,7 @@ lazy val consensus = (project in file("modules/consensus"))
 // org.fukuii:fukuii_3, so the repo name must not leak into it. Lowercase
 // because this is a Maven artifactId, not a display name.
 lazy val root = (project in file("."))
-  .aggregate(bytes, rlp, crypto, types, storage, trie, evm, execution, chainspec, consensus)
+  .aggregate(bytes, rlp, crypto, types, storage, trie, evm, execution, chainspec, consensus, consensusPow)
   .settings(
     name := "fukuii",
     libraryDependencies ++= testDeps

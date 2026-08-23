@@ -45,12 +45,20 @@ import org.fukuii.bytes.UInt256
   * why the value sits here and the transformation sits on
   * [[org.fukuii.consensus.ConsensusEngine]].
   *
-  * ==Neither member is a network's emission, and no emission is authored yet==
+  * ==The amount is not the emission, and the difference is the whole reason the
+  * record is this small==
   *
-  * [[Unrewarded]] is what both networks in this build currently hold. It states
-  * that nothing is credited, which is not either network's schedule -- those are
-  * read from their own proposals, by the layer that computes an emission, and
-  * nothing here should be mistaken for them.
+  * What a block's producer receives is this amount plus a share for each ommer
+  * the block included, and what an ommer's producer receives is a share of it
+  * scaled by that ommer's age -- and on a network running ECIP-1017, both of
+  * those are taken over an amount stepped down once per era rather than over
+  * this one. Every one of those is arithmetic over this figure rather than a
+  * further figure, so the record holds the figure and
+  * `org.fukuii.consensus.pow.ProofOfWorkEngine` holds the arithmetic.
+  *
+  * [[Unrewarded]] is therefore not a placeholder for an unwritten emission. It
+  * is the value a mechanism that credits nobody resolves to, which is what a
+  * proof-of-authority network holds and what Ethereum holds after the merge.
   *
   * @param blockReward
   *   what the mechanism credits for producing this block, before any formula

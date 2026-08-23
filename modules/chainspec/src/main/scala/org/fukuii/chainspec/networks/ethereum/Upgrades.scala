@@ -1,5 +1,6 @@
 package org.fukuii.chainspec.networks.ethereum
 
+import org.fukuii.bytes.UInt256
 import org.fukuii.chainspec.{ConsensusRules, UpgradeRules}
 import org.fukuii.chainspec.proposals.eip.{Eip150, Eip2, Eip7}
 import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, OpcodeTable, Precompile, PrecompileSet}
@@ -134,6 +135,25 @@ object Upgrades:
         Precompile.Identity(genesisPrices.precompileIdentityBase, genesisPrices.precompileIdentityPerWord)
       )
 
+  /** What this network pays the producer of a block, from its first block until
+    * a proposal changes it.
+    *
+    * Five ether, expressed in wei because that is the unit a balance is held
+    * in. `ethereum/execution-specs` @ `ccaaaba58` states it as
+    * `BLOCK_REWARD = U256(5 * 10**18)` and `ethereum/go-ethereum-pow` @
+    * `v1.10.26` as `FrontierBlockReward = big.NewInt(5e+18)`.
+    *
+    * **This is the amount alone and not the emission.** What a block's producer
+    * actually receives is this plus a share for each ommer the block included,
+    * and what an ommer's producer receives is a share scaled by its age; both
+    * are arithmetic over this number rather than further numbers, which is why
+    * a rule set carries one figure and the mechanism carries the formulas.
+    */
+  val launchReward: UInt256 =
+    UInt256
+      .fromBigInt(BigInt(5) * BigInt(10).pow(18))
+      .getOrElse(throw new IllegalStateException("five ether does not fit a 256-bit quantity"))
+
   /** The rules Ethereum launched with: the original instruction set at this
     * network's prices, its four precompiles, and no proposal adopted.
     *
@@ -153,13 +173,31 @@ object Upgrades:
     * `Transaction`, whose fields are the legacy nine, and the fork has no
     * envelope to put a tag in.
     *
-    * **The consensus facet states no emission, and this network's emission is
-    * not zero.** What a block pays is read from the proposals that set it, by
-    * the layer that computes one, and no layer here does.
-    * [[org.fukuii.chainspec.ConsensusRules.Unrewarded]] is what a rule set
-    * holds before an emission has been authored onto it or an engine has
-    * written one, and it is the safe direction of the two: it credits nothing,
-    * so it cannot add to the state trie an account this network does not have.
+    * ==The emission is this network's, and it is a value a fork resolves==
+    *
+    * Five ether, from two sources that do not derive from one another.
+    * `ethereum/execution-specs` @ `ccaaaba58` declares
+    * `BLOCK_REWARD = U256(5 * 10**18)` at `forks/frontier/fork.py:58`, and
+    * `ethereum/go-ethereum-pow` @ `v1.10.26` declares
+    * `FrontierBlockReward = big.NewInt(5e+18)` at
+    * `consensus/ethash/consensus.go:42` and selects it in `accumulateRewards`
+    * for every height below the first fork that changes it.
+    *
+    * **That the amount is a fork's answer rather than a mechanism's is what
+    * puts it here.** One mechanism runs every height the specification models
+    * before the merge, and the amount changes twice under it -- to three ether
+    * at Byzantium and to two at Constantinople, both in the same
+    * `BLOCK_REWARD` slot of the corresponding fork module. Neither of those
+    * heights is in this build, so all three rule sets here pay the launch
+    * amount.
+    *
+    * A reward of zero credits the beneficiary, which is unobservable at five
+    * ether and is stated because it is the value the field states. besu writes
+    * it as `.skipZeroBlockRewards(false)` at its Frontier definition and
+    * flips it to `true` at Spurious Dragon, the fork that begins deleting
+    * touched empty accounts; the specification and `go-ethereum-pow` both
+    * credit unconditionally at this height, which is the same answer written
+    * as the absence of a check.
     */
   val frontier: UpgradeRules =
     UpgradeRules(
@@ -180,7 +218,7 @@ object Upgrades:
         signatureMayCarryChainId = false,
         signatureSMustBeLow = false
       ),
-      consensus = ConsensusRules.Unrewarded
+      consensus = ConsensusRules(blockReward = launchReward, zeroRewardCreditsBeneficiary = true)
     )
 
   /** [[frontier]] with EIP-7 and EIP-2 adopted.

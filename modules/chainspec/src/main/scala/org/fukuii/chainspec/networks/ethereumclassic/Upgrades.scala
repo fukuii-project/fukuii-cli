@@ -1,5 +1,6 @@
 package org.fukuii.chainspec.networks.ethereumclassic
 
+import org.fukuii.bytes.UInt256
 import org.fukuii.chainspec.{ConsensusRules, UpgradeRules}
 import org.fukuii.chainspec.proposals.eip.{Eip150, Eip2, Eip7}
 import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, OpcodeTable, Precompile, PrecompileSet}
@@ -157,6 +158,26 @@ object Upgrades:
         Precompile.Identity(genesisPrices.precompileIdentityBase, genesisPrices.precompileIdentityPerWord)
       )
 
+  /** What this network pays the producer of a block, before the era ladder its
+    * own proposal applies over it.
+    *
+    * Five ether, in wei. `openethereum/openethereum` @ `v3.0.1` carries it as
+    * `blockReward` in `ethcore/res/ethereum/classic.json`, and
+    * `besu-eth/besu-etc` @ `eb4248c99` as
+    * `MAX_BLOCK_REWARD = Wei.fromEth(5)`.
+    *
+    * **It is the base of the ladder rather than a figure superseded by it.**
+    * ECIP-1017's first era pays exactly this and its arithmetic is stated as a
+    * fraction of it, which is why the amount survives the proposal it is
+    * eventually reduced by. besu-etc demonstrates the same relation directly:
+    * the block processor it installs to apply the ladder is handed the very
+    * `blockReward` the fork resolved.
+    */
+  val launchReward: UInt256 =
+    UInt256
+      .fromBigInt(BigInt(5) * BigInt(10).pow(18))
+      .getOrElse(throw new IllegalStateException("five ether does not fit a 256-bit quantity"))
+
   /** The rules this network launched with: the original instruction set at this
     * network's prices, its four precompiles, and no proposal adopted.
     *
@@ -175,15 +196,30 @@ object Upgrades:
     * all, is set at 13,189,133 -- so no height these rules are in force at
     * carries any other format.
     *
-    * **The consensus facet states no emission, and this network's emission is
-    * not zero.** This network's is additionally not a constant: it is the
-    * declining schedule its own proposal sets, which is a formula over an era
-    * rather than a figure a fork resolves, and neither the formula nor the era
-    * length is authored anywhere in this build yet.
-    * [[org.fukuii.chainspec.ConsensusRules.Unrewarded]] is what a rule set
-    * holds before either has been written, and it is the safe direction of the
-    * two: it credits nothing, so it cannot add to the state trie an account
-    * this network does not have.
+    * ==The emission is five ether, and this network is where the amount and the
+    * formula come apart==
+    *
+    * `openethereum/openethereum` @ `v3.0.1` states it as a scalar in this
+    * network's own chain specification, `ethcore/res/ethereum/classic.json`'s
+    * `engine.Ethash.params.blockReward`, and `besu-eth/besu-etc` @ `eb4248c99`
+    * as `MAX_BLOCK_REWARD = Wei.fromEth(5)`, handed to the fork-resolved
+    * specification at `ClassicProtocolSpecs.java:139`. Those are two lineages
+    * that do not derive from one another; `ethereumclassic/core-geth` is a
+    * third reading and is not counted as independent of `multi-geth`, being the
+    * same tree under a later name.
+    *
+    * **What a rule set can hold is that amount and not this network's
+    * schedule.** ECIP-1017 steps the reward down by a fifth on entering each
+    * new era and states no last era, so no map from fork to figure expresses
+    * it. The field splits the two exactly where this does: besu-etc keeps
+    * `blockReward` a value on the fork-resolved specification and installs a
+    * block processor that computes over it, and OpenEthereum keeps the scalar
+    * in the engine namespace and applies its era function to whatever it reads.
+    * `org.fukuii.consensus.pow.ProofOfWorkEngine` is where the formula is.
+    *
+    * A reward of zero credits the beneficiary, for the reason it does on any
+    * network at a height before touched empty accounts are deleted. It is
+    * unobservable at five ether and is stated because the field states it.
     */
   val frontier: UpgradeRules =
     UpgradeRules(
@@ -204,7 +240,7 @@ object Upgrades:
         signatureMayCarryChainId = false,
         signatureSMustBeLow = false
       ),
-      consensus = ConsensusRules.Unrewarded
+      consensus = ConsensusRules(blockReward = launchReward, zeroRewardCreditsBeneficiary = true)
     )
 
   /** [[frontier]] with EIP-7 and EIP-2 adopted.

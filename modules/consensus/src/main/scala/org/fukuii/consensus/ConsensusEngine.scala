@@ -1,8 +1,11 @@
 package org.fukuii.consensus
 
+import scala.annotation.unused
+
 import org.fukuii.bytes.Address
 import org.fukuii.chainspec.{ConsensusRules, UpgradeRules}
 import org.fukuii.evm.{Word, WorldState}
+import org.fukuii.types.BlockHeader
 
 /** The consensus mechanism a network runs, as a transformation over the rules a
   * fork resolved and a change to state the block's transactions did not make.
@@ -83,12 +86,37 @@ trait ConsensusEngine:
     * doing nothing at all all compose with a change and only the first two
     * compose with a number.
     *
-    * The default credits the beneficiary from [[ConsensusRules]] alone, and
-    * that is not a simplification -- besu shares one `rewardCoinbase` between
-    * its mainnet and its Clique specifications and gives Clique its behavior
-    * entirely through those two values. **An engine whose emission is a formula
-    * over the resolved amount overrides this**, which is what besu's own
-    * `ClassicBlockProcessor` does to reach an era-based schedule.
+    * The default credits the beneficiary from [[ConsensusRules]] alone and
+    * reads neither of the block facts beside it, and that is not a
+    * simplification -- besu shares one `rewardCoinbase` between its mainnet and
+    * its Clique specifications and gives Clique its behavior entirely through
+    * the two values on the specification. **An engine whose emission is a
+    * formula over the resolved amount overrides this**, which is what besu's
+    * own `ClassicBlockProcessor` does to reach an era-based schedule.
+    *
+    * ==Why the block's own facts are on the neutral seam rather than on a
+    * mechanism's leaf==
+    *
+    * Because every surveyed client puts them on the seam every engine
+    * implements, rather than on the one mechanism that reads them.
+    * `ethereum/go-ethereum-pow` @ `v1.10.26` declares
+    * `Finalize(chain, header, state, txs, uncles)` on `consensus.Engine`
+    * itself, which Clique implements and ignores;
+    * `besu-eth/besu` @ `c2addd9424` declares
+    * `rewardCoinbase(worldState, header, ommers, skipZeroBlockRewards)` on
+    * `AbstractBlockProcessor`; `NethermindEth/nethermind` @ `c35ce1b1ab` passes
+    * a whole `Block` into `IRewardCalculator.CalculateRewards`. A mechanism
+    * that credits nobody for an ommer is handed the ommers and does not read
+    * them, which is the same shape as an engine handed rules it does not
+    * transform.
+    *
+    * **The two are annotated because this body is what does not read them, and
+    * that is the whole content of the annotation.** They are the seam's, and
+    * every proof-of-work engine reads both. Suppressing at the site rather than
+    * relaxing the category is what `.claude/rules/scala3-style.md` asks for,
+    * and the leading-underscore convention is not an alternative here: measured
+    * against the pinned compiler, a parameter named `_b` is reported exactly as
+    * one named `b`.
     *
     * @param beneficiary
     *   whom the mechanism credits. It arrives as a parameter rather than being
@@ -96,16 +124,37 @@ trait ConsensusEngine:
     *   in every surveyed client -- besu asks a `MiningBeneficiaryCalculator` and
     *   the go-ethereum line asks `Engine.Author` -- and a header field is only
     *   the answer for the mechanisms that do not redirect it.
+    * @param number
+    *   the height of the block being settled. A height rather than a header,
+    *   because the height is the whole of what an emission reads about the
+    *   block itself, and a header here would offer a beneficiary field beside
+    *   the parameter above that is the answer only sometimes.
+    * @param ommers
+    *   the headers this block included. Headers rather than a reduced pair,
+    *   because the two facts an emission reads off one -- its height and the
+    *   account credited for it -- are read straight off the header in every
+    *   surveyed client. besu takes `ommerHeader.getCoinbase()`, the go-ethereum
+    *   line takes `uncle.Coinbase`, `openethereum/openethereum` @ `v3.0.1`
+    *   takes `u.author()`, and `ethereum/execution-specs` @ `ccaaaba58` takes
+    *   `ommer.coinbase`. **An ommer's beneficiary is not redirected the way the
+    *   block's own is**, which is why one of the two arrives as a parameter and
+    *   the other does not.
     */
-  def settlement(rules: ConsensusRules, beneficiary: Address): WorldState => Unit =
-    world => ConsensusEngine.credit(rules, beneficiary, world)
+  def settlement(
+      rules: ConsensusRules,
+      beneficiary: Address,
+      @unused number: BigInt,
+      @unused ommers: Seq[BlockHeader]
+  ): WorldState => Unit =
+    world =>
+      val reward = rules.blockReward.toBigInt
+      if reward != 0 || rules.zeroRewardCreditsBeneficiary then credit(world, beneficiary, reward)
 
-object ConsensusEngine:
-
-  /** Credits `beneficiary` with the reward these rules state.
+  /** Adds `amount` to what `to` already holds, bringing the account into being
+    * where none existed.
     *
-    * ==The zero case decides whether an account exists, so it is checked before
-    * anything is written==
+    * ==The zero case decides whether an account exists, so a caller checks it
+    * before reaching this==
     *
     * `besu-eth/besu` @ `c2addd9424` returns from
     * `MainnetBlockProcessor.rewardCoinbase:78-80` before it reaches
@@ -115,6 +164,8 @@ object ConsensusEngine:
     * [[org.fukuii.evm.WorldState.setBalance]] is total in exactly the way that
     * makes the distinction reachable here -- it brings an account into being
     * where none existed, so writing a zero is not the no-op it reads as.
+    * **This applies the write unconditionally**, so declining to credit is
+    * decided by whoever calls it.
     *
     * ==The arithmetic is arbitrary-precision and bounded before the word is
     * built==
@@ -127,15 +178,15 @@ object ConsensusEngine:
     * chain reaches, and raised as one, exactly as
     * [[org.fukuii.execution.TransactionProcessor]] raises its own.
     */
-  private def credit(rules: ConsensusRules, beneficiary: Address, world: WorldState): Unit =
-    val reward = rules.blockReward.toBigInt
-    if reward != 0 || rules.zeroRewardCreditsBeneficiary then
-      val credited = world.balanceOf(beneficiary).toBigInt + reward
-      if credited > Word.MaxValue.toBigInt then
-        throw new IllegalStateException(
-          "a block reward moved " + beneficiary.toString + " to a balance no account can hold: " + credited.toString
-        )
-      world.setBalance(beneficiary, Word(credited))
+  final protected def credit(world: WorldState, to: Address, amount: BigInt): Unit =
+    val credited = world.balanceOf(to).toBigInt + amount
+    if credited > Word.MaxValue.toBigInt then
+      throw new IllegalStateException(
+        "a block reward moved " + to.toString + " to a balance no account can hold: " + credited.toString
+      )
+    world.setBalance(to, Word(credited))
+
+object ConsensusEngine:
 
   /** An engine that contributes nothing of its own to the rules it is handed.
     *

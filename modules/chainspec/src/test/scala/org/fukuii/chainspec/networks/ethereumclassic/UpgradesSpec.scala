@@ -1,5 +1,6 @@
 package org.fukuii.chainspec.networks.ethereumclassic
 
+import org.fukuii.bytes.UInt256
 import org.fukuii.chainspec.ProposalId
 import org.fukuii.evm.{Cost, Opcode, OpcodeTable, Operation}
 import org.scalatest.flatspec.AnyFlatSpec
@@ -51,4 +52,27 @@ class UpgradesSpec extends AnyFlatSpec:
       !Upgrades.frontier.evm.table.contains(Opcode.DelegateCall) &&
         Upgrades.homestead.evm.table.contains(Opcode.DelegateCall),
       "the genesis table already ran an operation a later proposal introduced"
+    )
+
+  it should "pay five ether for a block at every height this build reaches" in
+    // Two lineages that do not derive from one another: blockReward in
+    // openethereum/openethereum @ v3.0.1 ethcore/res/ethereum/classic.json, and
+    // MAX_BLOCK_REWARD = Wei.fromEth(5) in besu-eth/besu-etc @ eb4248c99
+    // ClassicProtocolSpecs.java:60. It is the base ECIP-1017's ladder reduces
+    // rather than a figure that proposal replaces, and this build reaches no
+    // height at which the ladder has stepped.
+    assert(
+      composed.forall(rules =>
+        rules.consensus.blockReward == UInt256.fromBigInt(BigInt(5) * BigInt(10).pow(18)).toOption.get
+      ),
+      "a rule set here pays something other than the amount this network's own proposal takes as its first era"
+    )
+
+  it should "credit a beneficiary even where the amount is zero, at every height this build reaches" in
+    // The same answer as any network at a height before touched empty accounts
+    // are deleted, and unobservable at five ether. It is stated because the
+    // field states it rather than leaving it to the default.
+    assert(
+      composed.forall(rules => rules.consensus.zeroRewardCreditsBeneficiary),
+      "declining to credit before empty accounts are deleted would leave a leaf out of the state trie"
     )
