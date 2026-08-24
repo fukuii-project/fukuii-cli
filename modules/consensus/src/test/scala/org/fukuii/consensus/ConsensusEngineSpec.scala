@@ -112,6 +112,24 @@ class ConsensusEngineSpec extends AnyFlatSpec:
     ): WorldState => Unit =
       world => world.setBalance(to, Word(rules.blockReward.toBigInt / 2))
 
+  /** An engine that reaches the seam's own write and states no zero case of its
+    * own.
+    *
+    * The shape every engine after the first is written in, and the one this
+    * suite exists to hold: its author has read [[ConsensusEngine]] far enough
+    * to credit somebody and no further. What the two cases below assert is that
+    * the seam and not the author is what answers the zero -- so the settlement
+    * here carries no condition at all, which is the whole of the point.
+    */
+  private val creditsWithoutAsking: ConsensusEngine = new ConsensusEngine:
+    override def settlement(
+        rules: ConsensusRules,
+        to: Address,
+        number: BigInt,
+        ommers: Seq[BlockHeader]
+    ): WorldState => Unit =
+      world => credit(world, rules, to, rules.blockReward.toBigInt)
+
   "an engine's settlement" should "credit the beneficiary the reward the rules state" in
     assert(
       settled(ConsensusEngine.Unmodifying, reward(7)).balanceOf(beneficiary) == Word(BigInt(7)),
@@ -160,6 +178,18 @@ class ConsensusEngineSpec extends AnyFlatSpec:
     assert(
       settled(halvesTheReward, reward(8)).balanceOf(beneficiary) == Word(BigInt(4)),
       "an engine whose emission is a formula overrides the credit, so the default cannot be the only path"
+    )
+
+  "an engine stating no zero case of its own" should "leave the beneficiary uncreated where it credits nothing" in
+    assert(
+      !settled(creditsWithoutAsking, ConsensusRules.Unrewarded).accountExists(beneficiary),
+      "a mechanism able to reach the write without the question adds a leaf its network lacks, and no balance shows it"
+    )
+
+  it should "bring the beneficiary into being where the same amount is credited" in
+    assert(
+      settled(creditsWithoutAsking, creditsZero).accountExists(beneficiary),
+      "the case above must be able to answer the other way, or its verdict is the instrument's rather than the seam's"
     )
 
   "an engine's transformation" should "leave the resolved rules alone by default" in

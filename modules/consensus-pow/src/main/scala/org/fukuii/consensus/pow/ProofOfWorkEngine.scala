@@ -75,17 +75,16 @@ final case class ProofOfWorkEngine(
 
   /** Credits the block's beneficiary, then each ommer's.
     *
-    * ==The zero case is asked of each amount credited, not of the amount the
-    * fork resolved==
+    * ==Four credits rather than one, which is what makes the zero case this
+    * mechanism's own==
     *
-    * [[org.fukuii.consensus.ConsensusEngine.credit]] brings an account into
-    * being, so whoever calls it decides the zero case -- and what this
-    * mechanism credits is not what the fork resolved. ECIP-1017 steps the
-    * winner's reward down until it reaches nothing, and every other figure here
-    * is a fraction of that stepped-down amount, so a resolved reward that is
-    * not zero still pays zero once the ladder has exhausted it. The question
-    * [[org.fukuii.chainspec.ConsensusRules.zeroRewardCreditsBeneficiary]] asks
-    * is therefore asked once per credit, of the figure that credit writes.
+    * [[org.fukuii.consensus.ConsensusEngine.credit]] asks
+    * [[org.fukuii.chainspec.ConsensusRules.zeroRewardCreditsBeneficiary]] of
+    * the amount it is handed, so a mechanism paying several figures asks it of
+    * each. That is the answer this emission needs: ECIP-1017 steps the winner's
+    * reward down until it reaches nothing, and every other figure here is a
+    * fraction of that stepped-down amount, so a resolved reward that is not
+    * zero still pays zero once the ladder has exhausted it.
     *
     * ==Declining to credit covers the ommers too, and needs no check of its own==
     *
@@ -121,16 +120,10 @@ final case class ProofOfWorkEngine(
     world =>
       val era = eraAt(number)
       val winner = winnerReward(rules.blockReward.toBigInt, era)
-      creditIfDue(world, rules, beneficiary, winner + winner / ProofOfWorkEngine.InclusionDivisor * ommers.size)
+      credit(world, rules, beneficiary, winner + winner / ProofOfWorkEngine.InclusionDivisor * ommers.size)
       ommers.foreach(ommer =>
-        creditIfDue(world, rules, ommer.beneficiary, ommerReward(winner, era, number, ommer.number.toBigInt))
+        credit(world, rules, ommer.beneficiary, ommerReward(winner, era, number, ommer.number.toBigInt))
       )
-
-  /** Credits `to` unless the amount is nothing and this network declines to
-    * bring an account into being by crediting it nothing.
-    */
-  private def creditIfDue(world: WorldState, rules: ConsensusRules, to: Address, amount: BigInt): Unit =
-    if amount != 0 || rules.zeroRewardCreditsBeneficiary then credit(world, to, amount)
 
   /** What the block after `parent` must be mined against.
     *

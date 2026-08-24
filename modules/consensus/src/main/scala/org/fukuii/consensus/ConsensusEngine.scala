@@ -146,15 +146,14 @@ trait ConsensusEngine:
       @unused number: BigInt,
       @unused ommers: Seq[BlockHeader]
   ): WorldState => Unit =
-    world =>
-      val reward = rules.blockReward.toBigInt
-      if reward != 0 || rules.zeroRewardCreditsBeneficiary then credit(world, beneficiary, reward)
+    world => credit(world, rules, beneficiary, rules.blockReward.toBigInt)
 
   /** Adds `amount` to what `to` already holds, bringing the account into being
-    * where none existed.
+    * where none existed -- unless the amount is nothing and this network does
+    * not bring an account into being for a credit of nothing.
     *
-    * ==The zero case decides whether an account exists, so a caller checks it
-    * before reaching this==
+    * ==The question and the write are one member, so that a mechanism cannot
+    * reach the second without the first==
     *
     * `besu-eth/besu` @ `c2addd9424` returns from
     * `MainnetBlockProcessor.rewardCoinbase:78-80` before it reaches
@@ -164,8 +163,24 @@ trait ConsensusEngine:
     * [[org.fukuii.evm.WorldState.setBalance]] is total in exactly the way that
     * makes the distinction reachable here -- it brings an account into being
     * where none existed, so writing a zero is not the no-op it reads as.
-    * **This applies the write unconditionally**, so declining to credit is
-    * decided by whoever calls it.
+    *
+    * **A seam offering the write on its own offers every mechanism a leaf its
+    * network does not have, and nothing reports it.** An account never touched
+    * and one credited nothing answer the same balance, so an emission that
+    * omitted the question satisfies every assertion about what an account holds
+    * and parts from the chain only in the state root. There is therefore no
+    * ungated write here for a mechanism to reach, and asking is not something
+    * an engine can decline to do.
+    *
+    * ==It is asked of the amount this writes, not of the amount a fork
+    * resolved==
+    *
+    * The two part wherever an emission is a formula rather than the figure
+    * itself: an amount stepped down over eras reaches nothing from a resolved
+    * reward that is not zero, and a share taken over such an amount is nothing
+    * as well. besu asks it once, of the resolved figure, and reaches the same
+    * outcome from the other side -- a resolved reward of nothing leaves nothing
+    * for a share of it to be.
     *
     * ==The arithmetic is arbitrary-precision and bounded before the word is
     * built==
@@ -178,13 +193,14 @@ trait ConsensusEngine:
     * chain reaches, and raised as one, exactly as
     * [[org.fukuii.execution.TransactionProcessor]] raises its own.
     */
-  final protected def credit(world: WorldState, to: Address, amount: BigInt): Unit =
-    val credited = world.balanceOf(to).toBigInt + amount
-    if credited > Word.MaxValue.toBigInt then
-      throw new IllegalStateException(
-        "a block reward moved " + to.toString + " to a balance no account can hold: " + credited.toString
-      )
-    world.setBalance(to, Word(credited))
+  final protected def credit(world: WorldState, rules: ConsensusRules, to: Address, amount: BigInt): Unit =
+    if amount != 0 || rules.zeroRewardCreditsBeneficiary then
+      val credited = world.balanceOf(to).toBigInt + amount
+      if credited > Word.MaxValue.toBigInt then
+        throw new IllegalStateException(
+          "a block reward moved " + to.toString + " to a balance no account can hold: " + credited.toString
+        )
+      world.setBalance(to, Word(credited))
 
 object ConsensusEngine:
 
