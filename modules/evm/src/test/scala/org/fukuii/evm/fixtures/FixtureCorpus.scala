@@ -21,6 +21,25 @@ enum SkipReason:
   /** The file, or one case inside it, did not decode. */
   case Undecodable(detail: String)
 
+  /** The case states an expectation that depends on a rule this build does not
+    * implement, so running it would compare an answer against a question that
+    * was never asked.
+    *
+    * ==Distinct from having no expectation, because the fixture states one==
+    *
+    * [[NoExpectationAtThisFork]] is the corpus declining to say anything. This
+    * is the corpus saying something definite that this build has no machinery
+    * to reach, which is a gap on this side rather than on the corpus's -- so it
+    * carries what is missing, and a count under this reason is the size of the
+    * work that would close it.
+    *
+    * **A divergence would be the wrong verdict and a silent omission worse.** An
+    * unimplemented rule reported as a divergence is indistinguishable from a
+    * rule implemented wrongly, and a case dropped from the run altogether lets a
+    * harness narrow its own input until it agrees with everything left.
+    */
+  case RuleNotBuilt(detail: String)
+
 /** What running one fixture established. */
 enum Verdict:
   case Agreed
@@ -72,6 +91,7 @@ final case class CorpusReport(corpus: String, filesRead: Int, outcomes: Vector[C
   private def label(reason: SkipReason): String = reason match
     case SkipReason.NoExpectationAtThisFork => "no-expectation-at-this-fork"
     case SkipReason.Undecodable(_)          => "undecodable"
+    case SkipReason.RuleNotBuilt(_)         => "rule-not-built"
 
 object CorpusReport:
 

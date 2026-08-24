@@ -144,8 +144,17 @@ object DifficultyCorpus:
     * invented.** A header is fourteen fields and this case is six scalars; a
     * plausible value in a field nothing reads would suggest the corpus stated
     * one.
+    *
+    * ==One transcription, however many harnesses read the format==
+    *
+    * Visible to the package because a second corpus states its cases in this
+    * same six-scalar shape. Two copies of one field list is the defect shape
+    * [[org.fukuii.consensus.pow.ProofOfWorkEngine.sealHash]] records from
+    * `besu-eth/besu-etc` @ `eb4248c99`, where the two had already drifted apart;
+    * a harness is not exempt from it, because a parent built differently by two
+    * readers makes the same case mean two things.
     */
-  private def parentOf(fixture: DifficultyFixture): BlockHeader =
+  private[certification] def parentOf(fixture: DifficultyFixture): BlockHeader =
     BlockHeader(
       parentHash = EvmFixtures.hash(0),
       ommersHash = EvmFixtures.hash(0),
