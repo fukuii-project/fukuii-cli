@@ -152,6 +152,93 @@ attached to a citation.
 | `ethereumclassic/core-geth` | [ethereumclassic/core-geth](https://github.com/ethereumclassic/core-geth) | `master` | **ETC consensus, Frontier through Spiral** — the reference implementation, and what mainnet runs. **The sole external authority for MESS**, which client code spells `ecbp1100` (the registry spells it ECIP-1100; searching the registry's spelling returns zero here). Silent on post-Spiral and Olympia work, which is not disagreement |
 | `besu-eth/besu-etc` | [besu-eth/besu](https://github.com/besu-eth/besu) | `etc-frozen` — **pinned, see below** | **JVM implementation shape on the historical ETC era, and nothing else.** It carries ETC's fork schedule and it carries no MESS. An absence here is evidence about besu-etc: it was a reference client during ETC development, never a mainstream deployment, and was never asked to be complete |
 
+### A second core-geth exists in the corpus, and it is not the one to cite
+
+`etclabscore/core-geth` is cloned and is **not the citable copy.** It shares
+core-geth's root commit and carries a newer HEAD than the canonical
+repository, which makes it look like a successor and it is not — **that org
+is scheduled for deprecation.** `ethereumclassic/core-geth` is canonical, and
+is where Olympia-era updates and modernization land. For this project's
+review it is sufficient on its own.
+
+**Nothing on disk distinguishes them, which is why the trap is easy to
+miss.** Same root commit (`5db3335dc`, 2013-12-26 — go-ethereum's own, the
+same root the reference row above and `multi-geth` below both carry), same
+project name, and `etclabscore/core-geth`'s HEAD (`6dd1aa9b1`, 2026-08-14) is
+roughly nineteen months newer than the reference copy's reviewed state
+(`4185df450`, 2025-01-23). Every ordinary heuristic — newer wins, more
+commits wins — points at the wrong one here.
+
+**A third core-geth exists on this machine and is a different kind of thing
+entirely** — the Olympia work client, covered under "The Olympia work
+clients" below. It is `white-b0x/core-geth`: the modernized client this
+project has worked on, read for protocol and wire behavior and never cited
+for a value.
+
+**`etclabscore` also holds two smaller, older clones, neither previously
+recorded here.** `etclabscore/goldset` is a single commit (`2a3514bc8`,
+2020-05-06) — a README and a LICENSE, titled "Goldset For Testing Historical
+Results against Live ETC networks," and nothing else. The name reads as a
+fixture corpus; it carries no data. `etclabscore/hive` is ETC Labs' fork of
+[ethereum/hive](https://github.com/ethereum/hive) (root commit `82ff0cec9`,
+the same repository the row later in this file documents), frozen at
+`dd1a8a2d6` (2019-02-27), adding `multi-geth_master` and `multi-geth_stable`
+client wiring to that same cross-client harness — an ETC-specific
+configuration of a tool this file already documents, not a second harness.
+Neither clone is authoritative for anything this project currently reads.
+
+### Before the retired clients: Ethereum Classic's original client org
+
+**`ethereumproject` carried the network in the years after the split, once
+mainline `ethereum/go-ethereum`'s brief post-fork service — "Ethereum Classic's
+first client is `ethereum/go-ethereum`," below — gave way to a dedicated fork,
+and it is the earliest such generation in this corpus, not `multi-geth`.**
+All three of its clones share their upstream's own root commit, the same fact
+`multi-geth` and both core-geths already establish elsewhere in this file: a
+shared root commit means a shared codebase continued, not a second,
+independent implementation.
+
+| Path under the corpus root | Upstream | Ref | Carries |
+|---|---|---|---|
+| `ethereumproject/go-ethereum` | [ethereumproject/go-ethereum](https://github.com/ethereumproject/go-ethereum) | `master` @ `22f308105` (2019-08-29) | **"Classic-Geth"** — the project's own name for itself, carrying its own Classic-specific commits (`use geth-classic-%OS%-%VER%.zip for builds`; `disable broken check for non-classic blockchain in datadir-base migration`). Root commit `5db3335dc`, go-ethereum's own |
+| `ethereumproject/parity` | [ethereumproject/parity](https://github.com/ethereumproject/parity) | `master` @ `92466a7d6` (2018-04-06) | The Rust-line counterpart, carrying its own `ethcore/res/ethereum/classic.json`. Root commit `f7b618cec` — the same root `openethereum/parity-ethereum-dao` carries below: a sibling fork of the same ethcore/Parity codebase, not a separate Rust implementation |
+| `ethereumproject/tests` | [ethereumproject/tests](https://github.com/ethereumproject/tests) | `EIP150` @ `c05254038` (2016-10-18) | The shared conformance corpus as it stood at the split. Root commit `e4bbea400`, identical to `ethereum/tests`' own, and **not an ETC-labeled set** — its commit history, authors and file tree carry no Classic-specific addition found on search |
+
+**No `etc-frozen` branch here, and none is needed.** All three upstream
+projects stopped outright — go-ethereum's last commit is 2019, parity's is
+2018, tests' is 2016 — so unlike `multi-geth` or `besu-eth/besu-etc`, there is
+no live upstream left to drift away from. The clone's own last commit already
+is the freeze.
+
+**Where the name went next, in the org's own words.**
+`ethereumproject/go-ethereum`'s README reads, in full: *"Classic-Geth has
+moved! Classic-Geth is being maintained at
+https://github.com/etclabscore/go-ethereum."* That repository is not cloned
+here, and it is itself now superseded: its current description on GitHub
+reads *"DEPRECATED Classic-Geth implementation. Please see
+https://github.com/etclabscore/core-geth for a far more advanced and
+currently maintained client."* So the name runs `ethereumproject/go-ethereum`
+→ `etclabscore/go-ethereum` (uncloned) → `etclabscore/core-geth` — the copy
+marked not citable above.
+
+**That is a different thread from `multi-geth`, and the two should not be
+collapsed into one line.** `multi-geth`'s own first Ethereum-Classic-specific
+commit is dated 2018-04-02 — about two years after `ethereumproject` forked
+at the split, and under a project whose own GitHub description is "a
+distribution of go-ethereum supporting multiple blockchains," not an
+ETC-specific effort at the outset. The shared root commit says these are the
+same lineage; it does not say one is a direct git ancestor of the other. What
+the corpus holds is two separate go-ethereum forks carrying Ethereum Classic
+in parallel, under different names, before the line converges on what is now
+`ethereumclassic/core-geth`.
+
+**Range and weight are not established here.** The section below earned its
+stronger claim — that an absence in `multi-geth` or `parity-ethereum` is
+evidence about the network, not merely the client — with a dedicated
+freeze-point analysis this entry has not done. Treat these three as
+corroborating clones of the right era until that work is done, not yet as a
+second oracle.
+
 ### The retired clients — frozen where Ethereum Classic still exists in them
 
 **Added 2026-08-21.** Three clients that ran Ethereum Classic in production
@@ -179,7 +266,9 @@ complete."* **That bound does not transfer here.**
 **`multi-geth` and `parity-ethereum` were the PRODUCTION clients for Ethereum
 Classic**, in Go and in Rust, before `ethereumclassic/core-geth` existed —
 core-geth is the **successor**, and `multi-geth` is literally its earlier name.
-These are what the network ran.
+(An earlier Go and Rust pair, `ethereumproject/go-ethereum` and
+`ethereumproject/parity`, ran in the years immediately after the split — see
+above.) These are what the network ran.
 
 **So within their range, an absence in them is evidence about the NETWORK, not
 merely about the client.** If the production client of the day did not implement
@@ -455,7 +544,7 @@ the only implementations that exist.**
 
 | Where | What it is |
 |---|---|
-| `<work-root>/core-geth` | Olympia modernization of core-geth, tracking both `ethereumclassic/core-geth` and `ethereum/go-ethereum` upstreams |
+| `<work-root>/core-geth` | [white-b0x/core-geth](https://github.com/white-b0x/core-geth) — Olympia modernization of core-geth, tracking both `ethereumclassic/core-geth` and `ethereum/go-ethereum` upstreams |
 | `<work-root>/besu` | besu at head with an ETC overlay |
 | `<work-root>/nethermind` | nethermind at head with an ETC overlay |
 
