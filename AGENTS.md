@@ -954,6 +954,41 @@ kebab-case description. Use the same set this repository uses for commit types �
 
 Pushing is a separate decision from committing. Never push unasked.
 
+## A commit message is public, so it cites only what a reader can open
+
+**This repository is public and its commit log is published with it.** A message
+may name anything that ships — a tracked file, a rule, an agent charter, a
+proposal number, a reference client at a ref. **It may not name anything a reader
+who clones cannot reach.**
+
+**What that rules out**, all of which resolve to nothing outside this machine:
+
+- a path under `.local/`, which is gitignored
+- an internal tracking identifier -- a roadmap row id such as `R144`
+- a phase or section marker -- `P3`, `section 06`
+- an internal document by name -- a roadmap, a decision record, a resume note
+
+**What it does NOT rule out, and this is the half that gets over-corrected.**
+Technical substance is the reason the log is worth reading. Keep the measurement,
+the failure it prevents, the client that disagreed and at which ref, the
+specification line that settled it, the count that moved. **`forge` and `scribe`
+are fine in a message about `.claude/agents/forge.md`**, because that file ships;
+what is forbidden is the internal *reference*, never the internal *word*.
+
+**The test is reachability, not vocabulary.** Ask whether a reader who has only
+this repository could follow the citation. If yes it belongs; if no, state the
+substance instead of the pointer -- *"a prior section measured 562 of 572 cases
+blocked on the block reward"* says everything the row id would have, and says it
+to someone who cannot open the row.
+
+**Why this is stated rather than assumed.** The published history carries roughly
+twenty-five messages that cite gitignored paths and internal identifiers. They
+were left rather than rewritten -- correcting them costs a force push and buys a
+reader little -- so this rule exists to stop the next one, not to relitigate
+those. `.claude/rules/evidence-and-citation.md` §4 states the same rule for
+tracked prose; a commit message is tracked prose that happens to live in the
+object graph.
+
 ## Security
 
 This repository is **public**.
