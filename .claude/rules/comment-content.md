@@ -102,6 +102,16 @@ for tracked prose, arriving at source comments: **a public artifact does not
 carry internal development vocabulary.** A reader who clones this repository has
 no access to that history and no way to interpret a reference to it.
 
+**That is one half of §4, and the other half reaches comments too.** Naming a
+reference client at a ref is the ordinary sanctioned form and most of this
+repository's citing comments take it — but reachability is what makes a citation
+*followable*, never what obliges it. Tracked text names artifacts and never
+actors, so a comment carries no characterization of an organization's conduct,
+no individual and no attributed motive; and a small number of otherwise-citable
+subjects are deliberately not named at all, under an authority §4 points at and
+no tracked file enumerates. **A shipped comment cannot be recalled, so make that
+check before one names an organization or a person, not after.**
+
 Where a comment genuinely must cite a prior implementation, cite it the way
 `.claude/rules/evidence-and-citation.md` §1 requires — by an immutable ref, a
 version or a commit, never by a branch name, and never by an internal shorthand.

@@ -959,7 +959,8 @@ Pushing is a separate decision from committing. Never push unasked.
 **This repository is public and its commit log is published with it.** A message
 may name anything that ships — a tracked file, a rule, an agent charter, a
 proposal number, a reference client at a ref. **It may not name anything a reader
-who clones cannot reach.**
+who clones cannot reach** -- and reaching it is the first of two tests rather
+than the whole of one, which the paragraph on sufficiency below states.
 
 **What that rules out**, all of which resolve to nothing outside this machine:
 
@@ -980,6 +981,29 @@ this repository could follow the citation. If yes it belongs; if no, state the
 substance instead of the pointer -- *"a prior section measured 562 of 572 cases
 blocked on the block reward"* says everything the row id would have, and says it
 to someone who cannot open the row.
+
+**Reachability is necessary, and it is not sufficient.** The test above decides
+whether a citation is *followable*. It does not decide whether it is one this
+project publishes at all, and a name can pass it and still be withheld. Tracked
+text names artifacts, never actors -- so no characterization of an
+organization's conduct, no individual, no attributed motive -- and a small
+number of otherwise-citable subjects are held back by name, recorded
+machine-locally because a tracked list of them would publish exactly what it was
+written to withhold. **So check that authority before naming an organization, a
+repository or a person in a message.** `.claude/rules/evidence-and-citation.md`
+§4 states this axis in full and is the authority for it; that file loads every
+session, so it is already in front of you and this section deliberately does not
+restate it.
+
+**The reviewer is who this catches, and the error runs toward disclosure.** A
+message naming less than it could reads as over-corrected, and the paragraph
+above -- a real rule, correctly stated -- is what makes restoring the name feel
+principled. Where a subject is deliberately unnamed the sparse message is
+correct, the recommendation to name it is the defect, and **correcting it is
+what publishes it.** That has happened here: a commit whose message deliberately
+named none of the subjects it documented was reviewed as an over-correction and
+recommended for rewording, against a policy the reviewer had not read. The commit
+was right and the review was not.
 
 **Why this is stated rather than assumed.** The published history carries roughly
 twenty-five messages that cite gitignored paths and internal identifiers. They

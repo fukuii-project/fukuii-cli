@@ -258,6 +258,44 @@ record of why each version is what it is". A reader with access will find it; a
 reader without one loses nothing they could have used. Machine-local pointers
 belong in `CLAUDE.local.md`, which `.gitignore` covers.
 
+### Reachable is necessary, and it is not sufficient
+
+**A second axis crosses the first, and nothing above implies it.** Everything so
+far asks whether a reader who clones can *follow* a citation. A citation can pass
+that test completely — a public repository, a public organization, an immutable
+ref anyone can fetch — and still be one this project does not put in tracked
+text. **Reachability licenses a name; it never obliges one.**
+
+**Tracked text names artifacts, never actors.** Naming a repository, an
+organization or a ref as the *location of evidence* is what the rule above is
+for. Characterizing an organization's conduct, naming an individual or
+attributing a motive is not evidence about code, is durable from the moment it is
+pushed, and asks a reader to accept a claim about people that they have no
+instrument to check.
+
+**And a small number of publicly-reachable subjects are deliberately not named
+at all.** Which ones is recorded machine-locally in `CLAUDE.local.md`, and is
+deliberately not enumerated here: **a tracked list of what must not be said in
+tracked text publishes precisely what it was written to withhold.** So these
+rules can state that the category exists and cannot state its membership — that
+asymmetry is the design, not an omission for a later pass to tidy up.
+
+**The trigger is mechanical, which is the only thing that makes this
+followable.** Before naming an organization, a repository, a project or a person
+in tracked text — a commit message included — check that authority. It is one
+file and the check costs seconds. Where it is silent the reachability test above
+is the whole of the rule, and nothing here narrows it.
+
+**The error is the reviewer's more often than the author's, and it runs toward
+disclosure.** Text that names less than it could reads as over-corrected, and the
+instinct is to restore the name — an instinct that feels principled, because the
+warning against over-correction is itself a real rule this repository states in
+more than one place. Where a subject is deliberately unnamed the sparse text is
+correct, the recommendation to name it is the defect, and **the act of
+correcting it is what publishes it.** The asymmetry is not close: a name withheld
+that could have been given costs a reader one lookup, and a name given that
+should have been withheld cannot be recalled.
+
 **One rule from that authority model is short enough to inline, and load-bearing
 enough that it must not depend on anything external:** fukuii's own prior
 implementation code — every earlier attempt, whatever it is called and wherever
