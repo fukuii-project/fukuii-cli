@@ -82,6 +82,27 @@ So read the implementation **and its comments and mitigations**, not only its
 type declarations. A shape copied without its warnings is the shape plus a bug
 nobody has hit yet.
 
+## The fixture-format specification is the same artifact, and it joins the field
+
+**`fukuii-project/fukuii-tests`'s `FIXTURE-FORMAT.md` is what "the clients say what goes
+wrong" above already describes**, arriving from a different kind of source: somebody's
+incident report written at the point of a fix, not a parsing manual. Its section titles say
+so on their face — *"Typed transactions and access lists"*, *"Two exception vocabularies,
+and neither is complete"*, *"`txbytes` is the authority on the sender"*, *"A refused
+transaction and a state root"* — mechanics, the same register as a client's own comments and
+mitigations.
+
+**So: before deciding a layer's shape, read the fixture-format sections covering that layer
+alongside the clients.** `.claude/reference-corpus.md`'s entry for that repository states the
+boundary this reading is held to — authoritative for what a layer must model and what goes
+wrong, never for a consensus value.
+
+**This does not license reading fukuii-tests instead of the clients.** The reading order
+above is unchanged: the executable specification and the production clients settle
+behavior; the fixture format settles what a fixture asserts and which observables a consumer
+must expose. A layer whose shape was decided from the fixture format alone has skipped the
+survey this rule requires.
+
 ## What a survey has to produce
 
 Not "I looked." A survey answers, per client:

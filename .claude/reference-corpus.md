@@ -923,6 +923,48 @@ the same commit; either remote reconstructs the same tree.
 
 ---
 
+## `fukuii-project/fukuii-tests` — authoritative for observables, never for values
+
+**Not a corpus clone under this root.** It is a Fukuii project repository, developed
+alongside `fukuii-cli` at
+[fukuii-project/fukuii-tests](https://github.com/fukuii-project/fukuii-tests) — public, no
+tags, cite by commit (`b5e7e147f` at this writing). It publishes fixture data under
+`networks/` and `proposals/`; its own `FIXTURE-FORMAT.md` is the format specification for
+all of it.
+
+**Authoritative for OBSERVABLES — what a layer must model, and what goes wrong. Never for
+VALUES.** Read `FIXTURE-FORMAT.md` the way "Why the field, and not just the specification"
+in `.claude/rules/reference-first.md` reads a client's own comments and mitigations: an
+incident report written at the point of a fix, naming a shape a reader must handle. **A
+consensus value — an emission figure, an activation block, a gas cost — still comes from the
+ECIP and a production client**, exactly as every other row in this file requires; the
+fixture format is never cited for one.
+
+**This is `.claude/rules/evidence-and-citation.md` §4 applied, not bent.** That rule already
+exempts fukuii-authored test *vectors*, conditional on being reviewed — *"a reviewed vector
+is a deliverable that becomes authority."* Reading a format specification to learn what to
+model is not a value claim and asks nothing of that exemption.
+
+**Which shapes already have a reader is answered by the file's own "Read this first"
+section, not by a count copied here** — it moves as readers land on either side, and a
+figure quoted out of it should be treated as stale by the time it is read again.
+
+**A plain clone is small; two submodules carry the weight and neither is fetched by
+default.** `upstream/` pins live third-party corpora; `archive/` pins
+[fukuii-project/archive-reference-material](https://github.com/fukuii-project/archive-reference-material)
+(public) with `ignore = all` — split out 2026-08-24 so a plain clone stays small. Two
+consequences: an unfetched `archive/` is **empty and correct, not broken** —
+`git submodule update --init archive` only when a consumer needs to read it — and
+`ignore = all` makes a change to its pinned commit **invisible to a plain `git status` or
+`git diff`**; check with `--ignore-submodules=none`.
+
+**`fukuii-cli` resolves the tree through `NetworkFixtureCorpus`**
+(`modules/evm/src/test/scala/org/fukuii/evm/fixtures/NetworkFixtureCorpus.scala`): the
+`FUKUII_TESTS_ROOT` environment variable, falling back to a `.local/fukuii-tests-root`
+pointer file when it is unset.
+
+---
+
 ## Toolchain
 
 **Only components this repository already declares appear here.** The versions
