@@ -2,7 +2,7 @@ package org.fukuii.chainspec.networks.ethereum
 
 import org.fukuii.bytes.UInt256
 import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment, UpgradeRules}
-import org.fukuii.chainspec.proposals.eip.{Eip150, Eip155, Eip160, Eip2, Eip7}
+import org.fukuii.chainspec.proposals.eip.{Eip150, Eip155, Eip160, Eip170, Eip2, Eip7}
 import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, OpcodeTable, Precompile, PrecompileSet}
 import org.fukuii.execution.{AdmissionRules, ExecutionRules}
 import org.fukuii.types.TransactionType
@@ -253,35 +253,32 @@ object Upgrades:
     */
   val tangerineWhistle: UpgradeRules = homestead.adopting(Eip150.component)
 
-  /** [[tangerineWhistle]] with EIP-155 and EIP-160 adopted.
+  /** [[tangerineWhistle]] with EIP-155, EIP-160 and EIP-170 adopted.
     *
-    * The order is the order the two compose in. It is immaterial -- one writes
-    * a member of the admission facet and the other a price in the machine's
-    * schedule -- and it is stated because two deltas touching one field compose
-    * to whichever ran last.
+    * The order is the order the three compose in. It is immaterial -- the three
+    * write a member of the admission facet, a price in the machine's schedule
+    * and a bound in the machine's rules respectively -- and it is stated because
+    * two deltas touching one field compose to whichever ran last.
     *
     * ==The upgrade this network calls Spurious Dragon carries four proposals,
-    * and this composition is two of them==
+    * and this composition is three of them==
     *
     * `ethereum/EIPs` @ `9e393a79d`, EIP-607 *Hardfork Meta: Spurious Dragon*
-    * (Final) lists EIP-155, EIP-160, EIP-161 and EIP-170. The two absent here
-    * are a state-transition rule and a bound on deployed code, and neither is a
-    * repricing or a flag: EIP-170 needs a member this build's machine rules do
-    * not yet declare, and EIP-161 is four clauses reaching both the machine and
-    * settlement. **So this value states which proposals produced it and does
-    * not claim to be the whole upgrade** -- which is what a component list is
-    * for, and the standing
-    * [[org.fukuii.chainspec.networks.ethereum.Mainnet]] already has where
-    * EIP-606 includes a proposal that is devp2p rather than a rule.
+    * (Final) lists EIP-155, EIP-160, EIP-161 and EIP-170. The one absent here is
+    * EIP-161, which is four clauses reaching both the machine and settlement.
+    * **So this value states which proposals produced it and does not claim to be
+    * the whole upgrade** -- which is what a component list is for, and the
+    * standing [[org.fukuii.chainspec.networks.ethereum.Mainnet]] already has
+    * where EIP-606 includes a proposal that is devp2p rather than a rule.
     *
-    * ==Two proposals, two facets, and the pairing is this network's alone==
+    * ==Three proposals, three facets, and the grouping is this network's alone==
     *
-    * Ethereum took these two together. `ethereumclassic/core-geth` @
-    * `4185df450` puts `EIP155Block` and `EIP160FBlock` at 3,000,000 on Ethereum
-    * Classic and defers `EIP161FBlock` and `EIP170FBlock` to 8,772,000, so the
-    * four proposals EIP-607 bundles reach that network as two groups
-    * 5,772,000 blocks apart. A rule set composed from proposals expresses that
-    * by adopting a different list; one derived from a fork's name could not
-    * express it at all.
+    * Ethereum took these together. `ethereumclassic/core-geth` @ `4185df450`
+    * puts `EIP155Block` and `EIP160FBlock` at 3,000,000 on Ethereum Classic and
+    * defers `EIP161FBlock` and `EIP170FBlock` to 8,772,000, so the four
+    * proposals EIP-607 bundles reach that network as two groups 5,772,000 blocks
+    * apart. A rule set composed from proposals expresses that by adopting a
+    * different list; one derived from a fork's name could not express it at all.
     */
-  val spuriousDragon: UpgradeRules = tangerineWhistle.adopting(Eip155.component, Eip160.component)
+  val spuriousDragon: UpgradeRules =
+    tangerineWhistle.adopting(Eip155.component, Eip160.component, Eip170.component)

@@ -37,7 +37,14 @@ class UpgradesSpec extends AnyFlatSpec:
         Upgrades.homestead.components == Vector(ProposalId.Eip(7), ProposalId.Eip(2)) &&
         Upgrades.tangerineWhistle.components == Vector(ProposalId.Eip(7), ProposalId.Eip(2), ProposalId.Eip(150)) &&
         Upgrades.spuriousDragon.components ==
-        Vector(ProposalId.Eip(7), ProposalId.Eip(2), ProposalId.Eip(150), ProposalId.Eip(155), ProposalId.Eip(160)),
+        Vector(
+          ProposalId.Eip(7),
+          ProposalId.Eip(2),
+          ProposalId.Eip(150),
+          ProposalId.Eip(155),
+          ProposalId.Eip(160),
+          ProposalId.Eip(170)
+        ),
       "a composition's recorded components are not the ones it adopted"
     )
 
