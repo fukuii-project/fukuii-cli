@@ -6,8 +6,8 @@ import java.nio.file.Path
 import scala.util.control.NonFatal
 
 import org.fukuii.bytes.UInt64
-import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment}
-import org.fukuii.consensus.pow.ProofOfWorkEngine
+import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment, DifficultyBombPause}
+import org.fukuii.consensus.pow.EthashEngine
 
 /** The difficulty rule against Ethereum Classic's own schedule, at that chain's
   * real activation heights.
@@ -20,34 +20,55 @@ import org.fukuii.consensus.pow.ProofOfWorkEngine
   * the published tier. Folding them into one table would leave a reader unable
   * to tell which chain a divergence was about.
   *
-  * ==What a label selects, and why some of them cannot be answered yet==
+  * ==A label names a RULE SET and the height is a free parameter==
   *
-  * A label says which of this chain's difficulty rules are present at a case's
-  * height; each present rule is then evaluated at that height with its real
-  * parameter. Two of those rules are not built here:
+  * That is the published corpus's own convention, which [[DifficultyCorpus]]
+  * already relies on: its `dfFrontier` and `dfByzantium` tiers both span 100,000
+  * to 4,900,000, so one fork's rules are asked at another's heights. A label
+  * here says which of this chain's rules are present, and each present rule is
+  * then evaluated at the case's own height against its own parameter.
   *
-  *   - **ECIP-1010** freezes the exponential term's reference point at block
-  *     3,000,000 and holds it for 2,000,000 blocks, then resumes with that span
-  *     subtracted.
-  *   - **ECIP-1041** removes the exponential term outright from block 5,900,000.
+  * **The two halves of that sentence resolve differently, and taking either half
+  * for the whole loses cases in every one of the three files.** Which adjustment
+  * algorithm is present is the label's answer at every height -- `ETC_Homestead`
+  * carries the graduated rule at block 150,000, which is below the 1,150,000
+  * this chain activated it at -- while the exponential term's two modifiers
+  * carry their real heights and are inert below them. So a harness resolving the
+  * algorithm against its own activation loses cases, and so does one declaring
+  * the term per label instead of evaluating it at the height; neither failure is
+  * confined to the file its half is about.
   *
-  * Both heights are `ECIP1010PauseBlock`, `ECIP1010Length` and `DisposalBlock`
-  * in `ethereumclassic/core-geth` @ `4185df450`'s `ClassicChainConfig`, which is
-  * also where every adjustment-algorithm height below is read from.
+  * ==What a label selects, and where each height comes from==
   *
-  * ==The cases those two rules do not reach are still certified, and the test is
-  * asked of the engine rather than stated==
+  * Two rules move the exponential term on this chain and neither is a delay:
   *
-  * Both proposals only ever make the exponential term SMALLER -- one moves its
-  * reference point backwards, the other deletes it -- so wherever the plain term
-  * is already nothing, a build carrying neither answers exactly what a build
-  * carrying both would. That is a proof rather than a sampling argument, and it
-  * is what lets the majority of these cases be certified today.
+  *   - **ECIP-1010** freezes the term's reference point at block 3,000,000 and
+  *     resumes at 5,000,000 with the span between them subtracted. The pair is
+  *     the proposal's own `pause_block` and `cont_block` at
+  *     `ethereumclassic/ECIPs` @ `f398567f4`, and is stated independently by
+  *     `openethereum/parity-ethereum` @ `55c90d401`, whose
+  *     `ethcore/res/ethereum/classic.json` carries `ecip1010PauseTransition`
+  *     `0x2dc6c0` and `ecip1010ContinueTransition` `0x4c4b40`, and by
+  *     `ethereumclassic/core-geth` @ `4185df450`, whose `ClassicChainConfig`
+  *     states the same window as `ECIP1010PauseBlock` 3,000,000 with
+  *     `ECIP1010Length` 2,000,000.
+  *   - **ECIP-1041** removes the term from block 5,900,000 --
+  *     `ethereumclassic/ECIPs` @ `8dda72c24`, which names the height in its own
+  *     abstract; `bombDefuseTransition` `0x5a06e0` in the same parity chain
+  *     specification, and `DisposalBlock` in the same core-geth configuration.
   *
-  * **[[carriesExponentialTerm]] asks the engine instead of restating the height
-  * the term begins at.** A constant here would be a second transcription of one
-  * the engine already owns, and the two would drift apart silently; a harness
-  * that asks cannot be wrong about it in a direction the engine is not.
+  * **ECIP-1041 sits on top of ECIP-1010 rather than replacing it**, so nine of
+  * the twelve labels carry the pause and seven of those nine carry the removal
+  * as well. The removing labels still answer a term below 5,900,000, because a
+  * removal has an activation height like any other rule.
+  *
+  * ==Neither height is read back from a schedule==
+  *
+  * Stated here as literals for the reason [[DifficultyCorpus]] gives for its
+  * own: a harness asking a schedule what a fork resolves to, and then checking
+  * the corpus against that answer, is true of any schedule whatsoever. This
+  * build's Ethereum Classic schedule stops below the first of these heights in
+  * any case, so there is nothing there to close the loop with yet.
   */
 object ClassicDifficultyCorpus:
 
@@ -62,8 +83,20 @@ object ClassicDifficultyCorpus:
     * No era ladder and no epoch activation, because difficulty reads neither.
     * An engine carrying them would answer identically at every case here, and
     * choosing the one that cannot is what keeps that independence testable.
+    *
+    * **The two proposals this tier does turn on reach the engine through the
+    * rules rather than through the engine's own parameters**, so an engine built
+    * with nothing still answers every case here -- which is what makes the table
+    * below the whole of what a divergence can be about.
     */
-  private val engine: ProofOfWorkEngine = ProofOfWorkEngine()
+  private val engine: EthashEngine = EthashEngine()
+
+  /** The window ECIP-1010 holds the exponential term's reference point over. */
+  private val pause: DifficultyBombPause =
+    DifficultyBombPause(pausedFrom = BigInt(3000000), continuesFrom = BigInt(5000000))
+
+  /** The first height ECIP-1041 states no exponential term at. */
+  private val removedFrom: BigInt = BigInt(5900000)
 
   /** What this harness believes each of this chain's labels settles about
     * difficulty.
@@ -80,16 +113,22 @@ object ClassicDifficultyCorpus:
     * with ECIP-1010 and then ECIP-1041 and never adopted a delay, so a delay
     * here would be a rule from the other family's schedule wearing this one's
     * name.
+    *
+    * **Gotham repeats Die Hard rather than adding to it.** It settles an
+    * emission and nothing about difficulty, so its expectations must equal Die
+    * Hard's; the corpus states them separately so that the equality is asserted
+    * rather than assumed.
     */
   private[certification] def rulesFor(fork: String): Option[ConsensusRules] =
     val base = ConsensusRules.Unrewarded
     fork match
-      case "ETC_Frontier"                                            => Some(base)
-      case "ETC_Homestead" | "ETC_GasReprice"                        => Some(graduated(base))
-      case "ETC_DieHard" | "ETC_Gotham" | "ETC_DefuseDifficultyBomb" => Some(graduated(base))
-      case "ETC_Atlantis" | "ETC_Agharta" | "ETC_Phoenix"            => Some(ommerAware(base))
-      case "ETC_Magneto" | "ETC_Mystique" | "ETC_Spiral"             => Some(ommerAware(base))
-      case _                                                         => None
+      case "ETC_Frontier"                                 => Some(base)
+      case "ETC_Homestead" | "ETC_GasReprice"             => Some(graduated(base))
+      case "ETC_DieHard" | "ETC_Gotham"                   => Some(paused(graduated(base)))
+      case "ETC_DefuseDifficultyBomb"                     => Some(removed(paused(graduated(base))))
+      case "ETC_Atlantis" | "ETC_Agharta" | "ETC_Phoenix" => Some(removed(paused(ommerAware(base))))
+      case "ETC_Magneto" | "ETC_Mystique" | "ETC_Spiral"  => Some(removed(paused(ommerAware(base))))
+      case _                                              => None
 
   private def graduated(base: ConsensusRules): ConsensusRules =
     base.copy(difficultyAdjustment = DifficultyAdjustment.Eip2)
@@ -97,18 +136,11 @@ object ClassicDifficultyCorpus:
   private def ommerAware(base: ConsensusRules): ConsensusRules =
     base.copy(difficultyAdjustment = DifficultyAdjustment.Eip100)
 
-  /** Which unbuilt proposals a label selects, and nothing where it selects none.
-    *
-    * Gotham is here because it inherits ECIP-1010 from Die Hard, not because it
-    * changes anything about difficulty itself -- it settles an emission. Its
-    * expectations must therefore equal Die Hard's, and the corpus states them
-    * separately so that equality is asserted rather than assumed.
-    */
-  private[certification] def deferred(fork: String): Option[String] =
-    fork match
-      case "ETC_Frontier" | "ETC_Homestead" | "ETC_GasReprice" => None
-      case "ETC_DieHard" | "ETC_Gotham"                        => Some("ECIP-1010")
-      case _                                                   => Some("ECIP-1010 and ECIP-1041")
+  private def paused(base: ConsensusRules): ConsensusRules =
+    base.copy(difficultyBombPause = Some(pause))
+
+  private def removed(base: ConsensusRules): ConsensusRules =
+    base.copy(difficultyBombRemovedFrom = Some(removedFrom))
 
   /** Every report, or nothing at all when the corpus cannot be located. */
   lazy val report: Option[CorpusReport] = NetworkFixtureCorpus.root.map(root => assemble(directory(root)))
@@ -142,40 +174,21 @@ object ClassicDifficultyCorpus:
         resolve(fixture.fork) match
           case None        => Verdict.Diverged(Vector("no rules are stated for fork " + fixture.fork))
           case Some(rules) =>
-            deferred(fixture.fork).filter(_ => carriesExponentialTerm(fixture, rules)) match
-              case Some(proposals) =>
-                Verdict.Skipped(SkipReason.RuleNotBuilt(proposals + " at block " + fixture.blockNumber.toString))
-              case None =>
-                val answered =
-                  engine.difficulty(
-                    rules,
-                    DifficultyCorpus.parentOf(fixture),
-                    fixture.parentHasOmmers,
-                    timestampOf(fixture)
-                  )
-                if answered.toBigInt == fixture.expected then Verdict.Agreed
-                else
-                  Verdict.Diverged(
-                    Vector("answered " + answered.toBigInt.toString + " rather than " + fixture.expected.toString)
-                  )
+            val answered =
+              engine.difficulty(
+                rules,
+                DifficultyCorpus.parentOf(fixture),
+                fixture.parentHasOmmers,
+                timestampOf(fixture)
+              )
+            if answered.toBigInt == fixture.expected then Verdict.Agreed
+            else
+              Verdict.Diverged(
+                Vector("answered " + answered.toBigInt.toString + " rather than " + fixture.expected.toString)
+              )
       catch
         case NonFatal(cause) => Verdict.Diverged(Vector("threw " + cause.getClass.getName + ": " + cause.getMessage))
     CaseOutcome(fixture.name, verdict)
-
-  /** Whether the exponential term contributes anything to this case's answer.
-    *
-    * Asked by settling the same parent twice, once at its own height and once at
-    * a height below where the term begins. The adjustment reads a difficulty and
-    * two timestamps and never the number, so the whole of any difference between
-    * the two answers is the term -- which makes equality the statement that
-    * there is no term here to be wrong about.
-    */
-  private def carriesExponentialTerm(fixture: DifficultyFixture, rules: ConsensusRules): Boolean =
-    val parent = DifficultyCorpus.parentOf(fixture)
-    val timestamp = timestampOf(fixture)
-    val atHeight = engine.difficulty(rules, parent, fixture.parentHasOmmers, timestamp)
-    val belowTerm = engine.difficulty(rules, parent.copy(number = UInt64.Zero), fixture.parentHasOmmers, timestamp)
-    atHeight != belowTerm
 
   private def timestampOf(fixture: DifficultyFixture): UInt64 =
     UInt64
@@ -184,7 +197,7 @@ object ClassicDifficultyCorpus:
 
   /** Every case the corpus states, as the runner sees them before any verdict.
     *
-    * Read by the negative control, which needs the same inputs the run used and
+    * Read by the negative controls, which need the same inputs the run used and
     * must not re-derive them from a second walk of the tree.
     */
   private[certification] lazy val fixtures: Option[Vector[DifficultyFixture]] =
@@ -196,23 +209,3 @@ object ClassicDifficultyCorpus:
           .getOrElse(Vector.empty[DifficultyFixture])
       }
     }
-
-  /** How many cases each label defers, which is what scopes the work building
-    * the two proposals would unblock.
-    *
-    * Counted from the fixtures rather than by reading the skip detail back out
-    * of a report, because a count parsed from a message it formatted itself
-    * measures the formatting.
-    */
-  private[certification] def deferredCases: Map[String, Int] =
-    fixtures
-      .getOrElse(Vector.empty)
-      .filter(fixture =>
-        rulesFor(fixture.fork).exists(rules =>
-          deferred(fixture.fork).isDefined && carriesExponentialTerm(fixture, rules)
-        )
-      )
-      .groupBy(_.fork)
-      .view
-      .mapValues(_.length)
-      .toMap

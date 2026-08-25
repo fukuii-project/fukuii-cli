@@ -14,7 +14,7 @@ import org.fukuii.types.{BlockHeader, BlockNonce, Bloom, Seal}
   * A reward of thirty-two divides exactly by both divisors this emission uses,
   * so every figure below is exact and a wrong ordering of a multiplication and
   * a division would still show. The declining schedule is the subject of
-  * [[ProofOfWorkEnginePropSpec]] instead, and the amounts there are the ones
+  * [[EthashEnginePropSpec]] instead, and the amounts there are the ones
   * ECIP-1017 states.
   *
   * ==Crediting and existing are different questions and both are asked==
@@ -23,7 +23,7 @@ import org.fukuii.types.{BlockHeader, BlockNonce, Bloom, Seal}
   * of zero as present, so a case about whether an account was reached asks
   * `accountExists` and never a balance.
   */
-class ProofOfWorkEngineSpec extends AnyFlatSpec:
+class EthashEngineSpec extends AnyFlatSpec:
 
   private val beneficiary: Address = EvmFixtures.address(0x33)
   private val firstOmmerMiner: Address = EvmFixtures.address(0x44)
@@ -34,7 +34,7 @@ class ProofOfWorkEngineSpec extends AnyFlatSpec:
     */
   private val settlingBlock: BigInt = BigInt(100)
 
-  private val withoutLadder: ProofOfWorkEngine = ProofOfWorkEngine()
+  private val withoutLadder: EthashEngine = EthashEngine()
 
   private def rules(reward: Long, creditsZero: Boolean = false): ConsensusRules =
     ConsensusRules.Unrewarded.copy(
@@ -65,7 +65,7 @@ class ProofOfWorkEngineSpec extends AnyFlatSpec:
   private def ommer(age: Int, miner: Address): BlockHeader = ommerAt(settlingBlock - age, miner)
 
   private def settledAt(
-      engine: ProofOfWorkEngine,
+      engine: EthashEngine,
       consensus: ConsensusRules,
       number: BigInt,
       ommers: Seq[BlockHeader]
@@ -75,7 +75,7 @@ class ProofOfWorkEngineSpec extends AnyFlatSpec:
     world
 
   private def settled(
-      engine: ProofOfWorkEngine,
+      engine: EthashEngine,
       consensus: ConsensusRules,
       ommers: Seq[BlockHeader] = Seq.empty
   ): EvmFixtures.MapWorldState =
@@ -84,7 +84,7 @@ class ProofOfWorkEngineSpec extends AnyFlatSpec:
   /** An engine whose eras are a hundred blocks long, so a boundary is reachable
     * without writing out a network's own five million.
     */
-  private val shortEras: ProofOfWorkEngine = ProofOfWorkEngine(Some(BigInt(100)))
+  private val shortEras: EthashEngine = EthashEngine(Some(BigInt(100)))
 
   /** A height inside [[shortEras]]'s fortieth era, which is where four fifths
     * applied that many times has driven a reward of five thousand to nothing.

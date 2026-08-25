@@ -7,7 +7,7 @@ import scala.util.control.NonFatal
 
 import org.fukuii.bytes.{Bytes, UInt256, UInt64}
 import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment}
-import org.fukuii.consensus.pow.ProofOfWorkEngine
+import org.fukuii.consensus.pow.EthashEngine
 import org.fukuii.evm.EvmFixtures
 import org.fukuii.types.{BlockHeader, BlockNonce, Bloom, Seal}
 
@@ -50,7 +50,7 @@ object DifficultyCorpus:
     * would answer identically here, and choosing the one that cannot is what
     * keeps that independence testable rather than assumed.
     */
-  private val engine: ProofOfWorkEngine = ProofOfWorkEngine()
+  private val engine: EthashEngine = EthashEngine()
 
   /** What this harness believes each published fork name settles.
     *
@@ -149,7 +149,7 @@ object DifficultyCorpus:
     *
     * Visible to the package because a second corpus states its cases in this
     * same six-scalar shape. Two copies of one field list is the defect shape
-    * [[org.fukuii.consensus.pow.ProofOfWorkEngine.sealHash]] records from
+    * [[org.fukuii.consensus.pow.EthashEngine.sealHash]] records from
     * `besu-eth/besu-etc` @ `eb4248c99`, where the two had already drifted apart;
     * a harness is not exempt from it, because a parent built differently by two
     * readers makes the same case mean two things.

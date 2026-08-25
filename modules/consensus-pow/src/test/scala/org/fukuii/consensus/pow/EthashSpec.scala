@@ -24,7 +24,7 @@ class EthashSpec extends AnyFlatSpec:
     * `ethereumclassic/core-geth` @ `4185df450` writes the same figure into
     * `TestCalcEpochLength` with the comment `// mordor`. It is used here as an
     * arbitrary activation to exercise the predicate, not as a network's
-    * configuration -- see [[ProofOfWorkEngine]] on why no default is carried.
+    * configuration -- see [[EthashEngine]] on why no default is carried.
     */
   private val MordorActivation: BigInt = BigInt(2520000)
 

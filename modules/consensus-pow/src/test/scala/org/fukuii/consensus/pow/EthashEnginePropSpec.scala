@@ -10,7 +10,7 @@ import org.fukuii.evm.{EvmFixtures, Word}
 /** ECIP-1017's emission schedule, at the amounts and heights the proposal
   * states.
   *
-  * ==This is the vector table [[ProofOfWorkEngineSpec]] deliberately does not
+  * ==This is the vector table [[EthashEngineSpec]] deliberately does not
   * hold==
   *
   * That suite settles the shape of the credit -- who is paid, from which
@@ -37,7 +37,7 @@ import org.fukuii.evm.{EvmFixtures, Word}
   * the last block of an era is a multiple of the era length, which is where an
   * off-by-one pays a whole era's difference for exactly one block.
   */
-class ProofOfWorkEnginePropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
+class EthashEnginePropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
   private val beneficiary: Address = EvmFixtures.address(0x33)
 
@@ -47,7 +47,7 @@ class ProofOfWorkEnginePropSpec extends AnyPropSpec with TableDrivenPropertyChec
   /** The era length the proposal states, in blocks. */
   private val eraLength: BigInt = BigInt(5000000)
 
-  private val classic: ProofOfWorkEngine = ProofOfWorkEngine(Some(eraLength))
+  private val classic: EthashEngine = EthashEngine(Some(eraLength))
 
   /** The state left by settling `number` on a network that does not bring an
     * account into being by crediting it nothing.
@@ -56,7 +56,7 @@ class ProofOfWorkEnginePropSpec extends AnyPropSpec with TableDrivenPropertyChec
     * questions asked of it below are not both answerable from a balance: an
     * account written a zero and an account never written both hold nothing.
     */
-  private def settling(engine: ProofOfWorkEngine, reward: BigInt, number: BigInt): EvmFixtures.MapWorldState =
+  private def settling(engine: EthashEngine, reward: BigInt, number: BigInt): EvmFixtures.MapWorldState =
     val world = new EvmFixtures.MapWorldState
     val consensus = ConsensusRules.Unrewarded.copy(
       blockReward = UInt256.fromBigInt(reward).toOption.get,
@@ -65,7 +65,7 @@ class ProofOfWorkEnginePropSpec extends AnyPropSpec with TableDrivenPropertyChec
     engine.settlement(consensus, beneficiary, number, Seq.empty)(world)
     world
 
-  private def paid(engine: ProofOfWorkEngine, reward: BigInt, number: BigInt): BigInt =
+  private def paid(engine: EthashEngine, reward: BigInt, number: BigInt): BigInt =
     settling(engine, reward, number).balanceOf(beneficiary).toBigInt
 
   /** Thousandths of an ether, as wei. Every reward on this ladder is exact at
@@ -106,7 +106,7 @@ class ProofOfWorkEnginePropSpec extends AnyPropSpec with TableDrivenPropertyChec
   property("an engine with no era length pays the resolved amount at every height") {
     forAll(unladdered) { (what: String, block: BigInt) =>
       assert(
-        paid(ProofOfWorkEngine(), launchReward, block) == launchReward,
+        paid(EthashEngine(), launchReward, block) == launchReward,
         what + " changed the amount on a network that adopted no era ladder"
       )
     }

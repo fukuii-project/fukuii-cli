@@ -215,7 +215,7 @@ object Upgrades:
     * `blockReward` a value on the fork-resolved specification and installs a
     * block processor that computes over it, and OpenEthereum keeps the scalar
     * in the engine namespace and applies its era function to whatever it reads.
-    * `org.fukuii.consensus.pow.ProofOfWorkEngine` is where the formula is.
+    * `org.fukuii.consensus.pow.EthashEngine` is where the formula is.
     *
     * A reward of zero credits the beneficiary, for the reason it does on any
     * network at a height before touched empty accounts are deleted. It is
@@ -245,6 +245,8 @@ object Upgrades:
         zeroRewardCreditsBeneficiary = true,
         difficultyAdjustment = DifficultyAdjustment.Original,
         difficultyBombDelay = BigInt(0),
+        difficultyBombPause = None,
+        difficultyBombRemovedFrom = None,
         difficultyBoundDivisor = ConsensusRules.LaunchBoundDivisor
       )
     )

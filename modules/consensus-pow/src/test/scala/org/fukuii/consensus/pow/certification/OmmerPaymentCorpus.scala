@@ -8,7 +8,7 @@ import java.nio.file.Path
 import scala.util.control.NonFatal
 
 import org.fukuii.bytes.Address
-import org.fukuii.consensus.pow.ProofOfWorkEngine
+import org.fukuii.consensus.pow.EthashEngine
 import org.fukuii.types.BlockHeader
 
 /** One block shape, and every address it credits.
@@ -142,7 +142,7 @@ object OmmerPaymentCorpus:
   lazy val withoutOmmers: Option[CorpusReport] =
     NetworkFixtureCorpus.root.map(root => assemble(file(root), ClassicRewardHarness.engine, keepOmmers = false))
 
-  private def assemble(path: Path, engine: ProofOfWorkEngine, keepOmmers: Boolean): CorpusReport =
+  private def assemble(path: Path, engine: EthashEngine, keepOmmers: Boolean): CorpusReport =
     FixtureCorpus.read(path).flatMap(OmmerPaymentVector.decodeFile(path.getFileName.toString, _)) match
       case Left(error) =>
         CorpusReport(
@@ -154,7 +154,7 @@ object OmmerPaymentCorpus:
 
   private[certification] def outcomeOf(
       vector: OmmerPaymentVector,
-      engine: ProofOfWorkEngine,
+      engine: EthashEngine,
       keepOmmers: Boolean
   ): CaseOutcome =
     val verdict =

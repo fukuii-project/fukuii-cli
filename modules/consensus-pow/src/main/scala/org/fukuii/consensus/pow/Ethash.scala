@@ -293,7 +293,7 @@ object Ethash:
     *
     * The epoch is carried through onto the result and takes no part in the
     * construction: it is what stops a cache being handed to a header from a
-    * different epoch, which [[ProofOfWorkEngine.verifySeal]] checks.
+    * different epoch, which [[EthashEngine.verifySeal]] checks.
     */
   def cacheFrom(size: Long, seed: Hash, epoch: BigInt): EthashCache =
     if size <= 0 || size % HashBytes != 0 then

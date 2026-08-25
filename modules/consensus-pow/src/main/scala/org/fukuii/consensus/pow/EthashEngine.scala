@@ -1,7 +1,7 @@
 package org.fukuii.consensus.pow
 
 import org.fukuii.bytes.{Address, Hash, UInt256, UInt64}
-import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment}
+import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment, DifficultyBombPause}
 import org.fukuii.consensus.ConsensusEngine
 import org.fukuii.crypto.Keccak256
 import org.fukuii.evm.WorldState
@@ -68,7 +68,7 @@ import org.fukuii.types.{BlockHeader, Seal}
   *   network's answer wearing no network's name, which is what a chain
   *   specification exists to state.
   */
-final case class ProofOfWorkEngine(
+final case class EthashEngine(
     ecip1017EraLength: Option[BigInt] = None,
     ecip1099Activation: Option[BigInt] = None
 ) extends ConsensusEngine:
@@ -120,7 +120,7 @@ final case class ProofOfWorkEngine(
     world =>
       val era = eraAt(number)
       val winner = winnerReward(rules.blockReward.toBigInt, era)
-      credit(world, rules, beneficiary, winner + winner / ProofOfWorkEngine.InclusionDivisor * ommers.size)
+      credit(world, rules, beneficiary, winner + winner / EthashEngine.InclusionDivisor * ommers.size)
       ommers.foreach(ommer =>
         credit(world, rules, ommer.beneficiary, ommerReward(winner, era, number, ommer.number.toBigInt))
       )
@@ -192,15 +192,15 @@ final case class ProofOfWorkEngine(
     val step = parentDifficulty / boundDivisor(rules)
     val adjusted = rules.difficultyAdjustment match
       case DifficultyAdjustment.Original =>
-        if gap < ProofOfWorkEngine.DurationLimit then parentDifficulty + step else parentDifficulty - step
+        if gap < EthashEngine.DurationLimit then parentDifficulty + step else parentDifficulty - step
       case DifficultyAdjustment.Eip2 =>
-        parentDifficulty + step * multiplier(BigInt(1), gap, ProofOfWorkEngine.Eip2GapDivisor)
+        parentDifficulty + step * multiplier(BigInt(1), gap, EthashEngine.Eip2GapDivisor)
       case DifficultyAdjustment.Eip100 =>
         val raised = if parentHasOmmers then BigInt(2) else BigInt(1)
-        parentDifficulty + step * multiplier(raised, gap, ProofOfWorkEngine.Eip100GapDivisor)
-    val floored = adjusted.max(ProofOfWorkEngine.MinimumDifficulty)
+        parentDifficulty + step * multiplier(raised, gap, EthashEngine.Eip100GapDivisor)
+    val floored = adjusted.max(EthashEngine.MinimumDifficulty)
     UInt256
-      .fromBigInt(floored + bomb(parent.number.toBigInt + 1, rules.difficultyBombDelay))
+      .fromBigInt(floored + bomb(parent.number.toBigInt + 1, rules))
       .getOrElse(
         throw new IllegalStateException(
           "a difficulty above what a header can carry was computed for the block after " + parent.number.toString
@@ -328,7 +328,7 @@ final case class ProofOfWorkEngine(
     * apart in time due to a client security bug or other black-swan issue"*.
     */
   private def multiplier(raised: BigInt, gap: BigInt, gapDivisor: BigInt): BigInt =
-    (raised - gap / gapDivisor).max(ProofOfWorkEngine.MultiplierFloor)
+    (raised - gap / gapDivisor).max(EthashEngine.MultiplierFloor)
 
   /** The divisor sizing one adjustment step, refused where a rule set states
     * nothing to divide by.
@@ -345,7 +345,54 @@ final case class ProofOfWorkEngine(
       )
     else rules.difficultyBoundDivisor
 
-  /** The exponential term, which doubles every period once it starts.
+  /** The exponential term, which doubles every period once it starts, until a
+    * network states a height past which it is not computed at all.
+    *
+    * ==Removal is asked first, and it answers for every height at or above its
+    * own==
+    *
+    * ECIP-1041 writes it as the outer branch --
+    * *"if (block.number >= diffuse_block) { extra_difficulty = 0 }"* -- at
+    * `ethereumclassic/ECIPs` @ `8dda72c24`, `_specs/ecip-1041.md`, status
+    * Final. Both implementations that carry the height do the same:
+    * `ethereumclassic/core-geth` @ `4185df450` returns from `CalcDifficulty`
+    * before it reaches the explosion clause, and
+    * `openethereum/parity-ethereum` @ `55c90d401` wraps the whole clause in
+    * `header.number() < bomb_defuse_transition`. So a rule set stating both a
+    * removal and a pause computes neither below the removal's height and
+    * nothing at or above it, which is what nine of this chain's twelve
+    * published labels assert.
+    *
+    * **A removal is not a large delay, and the difference is reachable.** A
+    * delay that floors the term to nothing at one height floors it at every
+    * lower height too, so no delay satisfies a term below a boundary and none
+    * at it.
+    *
+    * ==A pause holds the reference point, and it outranks a delay at every
+    * height it covers==
+    *
+    * `ethereumclassic/core-geth` @ `4185df450` and
+    * `openethereum/parity-ethereum` @ `55c90d401` both reach their delay
+    * schedule only on the branch below the pause's own height, so the two rules
+    * compose by precedence rather than by addition. No network in this build's
+    * scope states both, and the order is taken from the clients rather than
+    * left to whichever member is read first.
+    *
+    * ==The span is subtracted as whole periods, which is ECIP-1010's own
+    * decomposition and the opposite of the delay's==
+    *
+    * ECIP-1010 @ `f398567f4` derives `delay = (cont_block - pause_block) /
+    * 100000` and resumes at `(block.number / 100000) - delay - 2`, so the
+    * subtraction happens after the division rather than before it.
+    * `openethereum/parity-ethereum` @ `55c90d401` and `besu-eth/besu-etc` @
+    * `eb4248c997` transcribe that form; `ethereumclassic/core-geth` @
+    * `4185df450` subtracts the span from the reference point instead and
+    * divides afterwards. The two agree wherever the span is a whole number of
+    * periods, which the only span any surveyed network states is, so they are
+    * indistinguishable on every published case and part on the first span that
+    * is not. **The delay above is decomposed the other way for the same reason
+    * -- each follows its own proposal's arithmetic**, and reading one of them
+    * as this build's general convention is what would get the other wrong.
     *
     * ==The delay is subtracted from the block, not from the period==
     *
@@ -374,20 +421,48 @@ final case class ProofOfWorkEngine(
     * at or above that is already unreachable and is refused as a nonsense
     * height rather than computed -- the same bound, for the same reason,
     * [[winnerReward]] puts on its own exponent.
-    *
-    * **Nothing here is a sentinel for a network that removed the term.** A delay
-    * of zero is no delay, and a network that removed it needs a rule this build
-    * does not carry.
     */
-  private def bomb(number: BigInt, delay: BigInt): BigInt =
-    val delayed = (number - delay).max(BigInt(0))
-    val periods = delayed / ProofOfWorkEngine.ExponentialPeriod - 2
-    if periods < 0 then BigInt(0)
-    else if periods >= ProofOfWorkEngine.WidestExponent then
-      throw new IllegalStateException(
-        "block " + number.toString + " asks for a difficulty term of two to the " + periods.toString
-      )
-    else BigInt(2).pow(periods.toInt)
+  private def bomb(number: BigInt, rules: ConsensusRules): BigInt =
+    if rules.difficultyBombRemovedFrom.exists(number >= _) then BigInt(0)
+    else
+      val periods = explosionPeriods(number, rules) - 2
+      if periods < 0 then BigInt(0)
+      else if periods >= EthashEngine.WidestExponent then
+        throw new IllegalStateException(
+          "block " + number.toString + " asks for a difficulty term of two to the " + periods.toString
+        )
+      else BigInt(2).pow(periods.toInt)
+
+  /** How many whole periods the term has been growing for at `number`, under
+    * whichever of the two rules that move it this network states.
+    */
+  private def explosionPeriods(number: BigInt, rules: ConsensusRules): BigInt =
+    pausedBy(rules) match
+      case Some(pause) if number >= pause.continuesFrom =>
+        number / EthashEngine.ExponentialPeriod -
+          (pause.continuesFrom - pause.pausedFrom) / EthashEngine.ExponentialPeriod
+      case Some(pause) if number >= pause.pausedFrom =>
+        pause.pausedFrom / EthashEngine.ExponentialPeriod
+      case _ =>
+        (number - rules.difficultyBombDelay).max(BigInt(0)) / EthashEngine.ExponentialPeriod
+
+  /** The window this rule set pauses the term over, refused where the two
+    * heights state no window.
+    *
+    * A window resuming at or below where it begins would take the resuming
+    * branch at every height inside itself and answer a difficulty nothing
+    * distinguishes from the right one -- the shape of a consensus fault rather
+    * than of a crash. The rules are read once per block, so asking here costs
+    * one comparison, exactly as [[boundDivisor]] costs one.
+    */
+  private def pausedBy(rules: ConsensusRules): Option[DifficultyBombPause] =
+    rules.difficultyBombPause.map: pause =>
+      if pause.continuesFrom <= pause.pausedFrom then
+        throw new IllegalStateException(
+          "a rule set pauses the difficulty term from " + pause.pausedFrom.toString +
+            " until " + pause.continuesFrom.toString + ", which is no window"
+        )
+      else pause
 
   /** Which era `number` falls in, counting the first as zero.
     *
@@ -432,7 +507,7 @@ final case class ProofOfWorkEngine(
     else if era > base.bitLength * 4 then BigInt(0)
     else
       val steps = era.toInt
-      base * ProofOfWorkEngine.DisinflationQuotient.pow(steps) / ProofOfWorkEngine.DisinflationDivisor.pow(steps)
+      base * EthashEngine.DisinflationQuotient.pow(steps) / EthashEngine.DisinflationDivisor.pow(steps)
 
   /** What the producer of an included ommer is paid.
     *
@@ -476,17 +551,17 @@ final case class ProofOfWorkEngine(
     * limited"*.
     */
   private def ommerReward(winner: BigInt, era: BigInt, number: BigInt, ommerNumber: BigInt): BigInt =
-    if era > 0 then winner / ProofOfWorkEngine.InclusionDivisor
+    if era > 0 then winner / EthashEngine.InclusionDivisor
     else
       val age = number - ommerNumber
-      if age < 1 || age > ProofOfWorkEngine.OmmerRewardHorizon then
+      if age < 1 || age > EthashEngine.OmmerRewardHorizon then
         throw new IllegalStateException(
           "an ommer " + age.toString + " blocks behind block " + number.toString +
             " is outside the range this emission is stated for"
         )
-      (ProofOfWorkEngine.OmmerRewardHorizon - age) * winner / ProofOfWorkEngine.OmmerRewardHorizon
+      (EthashEngine.OmmerRewardHorizon - age) * winner / EthashEngine.OmmerRewardHorizon
 
-object ProofOfWorkEngine:
+object EthashEngine:
 
   /** ECIP-1017's era length on Ethereum Classic, in blocks.
     *
@@ -610,7 +685,7 @@ enum SealFault:
   /** The header carries the other seal case, which this engine does not write.
     *
     * A refusal rather than an omission: see
-    * [[org.fukuii.consensus.pow.ProofOfWorkEngine.verifySeal]] on why declining
+    * [[org.fukuii.consensus.pow.EthashEngine.verifySeal]] on why declining
     * to interpret it would leave an obligation undischarged.
     */
   case WrongEngine

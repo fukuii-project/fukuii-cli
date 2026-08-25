@@ -54,7 +54,7 @@ import org.fukuii.bytes.UInt256
   * those are taken over an amount stepped down once per era rather than over
   * this one. Every one of those is arithmetic over this figure rather than a
   * further figure, so the record holds the figure and
-  * `org.fukuii.consensus.pow.ProofOfWorkEngine` holds the arithmetic.
+  * `org.fukuii.consensus.pow.EthashEngine` holds the arithmetic.
   *
   * [[Unrewarded]] is therefore not a placeholder for an unwritten emission. It
   * is the value a mechanism that credits nobody resolves to, which is what a
@@ -124,7 +124,44 @@ import org.fukuii.bytes.UInt256
   *
   *   Zero is *no delay*, which is what the forks predating the first delay
   *   proposal answer. It is not a sentinel for *no bomb*: a network that removed
-  *   the term does not delay it by nothing, and nothing here expresses that.
+  *   the term does not delay it by nothing, and
+  *   [[difficultyBombRemovedFrom]] is what expresses that.
+  * @param difficultyBombPause
+  *   the window, where one is in force, over which that reference point stands
+  *   still instead of moving. [[DifficultyBombPause]] carries the evidence for
+  *   the pair and for why it is not expressible as a delay.
+  *
+  *   **Absent rather than a sentinel**, which is what both clients that state
+  *   the rule as a parameter do:
+  *   `ethereumclassic/core-geth` @ `4185df450` leaves `ECIP1010PauseBlock` nil
+  *   on a network without the rule, and `openethereum/parity-ethereum` @
+  *   `55c90d401` maps an absent key to `u64::max_value()` so that no height
+  *   ever reaches it. A window is either stated or is not; there is no window
+  *   of nothing.
+  *
+  *   **It carries heights, which no other member here does, and that is forced
+  *   rather than chosen.** A rule set resolved at a height cannot pre-compute
+  *   this one: the same rules are in force inside the window and after it, and
+  *   the two compute different terms. So the height a caller asks about is what
+  *   selects the branch, and the window has to travel with the rules for it to
+  *   be selectable at all.
+  * @param difficultyBombRemovedFrom
+  *   the first height carrying no exponential term at all, where a network
+  *   removed it.
+  *
+  *   **Separate from a delay because no delay expresses it**, which is
+  *   measurable rather than definitional: a delay large enough to floor the
+  *   term to nothing at one height floors it at every lower height too, so a
+  *   pair of heights either side of a removal boundary -- a term below, none at
+  *   or above -- is satisfied by no delay of any size.
+  *
+  *   Both clients that state it as a parameter carry a height rather than a
+  *   flag: `DisposalBlock` in core-geth @ `4185df450`, compared against the
+  *   block being settled, and `bomb_defuse_transition` on parity's
+  *   `EthashParams` @ `55c90d401`, likewise. `besu-eth/besu-etc` @ `eb4248c997`
+  *   is the third and expresses it as a whole calculator with no term in it,
+  *   bound to the fork-resolved specification, so the height lives in that
+  *   client's schedule rather than in its parameter.
   * @param difficultyBoundDivisor
   *   what the parent's difficulty is divided by to size one step of adjustment.
   *
@@ -143,6 +180,8 @@ final case class ConsensusRules(
     zeroRewardCreditsBeneficiary: Boolean,
     difficultyAdjustment: DifficultyAdjustment,
     difficultyBombDelay: BigInt,
+    difficultyBombPause: Option[DifficultyBombPause],
+    difficultyBombRemovedFrom: Option[BigInt],
     difficultyBoundDivisor: BigInt
 )
 
@@ -177,9 +216,10 @@ object ConsensusRules:
     * proof-of-authority network fixes one rather than adjusting it -- so this
     * value cannot mean *no difficulty rule* and does not try to. It carries what
     * a network answers before any proposal has changed the algorithm and before
-    * any delay has been voted, which is the same thing nethermind's uninitialized
+    * any proposal has touched the exponential term, which is the same thing
+    * nethermind's uninitialized
     * `ReleaseSpec` carries. **A mechanism that does not adjust difficulty reads
-    * none of the three**, exactly as a mechanism that credits nobody is handed
+    * none of them**, exactly as a mechanism that credits nobody is handed
     * ommers it does not read.
     */
   val Unrewarded: ConsensusRules =
@@ -188,5 +228,7 @@ object ConsensusRules:
       zeroRewardCreditsBeneficiary = false,
       difficultyAdjustment = DifficultyAdjustment.Original,
       difficultyBombDelay = BigInt(0),
+      difficultyBombPause = None,
+      difficultyBombRemovedFrom = None,
       difficultyBoundDivisor = LaunchBoundDivisor
     )

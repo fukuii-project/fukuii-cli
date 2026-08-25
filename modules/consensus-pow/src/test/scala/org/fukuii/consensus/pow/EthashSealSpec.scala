@@ -25,9 +25,9 @@ import org.fukuii.types.{BlockHeader, BlockNonce, Seal}
   * `certification.EthashCorpus` against the published `header_hash`, which is
   * an outside statement of the same value.
   */
-class ProofOfWorkSealSpec extends AnyFlatSpec:
+class EthashSealSpec extends AnyFlatSpec:
 
-  private val engine: ProofOfWorkEngine = ProofOfWorkEngine()
+  private val engine: EthashEngine = EthashEngine()
 
   private val cache: EthashCache = EthashFixtures.firstEpochCache
 
@@ -88,14 +88,14 @@ class ProofOfWorkSealSpec extends AnyFlatSpec:
     *
     * The activation height below is arbitrary and small, chosen so the epochs
     * either side of it are cheap to name. A network's real height is the chain
-    * specification's -- see [[ProofOfWorkEngine]] on why none is defaulted.
+    * specification's -- see [[EthashEngine]] on why none is defaulted.
     */
-  private val classicish: ProofOfWorkEngine = ProofOfWorkEngine(ecip1099Activation = Some(BigInt(60000)))
+  private val classicish: EthashEngine = EthashEngine(ecip1099Activation = Some(BigInt(60000)))
 
   /** A cache of one row, tagged with an epoch.
     *
     * The contents never matter: every case below is refused, or not, on the
-    * epoch alone, which [[ProofOfWorkEngine.verifySeal]] compares before it
+    * epoch alone, which [[EthashEngine.verifySeal]] compares before it
     * evaluates anything. Building a real cache for a post-activation epoch
     * would cost twenty megabytes to assert something about an integer.
     */

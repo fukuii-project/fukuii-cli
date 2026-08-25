@@ -25,6 +25,8 @@ class ConsensusRulesSpec extends AnyFlatSpec:
       zeroRewardCreditsBeneficiary = false,
       difficultyAdjustment = DifficultyAdjustment.Original,
       difficultyBombDelay = BigInt(0),
+      difficultyBombPause = None,
+      difficultyBombRemovedFrom = None,
       difficultyBoundDivisor = BigInt(2048)
     )
 
@@ -37,6 +39,8 @@ class ConsensusRulesSpec extends AnyFlatSpec:
       zeroRewardCreditsBeneficiary = false,
       difficultyAdjustment = DifficultyAdjustment.Original,
       difficultyBombDelay = BigInt(0),
+      difficultyBombPause = None,
+      difficultyBombRemovedFrom = None,
       difficultyBoundDivisor = BigInt(2048)
     )
 
@@ -78,6 +82,27 @@ class ConsensusRulesSpec extends AnyFlatSpec:
       "a delay is the one genuinely fork-varying member here, and it moves every difficulty past its own period"
     )
 
+  it should "compare unequal when only the bomb pause differs" in
+    assert(
+      rewarding != rewardingAgain.copy(
+        difficultyBombPause = Some(DifficultyBombPause(BigInt(3000000), BigInt(5000000)))
+      ),
+      "a paused term is flat where an unpaused one doubles, so the two answer different difficulties in the window"
+    )
+
+  it should "compare unequal when two pauses differ only in where they resume" in
+    assert(
+      rewardingAgain.copy(difficultyBombPause = Some(DifficultyBombPause(BigInt(3000000), BigInt(5000000)))) !=
+        rewardingAgain.copy(difficultyBombPause = Some(DifficultyBombPause(BigInt(3000000), BigInt(6000000)))),
+      "a nested record contributing only its first member to the comparison would call two windows one"
+    )
+
+  it should "compare unequal when only the bomb removal differs" in
+    assert(
+      rewarding != rewardingAgain.copy(difficultyBombRemovedFrom = Some(BigInt(5900000))),
+      "a removed term and a delayed one differ at every height below the removal, where one is present and the other is not"
+    )
+
   it should "compare unequal when only the bound divisor differs" in
     assert(
       rewarding != rewardingAgain.copy(difficultyBoundDivisor = BigInt(1024)),
@@ -94,6 +119,14 @@ class ConsensusRulesSpec extends AnyFlatSpec:
     assert(
       !ConsensusRules.Unrewarded.zeroRewardCreditsBeneficiary,
       "of the two zero cases only this one adds no account to the state trie, which is the safe direction"
+    )
+
+  it should "state no rule that touches the exponential term" in
+    assert(
+      ConsensusRules.Unrewarded.difficultyBombPause.isEmpty &&
+        ConsensusRules.Unrewarded.difficultyBombRemovedFrom.isEmpty,
+      "this value is what a network answers before any proposal moved that term, and every network's rules " +
+        "are built from it, so a default stating one of them would put a chain's own rule under every other chain"
     )
 
   "a rule set" should "compare unequal when only its consensus facet differs" in

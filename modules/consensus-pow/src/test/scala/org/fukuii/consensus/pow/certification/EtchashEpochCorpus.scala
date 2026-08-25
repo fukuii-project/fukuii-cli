@@ -8,7 +8,7 @@ import java.nio.file.Path
 import scala.util.control.NonFatal
 
 import org.fukuii.bytes.Hash
-import org.fukuii.consensus.pow.{Ethash, ProofOfWorkEngine}
+import org.fukuii.consensus.pow.{Ethash, EthashEngine}
 
 /** One height, and the epoch-derived quantities a seal at it is checked
   * against.
@@ -163,12 +163,12 @@ object EtchashEpochCorpus:
     */
   val Activation: BigInt = BigInt(11700000)
 
-  private val engine: ProofOfWorkEngine = ProofOfWorkEngine(ecip1099Activation = Some(Activation))
+  private val engine: EthashEngine = EthashEngine(ecip1099Activation = Some(Activation))
 
   /** An engine that never doubles its epoch length, which is what a network
     * declining the proposal runs.
     */
-  private val withoutProposal: ProofOfWorkEngine = ProofOfWorkEngine()
+  private val withoutProposal: EthashEngine = EthashEngine()
 
   /** How many figures each height pins. */
   private val FiguresPerVector: Int = 6
@@ -198,7 +198,7 @@ object EtchashEpochCorpus:
   /** Figures pinned across the schedule half of the tier. */
   private[certification] def figuresAsserted: Int = heights.length * FiguresPerVector
 
-  private def assemble(path: Path, settling: ProofOfWorkEngine): CorpusReport =
+  private def assemble(path: Path, settling: EthashEngine): CorpusReport =
     decoded match
       case None              => CorpusReport(Corpus, 0, Vector.empty)
       case Some(Left(error)) =>
@@ -209,7 +209,7 @@ object EtchashEpochCorpus:
         )
       case Some(Right((schedule, _, _))) => CorpusReport(Corpus, 1, schedule.map(outcomeOf(_, settling)))
 
-  private[certification] def outcomeOf(vector: EtchashEpochVector, settling: ProofOfWorkEngine): CaseOutcome =
+  private[certification] def outcomeOf(vector: EtchashEpochVector, settling: EthashEngine): CaseOutcome =
     val verdict =
       try
         val length = Ethash.epochLengthAt(vector.block, settling.ecip1099Activation)

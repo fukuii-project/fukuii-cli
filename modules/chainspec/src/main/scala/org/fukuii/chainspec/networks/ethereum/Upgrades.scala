@@ -223,6 +223,8 @@ object Upgrades:
         zeroRewardCreditsBeneficiary = true,
         difficultyAdjustment = DifficultyAdjustment.Original,
         difficultyBombDelay = BigInt(0),
+        difficultyBombPause = None,
+        difficultyBombRemovedFrom = None,
         difficultyBoundDivisor = ConsensusRules.LaunchBoundDivisor
       )
     )

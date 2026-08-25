@@ -2,7 +2,7 @@ package org.fukuii.consensus.pow.certification
 
 import org.fukuii.bytes.{Address, Bytes, UInt256, UInt64}
 import org.fukuii.chainspec.ConsensusRules
-import org.fukuii.consensus.pow.ProofOfWorkEngine
+import org.fukuii.consensus.pow.EthashEngine
 import org.fukuii.evm.EvmFixtures
 import org.fukuii.types.{BlockHeader, BlockNonce, Bloom, Seal}
 
@@ -12,7 +12,7 @@ import org.fukuii.types.{BlockHeader, BlockNonce, Bloom, Seal}
   *
   * Both tiers build an ommer that the emission reads two fields of, and a third
   * copy of a fourteen-field header is the defect shape
-  * [[org.fukuii.consensus.pow.ProofOfWorkEngine.sealHash]] records from a client
+  * [[org.fukuii.consensus.pow.EthashEngine.sealHash]] records from a client
   * that wrote one field list out twice. The parameters below are shared for the
   * same reason: two tiers disagreeing about the era length would each be
   * internally consistent and jointly meaningless.
@@ -49,7 +49,7 @@ object ClassicRewardHarness:
     * checked against and reaches no emission, so an engine carrying one would
     * credit identically at every case here.
     */
-  val engine: ProofOfWorkEngine = ProofOfWorkEngine(ecip1017EraLength = Some(EraLength))
+  val engine: EthashEngine = EthashEngine(ecip1017EraLength = Some(EraLength))
 
   /** An engine that never steps its emission down, which is what a network
     * declining ECIP-1017 runs.
@@ -57,7 +57,7 @@ object ClassicRewardHarness:
     * The negative control for both reward tiers: era zero pays what this pays,
     * so a suite it satisfies everywhere is a suite blind to the ladder.
     */
-  val withoutLadder: ProofOfWorkEngine = ProofOfWorkEngine()
+  val withoutLadder: EthashEngine = EthashEngine()
 
   /** The rule set the emission is resolved from.
     *
@@ -104,7 +104,7 @@ object ClassicRewardHarness:
     * one the engine actually wrote into a world.
     */
   def credits(
-      settling: ProofOfWorkEngine,
+      settling: EthashEngine,
       beneficiary: Address,
       number: BigInt,
       ommers: Seq[BlockHeader]

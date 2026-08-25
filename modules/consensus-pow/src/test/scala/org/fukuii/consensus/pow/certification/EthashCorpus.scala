@@ -6,7 +6,7 @@ import java.nio.file.Path
 import scala.util.control.NonFatal
 
 import org.fukuii.bytes.Hash
-import org.fukuii.consensus.pow.{Ethash, EthashCache, ProofOfWorkEngine}
+import org.fukuii.consensus.pow.{Ethash, EthashCache, EthashEngine}
 import org.fukuii.crypto.Keccak256
 import org.fukuii.rlp.RlpCodec
 import org.fukuii.types.{BlockHeader, Seal}
@@ -54,7 +54,7 @@ object EthashCorpus:
     * and choosing the engine that cannot is what keeps that independence
     * testable rather than asserted.
     */
-  private val engine: ProofOfWorkEngine = ProofOfWorkEngine()
+  private val engine: EthashEngine = EthashEngine()
 
   lazy val report: Option[CorpusReport] = FixtureCorpus.root.map(root => assemble(directory(root)))
 

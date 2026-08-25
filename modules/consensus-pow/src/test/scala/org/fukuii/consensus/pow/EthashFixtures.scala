@@ -30,13 +30,13 @@ object EthashFixtures:
     * the step it would run against a mined block -- and only the search is
     * skipped.
     *
-    * This works because [[ProofOfWorkEngine.sealHash]] excludes the seal, so
+    * This works because [[EthashEngine.sealHash]] excludes the seal, so
     * the digest a nonce is sought against does not move when the mixed hash is
     * written back into the header. A test that had to re-derive it afterwards
     * would be asserting that property rather than using it.
     */
   def sealedHeader(
-      engine: ProofOfWorkEngine,
+      engine: EthashEngine,
       cache: EthashCache,
       number: Long,
       nonce: BlockNonce,

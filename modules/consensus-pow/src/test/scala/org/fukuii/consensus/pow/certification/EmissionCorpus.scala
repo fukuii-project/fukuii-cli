@@ -8,7 +8,7 @@ import java.nio.file.Path
 import scala.util.control.NonFatal
 
 import org.fukuii.bytes.Address
-import org.fukuii.consensus.pow.ProofOfWorkEngine
+import org.fukuii.consensus.pow.EthashEngine
 import org.fukuii.evm.EvmFixtures
 
 /** One height, and every figure the emission pays at it.
@@ -135,7 +135,7 @@ object EmissionCorpus:
   lazy val withoutLadder: Option[CorpusReport] =
     NetworkFixtureCorpus.root.map(root => assemble(file(root), ClassicRewardHarness.withoutLadder))
 
-  private def assemble(path: Path, engine: ProofOfWorkEngine): CorpusReport =
+  private def assemble(path: Path, engine: EthashEngine): CorpusReport =
     FixtureCorpus.read(path).flatMap(EmissionVector.decodeFile(path.getFileName.toString, _)) match
       case Left(error) =>
         CorpusReport(
@@ -150,7 +150,7 @@ object EmissionCorpus:
     * A vector is one case and its reasons are collected rather than short-cut,
     * so a divergence names every figure that moved instead of the first.
     */
-  private[certification] def outcomeOf(vector: EmissionVector, engine: ProofOfWorkEngine): CaseOutcome =
+  private[certification] def outcomeOf(vector: EmissionVector, engine: EthashEngine): CaseOutcome =
     val verdict =
       try
         val reachable = realizableDistances(vector.block)
@@ -252,7 +252,7 @@ object EmissionCorpus:
         .getOrElse(Vector.empty[EmissionVector])
     }
 
-  private def creditsWithOne(engine: ProofOfWorkEngine, block: BigInt, distance: Int): Map[Address, BigInt] =
+  private def creditsWithOne(engine: EthashEngine, block: BigInt, distance: Int): Map[Address, BigInt] =
     ClassicRewardHarness.credits(
       engine,
       beneficiary,
@@ -267,7 +267,7 @@ object EmissionCorpus:
     * doubled credit, which is a different claim and belongs to the tier that
     * states it.
     */
-  private def creditsWithTwo(engine: ProofOfWorkEngine, block: BigInt, distance: Int): Map[Address, BigInt] =
+  private def creditsWithTwo(engine: EthashEngine, block: BigInt, distance: Int): Map[Address, BigInt] =
     ClassicRewardHarness.credits(
       engine,
       beneficiary,
