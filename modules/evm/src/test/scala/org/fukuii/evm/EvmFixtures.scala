@@ -208,7 +208,8 @@ object EvmFixtures:
     schedule = schedule,
     precompiles = precompiles,
     gasForwarded = GasForwarding.Whole,
-    codeDepositMustSucceed = false
+    codeDepositMustSucceed = false,
+    maxCodeSize = None
   )
 
   val block: BlockContext = BlockContext(

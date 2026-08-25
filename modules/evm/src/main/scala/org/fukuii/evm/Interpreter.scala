@@ -795,6 +795,52 @@ object Interpreter:
     * operation is told it failed -- and `codeDepositMustSucceed` is which of
     * the two this chain runs.
     *
+    * ==The bound on deployed code is checked BEFORE that charge, and the
+    * ordering is a decision==
+    *
+    * EIP-170 states the rule and not where it sits: *"if contract creation
+    * initialization returns data with length of more than `MAX_CODE_SIZE`
+    * bytes, contract creation fails with an out of gas error"*
+    * (`ethereum/EIPs` @ `4a79c79ab`, `EIPS/eip-170.md`, Final). So the
+    * implementations differ, and three of them say in a comment why they check
+    * first: an over-long deployment must not be charged for storing code it
+    * will never store. `besu-eth/besu` @ `c2addd9424` --
+    * *"Oversized contracts must fail without charging code deposit gas or state
+    * gas. We must check this first"*; `bluealloy/revm` @ `3064c0901c` --
+    * *"This must be checked BEFORE charging state gas for code deposit"*;
+    * `ethereum/go-ethereum` @ `6bb0588ad8` on its newest branch --
+    * *"Check max code size BEFORE charging gas so over-max code does not consume
+    * state gas"*. `ethereum/go-ethereum-pow` @ `v1.10.26` and
+    * `ethereumclassic/core-geth` @ `4185df450` check first without saying why.
+    * The executable specification charges first
+    * (`forks/spurious_dragon/vm/interpreter.py` at `ccaaaba58`), and so does
+    * go-ethereum's own pre-Amsterdam branch.
+    *
+    * **Both orderings are observationally identical wherever both rules are
+    * live**, which is every network that has this one, since EIP-2 precedes
+    * EIP-170 everywhere: an over-long deployment ends with the state restored,
+    * no gas left and the creating operation told nothing either way, whether the
+    * charge ran first and succeeded, ran first and failed, or never ran. So the
+    * ordering is not chosen on the outcome. It is chosen because checking first
+    * keeps the bound's failure out of `codeDepositMustSucceed`'s reach BY
+    * CONSTRUCTION rather than by a guard -- a bound is not a price, and a
+    * network that has not adopted EIP-2 must not thereby soften one.
+    *
+    * That separation is what the field agrees on where its orderings disagree:
+    * both go-ethereum lines raise a distinct error the pre-EIP-2 leniency
+    * explicitly excludes, and besu runs its rule outside the branch that reads
+    * `requireCodeDepositToSucceed` at all. `NethermindEth/nethermind` @
+    * `c35ce1b1ab` is the exception -- it prices an over-long deployment at
+    * `ulong.MaxValue` in `CodeDepositHandler`, which folds the bound into the
+    * charge and so hands it to that flag.
+    *
+    * **The failure is an ordinary out-of-gas and earns no member of [[Halt]]**,
+    * which is the specification's answer as well as the proposal's wording: the
+    * two forks' `vm/exceptions.py` are byte-identical at `ccaaaba58`, and the
+    * over-long case raises the `OutOfGasError` already there. The clients that
+    * name it apart do so to say which check failed, and [[Halt]] records why
+    * this machine has nothing to say with that.
+    *
     * ==The second snapshot earns its place once that flag can be set==
     *
     * It used to be omitted, on the reasoning that the outer one restores
@@ -827,20 +873,29 @@ object Interpreter:
   ): Either[Unsupported, Outcome] =
     val schedule = environment.schedule
     val world = environment.world
+    val rules = environment.rules
     val taken = world.snapshot()
+
+    // Two ways a deployment is undone, and they undo the same three things. A
+    // second copy of this could drift from the first without any test naming
+    // both.
+    def undone(halt: Halt): Outcome =
+      world.restore(taken)
+      nested.gasLeft = BigInt(0)
+      Outcome.Halted(halt)
+
     run(nested, environment).map {
       case Outcome.Stopped(_, code) =>
-        nested.charge(schedule.codeDepositPerByte * BigInt(code.length)) match
-          case Left(halt) if environment.rules.codeDepositMustSucceed =>
-            world.restore(taken)
-            nested.gasLeft = BigInt(0)
-            Outcome.Halted(halt)
-          case Left(_) =>
-            nested.output = Bytes.Empty
-            Outcome.Stopped(nested.gasLeft, Bytes.Empty)
-          case Right(()) =>
-            world.setCode(nested.message.currentTarget, code)
-            Outcome.Stopped(nested.gasLeft, code)
+        if rules.maxCodeSize.exists(bound => code.length > bound) then undone(Halt.OutOfGas)
+        else
+          nested.charge(schedule.codeDepositPerByte * BigInt(code.length)) match
+            case Left(halt) if rules.codeDepositMustSucceed => undone(halt)
+            case Left(_)                                    =>
+              nested.output = Bytes.Empty
+              Outcome.Stopped(nested.gasLeft, Bytes.Empty)
+            case Right(()) =>
+              world.setCode(nested.message.currentTarget, code)
+              Outcome.Stopped(nested.gasLeft, code)
       case halted => halted
     }
 

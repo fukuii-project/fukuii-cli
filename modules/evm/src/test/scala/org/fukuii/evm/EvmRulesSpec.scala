@@ -131,7 +131,8 @@ class EvmRulesSpec extends AnyFlatSpec:
       schedule = EvmFixtures.schedule,
       precompiles = EvmFixtures.precompiles,
       gasForwarded = GasForwarding.Whole,
-      codeDepositMustSucceed = false
+      codeDepositMustSucceed = false,
+      maxCodeSize = None
     )
     assert(rebuilt == base, "two identical configurations built separately compared as different rules")
   }

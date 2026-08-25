@@ -128,6 +128,53 @@ class InvocationSpec extends AnyFlatSpec:
     */
   private def strictDeposit: EvmRules = EvmFixtures.rules.copy(codeDepositMustSucceed = true)
 
+  /** A bound to stand a deployment on either side of.
+    *
+    * Any figure would do -- what the machine owes is the comparison, and which
+    * number a network bounds at is that network's -- so this is deliberately not
+    * the one any network uses. [[EvmFixtures.schedule]] states the same doctrine
+    * for prices, and it is the same reason: a machine spec asserting a network's
+    * figure passes for an interpreter that reads the rules and for one with the
+    * figure compiled into it.
+    */
+  private val Bound: Int = 900
+
+  /** Deployment code handing back `size` bytes of zeros: a size, an offset, and
+    * a return over memory nothing wrote, which expands zero-filled.
+    */
+  private def returningBytes(size: Int): String = hex(push2(size) ++ push1(0x00) :+ 0xf3)
+
+  /** The rules with a bound on deployed code and nothing else moved.
+    *
+    * The deposit rule stays permissive, which is the combination worth running:
+    * a bound folded into the deposit charge, or checked and then routed through
+    * that flag, would leave the account behind holding nothing and hand the
+    * unspent gas back rather than halting.
+    */
+  private def bounding(limit: Int): EvmRules = EvmFixtures.rules.copy(maxCodeSize = Some(limit))
+
+  /** Gas enough to run either deployment the bound is tested with and pay to
+    * store it, with room on every side.
+    *
+    * Derived from the dominant term rather than written down, since the deposit
+    * is what makes the figure large and it moves with the schedule. **That the
+    * slack is enough is established by the unbounded case rather than by this
+    * expression** -- a budget falling short would fail that one, which is what
+    * makes the refusals beside it attributable to the bound and not to the gas.
+    */
+  private val roomForTheBound: BigInt = schedule.codeDepositPerByte * (Bound + 1) + BigInt(100000)
+
+  /** Gas enough to reach the deposit for an over-long deployment and not enough
+    * to pay it.
+    *
+    * The window between those two is wide and this is not derived to either
+    * edge: the case running the same figure against rules that bound nothing
+    * establishes that the deposit is genuinely unaffordable, so a figure that
+    * drifted out of the window would fail that one rather than let this one pass
+    * for the wrong reason.
+    */
+  private val shortOfTheBoundedDeposit: BigInt = roomForTheBound - schedule.codeDepositPerByte * Bound
+
   /** The table with the delegating byte in it, which is the only way it runs. */
   private def admitting: OpcodeTable =
     EvmFixtures.rules.table.adding(Operation(Opcode.DelegateCall, Cost.Computed))
@@ -736,6 +783,102 @@ class InvocationSpec extends AnyFlatSpec:
     assert(
       frame.gasLeft == BigInt(0),
       "a halted deployment returns nothing, where under the permissive rule what it did not spend comes back"
+    )
+  }
+
+  // ── A bound on how long the deployed code may be ─────────────────────────
+
+  "a deployment under a bound on its code" should "store code standing exactly on the bound" in {
+    // The comparison is strictly greater -- EIP-170 sets "more than" in bold --
+    // so the bound itself is deployable. Written as a pair with the case below
+    // because only a case standing on the bound catches a comparison off by one,
+    // and an off-by-one here is a different state root on every network that
+    // bounds anything.
+    val environment = EvmFixtures.environmentUnder(bounding(Bound))
+    val _ = runIn(environment, roomForTheBound, creating(returningBytes(Bound)))
+    assert(
+      environment.world.codeOf(ContractAddress.of(runner, UInt64.Zero)).length == Bound,
+      "code exactly as long as the bound was refused, so the comparison is not strictly greater"
+    )
+  }
+
+  it should "leave nothing behind where the code is one byte past the bound" in {
+    val environment = EvmFixtures.environmentUnder(bounding(Bound))
+    val _ = runIn(environment, roomForTheBound, creating(returningBytes(Bound + 1)))
+    assert(
+      !environment.world.accountExists(ContractAddress.of(runner, UInt64.Zero)),
+      "the creation is undone, so not even the empty account it left behind survives"
+    )
+  }
+
+  it should "answer zero where the code is one byte past the bound" in {
+    val (frame, _) =
+      runIn(EvmFixtures.environmentUnder(bounding(Bound)), roomForTheBound, creating(returningBytes(Bound + 1)))
+    assert(
+      frame.stack.peek(0) == Right(Word.Zero),
+      "the creating operation was told an address for a deployment that stored no code"
+    )
+  }
+
+  it should "take every remaining unit of gas where the code is one byte past the bound" in {
+    // The half that separates a bound from the deposit rule beside it. Under the
+    // permissive deposit rule an unaffordable deposit hands back what it did not
+    // spend; a bound is not a price, and no fork softens it.
+    val (frame, _) =
+      runIn(EvmFixtures.environmentUnder(bounding(Bound)), roomForTheBound, creating(returningBytes(Bound + 1)))
+    assert(
+      frame.gasLeft == BigInt(0),
+      "gas came back from a deployment the bound refused, which is what an unaffordable deposit does instead"
+    )
+  }
+
+  it should "store that same code where the rules bound nothing" in {
+    // The control, and the three cases above are worth nothing without it: the
+    // same code, the same budget and the same program, refused there and stored
+    // here. So neither the gas nor the deployment code can be what the refusal
+    // was about.
+    val environment = EvmFixtures.environment()
+    val _ = runIn(environment, roomForTheBound, creating(returningBytes(Bound + 1)))
+    assert(
+      environment.world.codeOf(ContractAddress.of(runner, UInt64.Zero)).length == Bound + 1,
+      "rules naming no bound refused a deployment anyway, so the cases above prove nothing about the bound"
+    )
+  }
+
+  it should "refuse an over-long deployment whose deposit is unaffordable, rather than keep the gas" in {
+    // The one case the two rules answer differently, and therefore the only one
+    // that pins the bound as checked BEFORE the charge rather than after it.
+    // With the deposit rule permissive, an unaffordable charge deploys nothing
+    // and hands back what it did not spend; a bound refuses outright. Checking
+    // after the charge would reach the first of those and this case would keep
+    // its gas.
+    //
+    // The field splits here and the choice is not unanimous: go-ethereum's two
+    // lines exclude the bound's error from that leniency by name, besu runs its
+    // rule outside the branch that reads the flag, and revm returns before
+    // reaching it -- while nethermind prices an over-long deployment at its
+    // maximum and so hands the bound to the flag after all.
+    val (frame, _) =
+      runIn(
+        EvmFixtures.environmentUnder(bounding(Bound)),
+        shortOfTheBoundedDeposit,
+        creating(returningBytes(Bound + 1))
+      )
+    assert(
+      frame.gasLeft == BigInt(0),
+      "a bound was softened by the rule about an unaffordable deposit, which is not a rule about bounds"
+    )
+  }
+
+  it should "keep the gas at that same figure where the rules bound nothing" in {
+    // What makes the case above a finding rather than a coincidence: the figure
+    // really is short of the deposit, so the refusal there is the bound and not
+    // the budget being too small to run the deployment at all.
+    val (frame, _) =
+      runIn(EvmFixtures.environment(), shortOfTheBoundedDeposit, creating(returningBytes(Bound + 1)))
+    assert(
+      frame.gasLeft > BigInt(0),
+      "the figure is not short of the deposit, so the case above says nothing about the bound"
     )
   }
 

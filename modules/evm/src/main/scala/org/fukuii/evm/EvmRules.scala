@@ -193,13 +193,53 @@ enum GasForwarding:
   *   a network has not adopted EIP-2 it does not: the account is left with no
   *   code, the gas already spent stays spent, and the creating operation is told
   *   the address as though code had been stored. EIP-2 reverses this.
+  * @param maxCodeSize
+  *   the longest deployed code a creation may leave behind, where the network
+  *   bounds it at all. A creation returning more than this fails; a creation
+  *   returning exactly this succeeds, the proposal's comparison being strictly
+  *   greater. `None` is a network that bounds nothing, which is every height
+  *   before EIP-170.
+  *
+  *   ==Absence is `None` rather than a saturating value, and the field is split==
+  *
+  *   Two clients hold the bound as a number that saturates: `NethermindEth/nethermind`
+  *   @ `c35ce1b1ab` sets `spec.MaxCodeSize = long.MaxValue` at its earliest fork
+  *   and `openethereum/openethereum` @ `v3.0.1` returns `u64::MAX` from
+  *   `CommonParams::max_code_size` below the transition. Three hold a real bound
+  *   and gate the comparison on something else -- `ethereum/go-ethereum` @
+  *   `6bb0588ad8` on `rules.IsEIP158` inside `CheckMaxCodeSize`,
+  *   `besu-eth/besu` @ `c2addd9424` on whether a `MaxCodeSizeRule` is in the
+  *   fork's validation list at all, `bluealloy/revm` @ `3064c0901c` on a
+  *   `SpecId` test beside the comparison.
+  *
+  *   **The gating shape is unavailable here and that is by construction**: these
+  *   rules are what a fork resolved TO, so nothing holding them may ask which
+  *   fork is active. That leaves the saturating value and this one, and a
+  *   saturating value would be a bound no code can reach standing in for a bound
+  *   that does not exist -- a reader has to know the sentinel to read the field,
+  *   and `2 * maxCodeSize`, which EIP-3860 derives, is meaningless over it.
+  *
+  *   ==Not a flag beside a number, and not a case==
+  *
+  *   nethermind carries both -- `LimitCodeSize` and `MaxCodeSize` -- which admits
+  *   a bound that is set and disregarded. [[GasForwarding]] records why this
+  *   record does not do that.
+  *
+  *   It is nevertheless a NUMBER here where forwarding is a case, and the
+  *   asymmetry is the field's rather than a preference. No surveyed client
+  *   parameterizes the forwarding fraction; four values of this one are already
+  *   in the field -- `0x6000` at EIP-170, `0xC000` at EIP-7907, `0x10000` at
+  *   EIP-7954, and unbounded -- and two of the clients above read it from a chain
+  *   configuration rather than from their own source. A case per value would
+  *   have to be extended by a proposal that only moves a number.
   */
 final case class EvmRules(
     table: OpcodeTable,
     schedule: GasSchedule,
     precompiles: PrecompileSet,
     gasForwarded: GasForwarding,
-    codeDepositMustSucceed: Boolean
+    codeDepositMustSucceed: Boolean,
+    maxCodeSize: Option[Int]
 ):
 
   /** These rules with each proposal applied, in the order given.

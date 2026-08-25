@@ -207,7 +207,8 @@ object Upgrades:
         schedule = genesisPrices,
         precompiles = genesisPrecompiles,
         gasForwarded = GasForwarding.Whole,
-        codeDepositMustSucceed = false
+        codeDepositMustSucceed = false,
+        maxCodeSize = None
       ),
       execution = ExecutionRules(
         touchedEmptyAccountsAreDeleted = false,
