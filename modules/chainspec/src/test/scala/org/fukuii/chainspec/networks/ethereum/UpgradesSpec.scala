@@ -8,7 +8,8 @@ import org.scalatest.flatspec.AnyFlatSpec
 /** Properties every rule set this network composed has to hold. */
 class UpgradesSpec extends AnyFlatSpec:
 
-  private val composed = Vector(Upgrades.frontier, Upgrades.homestead, Upgrades.tangerineWhistle)
+  private val composed =
+    Vector(Upgrades.frontier, Upgrades.homestead, Upgrades.tangerineWhistle, Upgrades.spuriousDragon)
 
   /** What a table charges for `opcode` before it runs, where that is settled. */
   private def settledCost(table: OpcodeTable, opcode: Opcode): Option[BigInt] =
@@ -34,7 +35,9 @@ class UpgradesSpec extends AnyFlatSpec:
     assert(
       Upgrades.frontier.components == Vector.empty &&
         Upgrades.homestead.components == Vector(ProposalId.Eip(7), ProposalId.Eip(2)) &&
-        Upgrades.tangerineWhistle.components == Vector(ProposalId.Eip(7), ProposalId.Eip(2), ProposalId.Eip(150)),
+        Upgrades.tangerineWhistle.components == Vector(ProposalId.Eip(7), ProposalId.Eip(2), ProposalId.Eip(150)) &&
+        Upgrades.spuriousDragon.components ==
+        Vector(ProposalId.Eip(7), ProposalId.Eip(2), ProposalId.Eip(150), ProposalId.Eip(155), ProposalId.Eip(160)),
       "a composition's recorded components are not the ones it adopted"
     )
 
@@ -63,10 +66,17 @@ class UpgradesSpec extends AnyFlatSpec:
     )
 
   it should "credit a beneficiary even where the amount is zero, at every height this build reaches" in
-    // besu writes it as .skipZeroBlockRewards(false) at its Frontier definition
-    // and flips it at Spurious Dragon, the fork that begins deleting touched
-    // empty accounts. Nothing here reaches that fork, and the specification and
-    // go-ethereum-pow both credit unconditionally at these heights.
+    // This build now reaches the fork besu flips this at:
+    // .skipZeroBlockRewards(false) at its Frontier definition becomes true at
+    // spuriousDragonDefinition, because from there an empty account a zero
+    // credit created has to be deleted again. The specification takes the other
+    // route and keeps crediting unconditionally --
+    // ethereum/execution-specs @ ccaaaba58 forks/spurious_dragon/fork.py's
+    // pay_rewards calls create_ether with no zero check, exactly as its Frontier
+    // copy does -- and reaches the same observable through that deletion. The
+    // two agree here for a third reason as well: BLOCK_REWARD is five ether at
+    // every height this build reaches, so no composition below can produce the
+    // zero this member is about.
     assert(
       composed.forall(rules => rules.consensus.zeroRewardCreditsBeneficiary),
       "declining to credit before empty accounts are deleted would leave a leaf out of the state trie"

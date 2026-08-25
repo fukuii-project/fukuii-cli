@@ -1,7 +1,7 @@
 package org.fukuii.chainspec.networks
 
 import org.fukuii.bytes.UInt64
-import org.fukuii.chainspec.{Activation, UpgradeSchedule}
+import org.fukuii.chainspec.{Activation, Upgrade, UpgradeRules, UpgradeSchedule}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Ethereum mainnet and Ethereum Classic mainnet run the same rules through
@@ -93,6 +93,19 @@ class SharedHistorySpec extends AnyFlatSpec:
   private def ethereumAt(height: Long) = ethereumSchedule.at(UInt64.fromBits(height), UInt64.Zero)
   private def classicAt(height: Long) = classicSchedule.at(UInt64.fromBits(height), UInt64.Zero)
 
+  /** Where on `schedule` the entry carrying exactly these rules activates.
+    *
+    * Keyed on the rules rather than on a label or a position, so it goes on
+    * naming the same upgrade however either network's schedule grows past it.
+    */
+  private def activationCarrying(schedule: UpgradeSchedule, rules: UpgradeRules): Activation =
+    schedule.entries
+      .collectFirst {
+        case UpgradeSchedule.Entry(activation, _, Upgrade.RuleChange(carried)) if carried == rules =>
+          activation
+      }
+      .getOrElse(fail("no entry on " + schedule.network.name + " carries the rules under test"))
+
   "the two networks' rule sets" should "be separately built values rather than one value twice" in
     // Everything below compares by value, and value comparison cannot tell a
     // genuine agreement from a shared reference. This is the only test here
@@ -147,9 +160,18 @@ class SharedHistorySpec extends AnyFlatSpec:
     // The field's own division, asserted: a proposal is shared and a schedule is
     // not. besu-etc has to express this by re-parenting its inheritance graph at
     // the divergence point; composing from components needs no parent at all.
+    //
+    // The two activations are found by the rules they carry rather than taken
+    // as either schedule's LAST fork point, which is what this once compared.
+    // That reading answered the question only while EIP-150 was the latest
+    // proposal either network had adopted: the first fork landing after it on
+    // one side moves `last` off the entry under test, and the assertion goes on
+    // passing while measuring two upgrades that have nothing to do with the one
+    // it names.
     assert(
       ethereumclassic.Upgrades.gasReprice == ethereum.Upgrades.tangerineWhistle &&
-        classicSchedule.forkPoints.last != ethereumSchedule.forkPoints.last,
+        activationCarrying(classicSchedule, ethereumclassic.Upgrades.gasReprice) !=
+        activationCarrying(ethereumSchedule, ethereum.Upgrades.tangerineWhistle),
       "the same proposal produced different rules, or two networks adopted it at one block"
     )
 

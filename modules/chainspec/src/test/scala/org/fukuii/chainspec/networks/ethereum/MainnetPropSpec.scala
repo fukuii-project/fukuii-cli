@@ -34,7 +34,8 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     ("Frontier Thawing", 200000L),
     ("Homestead", 1150000L),
     ("DAO Fork", 1920000L),
-    ("Tangerine Whistle", 2463000L)
+    ("Tangerine Whistle", 2463000L),
+    ("Spurious Dragon", 2675000L)
   )
 
   /** The last height under the old rules and the first under the new, per
@@ -56,7 +57,9 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     (1919999L, Upgrades.homestead),
     (1920000L, Upgrades.homestead),
     (2462999L, Upgrades.homestead),
-    (2463000L, Upgrades.tangerineWhistle)
+    (2463000L, Upgrades.tangerineWhistle),
+    (2674999L, Upgrades.tangerineWhistle),
+    (2675000L, Upgrades.spuriousDragon)
   )
 
   property("every upgrade activates at the block its own citation states") {

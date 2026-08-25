@@ -221,6 +221,46 @@ object Mainnet:
       Upgrade.RuleChange(Upgrades.tangerineWhistle)
     )
 
+  /** Block 2,675,000.
+    *
+    * `ethereum/EIPs` @ `9c915ee494c05069945f4e1018fa0854e2d3fb38`, EIP-607
+    * *Hardfork Meta: Spurious Dragon* (Final): *"Block >= 2,675,000 on
+    * Mainnet"*. `ethereum/execution-specs` @
+    * `ccaaaba58c748c072ca0ef9a09e91f9e3dcd277a` states it executably as
+    * `ByBlockNumber(2675000)` in `src/ethereum/forks/spurious_dragon/__init__.py`.
+    * Two clients from different language families implement it:
+    * `ethereum/go-ethereum` @ `6bb0588ad8e7f922e4ad5580f51265a4097af08f` as
+    * `EIP155Block: big.NewInt(2_675_000)` and `EIP158Block:
+    * big.NewInt(2_675_000)` in `params/config.go`, and `besu-eth/besu` @
+    * `c2addd94244196d4713e38ea659be0d2581082e9` as `"eip158Block": 2675000` in
+    * `config/src/main/resources/mainnet.json`.
+    *
+    * ==Two of the four proposals this upgrade names are implemented==
+    *
+    * [[Upgrades.spuriousDragon]] carries EIP-155 and EIP-160 and records both
+    * in its component list. EIP-161 and EIP-170 are not there, so a node built
+    * from this entry validates less across this boundary than the network did.
+    * **The entry names the network's upgrade; it does not claim to implement
+    * all of it**, which is the standing [[homestead]] has for a different
+    * reason.
+    *
+    * ==go-ethereum's field name for this activation is the pre-renumbering
+    * one==
+    *
+    * Its `EIP158Block` gates EIP-161, which supersedes EIP-158 as that
+    * document's *"invariant-preserving alternative"*; EIP-607 lists 161 and
+    * not 158. besu carries the same spelling in its genesis key and binds
+    * `spuriousDragonDefinition` to it. Recorded because the number in the
+    * clients' name for this block is the one document the upgrade does not
+    * include.
+    */
+  private val spuriousDragon: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(
+      atBlock(2675000),
+      upgrade("Spurious Dragon"),
+      Upgrade.RuleChange(Upgrades.spuriousDragon)
+    )
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -244,4 +284,4 @@ object Mainnet:
     * network trouble rather than as a missing entry.
     */
   val schedule: Either[UpgradeSchedule.Error, UpgradeSchedule] =
-    UpgradeSchedule.of(Vector(frontier, frontierThawing, homestead, daoFork, tangerineWhistle))
+    UpgradeSchedule.of(Vector(frontier, frontierThawing, homestead, daoFork, tangerineWhistle, spuriousDragon))
