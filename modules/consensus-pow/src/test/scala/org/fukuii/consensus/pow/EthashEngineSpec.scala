@@ -95,6 +95,20 @@ class EthashEngineSpec extends AnyFlatSpec:
     */
   private val exhaustedHeight: BigInt = BigInt(3901)
 
+  "an era length of zero" should "be refused where the network states it" in
+    // Unguarded this is the one degenerate value that does fail on its own, and
+    // it fails as bare arithmetic from inside a settlement rather than as the
+    // named refusal every other misconfiguration of this engine answers with.
+    assertThrows[IllegalArgumentException](EthashEngine(Some(BigInt(0))))
+
+  "a negative era length" should "be refused where the network states it" in
+    // The dangerous half, and the reason the guard is a comparison rather than a
+    // zero check: unguarded this throws nothing anywhere. Division truncates
+    // toward zero, so every reachable height answers era zero or less, both
+    // rewards read that as the first era, and the chain pays the unreduced
+    // emission forever with no failure to observe.
+    assertThrows[IllegalArgumentException](EthashEngine(Some(BigInt(-5000000))))
+
   "a block with no ommers" should "credit its beneficiary exactly what the rules resolved" in
     assert(
       settled(withoutLadder, rules(32)).balanceOf(beneficiary) == Word(BigInt(32)),

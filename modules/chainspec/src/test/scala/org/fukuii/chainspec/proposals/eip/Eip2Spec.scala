@@ -1,7 +1,7 @@
 package org.fukuii.chainspec.proposals.eip
 
 import org.fukuii.bytes.Bytes
-import org.fukuii.chainspec.UpgradeRules
+import org.fukuii.chainspec.{DifficultyAdjustment, UpgradeRules}
 import org.fukuii.chainspec.networks.ethereum
 import org.fukuii.execution.IntrinsicGas
 import org.scalatest.flatspec.AnyFlatSpec
@@ -11,7 +11,7 @@ import org.scalatest.flatspec.AnyFlatSpec
   * ==Through [[Eip2.component]], because the wiring is what is untested==
   *
   * Each delta this document carries is reachable on its own, and a spec calling
-  * the three of them directly passes with the component wired to none of them.
+  * the four of them directly passes with the component wired to none of them.
   * What a network adopts is the component, so the component is what is adopted
   * here: a delta left unwired is then a failing case rather than a rule quietly
   * absent from every rule set from this fork onward.
@@ -22,10 +22,10 @@ import org.scalatest.flatspec.AnyFlatSpec
   *
   * ==Here rather than with the layers, because these are the document's claims==
   *
-  * Every figure is read from the proposal's own text. The machine and the
-  * admission facet each know how to hold a rule and neither knows which rule is
-  * right; asserting both in one place would leave a failure unable to say which
-  * of the two was wrong.
+  * Every figure is read from the proposal's own text. The three facets this
+  * document reaches each know how to hold a rule and none of them knows which
+  * rule is right; asserting them where they are held would leave a failure
+  * unable to say which of the three was wrong.
   */
 class Eip2Spec extends AnyFlatSpec:
 
@@ -63,12 +63,21 @@ class Eip2Spec extends AnyFlatSpec:
       "the rule that undoes a creation which cannot pay its deposit did not reach the machine"
     )
 
-  it should "have held none of the three before it was adopted, or the cases above test nothing" in
-    // The control. Two of the three are booleans that are false at genesis, so a
-    // case asserting the adopted value alone would pass against a base that
-    // already held it. The third is the document's own before figure.
+  it should "replace the two-valued difficulty adjustment with the continuous one" in
+    assert(
+      adopted.consensus.difficultyAdjustment == DifficultyAdjustment.Eip2,
+      "the delta reaching the consensus facet is observed by nothing else: no schedule reads the algorithm off a " +
+        "composed rule set, so a component wired to three of its four deltas passes every other case in this build"
+    )
+
+  it should "have held none of the four before it was adopted, or the cases above test nothing" in
+    // The control. Two of the four are booleans that are false at genesis, and
+    // a case asserting the adopted value alone would pass against a base that
+    // already held it. The other two are the document's own before figure and
+    // the algorithm it replaces.
     assert(
       !base.admission.signatureSMustBeLow && !base.evm.codeDepositMustSucceed &&
-        creationCharge(base) == BigInt(21000),
+        creationCharge(base) == BigInt(21000) &&
+        base.consensus.difficultyAdjustment == DifficultyAdjustment.Original,
       "the genesis rules already held what this document is supposed to settle"
     )

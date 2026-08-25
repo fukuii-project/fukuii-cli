@@ -174,6 +174,34 @@ import org.fukuii.bytes.UInt256
   *
   *   It must not be zero. A rule set answering zero has no adjustment step to
   *   state, which is a broken rule set rather than a network's answer.
+  * @param ecip1099Activation
+  *   the first height at which a proof-of-work mechanism sizes its epoch by the
+  *   longer of the two lengths ECIP-1099 states, and [[scala.None]] on a network
+  *   that never adopts the proposal.
+  *
+  *   **Here rather than on the engine because a client resolves it per fork**,
+  *   which is the test [[UpgradeRules]] states for admitting a member at all.
+  *   `besu-eth/besu-etc` @ `eb4248c99` meets it directly: its
+  *   `ClassicProtocolSpecs.thanosDefinition` installs
+  *   `EpochCalculator.Ecip1099EpochCalculator` on the fork-resolved
+  *   specification, and `MainnetBlockHeaderValidator` takes that calculator as
+  *   the parameter its seal validator is built from.
+  *   `ethereumclassic/core-geth` @ `4185df450` carries `ECIP1099FBlock` in chain
+  *   configuration beside `DisposalBlock`, which is
+  *   [[difficultyBombRemovedFrom]] -- one height gating one question about what
+  *   is in force at a block, and the same shape twice.
+  *
+  *   **A height rather than the resolved length**, for the reason
+  *   [[difficultyBombPause]] carries its own two: the predicate is applied to
+  *   the block being asked about, so the answer is right whichever side of the
+  *   activation the caller's own rules were resolved at. A resolved length would
+  *   be right only when those two heights agree.
+  *
+  *   The network's own height is not defaulted anywhere. The proposal states one
+  *   per network -- 11,700,000 for Ethereum Classic, 2,520,000 for Mordor, and
+  *   *"no upgrade is required"* for Kotti -- so a default would be one network's
+  *   answer wearing no network's name, which is what a chain specification
+  *   exists to state.
   */
 final case class ConsensusRules(
     blockReward: UInt256,
@@ -182,7 +210,8 @@ final case class ConsensusRules(
     difficultyBombDelay: BigInt,
     difficultyBombPause: Option[DifficultyBombPause],
     difficultyBombRemovedFrom: Option[BigInt],
-    difficultyBoundDivisor: BigInt
+    difficultyBoundDivisor: BigInt,
+    ecip1099Activation: Option[BigInt]
 )
 
 object ConsensusRules:
@@ -230,5 +259,6 @@ object ConsensusRules:
       difficultyBombDelay = BigInt(0),
       difficultyBombPause = None,
       difficultyBombRemovedFrom = None,
-      difficultyBoundDivisor = LaunchBoundDivisor
+      difficultyBoundDivisor = LaunchBoundDivisor,
+      ecip1099Activation = None
     )

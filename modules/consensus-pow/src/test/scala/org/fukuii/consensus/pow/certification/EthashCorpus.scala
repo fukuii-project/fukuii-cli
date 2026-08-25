@@ -6,6 +6,7 @@ import java.nio.file.Path
 import scala.util.control.NonFatal
 
 import org.fukuii.bytes.Hash
+import org.fukuii.chainspec.ConsensusRules
 import org.fukuii.consensus.pow.{Ethash, EthashCache, EthashEngine}
 import org.fukuii.crypto.Keccak256
 import org.fukuii.rlp.RlpCodec
@@ -109,7 +110,7 @@ object EthashCorpus:
     * reader to the wrong place.
     */
   private def checked(fixture: PoWFixture, header: BlockHeader): Verdict =
-    val epoch = engine.epochOf(header.number.toBigInt)
+    val epoch = engine.epochOf(ConsensusRules.Unrewarded, header.number.toBigInt)
     val cache = cacheFor(epoch)
     val sealHash = engine.sealHash(header)
     val solution = Ethash.evaluateLight(cache, fixture.datasetSize, sealHash, fixture.nonce.toIArray)

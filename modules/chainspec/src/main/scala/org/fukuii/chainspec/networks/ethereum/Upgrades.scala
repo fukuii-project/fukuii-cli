@@ -225,7 +225,8 @@ object Upgrades:
         difficultyBombDelay = BigInt(0),
         difficultyBombPause = None,
         difficultyBombRemovedFrom = None,
-        difficultyBoundDivisor = ConsensusRules.LaunchBoundDivisor
+        difficultyBoundDivisor = ConsensusRules.LaunchBoundDivisor,
+        ecip1099Activation = None
       )
     )
 

@@ -128,10 +128,10 @@ class EtchashEpochCertificationSpec extends AnyFlatSpec:
         WrongSeedVectors.toString
     )
 
-  "an engine that never doubles its epoch length" should "answer correctly below the activation" in
+  "rules that never double the epoch length" should "answer correctly below the activation" in
     assert(
       withoutProposal.agreed.length == Heights - PastActivation,
-      "an engine without the proposal agreed at " + withoutProposal.agreed.length.toString +
+      "rules without the proposal agreed at " + withoutProposal.agreed.length.toString +
         " heights rather than " + (Heights - PastActivation).toString + ": " + withoutProposal.describe
     )
 

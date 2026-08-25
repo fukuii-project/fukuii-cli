@@ -3,6 +3,7 @@ package org.fukuii.consensus.pow
 import org.scalatest.flatspec.AnyFlatSpec
 
 import org.fukuii.bytes.{Bytes, Hash, UInt256, UInt64}
+import org.fukuii.chainspec.ConsensusRules
 import org.fukuii.evm.EvmFixtures
 import org.fukuii.types.{BlockHeader, BlockNonce, Seal}
 
@@ -29,6 +30,11 @@ class EthashSealSpec extends AnyFlatSpec:
 
   private val engine: EthashEngine = EthashEngine()
 
+  /** A rule set no proposal here has touched, which is what every case below
+    * runs against unless it says otherwise.
+    */
+  private val rules: ConsensusRules = ConsensusRules.Unrewarded
+
   private val cache: EthashCache = EthashFixtures.firstEpochCache
 
   private val nonce: BlockNonce = EthashFixtures.nonceOf("0102030405060708")
@@ -38,7 +44,7 @@ class EthashSealSpec extends AnyFlatSpec:
   /** A difficulty every result clears, so the mixed-hash half is what is under
     * test until a case says otherwise. See [[EthashFixtures.sealedHeader]].
     */
-  private val accepted: BlockHeader = EthashFixtures.sealedHeader(engine, cache, 1L, nonce, BigInt(1))
+  private val accepted: BlockHeader = EthashFixtures.sealedHeader(engine, rules, cache, 1L, nonce, BigInt(1))
 
   private val acceptedMix: Hash = accepted.seal match
     case Seal.MixHashAndNonce(mixHash, _) => mixHash
@@ -66,7 +72,7 @@ class EthashSealSpec extends AnyFlatSpec:
     * state that reaches the second check.
     */
   private val overclaimed: BlockHeader =
-    EthashFixtures.sealedHeader(engine, cache, 1L, nonce, impossible)
+    EthashFixtures.sealedHeader(engine, rules, cache, 1L, nonce, impossible)
 
   private val tampered: BlockHeader =
     accepted.copy(seal = Seal.MixHashAndNonce(EvmFixtures.hash(9), nonce))
@@ -74,23 +80,24 @@ class EthashSealSpec extends AnyFlatSpec:
   private val authorityRound: BlockHeader =
     EthashFixtures.headerAt(1L, BigInt(1), Seal.AuthorityRound(UInt64.Zero, Bytes.Empty))
 
-  /** Whether the engine actually CONSULTS its ECIP-1099 parameter, which every
-    * case above is blind to.
+  /** Whether the engine actually CONSULTS the ECIP-1099 member of the rules it
+    * is handed, which every case above is blind to.
     *
-    * ==Measured, not assumed: without these the parameter could be ignored
+    * ==Measured, not assumed: without these the member could be ignored
     * entirely and nothing would fail==
     *
     * Every other case in this file, and both published cases in the certified
-    * tier, run on an engine with no activation set -- so the parameter and the
-    * absent one answer identically and an engine that never read it would pass
-    * all of them. Replacing `epochOf`'s use of the parameter with a constant
-    * `None` was seeded and caught by nothing until these cases existed.
+    * tier, run against rules with no activation set -- so a set stating one and
+    * a set stating none answer identically, and an engine that never read the
+    * member would pass all of them. Replacing `epochOf`'s use of it with a
+    * constant `None` was seeded and caught by nothing until these cases existed.
     *
     * The activation height below is arbitrary and small, chosen so the epochs
     * either side of it are cheap to name. A network's real height is the chain
-    * specification's -- see [[EthashEngine]] on why none is defaulted.
+    * specification's -- see [[org.fukuii.chainspec.ConsensusRules]] on why none
+    * is defaulted.
     */
-  private val classicish: EthashEngine = EthashEngine(ecip1099Activation = Some(BigInt(60000)))
+  private val classicish: ConsensusRules = rules.copy(ecip1099Activation = Some(BigInt(60000)))
 
   /** A cache of one row, tagged with an epoch.
     *
@@ -135,37 +142,39 @@ class EthashSealSpec extends AnyFlatSpec:
 
   "a header this engine sealed" should "be accepted" in
     assert(
-      engine.verifySeal(accepted, cache).isRight,
+      engine.verifySeal(rules, accepted, cache).isRight,
       "the mixed hash was taken from what this nonce actually produces and the difficulty is one"
     )
 
   it should "answer the mixed hash the header carries" in
     assert(
-      engine.verifySeal(accepted, cache).map(_.mixHash) == Right(acceptedMix),
+      engine.verifySeal(rules, accepted, cache).map(_.mixHash) == Right(acceptedMix),
       "the accepted solution is the header's own, not a second evaluation of something else"
     )
 
   "a header carrying the authority-round seal" should "be refused as the wrong engine" in
     assert(
-      engine.verifySeal(authorityRound, cache) == Left(SealFault.WrongEngine),
+      engine.verifySeal(rules, authorityRound, cache) == Left(SealFault.WrongEngine),
       "Seal records that widening the seal to a sum moved a refusal out of the decoder, and this is where it lands"
     )
 
   "a header stating no difficulty" should "be refused before a target is computed" in
     assert(
-      engine.verifySeal(accepted.copy(difficulty = wordOf(BigInt(0))), cache) == Left(SealFault.NoDifficulty),
+      engine.verifySeal(rules, accepted.copy(difficulty = wordOf(BigInt(0))), cache) == Left(SealFault.NoDifficulty),
       "the division producing a target is what would fail otherwise, naming arithmetic rather than the header"
     )
 
   "a cache from another epoch" should "be refused as the caller's fault and not the block's" in
     assert(
-      engine.verifySeal(accepted, cache.copy(epoch = BigInt(1))) == Left(SealFault.WrongEpoch(BigInt(0), BigInt(1))),
+      engine.verifySeal(rules, accepted, cache.copy(epoch = BigInt(1))) == Left(
+        SealFault.WrongEpoch(BigInt(0), BigInt(1))
+      ),
       "a cache from the wrong epoch answers a well-formed digest about nothing, which is not an invalid block"
     )
 
   "a header whose mixed hash was tampered with" should "be refused as a wrong mixed hash" in
     assert(
-      engine.verifySeal(tampered, cache).swap.toOption.exists {
+      engine.verifySeal(rules, tampered, cache).swap.toOption.exists {
         case SealFault.WrongMixHash(claimed, answered) => claimed == EvmFixtures.hash(9) && answered == acceptedMix
         case _                                         => false
       },
@@ -174,35 +183,35 @@ class EthashSealSpec extends AnyFlatSpec:
 
   "a header claiming more work than its nonce did" should "be refused as above the target" in
     assert(
-      engine.verifySeal(overclaimed, cache).swap.toOption.exists {
+      engine.verifySeal(rules, overclaimed, cache).swap.toOption.exists {
         case SealFault.AboveTarget(_, difficulty) => difficulty == impossible
         case _                                    => false
       },
       "the mixed hash still matches, so the only thing left to refuse is the work, which is the second check"
     )
 
-  "an engine running ECIP-1099" should "read the legacy epoch below the activation" in
+  "rules stating an ECIP-1099 activation" should "read the legacy epoch below it" in
     assert(
-      classicish.epochOf(BigInt(59999)) == BigInt(1),
+      engine.epochOf(classicish, BigInt(59999)) == BigInt(1),
       "59999 is in the second legacy epoch, and the proposal does not apply below its own activation"
     )
 
   it should "halve the epoch at the activation" in
     assert(
-      classicish.epochOf(BigInt(60000)) == BigInt(1) && engine.epochOf(BigInt(60000)) == BigInt(2),
+      engine.epochOf(classicish, BigInt(60000)) == BigInt(1) && engine.epochOf(rules, BigInt(60000)) == BigInt(2),
       "the same height is epoch two without the proposal and epoch one with it, which is what shrinks the dataset"
     )
 
   it should "refuse the cache the legacy epoch would have called for" in
     assert(
-      classicish.verifySeal(EthashFixtures.headerAt(60000L, BigInt(1), accepted.seal), tagged(BigInt(2))) ==
+      engine.verifySeal(classicish, EthashFixtures.headerAt(60000L, BigInt(1), accepted.seal), tagged(BigInt(2))) ==
         Left(SealFault.WrongEpoch(BigInt(1), BigInt(2))),
       "an engine that ignored its own activation would accept this cache, and every other case here would still pass"
     )
 
   it should "accept the cache its own epoch calls for as far as the epoch check" in
     assert(
-      classicish.verifySeal(EthashFixtures.headerAt(60000L, BigInt(1), accepted.seal), tagged(BigInt(1))) !=
+      engine.verifySeal(classicish, EthashFixtures.headerAt(60000L, BigInt(1), accepted.seal), tagged(BigInt(1))) !=
         Left(SealFault.WrongEpoch(BigInt(1), BigInt(1))),
       "the negative case above is only evidence if the positive one gets past the same check"
     )

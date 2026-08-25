@@ -1,6 +1,7 @@
 package org.fukuii.consensus.pow
 
 import org.fukuii.bytes.{Bytes, Hash, UInt256, UInt64}
+import org.fukuii.chainspec.ConsensusRules
 import org.fukuii.evm.EvmFixtures
 import org.fukuii.types.{BlockHeader, BlockNonce, Bloom, Seal}
 
@@ -37,6 +38,7 @@ object EthashFixtures:
     */
   def sealedHeader(
       engine: EthashEngine,
+      rules: ConsensusRules,
       cache: EthashCache,
       number: Long,
       nonce: BlockNonce,
@@ -45,7 +47,7 @@ object EthashFixtures:
     val unsealed = headerAt(number, difficulty, Seal.MixHashAndNonce(EvmFixtures.hash(0), nonce))
     val solution = Ethash.evaluateLight(
       cache,
-      Ethash.datasetSize(engine.epochOf(BigInt(number))),
+      Ethash.datasetSize(engine.epochOf(rules, BigInt(number))),
       engine.sealHash(unsealed),
       nonce.toBytes
     )

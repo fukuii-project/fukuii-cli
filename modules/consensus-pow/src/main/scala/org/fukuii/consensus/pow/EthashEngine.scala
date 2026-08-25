@@ -42,9 +42,31 @@ import org.fukuii.types.{BlockHeader, Seal}
   * split [[org.fukuii.chainspec.ConsensusRules]] documents from the other side:
   * the value is the fork's and the formula over it is this.
   *
+  * ==One parameter here, and the test that decides which members are the
+  * fork's==
+  *
+  * [[org.fukuii.chainspec.UpgradeRules]] states that test on its own account:
+  * what brings a member to the fork-resolved facet is a client resolving it per
+  * fork. ECIP-1099's parameter meets it and this one does not, which is why the
+  * activation height sits on
+  * [[org.fukuii.chainspec.ConsensusRules.ecip1099Activation]] and the era length
+  * sits here.
+  *
+  * `besu-eth/besu-etc` @ `eb4248c99` carries both halves in one file.
+  * `ClassicProtocolSpecs.thanosDefinition` installs
+  * `EpochCalculator.Ecip1099EpochCalculator` on the fork-resolved specification
+  * itself, and that class's own commented-out constructor taking an activation
+  * block records that the alternative was available there and not taken. Its
+  * Gotham definition passes `genesisConfigOptions.getEcip1017EraRounds()` --
+  * flat genesis configuration, resolved by no fork -- into the
+  * `ClassicBlockProcessor` it installs at that same fork. **So the era ladder's
+  * FORMULA is fork-resolved there and its length is not**, which is the split
+  * this type and that facet already make everywhere else.
+  *
   * @param ecip1017EraLength
   *   how many blocks one era lasts, where this network runs ECIP-1017, and
-  *   [[scala.None]] where it does not.
+  *   [[scala.None]] where it does not. It must be positive: see the refusal on
+  *   the class body below for what each of the two degenerate values does.
   *
   *   **An era length is a per-network parameter and no client hardcodes it.**
   *   besu-etc reads `genesisConfigOptions.getEcip1017EraRounds()` and defaults
@@ -53,25 +75,17 @@ import org.fukuii.types.{BlockHeader, Seal}
   *   OpenEthereum reads `ecip1017EraRounds` from its engine parameters. The
   *   proposal is named in the parameter for the reason all three name it there:
   *   the number means nothing except as that document's era.
-  *
-  * @param ecip1099Activation
-  *   the height at which the epoch length changes, and [[scala.None]] on a
-  *   network that never adopts the proposal. It sits beside the era length
-  *   rather than on a second engine because ECIP-1099 changes one constant --
-  *   *"Ethash transitions to a modified Dagger Hashimoto algorithm, referred to
-  *   hereby as Etchash"* is the proposal's own framing, and neither implementing
-  *   client builds a second engine for it. See [[Ethash.epochLengthAt]].
-  *
-  *   **The network's own height is not defaulted here.** The proposal states one
-  *   per network -- `11_700_000` for Ethereum Classic, `2_520_000` for Mordor,
-  *   and *"no upgrade is required"* for Kotti -- so a default would be one
-  *   network's answer wearing no network's name, which is what a chain
-  *   specification exists to state.
   */
 final case class EthashEngine(
-    ecip1017EraLength: Option[BigInt] = None,
-    ecip1099Activation: Option[BigInt] = None
+    ecip1017EraLength: Option[BigInt] = None
 ) extends ConsensusEngine:
+
+  // Refused where the network states it rather than where a block divides by it,
+  // because a negative length does not fail at the division: it truncates toward
+  // zero, so every reachable height answers era zero or less and both rewards
+  // read that as the unreduced first era, forever.
+  ecip1017EraLength.foreach: length =>
+    require(length > 0, "a network states an era of " + length.toString + " blocks, which is no era")
 
   /** Credits the block's beneficiary, then each ommer's.
     *
@@ -207,8 +221,15 @@ final case class EthashEngine(
         )
       )
 
-  /** Which ethash epoch a height falls in under this network's parameters. */
-  def epochOf(number: BigInt): BigInt = Ethash.epochAt(number, ecip1099Activation)
+  /** Which ethash epoch a height falls in under the rules resolved for it.
+    *
+    * The predicate is applied to `number` rather than read off the rule set as a
+    * resolved length, so the answer is right whichever side of the activation
+    * the caller's own rules were resolved at. That is the property
+    * [[Ethash.epochLengthAt]] records as the one a syncing node needs.
+    */
+  def epochOf(rules: ConsensusRules, number: BigInt): BigInt =
+    Ethash.epochAt(number, rules.ecip1099Activation)
 
   /** The cache a header at `number` is checked against.
     *
@@ -217,8 +238,8 @@ final case class EthashEngine(
     * and hands the same value to every [[verifySeal]] in that epoch. Nothing
     * here retains it: see [[Ethash]] on why the cache is a parameter.
     */
-  def cacheFor(number: BigInt): EthashCache =
-    Ethash.cacheFor(epochOf(number), Ethash.epochLengthAt(number, ecip1099Activation))
+  def cacheFor(rules: ConsensusRules, number: BigInt): EthashCache =
+    Ethash.cacheFor(epochOf(rules, number), Ethash.epochLengthAt(number, rules.ecip1099Activation))
 
   /** The digest a nonce is sought against: the header without its seal.
     *
@@ -271,18 +292,28 @@ final case class EthashEngine(
     * to read it. This is a proof-of-work engine and the exhaustive match below
     * is where that obligation is met.
     *
+    * @param rules
+    *   read for the epoch alone, and no fork selects the algorithm around it.
+    *   `besu-eth/besu-etc` @ `eb4248c99` builds its seal validator the same way
+    *   -- `createPgaBlockHeaderValidator(epochCalculator, powHasher)` is called
+    *   from the fork-resolved specification and the epoch calculator is what the
+    *   fork varies.
     * @param cache
     *   the cache for this header's epoch. Its own epoch is checked rather than
     *   trusted: a cache from the wrong epoch produces a well-formed digest that
     *   matches nothing, which is indistinguishable from an invalid block and is
     *   not the same finding.
     */
-  def verifySeal(header: BlockHeader, cache: EthashCache): Either[SealFault, EthashSolution] =
+  def verifySeal(
+      rules: ConsensusRules,
+      header: BlockHeader,
+      cache: EthashCache
+  ): Either[SealFault, EthashSolution] =
     header.seal match
       case Seal.AuthorityRound(_, _)            => Left(SealFault.WrongEngine)
       case Seal.MixHashAndNonce(mixHash, nonce) =>
         val number = header.number.toBigInt
-        val epoch = epochOf(number)
+        val epoch = epochOf(rules, number)
         if cache.epoch != epoch then Left(SealFault.WrongEpoch(epoch, cache.epoch))
         else if header.difficulty.toBigInt <= 0 then Left(SealFault.NoDifficulty)
         else

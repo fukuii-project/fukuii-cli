@@ -306,9 +306,29 @@ invocation, so an ordinary `testFull` stays cheap; the fourth command above
 clears the exclusion and runs everything. **The default suite's total is what
 `scripts/test-expected-total.txt` holds**, and a heavy run exceeds it, so it is
 checked by passing its own figure as `check-test-run.sh`'s optional second
-argument. Measured 2026-08-23: the default run executes 1,215 and the heavy run
-1,217, and the checker **fails** a heavy log read against the default total
+argument, and the checker **fails** a heavy log read against the default total
 rather than accepting the over-count.
+
+**Neither total is written out here, and the omission is deliberate.** A figure
+in this prose is a second copy of something a tracked file already holds, and it
+goes stale in the commits that follow rather than in the one that writes it --
+the pair that stood here was measured, correct on the day, and wrong three
+commits later, while `scripts/test-expected-total.txt` was right throughout.
+**Read the default total from that file.** Derive the heavy one as that total
+plus the number of tagged cases, which `git grep -n 'taggedAs Heavy'` lists so
+the count is checkable rather than recalled -- then **confirm it with a real
+run**, because the derivation assumes the tag is the only thing the fourth
+command changes.
+
+**And the fourth command is STICKY, which is a hollow-run shape this file did not
+previously carry.** `set` mutates the running sbt server's session, so every
+later invocation served by that same detached server runs the heavy suite too.
+Measured 2026-08-25: a plain `clean testFull` immediately afterwards executed the
+heavy total, and `check-test-run.sh` failed it as *tests were almost certainly
+added* -- which invites raising `scripts/test-expected-total.txt` to the heavy
+figure, and that would hide the tagged cases being skipped in every default run
+from then on. **Run `sbt shutdown` between the two**, which ends the server and
+was confirmed to do so, or run the default one first.
 
 **Nothing runs the heavy suite on a schedule** -- this repository has no
 continuous integration -- so what it covers is verified at the moment somebody

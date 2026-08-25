@@ -8,6 +8,7 @@ import java.nio.file.Path
 import scala.util.control.NonFatal
 
 import org.fukuii.bytes.Hash
+import org.fukuii.chainspec.ConsensusRules
 import org.fukuii.consensus.pow.{Ethash, EthashEngine}
 
 /** One height, and the epoch-derived quantities a seal at it is checked
@@ -163,17 +164,19 @@ object EtchashEpochCorpus:
     */
   val Activation: BigInt = BigInt(11700000)
 
-  private val engine: EthashEngine = EthashEngine(ecip1099Activation = Some(Activation))
+  private val engine: EthashEngine = EthashEngine()
 
-  /** An engine that never doubles its epoch length, which is what a network
-    * declining the proposal runs.
+  private val rules: ConsensusRules = ConsensusRules.Unrewarded.copy(ecip1099Activation = Some(Activation))
+
+  /** Rules that never double the epoch length, which is what a network
+    * declining the proposal resolves.
     */
-  private val withoutProposal: EthashEngine = EthashEngine()
+  private val withoutProposal: ConsensusRules = ConsensusRules.Unrewarded
 
   /** How many figures each height pins. */
   private val FiguresPerVector: Int = 6
 
-  lazy val report: Option[CorpusReport] = NetworkFixtureCorpus.root.map(root => assemble(file(root), engine))
+  lazy val report: Option[CorpusReport] = NetworkFixtureCorpus.root.map(root => assemble(file(root), rules))
 
   /** The same heights under an engine that never adopts the proposal. */
   lazy val withoutActivation: Option[CorpusReport] =
@@ -198,7 +201,7 @@ object EtchashEpochCorpus:
   /** Figures pinned across the schedule half of the tier. */
   private[certification] def figuresAsserted: Int = heights.length * FiguresPerVector
 
-  private def assemble(path: Path, settling: EthashEngine): CorpusReport =
+  private def assemble(path: Path, settling: ConsensusRules): CorpusReport =
     decoded match
       case None              => CorpusReport(Corpus, 0, Vector.empty)
       case Some(Left(error)) =>
@@ -209,11 +212,11 @@ object EtchashEpochCorpus:
         )
       case Some(Right((schedule, _, _))) => CorpusReport(Corpus, 1, schedule.map(outcomeOf(_, settling)))
 
-  private[certification] def outcomeOf(vector: EtchashEpochVector, settling: EthashEngine): CaseOutcome =
+  private[certification] def outcomeOf(vector: EtchashEpochVector, settling: ConsensusRules): CaseOutcome =
     val verdict =
       try
         val length = Ethash.epochLengthAt(vector.block, settling.ecip1099Activation)
-        val epoch = settling.epochOf(vector.block)
+        val epoch = engine.epochOf(settling, vector.block)
         val reasons =
           Vector(
             disagreement("epochLength", length, vector.epochLength),

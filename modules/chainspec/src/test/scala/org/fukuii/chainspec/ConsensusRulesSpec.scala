@@ -27,7 +27,8 @@ class ConsensusRulesSpec extends AnyFlatSpec:
       difficultyBombDelay = BigInt(0),
       difficultyBombPause = None,
       difficultyBombRemovedFrom = None,
-      difficultyBoundDivisor = BigInt(2048)
+      difficultyBoundDivisor = BigInt(2048),
+      ecip1099Activation = None
     )
 
   /** [[rewarding]]'s members, written out again rather than copied, so that the
@@ -41,7 +42,8 @@ class ConsensusRulesSpec extends AnyFlatSpec:
       difficultyBombDelay = BigInt(0),
       difficultyBombPause = None,
       difficultyBombRemovedFrom = None,
-      difficultyBoundDivisor = BigInt(2048)
+      difficultyBoundDivisor = BigInt(2048),
+      ecip1099Activation = None
     )
 
   private val frontier: UpgradeRules = ChainspecFixtures.firstRules
@@ -109,6 +111,12 @@ class ConsensusRulesSpec extends AnyFlatSpec:
       "the divisor sizes every adjustment step, so a comparison dropping it would call two chains one"
     )
 
+  it should "compare unequal when only the ECIP-1099 activation differs" in
+    assert(
+      rewarding != rewardingAgain.copy(ecip1099Activation = Some(BigInt(11700000))),
+      "the height sizes every cache and dataset from itself onward, so two networks differing in it seal differently"
+    )
+
   "the unrewarded rules" should "credit nothing" in
     assert(
       ConsensusRules.Unrewarded.blockReward == UInt256.Zero,
@@ -119,6 +127,13 @@ class ConsensusRulesSpec extends AnyFlatSpec:
     assert(
       !ConsensusRules.Unrewarded.zeroRewardCreditsBeneficiary,
       "of the two zero cases only this one adds no account to the state trie, which is the safe direction"
+    )
+
+  it should "state no ECIP-1099 activation, so a network declining the proposal is what it describes" in
+    assert(
+      ConsensusRules.Unrewarded.ecip1099Activation.isEmpty,
+      "every network's rules are built from this value, and one stating a height would double one chain's epoch " +
+        "length under every other chain"
     )
 
   it should "state no rule that touches the exponential term" in
