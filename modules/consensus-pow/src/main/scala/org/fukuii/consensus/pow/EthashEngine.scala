@@ -124,6 +124,34 @@ final case class EthashEngine(
     * from the blockchain, and `ethereum/execution-specs` @ `ccaaaba58` in
     * `validate_ommers`, which reads `chain.blocks`. This is handed ommers that
     * have already passed such a check and has no channel to refuse one.
+    *
+    * ==That precondition has no enforcer in this build, and the obligation is
+    * recorded here rather than met==
+    *
+    * [[ommerReward]] raises on an age outside the range its rule is stated for,
+    * and this credits the block's own beneficiary before it reaches the first
+    * ommer -- so a broken precondition leaves state part-way and reaches the
+    * caller as a raise rather than as a refusal it can file against a block.
+    * **No ommer-depth validation exists in this build**, so the check the
+    * paragraph above assigns upstream is currently assigned to nobody.
+    *
+    * **A fault channel here is the wrong remedy and is deliberately not taken.**
+    * Every surveyed client settles an ommer's admissibility against the CHAIN,
+    * which this is not handed and could not read; a refusal on this member would
+    * move a validation concern onto the one seam every mechanism implements, on
+    * the strength of a caller that does not exist yet. [[SealFault]] is not the
+    * precedent it resembles -- that answers a question about a header a PEER
+    * supplied, where the fault is data, whereas everything reaching here has
+    * already been validated and a bad age is a caller error. This engine raises
+    * on exactly that shape in four other places, [[gapAfter]] included, for the
+    * same reason.
+    *
+    * **What lands with the ommer validator is therefore this**: no block may
+    * reach settlement carrying an ommer outside `1 <= age <=`
+    * [[EthashEngine.OmmerRewardHorizon]], and the tighter bound the surveyed
+    * clients enforce -- six -- is what that validator states. Recorded so the
+    * layer that lands it inherits the requirement rather than rediscovering it
+    * from a raise in production.
     */
   override def settlement(
       rules: ConsensusRules,
@@ -303,6 +331,14 @@ final case class EthashEngine(
     *   trusted: a cache from the wrong epoch produces a well-formed digest that
     *   matches nothing, which is indistinguishable from an invalid block and is
     *   not the same finding.
+    *
+    *   **The epoch NUMBER is not that check, and taking it for one is wrong on
+    *   exactly the fork this engine's ECIP-1099 support was written for.** Two
+    *   heights either side of an activation answer the same number under
+    *   different lengths, and [[EthashCache]] states why the two caches that
+    *   result are told apart by neither their number nor their size. The pair is
+    *   what is compared, so a cache is refused unless the seed it was grown from
+    *   is the one this header's epoch calls for.
     */
   def verifySeal(
       rules: ConsensusRules,
@@ -314,7 +350,9 @@ final case class EthashEngine(
       case Seal.MixHashAndNonce(mixHash, nonce) =>
         val number = header.number.toBigInt
         val epoch = epochOf(rules, number)
-        if cache.epoch != epoch then Left(SealFault.WrongEpoch(epoch, cache.epoch))
+        val epochLength = Ethash.epochLengthAt(number, rules.ecip1099Activation)
+        if cache.epoch != epoch || cache.epochLength != epochLength then
+          Left(SealFault.WrongEpoch(epoch, epochLength, cache.epoch, cache.epochLength))
         else if header.difficulty.toBigInt <= 0 then Left(SealFault.NoDifficulty)
         else
           val answered = Ethash.evaluateLight(cache, Ethash.datasetSize(epoch), sealHash(header), nonce.toBytes)
@@ -475,7 +513,30 @@ final case class EthashEngine(
       case Some(pause) if number >= pause.pausedFrom =>
         pause.pausedFrom / EthashEngine.ExponentialPeriod
       case _ =>
-        (number - rules.difficultyBombDelay).max(BigInt(0)) / EthashEngine.ExponentialPeriod
+        (number - bombDelay(rules)).max(BigInt(0)) / EthashEngine.ExponentialPeriod
+
+  /** How far this rule set holds the term back, refused where a rule set states
+    * a delay that is no delay.
+    *
+    * A negative one does not fail at the subtraction: it ADVANCES the reference
+    * point, so the term explodes ahead of the schedule the network published and
+    * every block above the delay's own size answers a difficulty nothing
+    * distinguishes from the right one. Zero is a real value here -- the forks
+    * predating the first delay proposal answer it -- so only a negative is
+    * refused.
+    *
+    * The rules are read once per block, so asking costs one comparison, exactly
+    * as [[boundDivisor]] and [[pausedBy]] each cost one. This member is read
+    * from a chain specification and never from a peer, which makes it the least
+    * reachable of the three and not a different kind of fault.
+    */
+  private def bombDelay(rules: ConsensusRules): BigInt =
+    if rules.difficultyBombDelay < 0 then
+      throw new IllegalStateException(
+        "a rule set holds the difficulty term back by " + rules.difficultyBombDelay.toString +
+          " blocks, which is no delay"
+      )
+    else rules.difficultyBombDelay
 
   /** The window this rule set pauses the term over, refused where the two
     * heights state no window.
@@ -735,8 +796,15 @@ enum SealFault:
     * Not a fact about the block. It is the one fault here that says the caller
     * is wrong, and it exists because the alternative is a well-formed answer
     * about nothing.
+    *
+    * **Each epoch is reported with the length it was counted in, because the
+    * number alone does not identify one.** Under ECIP-1099 a header and a cache
+    * can carry the same number and still call for different seeds, so a fault
+    * naming two numbers would print them equal and refuse anyway -- a
+    * diagnostic that reads as a contradiction. [[EthashCache]] states why the
+    * pair is what identifies a cache.
     */
-  case WrongEpoch(headerEpoch: BigInt, cacheEpoch: BigInt)
+  case WrongEpoch(headerEpoch: BigInt, headerEpochLength: BigInt, cacheEpoch: BigInt, cacheEpochLength: BigInt)
 
   /** The header's own mixed hash is not the one its nonce produces. */
   case WrongMixHash(claimed: Hash, answered: Hash)

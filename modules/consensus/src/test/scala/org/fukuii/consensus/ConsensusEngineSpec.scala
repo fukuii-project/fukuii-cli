@@ -130,6 +130,24 @@ class ConsensusEngineSpec extends AnyFlatSpec:
     ): WorldState => Unit =
       world => credit(world, rules, to, rules.blockReward.toBigInt)
 
+  /** An engine expressing a debit as a negative credit.
+    *
+    * Not any network's emission, and not meant to be one. What it is, is the
+    * reachable way to drive a total below nothing through the seam's single
+    * gated write: [[ConsensusEngine.credit]] takes an arbitrary-precision
+    * amount, and a mechanism subtracting through it writes a negative one. The
+    * amount is the resolved reward negated so the case is stated in the same
+    * terms as every other here.
+    */
+  private val debits: ConsensusEngine = new ConsensusEngine:
+    override def settlement(
+        rules: ConsensusRules,
+        to: Address,
+        number: BigInt,
+        ommers: Seq[BlockHeader]
+    ): WorldState => Unit =
+      world => credit(world, rules, to, -rules.blockReward.toBigInt)
+
   "an engine's settlement" should "credit the beneficiary the reward the rules state" in
     assert(
       settled(ConsensusEngine.Unmodifying, reward(7)).balanceOf(beneficiary) == Word(BigInt(7)),
@@ -166,6 +184,22 @@ class ConsensusEngineSpec extends AnyFlatSpec:
         ConsensusRules.Unrewarded.copy(blockReward = UInt256.MaxValue),
         held = 1
       )
+    )
+
+  it should "refuse a total below nothing rather than wrap into a near-maximal balance" in
+    assertThrows[IllegalStateException](settled(debits, reward(7)))
+
+  /** The wrap the case above exists to prevent, asserted so that case is
+    * evidence of something.
+    *
+    * A guard reading only the ceiling looks complete because an EXCESS wraps
+    * toward zero, which reads as a loss rather than as a gift. A total below
+    * nothing wraps the other way, and this is what it wraps to.
+    */
+  it should "be guarding a wrap that really does answer a near-maximal balance" in
+    assert(
+      Word(BigInt(-1)) == Word.MaxValue,
+      "the floor is worth checking only because the modulus answers this rather than failing or answering zero"
     )
 
   it should "credit nobody for an ommer it was handed" in

@@ -99,7 +99,8 @@ class EthashVectorPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
   property("a cache is built byte for byte as the reference client states it") {
     forAll(caches) { (epoch, seed, expected) =>
       val raw = bytesOf(expected)
-      val built = Ethash.cacheFrom(raw.length.toLong, Hash.fromBytesTruncating(bytesOf(seed)), BigInt(epoch))
+      val built =
+        Ethash.cacheFrom(raw.length.toLong, Hash.fromBytesTruncating(bytesOf(seed)), BigInt(epoch), Ethash.EpochLength)
       assert(
         sameWords(built.words, wordsOf(raw)),
         "epoch " + epoch + ": the cache differs from go-ethereum-pow @ v1.10.26's TestCacheGeneration"
@@ -111,7 +112,12 @@ class EthashVectorPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     forAll(datasets) { (epoch, cacheSize, expected) =>
       val raw = bytesOf(expected)
       val cacheRow = rowsOf("cache").find(_(1) == epoch).getOrElse(fail("no cache vector for epoch " + epoch))
-      val cache = Ethash.cacheFrom(cacheSize.toLong, Hash.fromBytesTruncating(bytesOf(cacheRow(2))), BigInt(epoch))
+      val cache = Ethash.cacheFrom(
+        cacheSize.toLong,
+        Hash.fromBytesTruncating(bytesOf(cacheRow(2))),
+        BigInt(epoch),
+        Ethash.EpochLength
+      )
       assert(
         sameWords(Ethash.datasetFor(cache, raw.length.toLong).words, wordsOf(raw)),
         "epoch " + epoch + ": the dataset differs from go-ethereum-pow @ v1.10.26's TestDatasetGeneration"
@@ -121,7 +127,7 @@ class EthashVectorPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
   property("the light path answers what the reference client states") {
     forAll(mixings) { (cacheSize, datasetSize, sealHash, nonce, mixHash, result) =>
-      val cache = Ethash.cacheFrom(cacheSize.toLong, EthashFixtures.hashOf("00" * 32), BigInt(0))
+      val cache = Ethash.cacheFrom(cacheSize.toLong, EthashFixtures.hashOf("00" * 32), BigInt(0), Ethash.EpochLength)
       val answered =
         Ethash.evaluateLight(cache, datasetSize.toLong, EthashFixtures.hashOf(sealHash), bytesOf(nonce))
       assert(
@@ -133,7 +139,7 @@ class EthashVectorPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
   property("the full path answers exactly what the light path does") {
     forAll(mixings) { (cacheSize, datasetSize, sealHash, nonce, mixHash, result) =>
-      val cache = Ethash.cacheFrom(cacheSize.toLong, EthashFixtures.hashOf("00" * 32), BigInt(0))
+      val cache = Ethash.cacheFrom(cacheSize.toLong, EthashFixtures.hashOf("00" * 32), BigInt(0), Ethash.EpochLength)
       val dataset = Ethash.datasetFor(cache, datasetSize.toLong)
       assert(
         Ethash.evaluateFull(dataset, EthashFixtures.hashOf(sealHash), bytesOf(nonce)) ==

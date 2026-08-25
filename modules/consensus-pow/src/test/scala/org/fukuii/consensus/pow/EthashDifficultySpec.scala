@@ -386,3 +386,35 @@ class EthashDifficultySpec extends AnyFlatSpec:
         UInt64.fromBigInt(BigInt(1010)).toOption.get
       )
     )
+
+  /** The delay's own refusal, which the two guards above already earned.
+    *
+    * A negative delay does not fail at the subtraction: it ADVANCES the term's
+    * reference point, so the bomb explodes ahead of the schedule the network
+    * published and every height above the delay's own size answers a plausible
+    * difficulty that is not the chain's. That is the shape a rule set stating no
+    * adjustment step and a window that resumes before it opens are each refused
+    * for, one member away in the same record.
+    */
+  "a rule set holding the term back by a negative span" should "be refused rather than advance it" in
+    assertThrows[IllegalStateException](
+      answered(
+        DifficultyAdjustment.Original,
+        ampleDifficulty,
+        gap = 12,
+        number = BigInt(400000),
+        bombDelay = BigInt(-100000)
+      )
+    )
+
+  it should "still admit a delay of nothing, which the forks predating the proposal state" in
+    assert(
+      answered(
+        DifficultyAdjustment.Original,
+        ampleDifficulty,
+        gap = 12,
+        number = BigInt(400000),
+        bombDelay = BigInt(0)
+      ) == answered(DifficultyAdjustment.Original, ampleDifficulty, gap = 12, number = BigInt(400000)),
+      "zero is no delay rather than no bomb, so refusing it would refuse every fork below the first delay"
+    )

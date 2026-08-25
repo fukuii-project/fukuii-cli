@@ -85,6 +85,16 @@ object Ethash:
   private val DatasetInitBytes: Long = 1L << 30
   private val DatasetGrowthBytes: Long = 1L << 23
 
+  /** The longest seed chain any cache this can build asks for.
+    *
+    * The chain is counted in legacy epochs while the epoch it seeds is counted
+    * in that epoch's own length, so an epoch at the ceiling [[bounded]] applies
+    * asks for a chain [[Ecip1099EpochLength]] over [[EpochLength]] times longer
+    * than its own number. Past that there is no cache for the seed to grow.
+    */
+  private val LongestSeedChain: BigInt =
+    BigInt(LargestCache / CacheGrowthBytes) * (Ecip1099EpochLength / EpochLength)
+
   /** The width of one cache row and one dataset item, in bytes.
     *
     * Sixty-four, which is why the digest chaining a cache is built from is
@@ -201,10 +211,25 @@ object Ethash:
     * dividing `epoch * length` would, because both lengths are exact multiples
     * of the legacy one. A length that was not would part the two, so the offset
     * is carried rather than dropped.
+    *
+    * ==The chain is bounded here rather than by whoever calls first==
+    *
+    * The loop below is one 256-bit digest per legacy epoch and allocates
+    * nothing, so an epoch far enough out is CPU spent with no memory bound to
+    * stop it. Nothing about the seed's own arithmetic limits that: a plausible
+    * epoch with an implausible length reaches it as readily as the reverse.
+    * [[cacheFor]] happens to size its cache before it asks for a seed, which
+    * refuses such an epoch one argument earlier -- but that is argument
+    * evaluation order rather than a property of this method, and this is public
+    * and called directly.
     */
   def seedFor(epoch: BigInt, epochLength: BigInt): Hash =
     val firstBlock = epoch * epochLength + 1
     val rounds = if firstBlock < EpochLength then BigInt(0) else firstBlock / EpochLength
+    if epoch < 0 || epochLength <= 0 || rounds > LongestSeedChain then
+      throw new IllegalStateException(
+        "no ethash seed is stated for epoch " + epoch.toString + " of " + epochLength.toString + " blocks"
+      )
     var seed = Hash.fromBytesTruncating(IArray.unsafeFromArray(new Array[Byte](Hash.Width)))
     var taken = BigInt(0)
     while taken < rounds do
@@ -235,10 +260,16 @@ object Ethash:
 
   /** The epoch as a machine integer, refused where the arithmetic over it would
     * not be exact.
+    *
+    * The ceiling is the cache's, and both sizings are held to it: a dataset is
+    * read as a number rather than built, so its own growth would admit a far
+    * larger epoch than any cache for it could be grown from. **The message
+    * names both artifacts because this is reached from both** -- one naming a
+    * dataset alone reports the wrong artifact to every caller sizing a cache.
     */
   private def bounded(epoch: BigInt): Long =
     if epoch < 0 || epoch > LargestCache / CacheGrowthBytes then
-      throw new IllegalStateException("no ethash dataset is stated for epoch " + epoch.toString)
+      throw new IllegalStateException("no ethash cache or dataset is stated for epoch " + epoch.toString)
     else epoch.toLong
 
   private def largestPrimeRowed(linear: Long, rowWidth: Int): Long =
@@ -274,9 +305,29 @@ object Ethash:
     * The construction is Sergio Demian Lerner's RandMemoHash, and the cost is
     * one 512-bit digest per row per pass plus one to fill it -- so four per row
     * at [[CacheRounds]] three, and a little over a million for the first epoch.
+    *
+    * ==A caller reaching this from a header must bound the epoch against its own
+    * head, and nothing here can do it==
+    *
+    * Cost grows linearly with the epoch and the only ceiling here is
+    * [[LargestCache]], the JVM's array bound -- which is a limit on what can be
+    * represented, not on what a chain states. An epoch is read off a height, a
+    * height is eight bytes of a header, and a header arrives from a peer, so the
+    * work this does is selected by whoever sent it: a height no chain has
+    * reached names an epoch orders of magnitude past the one in force and is
+    * refused by nothing below.
+    *
+    * **The bound belongs to whoever knows the chain's own head, which is not
+    * this.** An epoch is a pure function of a height and this has no view of
+    * which heights exist, so a check here would either be a constant that goes
+    * stale or a chain fact this layer does not hold. **A block-import caller is
+    * therefore required to refuse an epoch materially above the head it is
+    * syncing toward, before it asks for a cache** -- an obligation, recorded
+    * because no such caller exists yet and the layer that lands it inherits
+    * this rather than rediscovering it.
     */
   def cacheFor(epoch: BigInt, epochLength: BigInt): EthashCache =
-    cacheFrom(cacheSize(epoch), seedFor(epoch, epochLength), epoch)
+    cacheFrom(cacheSize(epoch), seedFor(epoch, epochLength), epoch, epochLength)
 
   /** Grows a cache of a stated size from a stated seed.
     *
@@ -291,11 +342,19 @@ object Ethash:
     * own test suites use that separation to exercise the construction at a size
     * no epoch states.
     *
-    * The epoch is carried through onto the result and takes no part in the
-    * construction: it is what stops a cache being handed to a header from a
-    * different epoch, which [[EthashEngine.verifySeal]] checks.
+    * The epoch and its length are carried through onto the result and take no
+    * part in the construction: together they are what stops a cache being
+    * handed to a header the seed does not answer for, which
+    * [[EthashEngine.verifySeal]] checks. **Both, because under ECIP-1099 the
+    * epoch number alone does not identify a cache** -- see [[EthashCache]],
+    * which states why.
+    *
+    * @param epochLength
+    *   the length the epoch was counted in. Not derivable from the other two:
+    *   [[cacheSize]] reads the epoch alone, so the two lengths give a cache of
+    *   identical size at the same epoch number, and only the seed parts them.
     */
-  def cacheFrom(size: Long, seed: Hash, epoch: BigInt): EthashCache =
+  def cacheFrom(size: Long, seed: Hash, epoch: BigInt, epochLength: BigInt): EthashCache =
     if size <= 0 || size % HashBytes != 0 then
       throw new IllegalStateException("no ethash cache is stated at " + size.toString + " bytes")
     if size > LargestCache then
@@ -316,7 +375,7 @@ object Ethash:
         writeAt(bytes, row * HashBytes, Keccak512.hash(xorAt(bytes, previous, mixed)))
         row += 1
       round += 1
-    EthashCache(epoch, cacheWords(bytes))
+    EthashCache(epoch, epochLength, cacheWords(bytes))
 
   /** One dataset item, folded out of the cache rather than read from a dataset.
     *
@@ -395,7 +454,7 @@ object Ethash:
         words(item * HashWords + word) = built(word)
         word += 1
       item += 1
-    EthashDataset(cache.epoch, IArray.unsafeFromArray(words))
+    EthashDataset(cache.epoch, cache.epochLength, IArray.unsafeFromArray(words))
 
   /** Runs the algorithm, regenerating each item it reads from the cache.
     *
@@ -439,10 +498,30 @@ object Ethash:
     * the loop twice is what would let the two paths drift, and the two paths
     * agreeing is the only check on a dataset that has no published expected
     * value at a real epoch's size.
+    *
+    * ==The size is refused here, which is what reaches both paths==
+    *
+    * The row count below narrows to a machine integer, and each of the three
+    * ways a size can be wrong fails differently and quietly: a size at or below
+    * nothing divides by zero, a size that is not a whole number of rows
+    * truncates to a count the accesses are then taken modulo, and a size whose
+    * row count exceeds what an `Int` holds wraps to a small or negative one.
+    * Only the first announces itself. **The refusal sits on the shared body
+    * rather than on [[evaluateLight]]**, so the size a caller supplies and the
+    * size a dataset reports are held to one rule -- the same reason the loop
+    * itself is written once.
+    *
+    * It is a rule about the size ALONE and deliberately not about the epoch:
+    * both surveyed clients evaluate over a dataset built far smaller than any
+    * epoch states, which is how the full path is exercised at all, so binding
+    * the size to [[datasetSize]] here would refuse the one case that makes
+    * [[evaluateFull]] checkable.
     */
   private def evaluate(datasetSize: Long, sealHash: Hash, nonce: IArray[Byte])(
       fetch: Int => Array[Int]
   ): EthashSolution =
+    if datasetSize <= 0 || datasetSize % MixBytes != 0 || datasetSize / MixBytes > Int.MaxValue then
+      throw new IllegalStateException("no ethash evaluation is stated over " + datasetSize.toString + " bytes")
     val rows = (datasetSize / MixBytes).toInt
     val seed = Keccak512.hash(sealHash.toBytes ++ reversed(nonce))
     val seedHead = leadWord(seed)
@@ -611,11 +690,37 @@ object Ethash:
 /** A generated ethash cache, and the epoch it belongs to.
   *
   * The epoch travels with the words because a cache is only meaningful against
-  * the one it was grown for, and the size that indexes the dataset comes from
-  * the same number. Holding them apart is how a node hands the wrong epoch's
-  * cache to a header and gets a well-formed answer that agrees with nothing.
+  * the one it was grown for. Holding them apart is how a node hands the wrong
+  * epoch's cache to a header and gets a well-formed answer that agrees with
+  * nothing.
+  *
+  * ==The epoch NUMBER does not identify a cache, and under ECIP-1099 that is
+  * reachable rather than theoretical==
+  *
+  * [[Ethash.epochAt]] counts in whichever length is in force, so the block
+  * before the activation and the block at it can answer the SAME epoch number
+  * under different lengths -- and [[Ethash.seedFor]] counts the seed in legacy
+  * epochs throughout, so those two caches are grown from different seeds. They
+  * agree in epoch number and, because [[Ethash.cacheSize]] reads the epoch
+  * alone, in length to the byte. **Nothing about either value tells them
+  * apart**, and a cache is a pure function of its seed, so the wrong one
+  * answers a well-formed digest that matches no chain -- reported as a bad
+  * seal rather than as the caller error it is.
+  *
+  * `ethereumclassic/core-geth` @ `4185df450` keys its own cache on both, at
+  * `consensus/ethash/ethash.go` -- `cacheKey := epochLength + epoch`, whose
+  * comment concedes *"This is not perfectly safe, but it's good enough (at
+  * least for the first 30000 epochs, or the first 427 years)."* **The sum is
+  * what that caveat is about**: it is not injective, so epoch 30001 at the
+  * legacy length and epoch 1 at the doubled one collide on one key. Both
+  * fields are carried here and compared as a pair, which admits no such
+  * collision at any epoch.
+  *
+  * @param epochLength
+  *   the length `epoch` was counted in. Together with `epoch` it fixes the
+  *   seed, and therefore every byte below.
   */
-final case class EthashCache(epoch: BigInt, words: IArray[Int]):
+final case class EthashCache(epoch: BigInt, epochLength: BigInt, words: IArray[Int]):
 
   /** How many bytes the cache holds, which is what a published case states. */
   def size: Long = words.length.toLong * 4
@@ -628,8 +733,12 @@ final case class EthashCache(epoch: BigInt, words: IArray[Int]):
   * not its epoch's, which is how both the specification's harness and
   * go-ethereum-pow's exercise the full path cheaply, so the size alone does not
   * say which epoch it belongs to.
+  *
+  * The length travels for the reason [[EthashCache]] states, and is that of the
+  * cache this was folded out of: a dataset item is a pure function of the cache
+  * and an index, so a dataset inherits its source's identity exactly.
   */
-final case class EthashDataset(epoch: BigInt, words: IArray[Int]):
+final case class EthashDataset(epoch: BigInt, epochLength: BigInt, words: IArray[Int]):
 
   def size: Long = words.length.toLong * 4
 

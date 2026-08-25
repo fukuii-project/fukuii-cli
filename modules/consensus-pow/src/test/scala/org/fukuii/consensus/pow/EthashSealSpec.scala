@@ -99,15 +99,21 @@ class EthashSealSpec extends AnyFlatSpec:
     */
   private val classicish: ConsensusRules = rules.copy(ecip1099Activation = Some(BigInt(60000)))
 
-  /** A cache of one row, tagged with an epoch.
+  /** A cache of one row, tagged with an epoch and the length it was counted in.
     *
-    * The contents never matter: every case below is refused, or not, on the
-    * epoch alone, which [[EthashEngine.verifySeal]] compares before it
-    * evaluates anything. Building a real cache for a post-activation epoch
-    * would cost twenty megabytes to assert something about an integer.
+    * The contents never matter: every case below is refused, or not, on that
+    * pair alone, which [[EthashEngine.verifySeal]] compares before it evaluates
+    * anything. Building a real cache for a post-activation epoch would cost
+    * twenty megabytes to assert something about two integers.
+    *
+    * **The length is a parameter rather than derived, which is what lets a case
+    * state the collision.** Two caches can carry the same epoch number under
+    * different lengths, and deriving the length from the number here would make
+    * that pair unconstructible -- so the one case this file most needs could not
+    * be written.
     */
-  private def tagged(epoch: BigInt): EthashCache =
-    Ethash.cacheFrom(64L, EvmFixtures.hash(0), epoch)
+  private def tagged(epoch: BigInt, epochLength: BigInt): EthashCache =
+    Ethash.cacheFrom(64L, EvmFixtures.hash(0), epoch, epochLength)
 
   "the seal hash" should "not move when the mixed hash does" in
     assert(
@@ -167,7 +173,7 @@ class EthashSealSpec extends AnyFlatSpec:
   "a cache from another epoch" should "be refused as the caller's fault and not the block's" in
     assert(
       engine.verifySeal(rules, accepted, cache.copy(epoch = BigInt(1))) == Left(
-        SealFault.WrongEpoch(BigInt(0), BigInt(1))
+        SealFault.WrongEpoch(BigInt(0), Ethash.EpochLength, BigInt(1), Ethash.EpochLength)
       ),
       "a cache from the wrong epoch answers a well-formed digest about nothing, which is not an invalid block"
     )
@@ -204,14 +210,47 @@ class EthashSealSpec extends AnyFlatSpec:
 
   it should "refuse the cache the legacy epoch would have called for" in
     assert(
-      engine.verifySeal(classicish, EthashFixtures.headerAt(60000L, BigInt(1), accepted.seal), tagged(BigInt(2))) ==
-        Left(SealFault.WrongEpoch(BigInt(1), BigInt(2))),
+      engine.verifySeal(
+        classicish,
+        EthashFixtures.headerAt(60000L, BigInt(1), accepted.seal),
+        tagged(BigInt(2), Ethash.EpochLength)
+      ) == Left(SealFault.WrongEpoch(BigInt(1), Ethash.Ecip1099EpochLength, BigInt(2), Ethash.EpochLength)),
       "an engine that ignored its own activation would accept this cache, and every other case here would still pass"
     )
 
   it should "accept the cache its own epoch calls for as far as the epoch check" in
     assert(
-      engine.verifySeal(classicish, EthashFixtures.headerAt(60000L, BigInt(1), accepted.seal), tagged(BigInt(1))) !=
-        Left(SealFault.WrongEpoch(BigInt(1), BigInt(1))),
+      engine.verifySeal(
+        classicish,
+        EthashFixtures.headerAt(60000L, BigInt(1), accepted.seal),
+        tagged(BigInt(1), Ethash.Ecip1099EpochLength)
+      ) != Left(SealFault.WrongEpoch(BigInt(1), Ethash.Ecip1099EpochLength, BigInt(1), Ethash.Ecip1099EpochLength)),
       "the negative case above is only evidence if the positive one gets past the same check"
+    )
+
+  /** The collision the epoch number alone cannot see, which is what
+    * [[EthashEngine.verifySeal]] compares a pair for.
+    *
+    * The two heights either side of this activation both answer epoch one --
+    * asserted two cases above -- and [[Ethash.cacheSize]] reads the epoch alone,
+    * so the caches are identical in number and in length to the byte. Only the
+    * seed parts them, and [[Ethash.seedFor]] counts that in legacy epochs: one
+    * Keccak256 round for the legacy epoch, two for the ECIP-1099 one. **A guard
+    * comparing the number is the one value that cannot tell them apart**, and
+    * every case above it would still pass.
+    */
+  it should "refuse a cache of its own epoch number counted in the other length" in
+    assert(
+      engine.verifySeal(
+        classicish,
+        EthashFixtures.headerAt(60000L, BigInt(1), accepted.seal),
+        tagged(BigInt(1), Ethash.EpochLength)
+      ) == Left(SealFault.WrongEpoch(BigInt(1), Ethash.Ecip1099EpochLength, BigInt(1), Ethash.EpochLength)),
+      "both caches are epoch one and the same size, so an engine comparing the number accepts the wrong seed's cache"
+    )
+
+  it should "be checking a pair that really does answer two different seeds" in
+    assert(
+      Ethash.seedFor(BigInt(1), Ethash.EpochLength) != Ethash.seedFor(BigInt(1), Ethash.Ecip1099EpochLength),
+      "the refusal above is only worth making if the two caches it separates are genuinely built differently"
     )

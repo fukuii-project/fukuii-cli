@@ -136,3 +136,70 @@ class EthashSpec extends AnyFlatSpec:
       !Ethash.clears(Hash.fromBytesTruncating(IArray.fill(32)(0xff.toByte)), BigInt(2)),
       "a signed reading would make half of all digests clear every target"
     )
+
+  /** The seed chain's own bound.
+    *
+    * The loop is one digest per legacy epoch and allocates nothing, so an epoch
+    * far enough out is CPU with no memory ceiling to stop it. [[Ethash.cacheFor]]
+    * sizes its cache before it asks for a seed, which refuses such an epoch one
+    * argument earlier -- but that is argument evaluation order rather than a
+    * property of the method, and this suite reaches it directly.
+    */
+  /** The bound stated at its own boundary, one epoch either side.
+    *
+    * **The two cases below are the ones that can be calibrated, and the extreme
+    * cases after them are not.** Removing the bound leaves the extremes running
+    * some ten trillion digests, so a run seeded that way does not fail -- it
+    * does not return, which is the hazard rather than a test of it. One epoch
+    * past the boundary is thirty-two thousand digests: fast enough that an
+    * absent bound answers a seed instead of hanging, so the refusal is what the
+    * case is measuring.
+    */
+  "seedFor" should "refuse an epoch one past the largest a cache could be grown for" in
+    assertThrows[IllegalStateException](Ethash.seedFor(BigInt(16384), Ethash.Ecip1099EpochLength))
+
+  it should "still answer the largest epoch a buildable cache does ask for" in
+    assert(
+      Ethash.seedFor(BigInt(16383), Ethash.Ecip1099EpochLength) ==
+        Ethash.seedFor(BigInt(32766), Ethash.EpochLength),
+      "a bound refusing the epoch one below the case above would refuse a cache the sizing itself admits"
+    )
+
+  it should "refuse an epoch past any cache that could be grown from its seed" in
+    assertThrows[IllegalStateException](Ethash.seedFor(BigInt(2).pow(64), Ethash.EpochLength))
+
+  it should "refuse a plausible epoch counted in an implausible length" in
+    assertThrows[IllegalStateException](Ethash.seedFor(BigInt(1), BigInt(10).pow(18)))
+
+  it should "refuse a length of nothing rather than answer the unstirred seed" in
+    assertThrows[IllegalStateException](Ethash.seedFor(BigInt(84), BigInt(0)))
+
+  it should "refuse an epoch below zero rather than answer the unstirred seed" in
+    assertThrows[IllegalStateException](Ethash.seedFor(BigInt(-1), Ethash.EpochLength))
+
+  /** The evaluation's size, which is narrowed to a machine integer and is not
+    * the cache's to state.
+    *
+    * Each of the three ways it can be wrong fails differently and only one
+    * announces itself, so all three are refused rather than the one that raises
+    * on its own.
+    */
+  "evaluateLight" should "refuse a size of nothing rather than divide by a row count of zero" in
+    assertThrows[IllegalStateException](
+      Ethash.evaluateLight(EthashFixtures.firstEpochCache, 0L, zeroSeed, IArray.fill(8)(0.toByte))
+    )
+
+  it should "refuse a size that is not a whole number of rows" in
+    assertThrows[IllegalStateException](
+      Ethash.evaluateLight(EthashFixtures.firstEpochCache, 129L, zeroSeed, IArray.fill(8)(0.toByte))
+    )
+
+  it should "refuse a row count past what a machine integer holds" in
+    assertThrows[IllegalStateException](
+      Ethash.evaluateLight(
+        EthashFixtures.firstEpochCache,
+        (BigInt(2).pow(40) * 128).toLong,
+        zeroSeed,
+        IArray.fill(8)(0.toByte)
+      )
+    )

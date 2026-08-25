@@ -192,11 +192,23 @@ trait ConsensusEngine:
     * reward no network states -- a broken precondition rather than a state a
     * chain reaches, and raised as one, exactly as
     * [[org.fukuii.execution.TransactionProcessor]] raises its own.
+    *
+    * **Both ends are refused, and the floor is the one this seam's own
+    * reasoning demanded.** `BigInt.mod` answers a non-negative value, so a
+    * total below zero does not wrap to a small balance the way an excess wraps
+    * -- it wraps to one just under the ceiling, which is the same defect
+    * arriving at the other end and a worse figure to find in a state trie. The
+    * paragraph above names an amount driving a balance past what it can hold;
+    * an amount driving it below nothing is that same broken precondition, and a
+    * guard reading only the ceiling refuses one and not the other. **A
+    * mechanism expressing a debit as a negative credit is the reachable
+    * shape**, and it is why this is refused on the seam rather than in whichever
+    * mechanism first writes one.
     */
   final protected def credit(world: WorldState, rules: ConsensusRules, to: Address, amount: BigInt): Unit =
     if amount != 0 || rules.zeroRewardCreditsBeneficiary then
       val credited = world.balanceOf(to).toBigInt + amount
-      if credited > Word.MaxValue.toBigInt then
+      if credited < 0 || credited > Word.MaxValue.toBigInt then
         throw new IllegalStateException(
           "a block reward moved " + to.toString + " to a balance no account can hold: " + credited.toString
         )
