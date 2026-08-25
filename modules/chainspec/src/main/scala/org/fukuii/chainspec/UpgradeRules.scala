@@ -197,11 +197,18 @@ final case class UpgradeRules(
   * component that only touches the machine is built through [[Component.evm]],
   * which cannot reach any other facet.
   *
-  * **EIP-2 is the worked case and it is why no per-facet constructor is offered
-  * for the other two.** That document moves a price and settles a behavior in
-  * the machine, and settles a third rule outside it, so it is built from this
-  * constructor directly. A constructor scoped to admission alone would have no
-  * caller, which is the shape this module does not build.
+  * **EIP-2 is the worked case for why this constructor is needed at all.** That
+  * document moves a price and settles a behavior in the machine, and settles a
+  * third rule outside it, so it is built from this constructor directly.
+  *
+  * A constructor scoped to admission alone now has one caller -- EIP-155, whose
+  * whole delta is a single member of that facet -- and one is not evidence for
+  * a combinator. What [[Component.evm]] earns is a guarantee, that a proposal
+  * confined to the machine cannot reach past it; a document adopting one flag
+  * has nothing to be kept away from, so a scoped constructor would buy the
+  * caller brevity and nothing else.
+  *
+  * Reversing trigger: a second proposal whose delta is confined to admission.
   *
   * ==The delta is an arbitrary function, and that is a decision==
   *
