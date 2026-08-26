@@ -1,6 +1,6 @@
 package org.fukuii.chainspec.networks.ethereum
 
-import org.fukuii.bytes.UInt256
+import org.fukuii.bytes.{UInt256, UInt64}
 import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment, UpgradeRules}
 import org.fukuii.chainspec.proposals.eip.{Eip150, Eip155, Eip160, Eip170, Eip2, Eip7}
 import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, OpcodeTable, Precompile, PrecompileSet}
@@ -208,7 +208,8 @@ object Upgrades:
         precompiles = genesisPrecompiles,
         gasForwarded = GasForwarding.Whole,
         codeDepositMustSucceed = false,
-        maxCodeSize = None
+        maxCodeSize = None,
+        createdAccountNonce = UInt64.Zero
       ),
       execution = ExecutionRules(
         touchedEmptyAccountsAreDeleted = false,

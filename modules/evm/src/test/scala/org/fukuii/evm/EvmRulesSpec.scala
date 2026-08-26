@@ -1,5 +1,6 @@
 package org.fukuii.evm
 
+import org.fukuii.bytes.UInt64
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** The fork seam's own properties, and the comparability the record now carries.
@@ -132,7 +133,8 @@ class EvmRulesSpec extends AnyFlatSpec:
       precompiles = EvmFixtures.precompiles,
       gasForwarded = GasForwarding.Whole,
       codeDepositMustSucceed = false,
-      maxCodeSize = None
+      maxCodeSize = None,
+      createdAccountNonce = UInt64.Zero
     )
     assert(rebuilt == base, "two identical configurations built separately compared as different rules")
   }

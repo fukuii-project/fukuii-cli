@@ -209,7 +209,8 @@ object EvmFixtures:
     precompiles = precompiles,
     gasForwarded = GasForwarding.Whole,
     codeDepositMustSucceed = false,
-    maxCodeSize = None
+    maxCodeSize = None,
+    createdAccountNonce = UInt64.Zero
   )
 
   val block: BlockContext = BlockContext(

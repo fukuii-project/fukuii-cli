@@ -855,6 +855,35 @@ object Interpreter:
     * that asked for the creation, before this runs, so a failed deposit does not
     * hand it back.
     *
+    * ==The count the created account starts with is written HERE, and the
+    * outer snapshot is what undoes it==
+    *
+    * [[EvmRules.createdAccountNonce]] is written before the initialization code
+    * runs, which is where the proposal that raises it puts it -- *"prior to the
+    * execution of the initialisation code"* -- and where three implementations
+    * put it: the executable specification calls `increment_nonce` between the
+    * two snapshots in `process_create_message`
+    * (`forks/spurious_dragon/vm/interpreter.py` at `ccaaaba58`),
+    * `ethereum/go-ethereum-pow` @ `v1.10.26` writes it in `EVM.create` just
+    * after taking its one snapshot, and `besu-eth/besu` @ `c2addd9424` writes it
+    * in `ContractCreationProcessor.start`.
+    *
+    * **So a deployment whose own execution halted has to be undone from here
+    * rather than from [[run]]**, whose snapshot is taken after this write and
+    * cannot reach it. The specification restores its outer snapshot on exactly
+    * that branch, and go-ethereum reverts to the single snapshot it took before
+    * the write.
+    *
+    * **That is true at a count of zero as well, and the reasoning that it is not
+    * is the trap.** A write of zero changes no field, but the write itself
+    * brings the account into being -- [[WorldState]] states that every writing
+    * member does -- so a network that raises nothing still leaves an account
+    * behind at a halted deployment's address unless the reversal runs. The
+    * write is therefore unconditional, which is `besu-eth/besu` @ `c2addd9424`'s
+    * own shape: its `ContractCreationProcessor` writes the value it was
+    * configured with at every fork, including the zero its earliest definitions
+    * pass.
+    *
     * ==Two callers, and the second one is outside this module==
     *
     * Visible rather than internal to this file, because deployment has two
@@ -876,7 +905,7 @@ object Interpreter:
     val rules = environment.rules
     val taken = world.snapshot()
 
-    // Two ways a deployment is undone, and they undo the same three things. A
+    // Three ways a deployment is undone, and they undo the same three things. A
     // second copy of this could drift from the first without any test naming
     // both.
     def undone(halt: Halt): Outcome =
@@ -884,20 +913,27 @@ object Interpreter:
       nested.gasLeft = BigInt(0)
       Outcome.Halted(halt)
 
-    run(nested, environment).map {
-      case Outcome.Stopped(_, code) =>
-        if rules.maxCodeSize.exists(bound => code.length > bound) then undone(Halt.OutOfGas)
+    world.setNonce(nested.message.currentTarget, rules.createdAccountNonce)
+
+    run(nested, environment) match
+      // An entry this build cannot run is undone here as well, for the reason
+      // [[run]] undoes it: it is not an outcome a chain reaches, and a
+      // half-written world left behind would read as one.
+      case Left(unsupported) =>
+        world.restore(taken)
+        Left(unsupported)
+      case Right(Outcome.Stopped(_, code)) =>
+        if rules.maxCodeSize.exists(bound => code.length > bound) then Right(undone(Halt.OutOfGas))
         else
           nested.charge(schedule.codeDepositPerByte * BigInt(code.length)) match
-            case Left(halt) if rules.codeDepositMustSucceed => undone(halt)
+            case Left(halt) if rules.codeDepositMustSucceed => Right(undone(halt))
             case Left(_)                                    =>
               nested.output = Bytes.Empty
-              Outcome.Stopped(nested.gasLeft, Bytes.Empty)
+              Right(Outcome.Stopped(nested.gasLeft, Bytes.Empty))
             case Right(()) =>
               world.setCode(nested.message.currentTarget, code)
-              Outcome.Stopped(nested.gasLeft, code)
-      case halted => halted
-    }
+              Right(Outcome.Stopped(nested.gasLeft, code))
+      case Right(Outcome.Halted(halt)) => Right(undone(halt))
 
   /** Whether a creation may deploy at `address`.
     *
@@ -936,11 +972,11 @@ object Interpreter:
     * EIP-161 closes it twice over: `spurious_dragon`'s `process_create_message`
     * calls `destroy_storage` and then `increment_nonce` on the target, so any
     * residue is wiped at creation and the new account can never again present a
-    * zero count. This fork lacks only the `increment_nonce`; the
-    * `destroy_storage` call is already in `frontier`'s own create path, whose
-    * comment calls the case "highly unlikely". So the affected addresses are
-    * those that acquired storage before Spurious Dragon, and there will be no
-    * more of them.
+    * zero count. Both halves are here -- the count is
+    * [[EvmRules.createdAccountNonce]], written by [[deploy]], and the wipe is
+    * this refusal standing in for it. So on a network raising that count the
+    * affected addresses are those that acquired storage before it did, and there
+    * will be no more of them.
     *
     * ==What decided it: the three behaviors were measured against ETC mainnet==
     *

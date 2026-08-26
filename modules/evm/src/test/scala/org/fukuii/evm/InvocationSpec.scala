@@ -263,6 +263,39 @@ class InvocationSpec extends AnyFlatSpec:
   /** The same cap, over a table that makes the delegating byte run at all. */
   private def cappingDelegation: EvmRules = capping.copy(table = admitting)
 
+  /** The rules with a created account starting at a count of one.
+    *
+    * The figure is the only one the field uses, and unlike a price it is not a
+    * quantity a network is free to pick -- the proposal raises the starting
+    * value by one and no document since has moved it -- so this names one rather
+    * than a distinguishable made-up number.
+    */
+  private def countingCreations: EvmRules = EvmFixtures.rules.copy(createdAccountNonce = UInt64.fromBits(1L))
+
+  /** Runs a deployment directly, which is the entry point a transaction whose
+    * recipient is absent reaches and the one that admits initialization code too
+    * long to write through a single word of memory.
+    */
+  private def deployIn(
+      environment: Environment,
+      gas: BigInt,
+      initCode: Seq[Int],
+      target: Address
+  ): (Frame, Either[Unsupported, Outcome]) =
+    val frame = new Frame(
+      Message(runner, target, None, Word.Zero, Bytes.Empty, transfersValue = true),
+      Code(Bytes.fromArray(initCode.map(_.toByte).toArray)),
+      gas
+    )
+    (frame, Interpreter.deploy(frame, environment))
+
+  /** The address a creation started by `target` reaches while `target` holds
+    * `count`, which is what an initialization code's own nested creation is
+    * observed through.
+    */
+  private def grandchildOf(target: Address, count: Long): Address =
+    ContractAddress.of(target, UInt64.fromBits(count))
+
   // ── What an invocation is given, and what it leaves behind ───────────────
 
   "an invocation" should "bring the account it runs as into being" in {
@@ -607,6 +640,78 @@ class InvocationSpec extends AnyFlatSpec:
     assert(
       frame.stack.peek(0) == Right(Word.Zero),
       "the condition the two authorities disagree on, followed as the specification states it"
+    )
+  }
+
+  // ── The count an account is created with ─────────────────────────────────
+
+  "a created account" should "start with the count the rules name" in {
+    val environment = EvmFixtures.environmentUnder(countingCreations)
+    val _ = runIn(environment, 200000, creating(deploying))
+    assert(
+      environment.world.nonceOf(ContractAddress.of(runner, UInt64.Zero)) == UInt64.fromBits(1L),
+      "a count of one is what stops a created account ever again presenting the count a collision is recognized by"
+    )
+  }
+
+  it should "start with no count where the rules name none" in {
+    // The control. Without it the case above passes for an interpreter with the
+    // figure compiled into it, which is the defect rather than the rule.
+    val environment = EvmFixtures.environment()
+    val _ = runIn(environment, 200000, creating(deploying))
+    assert(
+      environment.world.nonceOf(ContractAddress.of(runner, UInt64.Zero)) == UInt64.Zero,
+      "a network that has not raised the count creates accounts holding the count existence alone confers"
+    )
+  }
+
+  it should "hold that count before its initialization code runs" in {
+    // The ordering, observed through the one thing an initialization code can
+    // read it with: a creation of its own resolves against the count the account
+    // it runs as holds now, so the address that creation reaches is where the
+    // count was written relative to this frame starting.
+    val target = EvmFixtures.address(0x44)
+    val environment = EvmFixtures.environmentUnder(countingCreations)
+    val _ = deployIn(environment, 400000, creating(deploying) :+ 0x00, target)
+    assert(
+      environment.world.codeOf(grandchildOf(target, 1L)) == codeOf("2a"),
+      "the count was written after the initialization code ran, so its own creation resolved against the wrong address"
+    )
+  }
+
+  it should "hold no count before its initialization code runs where the rules name none" in {
+    // The other half of the ordering case, and the one that makes it a
+    // measurement: both addresses are reachable, so the case above has to name
+    // the right one rather than the only one.
+    val target = EvmFixtures.address(0x44)
+    val environment = EvmFixtures.environment()
+    val _ = deployIn(environment, 400000, creating(deploying) :+ 0x00, target)
+    assert(
+      environment.world.codeOf(grandchildOf(target, 0L)) == codeOf("2a"),
+      "a creation from an account holding no count reaches that account's first address"
+    )
+  }
+
+  it should "leave no account behind where its initialization code halted" in {
+    // The count is written outside the snapshot the deployment's own execution
+    // takes, so nothing inside that execution can undo it. A deployment that
+    // halted must therefore be undone from the creating side.
+    val environment = EvmFixtures.environmentUnder(countingCreations)
+    val _ = runIn(environment, 200000, creating(hex(halting)))
+    assert(
+      !environment.world.accountExists(ContractAddress.of(runner, UInt64.Zero)),
+      "a failed deployment left the account it was given holding the count it was created with"
+    )
+  }
+
+  it should "leave no count behind where its initialization code halted" in {
+    // The same undo read through the count rather than through existence, since
+    // an implementation could drop the account's existence and keep its nonce.
+    val environment = EvmFixtures.environmentUnder(countingCreations)
+    val _ = runIn(environment, 200000, creating(hex(halting)))
+    assert(
+      environment.world.nonceOf(ContractAddress.of(runner, UInt64.Zero)) == UInt64.Zero,
+      "a failed deployment is undone whole, and a surviving count is a wrong state root"
     )
   }
 

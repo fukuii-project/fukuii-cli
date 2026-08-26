@@ -1,5 +1,7 @@
 package org.fukuii.evm
 
+import org.fukuii.bytes.UInt64
+
 /** A change one proposal makes to the rules a chain runs.
   *
   * A function rather than a record of what changed, because the changes are not
@@ -232,6 +234,33 @@ enum GasForwarding:
   *   EIP-7954, and unbounded -- and two of the clients above read it from a chain
   *   configuration rather than from their own source. A case per value would
   *   have to be extended by a proposal that only moves a number.
+  * @param createdAccountNonce
+  *   the transaction count an account is given when it is created, before the
+  *   code that initializes it runs. Zero is the count an account has by simply
+  *   existing, so a network setting that here creates nothing it would not have
+  *   created anyway; EIP-161 raises it to one, which is what stops a created
+  *   account ever again presenting the count an address collision is recognized
+  *   by.
+  *
+  *   ==A number rather than a flag, following the one client that parameterizes
+  *   it==
+  *
+  *   The proposal's own wording is about a starting value -- *"increment the
+  *   nonce over and above its normal starting value by one"* -- and
+  *   `besu-eth/besu` @ `c2addd9424` holds exactly that, a
+  *   `long initialContractNonce` its fork definitions pass `0` and then `1`,
+  *   written unconditionally at `ContractCreationProcessor.java:161`.
+  *   `ethereum/go-ethereum-pow` @ `v1.10.26` and `NethermindEth/nethermind` @
+  *   `c35ce1b1ab` instead gate a literal on a fork test, which is the shape this
+  *   record cannot take: these rules are what a fork resolved TO, so nothing
+  *   holding them may ask which fork is active. A flag would then have to carry
+  *   the figure in its own name, which is the sentinel problem [[maxCodeSize]]
+  *   rejects one paragraph up.
+  *
+  *   **The write is absolute where the specification's is an increment**, and
+  *   the two agree because a creation only reaches an address that [[
+  *   Interpreter.deployableAt]] admits, which is an address whose count is
+  *   already zero.
   */
 final case class EvmRules(
     table: OpcodeTable,
@@ -239,7 +268,8 @@ final case class EvmRules(
     precompiles: PrecompileSet,
     gasForwarded: GasForwarding,
     codeDepositMustSucceed: Boolean,
-    maxCodeSize: Option[Int]
+    maxCodeSize: Option[Int],
+    createdAccountNonce: UInt64
 ):
 
   /** These rules with each proposal applied, in the order given.
