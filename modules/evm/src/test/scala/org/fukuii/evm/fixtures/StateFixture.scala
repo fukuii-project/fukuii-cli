@@ -183,8 +183,10 @@ object StateFixture:
     * Where the corpus publishes the signed bytes they carry the format
     * themselves, so nothing has to be inferred from which fields a file
     * happened to write -- and the format named here cannot then disagree with
-    * the transaction recovered from those same bytes. The fields answer only
-    * for a case that publishes none.
+    * the transaction recovered from those same bytes. The fields answer for a
+    * case that publishes no bytes, and for one whose bytes begin with something
+    * that names no format at all -- [[envelopeKind]] declines on those, and the
+    * `getOrElse` below is what they fall through to.
     */
   private def kindOf(json: Json, signed: Option[Bytes], indexes: Indexes): TransactionType =
     signed.flatMap(envelopeKind).getOrElse(impliedKind(json, indexes))
@@ -197,13 +199,21 @@ object StateFixture:
   /** The format published bytes are in, where their leading byte names one.
     *
     * A byte that is neither a sequence head nor a tag a proposal has assigned
-    * names no format -- an RLP string head, or an unassigned tag -- so it
-    * yields nothing here rather than being resolved to a format anyway.
-    * Whatever is wrong with those bytes is reported where they are decoded, and
-    * guessing here would answer with a format and report nothing. A leading
-    * zero is among them: [[TransactionType.Legacy]]'s number is not a tag any
-    * proposal assigns, so bytes beginning `0x00` are malformed rather than
-    * legacy.
+    * names no format -- an RLP string head, or an unassigned tag -- so this
+    * declines rather than reading a format out of it. A leading zero is among
+    * them: [[TransactionType.Legacy]]'s number is not a tag any proposal
+    * assigns, so bytes beginning `0x00` are malformed rather than legacy.
+    *
+    * ==Declining here is not the case being left unresolved==
+    *
+    * [[kindOf]] falls back to the fields, so a case whose bytes name no format
+    * still gets one -- and where nothing in the object implies a later format,
+    * that one is [[TransactionType.Legacy]]. What declining buys is that the
+    * malformed bytes are never the thing a format is read out of; what settles
+    * them is the decode in
+    * `org.fukuii.chainspec.certification.StateFixtureRunner.signerOf`, which
+    * reports an unreadable published signature. No case in either corpus
+    * publishes such bytes, so this branch is unreached today.
     */
   private def envelopeKind(bytes: Bytes): Option[TransactionType] =
     bytes.toIArray.headOption.map(_ & 0xff).flatMap { head =>
