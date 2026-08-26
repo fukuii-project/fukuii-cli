@@ -351,10 +351,17 @@ object TransactionProcessor:
     * activation at 2,675,000, and `ethereum/execution-specs`' own comment
     * records the exempt account being cleared at 2,675,119 despite running out
     * of gas -- the case is live in between, and the client that produced those
-    * blocks is the second reading. **Neither published corpus decides it**: no
-    * fixture in either tier sends its transaction to that address, so two
-    * production implementations agreeing is the whole of the evidence for it.
-    * The other reading is `else Set.empty` on the line below and nothing else.
+    * blocks is the second reading.
+    *
+    * **Neither published corpus decides it, and the measurement is narrower
+    * than "no case names that address".** The generated tier for this fork
+    * carries 34 cases and not one of them mentions it at all. The legacy tier
+    * holds exactly one case sending a transaction there -- and that case
+    * publishes no post section for this fork and holds no account at the
+    * address in its pre-state, so it neither runs under these rules nor presents
+    * the existing-and-empty account the decision turns on. So two production
+    * implementations agreeing is the whole of the evidence, and the other
+    * reading is `else Set.empty` on the line below and nothing else.
     */
   private def touchedAccounts(
       frame: Frame,
