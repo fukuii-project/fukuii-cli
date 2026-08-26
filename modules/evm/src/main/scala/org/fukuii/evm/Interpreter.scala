@@ -1091,6 +1091,32 @@ object Interpreter:
     * What counts as moving value differs between the two -- a call reads its
     * operand, a destruction reads the whole balance of the account ending -- so
     * each site answers it and neither can be answered here.
+    *
+    * ==Which destinations can be dead, and why a borrowing call's cannot==
+    *
+    * A call's destination is the account it names, which may be in any state. A
+    * borrowing call's is the account already running, and on a chain that one is
+    * never dead. Every frame is built at one of four sites and each leaves its
+    * account alive: a transaction's own invocation and an ordinary nested call
+    * both take their code out of state, so an account executing anything holds
+    * code; a borrowing call inherits the account its caller was running as, and
+    * so inherits that; and a deployment's account holds the count
+    * [[EvmRules.createdAccountNonce]] gave it before its code ran. The two
+    * authorities reach the same place by giving those forms no surcharge term at
+    * all -- the specification's `callcode` and `delegatecall` charge a base and a
+    * transfer term and nothing else, and `ethereum/go-ethereum-pow` @ `v1.10.26`
+    * adds none in `gasCallCode` or `gasDelegateCall`.
+    *
+    * **The deployment half of that rests on two rules arriving together, which
+    * is a property of the field rather than of this record.** A network levying
+    * this on a dead destination while leaving that count at zero would make an
+    * account created with no endowment dead while its own initialization code
+    * ran, and a borrowing call from it that sent something would pay a surcharge
+    * neither authority charges. No surveyed client separates them:
+    * `ethereumclassic/core-geth` @ `4185df450` gates both on one transition and
+    * `ethereum/go-ethereum-pow` @ `v1.10.26` on one fork test. A configuration
+    * that did is the first thing to look at if this ever fires for a borrowing
+    * form.
     */
   private def newAccountSurcharge(
       rules: EvmRules,

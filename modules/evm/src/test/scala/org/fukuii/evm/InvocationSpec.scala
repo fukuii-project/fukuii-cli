@@ -88,6 +88,34 @@ class InvocationSpec extends AnyFlatSpec:
 
   private def hex(program: Seq[Int]): String = program.map(byte => f"$byte%02x").mkString
 
+  /** Runs one invocation over a program this spec hands it, rather than over
+    * code world state holds.
+    *
+    * ==So the account it runs as holds no code, and a chain never produces
+    * that==
+    *
+    * A frame built here names the account it runs as and takes its program as an
+    * argument, so `world.codeOf` of that account stays empty and the account is
+    * DEAD by EIP-161's test -- zero count, no code, zero balance -- while its own
+    * code is running. On a chain the two cannot come apart, and
+    * `Interpreter.newAccountSurcharge` states why.
+    *
+    * **Two cases below stand on that difference.** Both run under rules levying
+    * the surcharge for bringing a destination into being on an ABSENT one, where
+    * the account being run as exists and so is not charged. Each name is on its
+    * own line here so that a reader who reaches one of them by searching for it
+    * reaches this too:
+    *
+    * "cost nothing for an account never held, since it runs as itself"
+    *
+    * "be capped like the rest of the call family"
+    *
+    * Run either under rules levying that surcharge on a DEAD destination and it
+    * would be charged one no chain levies, because here that account is dead and
+    * on a chain it would not be. Giving the account its code in state first is
+    * what would make such a case a measurement rather than an artifact of this
+    * helper.
+    */
   private def runIn(
       environment: Environment,
       gas: BigInt,
