@@ -222,73 +222,108 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
   private val withoutTheCodeBound: UpgradeRules => UpgradeRules =
     rules => rules.copy(evm = rules.evm.copy(maxCodeSize = None))
 
-  private def rerun(corpus: String, change: UpgradeRules => UpgradeRules): CorpusReport =
-    CertificationCorpora.rerun(corpus, change).getOrElse(cancel("no fixture corpus"))
-
-  /** How many of a corpus's cases answer differently once a rule is removed,
-    * which is the size of that corpus's coverage of that rule.
+  /** Which cases of a corpus answer differently once one rule is removed from
+    * the fork, which is that corpus's coverage OF that rule.
     *
-    * Counted per case rather than read off the two divergence totals: a rule
-    * whose removal fixed one case and broke another would leave those totals
-    * equal while changing what the corpus said.
+    * Names rather than a count, because for a rule reached by very few cases the
+    * identity is the durable fact and the count is not: a corpus that lost its
+    * one case and gained an unrelated one reports the same number.
+    *
+    * Compared per case rather than by the two divergence totals, for the same
+    * reason -- a change that repaired one case and broke another would leave
+    * those totals equal while changing what the corpus said.
     */
-  private def movedBy(corpus: String, change: UpgradeRules => UpgradeRules): Vector[String] =
-    val asIs = found(assembled, corpus).outcomes
-    val altered = rerun(corpus, change).outcomes
+  private def movedBy(
+      reports: Vector[CorpusReport],
+      corpus: String,
+      change: UpgradeRules => UpgradeRules
+  ): Vector[String] =
+    val asIs = found(reports, corpus).outcomes
+    val altered = CertificationCorpora
+      .rerun(corpus, change)
+      .getOrElse(fail("assembled once and not the second time: " + corpus))
+      .outcomes
     asIs.zip(altered).collect { case (before, after) if before != after => before.name }
 
-  property("the generated tier filled for this fork does see EIP-161's clearing") {
-    // Measured, and it is the opposite of what reading the files suggests. No
-    // case in this directory holds an empty account in its PRE-state, from which
-    // it is natural -- and wrong -- to conclude the clause is unreachable here.
-    // The empty accounts are made during execution: a zero-value call to a
-    // precompile or to an address with no account leaves one behind, and 48 of
-    // the 537 cases change verdict when the clause stops removing them.
-    //
-    // The corpus publishing no empty account in any post state is the same fact
-    // seen from the other side. It is what a corpus looks like when clearing
-    // WORKS, not when it is untested.
-    val moved = movedBy(CertificationCorpora.GeneratedSpuriousDragonCorpus, withoutClearing)
-    assert(moved.length == 48, s"the clause decides ${moved.length.toString} cases here, not 48")
+  /** The chain identifier stopped being readable out of a signature. */
+  private val withoutChainIdSignatures: UpgradeRules => UpgradeRules =
+    rules => rules.copy(admission = rules.admission.copy(signatureMayCarryChainId = false))
+
+  /** Exponentiation back at the price the previous fork charged. */
+  private val withoutTheExpReprice: UpgradeRules => UpgradeRules =
+    rules => rules.copy(evm = rules.evm.copy(schedule = rules.evm.schedule.copy(expPerByte = BigInt(10))))
+
+  /** How many cases each censused tier at this fork decides on each of the
+    * fork's four proposals, measured by removing the proposal and rerunning.
+    *
+    * ==What a corpus MENTIONS and what it can DECIDE are different claims==
+    *
+    * A tier filled for a fork is routinely read as certifying that fork, and
+    * this matrix is what that reading would get wrong. Counting fields in the
+    * files cannot produce it either: for the clearing clause the JSON gives the
+    * wrong answer with conviction, because the state the clause removes is
+    * absent from a correct post state exactly as it is absent from a corpus that
+    * never tested it.
+    *
+    * ==Neither tier certifies this fork, and the two are near-complements==
+    *
+    * The generated tier is the only one that reaches EIP-155 and the older tier
+    * is the only one that reaches EIP-170, so dropping either leaves a proposal
+    * of this upgrade decided by nothing at all. That, and not a shortfall on the
+    * clearing clause, is why both are censused.
+    *
+    * ==Every row is another row's control==
+    *
+    * A zero here is a claim that a corpus cannot see a rule, and on its own it
+    * is indistinguishable from a rerun that ignored its own argument. Each zero
+    * sits beside a non-zero produced by the same machinery over the same corpus,
+    * so the machinery is shown working at the moment the zero is read.
+    *
+    * The two zeros are explainable rather than mysterious, which is the other
+    * thing that makes them safe to assert. EIP-155 is unreachable in the older
+    * tier because that corpus publishes no signed bytes for any case, so no
+    * signature is ever recovered and nothing ever asks which chain it names.
+    */
+  private val coverage =
+    Table(
+      ("proposal", "corpus", "without it", "cases decided"),
+      ("EIP-155", CertificationCorpora.GeneratedSpuriousDragonCorpus, withoutChainIdSignatures, 500),
+      ("EIP-155", CertificationCorpora.LegacyEip158StateCorpus, withoutChainIdSignatures, 0),
+      ("EIP-160", CertificationCorpora.GeneratedSpuriousDragonCorpus, withoutTheExpReprice, 1),
+      ("EIP-160", CertificationCorpora.LegacyEip158StateCorpus, withoutTheExpReprice, 47),
+      ("EIP-161", CertificationCorpora.GeneratedSpuriousDragonCorpus, withoutClearing, 48),
+      ("EIP-161", CertificationCorpora.LegacyEip158StateCorpus, withoutClearing, 74),
+      ("EIP-170", CertificationCorpora.GeneratedSpuriousDragonCorpus, withoutTheCodeBound, 0),
+      ("EIP-170", CertificationCorpora.LegacyEip158StateCorpus, withoutTheCodeBound, 1)
+    )
+
+  property("each tier at this fork decides the cases the coverage matrix records") {
+    // `assembled` is called here and never inside `forAll`, for the reason its
+    // own documentation gives: the table's handler catches Throwable to attach
+    // the failing row, which would turn an absent corpus from every case
+    // cancelling into every case failing.
+    val reports = assembled
+    forAll(coverage) { (proposal: String, corpus: String, without: UpgradeRules => UpgradeRules, decided: Int) =>
+      val moved = movedBy(reports, corpus, without)
+      assert(
+        moved.length == decided,
+        s"$corpus decides ${moved.length.toString} cases on $proposal rather than ${decided.toString}"
+      )
+    }
   }
 
-  property("the same tier does not see EIP-170's bound on deployed code at all") {
-    // The other half, and the reason the property above is worth stating rather
-    // than assumed: the two proposals landed in one upgrade and this corpus
-    // discriminates on one of them only. Lifting the bound moves no verdict, so
-    // nothing in this directory would notice a build that had never implemented
-    // it. The older tier carries one case that would, and no more than one.
+  property("the one case in either corpus that the bound on deployed code decides is the one named") {
+    // The count above would still read as coverage if this case were dropped and
+    // an unrelated one began to move, which for a rule reached by exactly one
+    // case is the whole of the risk. Naming it is what closes that.
     //
-    // Its control is the property above -- same rerun, same corpus, a different
-    // rule removed, verdicts move. Without that pairing this one would be
-    // satisfied just as well by a rerun that quietly ignored its argument.
-    val moved = movedBy(CertificationCorpora.GeneratedSpuriousDragonCorpus, withoutTheCodeBound)
-    assert(moved.isEmpty, s"the bound decides ${moved.length.toString} cases here: ${moved.mkString(", ")}")
-  }
-
-  property("the legacy tier read for this fork sees EIP-161's clearing too, and more of it") {
-    // The reason this tier is censused as well as the generated one. Both
-    // discriminate on the clause; only this one holds cases where the account
-    // was ALREADY empty when the transaction began, which is the route the
-    // generated corpus cannot state at all.
-    val moved = movedBy(CertificationCorpora.LegacyEip158StateCorpus, withoutClearing)
-    assert(moved.length == 74, s"the clause decides ${moved.length.toString} cases here, not 74")
-  }
-
-  property("the legacy tier reaches EIP-170's bound on deployed code in exactly one case") {
-    // The whole of this fork's published coverage of that proposal, in both
-    // corpora together: one case, named, in the older tier. The case is asserted
-    // rather than the count, because the count alone would still read as
-    // coverage if this case were dropped and an unrelated one began to move.
-    //
-    // Recorded as a coverage fact and not as a complaint. What actually pins
-    // EIP-170 is its own unit coverage; the corpora contribute one case, and a
-    // reader who assumes a certified fork is a fork whose every proposal the
-    // corpus exercises would be wrong here.
-    val moved = movedBy(CertificationCorpora.LegacyEip158StateCorpus, withoutTheCodeBound)
+    // Recorded as a coverage fact and not as a complaint: what pins EIP-170 is
+    // its own unit coverage, and a reader who takes a certified fork to be one
+    // whose every proposal the published corpora exercise would be wrong here.
+    val moved = movedBy(assembled, CertificationCorpora.LegacyEip158StateCorpus, withoutTheCodeBound)
     assert(
       moved == Vector("codesizeOOGInvalidSize[d0g0v0]"),
-      s"the bound decides ${moved.length.toString} cases here: ${moved.mkString(", ")}"
+      s"the bound decides these cases: ${moved.mkString(", ")}"
     )
   }
 

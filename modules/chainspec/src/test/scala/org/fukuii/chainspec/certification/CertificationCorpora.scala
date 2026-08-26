@@ -106,8 +106,12 @@ object CertificationCorpora:
     * clause's own case, which the generated corpus does not state anywhere and
     * can only approach through an emptiness it created itself.
     *
-    * It is also the only place in either corpus where EIP-170's bound on
-    * deployed code decides anything, and it does so once.
+    * It is also **the only place in either corpus where EIP-170's bound on
+    * deployed code decides anything**, and it does so once. Against that it
+    * reaches EIP-155 not at all, because it publishes no signed bytes for any
+    * case and so never asks a signature which chain it names -- which is what
+    * makes the two tiers near-complements rather than one a subset of the other.
+    * The coverage matrix in `CertificationCorporaSpec` is where that is measured.
     *
     * Most of its cases publish only a post-state root and no per-account
     * expectation, so a clause that fired when it should not surfaces as a root
@@ -141,11 +145,12 @@ object CertificationCorpora:
     *
     * ==Which of the fork's four proposals this corpus can actually decide==
     *
-    * It sees EIP-161's clearing and it does **not** see EIP-170's bound on
-    * deployed code. Both halves are measured by rerunning the corpus with the
-    * rule in question switched off and comparing verdicts, in
-    * `CertificationCorporaSpec`; each is the other's control, since a rerun that
-    * failed to apply its own argument would report both as unseen.
+    * The coverage matrix in `CertificationCorporaSpec` holds the figures and the
+    * method. Two of them bear on why this tier exists: it is **the only censused
+    * tier that reaches EIP-155 at all**, deciding 500 of its 537 cases on it,
+    * and it is blind to EIP-170's bound on deployed code, which the older tier
+    * reaches instead. So this corpus does not certify the fork by itself, and
+    * neither does the other one.
     *
     * ==Reading the files gives the wrong answer for the first of those, and
     * gives it convincingly==
