@@ -33,6 +33,19 @@ import org.fukuii.execution.ExecutionRules
   * component; a network that wanted to would be stating a rule set the document
   * does not describe.
   *
+  * **`(b)` likewise holds only while `(a)` does, and that pairing is the field's
+  * rather than this document's to enforce.** Levying the surcharge on a dead
+  * destination while leaving a created account's count at zero makes a
+  * deployment given no endowment dead while its own initialization code runs,
+  * and a borrowing call out of it that sent something would pay a surcharge
+  * neither authority charges. No surveyed client separates them --
+  * `ethereumclassic/core-geth` @ `4185df450` gates both on one transition and
+  * `ethereum/go-ethereum-pow` @ `v1.10.26` on one fork test -- and
+  * `org.fukuii.evm.Interpreter.newAccountSurcharge` is where the consequence is
+  * worked out. The deltas below are public, so composing `(b)` without `(a)`
+  * is expressible; it is the configuration to suspect first if that surcharge
+  * ever fires for a borrowing form.
+  *
   * ==Built from the general constructor, because this document spans facets==
   *
   * `Component.evm` reaches the machine and nothing else, and `(d)` is the
