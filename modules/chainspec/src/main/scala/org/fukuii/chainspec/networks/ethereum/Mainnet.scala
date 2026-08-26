@@ -235,14 +235,17 @@ object Mainnet:
     * `c2addd94244196d4713e38ea659be0d2581082e9` as `"eip158Block": 2675000` in
     * `config/src/main/resources/mainnet.json`.
     *
-    * ==Two of the four proposals this upgrade names are implemented==
+    * ==This entry carries all four proposals the upgrade names==
     *
-    * [[Upgrades.spuriousDragon]] carries EIP-155 and EIP-160 and records both
-    * in its component list. EIP-161 and EIP-170 are not there, so a node built
-    * from this entry validates less across this boundary than the network did.
-    * **The entry names the network's upgrade; it does not claim to implement
-    * all of it**, which is the standing [[homestead]] has for a different
-    * reason.
+    * [[Upgrades.spuriousDragon]] adopts EIP-155, EIP-160, EIP-161 and EIP-170,
+    * and records all four in its component list. EIP-607 names exactly those
+    * four, so the caveat [[homestead]] carries -- an entry naming a network
+    * upgrade whose rule set is only part of it -- is not one this entry needs.
+    *
+    * **That is a statement about what the composition adopts, and not a
+    * conformance claim.** Which proposals a rule set is built from is checkable
+    * from this file; whether each is implemented correctly is what the
+    * published corpora answer, read at this network's own activation.
     *
     * ==go-ethereum's field name for this activation is the pre-renumbering
     * one==
