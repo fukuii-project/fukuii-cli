@@ -458,6 +458,53 @@ task and reports **97** if a check then exits 0 having reported reading nothing;
 `scripts/sbt-run-proof.sh` drives both halves. **The bare command is not
 equivalent, and its green is weaker than it looks.**
 
+**A red from this build is not always a verdict on the tree, and this is the one
+shape that runs opposite to the three above.** They report success having done
+nothing; this reports **failure having found nothing wrong**. A killed
+invocation — a tool timeout, an interrupt, a closed session — kills the client
+and not the task, which goes on running inside the detached server. The next
+invocation queues behind that orphan, the connection drops, and the error
+surfaces against whichever command happened to be next.
+
+**Measured twice on 2026-08-26, against different tasks each time.** A
+`chainspec/testFull` was killed mid-run; the `evm/testFull` starting 79 seconds
+later printed `[info] waiting for: chainspec/testFull`, then
+`[error] sbt server disconnected`, and exited **1** without naming a single
+`evm` test. Hours later the same shape ran against a killed single-spec
+`testOnly`, and what carried the failure was `scalafmtCheckAll` — exit 1 over a
+tree that was correctly formatted, which the same check on a fresh server
+confirmed by exiting 0 across 22 `Checking` lines.
+
+**Recognize it from two lines, neither of which is about your code:**
+
+- **`[error] sbt server disconnected` standing where a violation, a failed
+  assertion or a compile error should be.** That exit code carries no
+  information about the tree.
+- **`[info] waiting for: <task>` naming a task the current command did not ask
+  for.** `scripts/sbt-run.sh` writes a `## tasks:` line at the head of every log,
+  so the comparison sits in the same file: where those two disagree, the run
+  never reached its own task.
+
+**The orphan's own log identifies it, and its tell is an absence.** That wrapper
+writes its closing `## sbt-run.sh finished` and `EXIT CODE:` lines
+unconditionally — it runs without `set -e` precisely so that a failing sbt still
+gets both. **A log carrying the header and neither closing line is not a task
+that failed; it is a wrapper killed before sbt returned**, which is what leaves
+the task running.
+
+**Remedy: `sbt shutdown`, then re-run — and follow a killed run with a shutdown
+rather than with another invocation**, which prevents this instead of diagnosing
+it. **`shutdown` answering `no sbt server is running` is not evidence the
+diagnosis was wrong**: the server may already be gone by the time you ask, and
+the re-run starts a fresh one either way.
+
+**Read the direction, and do not generalize it.** This is a false red and never
+a false green — the wrapper passed sbt's own exit code through faithfully, and
+nothing was reported clean that was not. Filing it under "sbt reports things
+that are not true" would spend distrust the three shapes above have earned and
+this one has not, and they all run the other way. A green still has to be
+earned; a red of this shape has to be re-run.
+
 There is no `lint`, `typecheck` or coverage task and no CI —
 `## Code style` below says what the compiler's enforced set does and does not
 reach, and outside both, match the style of surrounding code by hand. Do not
