@@ -543,6 +543,22 @@ class TransactionProcessorSpec extends AnyFlatSpec:
       "an outermost failure kept a reach at a network exempting no address"
     )
 
+  it should "be destroyed where the executable specification destroys nothing" in
+    // THE DIVERGENCE, named here so reconciling this project to the executable
+    // specification has to delete a case that says why not. Whoever does that
+    // is reading `TransactionProcessor.touchedAccounts`, which carries the
+    // evidence and the one expression that reverses this.
+    assert(
+      settle(
+        transaction(),
+        Map(recipient -> callsTheNativeTooCheaplyThenHalts),
+        rules = exempting,
+        execution = clearing,
+        present = Set(exempt)
+      ).destroyed.contains(exempt),
+      "the exemption was narrowed to the specification's reading, which is not the reading that produced the blocks"
+    )
+
   // ── The block's beneficiary, which is nobody's invocation ─────────────────
 
   "the block's beneficiary" should "be destroyed where the fee left it holding nothing" in
