@@ -358,22 +358,65 @@ object TransactionProcessor:
     *     `AbstractMessageProcessor`'s force-delete runs from the frame-failure
     *     path, which the initial frame reaches like any other.
     *
-    * **This keeps it, and the reason is which of the two produced the blocks.**
-    * The window is narrow and was not synthetic: the proposal states its own
-    * activation at 2,675,000, and `ethereum/execution-specs`' own comment
-    * records the exempt account being cleared at 2,675,119 despite running out
-    * of gas -- the case is live in between, and the client that produced those
-    * blocks is the second reading.
+    * **The two are separated by EXECUTION and not only by a reading of their
+    * sources.** Byte-identical signed transactions were run against both, over
+    * one pre-state holding the exempt address existing and empty beside a
+    * funded sender, sent straight to that address with empty calldata -- so gas
+    * is the only variable between the cases:
     *
-    * **Neither published corpus decides it, and the measurement is narrower
-    * than "no case names that address".** The generated tier for this fork
-    * carries 537 cases across 34 files, and the address is in none of them. The
-    * legacy tier holds exactly one case sending a transaction there -- and that
-    * case publishes no post section for this fork and holds no account at the
-    * address in its pre-state, so it neither runs under these rules nor presents
-    * the existing-and-empty account the decision turns on. So two production
-    * implementations agreeing is the whole of the evidence, and the other
-    * reading is `else Set.empty` on the line below and nothing else.
+    *   - **One gas short of its base charge the outermost invocation fails, and
+    *     the two post-state roots DIFFER.** `ethereum/go-ethereum-pow` @
+    *     `v1.10.26` destroys the account; `ethereum/execution-specs` @
+    *     `ccaaaba58` leaves it standing.
+    *   - **Given exactly that charge the invocation succeeds, and the two roots
+    *     are identical.** That agreement is the calibration: pre-state, harness
+    *     and gas arithmetic all agree, so the failing frame is the only thing
+    *     left that can explain the row above.
+    *   - **A third case sends the transaction elsewhere and both keep the
+    *     account**, which is what separates destroyed-by-the-reach from never
+    *     having been in the pre-state at all.
+    *
+    * **Sharper than "the two apply different deletion rules": at that frame the
+    * clause is not taking effect at all.** The same body run under Frontier
+    * rules -- a fork with no state-clearing rule to apply -- produces the
+    * specification's own root for this fork byte for byte. The specification
+    * lands on exactly the state the clause had not yet arrived to change.
+    *
+    * **No mainnet state root decides it, because the chain never reached this
+    * frame.** The proposal states its own activation at 2,675,000 and the
+    * address is existing-and-empty for 119 blocks; at 2,675,119 it is DELETED,
+    * by the transaction `ethereum/legacytests` @ `1f581b8cc` publishes as
+    * `GeneralStateTests/stSpecialTest/failed_tx_xcf416c53.json` -- which reached
+    * it through a NESTED call, where the two agree. **What closed the window is
+    * the account ceasing to EXIST, not ceasing to be empty**, and an absent
+    * account cannot be touched-and-empty: the same distinction the existence
+    * check at the call site above turns on. It stays absent until 2,687,391,
+    * and over the whole span from activation to there exactly one transaction
+    * is sent directly to any precompile -- the one in 2,687,391 that recreated
+    * the account, outside the window, and it SUCCEEDED.
+    *
+    * **Neither published corpus decides it either, and the measurement is
+    * narrower than "no case names that address".** The generated tier for this
+    * fork carries 537 cases across 34 files, and the address is in none of
+    * them. The legacy tier holds exactly one case sending a transaction there
+    * -- and that case publishes no post section for this fork and holds no
+    * account at the address in its pre-state, so it neither runs under these
+    * rules nor presents the existing-and-empty account the decision turns on.
+    * **That tier could not decide it in principle**, being generated from the
+    * specification, so it holds no case whose expected value contradicts the
+    * specification.
+    *
+    * **So this keeps it on a JUDGMENT rather than on a measurement**: two
+    * production implementations of independent lineage agree, the specification
+    * stands alone, and nothing on the chain or in either corpus separates them.
+    * The other reading is `else Set.empty` on the line below and nothing else.
+    *
+    * **The authority above is the two oracles, which are external to this
+    * project and share no code.** The runs and the block-by-block scan were
+    * performed by `fukuii-project/fukuii-tests` @ `239d481c5`, whose
+    * `networks/ethereum/mainnet/state/accounts/ripemd160_touch_exemption.json`
+    * carries the vector, both roots for the failing frame, and the scan --
+    * the instrument that ran the oracles, never the source of truth.
     */
   private def touchedAccounts(
       frame: Frame,

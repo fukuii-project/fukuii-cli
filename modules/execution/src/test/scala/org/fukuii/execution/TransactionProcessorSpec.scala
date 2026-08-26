@@ -556,7 +556,7 @@ class TransactionProcessorSpec extends AnyFlatSpec:
         execution = clearing,
         present = Set(exempt)
       ).destroyed.contains(exempt),
-      "the exemption was narrowed to the specification's reading, which is not the reading that produced the blocks"
+      "the exemption was narrowed to the specification's reading, which two production implementations do not share"
     )
 
   // ── The block's beneficiary, which is nobody's invocation ─────────────────
