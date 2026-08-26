@@ -81,6 +81,40 @@ object CertificationCorpora:
     */
   val LegacyEip150StateCorpus: String = "legacytests Constantinople/GeneralStateTests at EIP150"
 
+  /** The same directory a third time, read for the expectations it files under
+    * the name EIP-158.
+    *
+    * ==The key is the superseded document's number, and that is the corpus's
+    * spelling rather than a mistake to correct==
+    *
+    * EIP-161 supersedes EIP-158 as that document's own *invariant-preserving
+    * alternative*, and EIP-607 lists 161 and not 158. The clients and the
+    * corpora kept the earlier number for the activation all the same:
+    * `ethereum/go-ethereum` @ `6bb0588ad` names the field `EIP158Block` and
+    * `besu-eth/besu` @ `c2addd94` names the genesis key `eip158Block`, both
+    * gating EIP-161. The reader dispatches on the post key, so the key is the
+    * invariant to match -- asking for the number the upgrade actually includes
+    * would find nothing and report all 2394 files as stating no expectation.
+    *
+    * ==What this tier adds over the generated one, which is not what it looks
+    * like==
+    *
+    * Not the mere fact of EIP-161: the generated tier already discriminates on
+    * the clearing clause, and does so in 48 cases. What this one adds is scale
+    * and a second route. It decides 74 cases, and 28 of its cases hold an
+    * account that is **already empty when the transaction begins** -- the
+    * clause's own case, which the generated corpus does not state anywhere and
+    * can only approach through an emptiness it created itself.
+    *
+    * It is also the only place in either corpus where EIP-170's bound on
+    * deployed code decides anything, and it does so once.
+    *
+    * Most of its cases publish only a post-state root and no per-account
+    * expectation, so a clause that fired when it should not surfaces as a root
+    * mismatch rather than as an account a reader can see in the file.
+    */
+  val LegacyEip158StateCorpus: String = "legacytests Constantinople/GeneralStateTests at EIP158"
+
   /** The generated state tier, from the tests@v20.0.1 release. */
   val GeneratedStateCorpus: String = "execution-specs-fixtures state_tests/for_frontier"
 
@@ -268,6 +302,13 @@ object CertificationCorpora:
         "EIP150",
         ethereumChain,
         tangerineWhistle
+      ),
+      StateCorpus(
+        LegacyEip158StateCorpus,
+        FixtureCorpus.legacy(root).resolve("GeneralStateTests"),
+        "EIP158",
+        ethereumChain,
+        spuriousDragon
       ),
       StateCorpus(
         GeneratedHomesteadCorpus,

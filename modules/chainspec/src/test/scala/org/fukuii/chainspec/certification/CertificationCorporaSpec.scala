@@ -61,6 +61,11 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     // the fork asked about OR states none, and a case that states one expands
     // into a run per post entry -- so 650 cases carrying this key become 1096.
     CertificationCorpora.LegacyEip150StateCorpus -> CorpusCensus(files = 2394, cases = 2840, skipped = 1744),
+    // The same 2394 files a third time. 579 of them carry a section under this
+    // key and it expands to 1221 runnable combinations, more than either fork
+    // above -- a general state test states expectations for every fork it was
+    // authored against, and the later the fork the more of the corpus has one.
+    CertificationCorpora.LegacyEip158StateCorpus -> CorpusCensus(files = 2394, cases = 3036, skipped = 1815),
     CertificationCorpora.GeneratedTangerineWhistleCorpus -> CorpusCensus(files = 33, cases = 536, skipped = 0),
     CertificationCorpora.GeneratedSpuriousDragonCorpus -> CorpusCensus(files = 34, cases = 537, skipped = 0),
     // The same 33 files as the row above, resolved through the other network's
@@ -139,7 +144,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     assert(names == census.keySet, s"assembled ${names.toString} against a census of ${census.keySet.toString}")
   }
 
-  property("the census covers eight corpora, counted") {
+  property("the census covers nine corpora, counted") {
     // THE REMOVAL CASE, which the pairing cannot see. Dropping a corpus from the
     // census AND from what the harness assembles leaves those two agreeing with
     // each other, leaves the same six properties registered, and leaves the
@@ -151,13 +156,13 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     // available to whoever needs a red build green after an upstream corpus
     // moves, which is exactly the moment a ratchet earns its keep.
     //
-    // Eight: the interpreter tier, the state tier read for Frontier, again for
+    // Nine: the interpreter tier, the state tier read for Frontier, again for
     // EIP-150 and again for EIP-158, the generated state tier filled for
-    // Frontier, Homestead and Tangerine Whistle, and that last one read a second
-    // time through the other network's schedule. Raising this is adding a
-    // corpus. Lowering it is dropping certified cases, and that is a decision
-    // rather than a tidy-up.
-    assert(census.size == 8, s"the census covers ${census.size.toString} corpora rather than eight")
+    // Frontier, Homestead, Tangerine Whistle and Spurious Dragon, and Tangerine
+    // Whistle read a second time through the other network's schedule. Raising
+    // this is adding a corpus. Lowering it is dropping certified cases, and that
+    // is a decision rather than a tidy-up.
+    assert(census.size == 9, s"the census covers ${census.size.toString} corpora rather than nine")
   }
 
   property("every censused corpus holds the files the census records") {
@@ -227,10 +232,10 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     * whose removal fixed one case and broke another would leave those totals
     * equal while changing what the corpus said.
     */
-  private def movedBy(corpus: String, change: UpgradeRules => UpgradeRules): Int =
+  private def movedBy(corpus: String, change: UpgradeRules => UpgradeRules): Vector[String] =
     val asIs = found(assembled, corpus).outcomes
     val altered = rerun(corpus, change).outcomes
-    asIs.zip(altered).count((before, after) => before != after)
+    asIs.zip(altered).collect { case (before, after) if before != after => before.name }
 
   property("the generated tier filled for this fork does see EIP-161's clearing") {
     // Measured, and it is the opposite of what reading the files suggests. No
@@ -244,20 +249,47 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     // seen from the other side. It is what a corpus looks like when clearing
     // WORKS, not when it is untested.
     val moved = movedBy(CertificationCorpora.GeneratedSpuriousDragonCorpus, withoutClearing)
-    assert(moved == 48, s"switching the clause off moved ${moved.toString} verdicts rather than 48")
+    assert(moved.length == 48, s"the clause decides ${moved.length.toString} cases here, not 48")
   }
 
-  property("the same tier does not see EIP-170's bound on deployed code") {
+  property("the same tier does not see EIP-170's bound on deployed code at all") {
     // The other half, and the reason the property above is worth stating rather
     // than assumed: the two proposals landed in one upgrade and this corpus
     // discriminates on one of them only. Lifting the bound moves no verdict, so
-    // nothing here would notice a build that had never implemented it.
+    // nothing in this directory would notice a build that had never implemented
+    // it. The older tier carries one case that would, and no more than one.
     //
     // Its control is the property above -- same rerun, same corpus, a different
     // rule removed, verdicts move. Without that pairing this one would be
     // satisfied just as well by a rerun that quietly ignored its argument.
     val moved = movedBy(CertificationCorpora.GeneratedSpuriousDragonCorpus, withoutTheCodeBound)
-    assert(moved == 0, s"lifting the bound moved ${moved.toString} verdicts, so this tier does reach it after all")
+    assert(moved.isEmpty, s"the bound decides ${moved.length.toString} cases here: ${moved.mkString(", ")}")
+  }
+
+  property("the legacy tier read for this fork sees EIP-161's clearing too, and more of it") {
+    // The reason this tier is censused as well as the generated one. Both
+    // discriminate on the clause; only this one holds cases where the account
+    // was ALREADY empty when the transaction began, which is the route the
+    // generated corpus cannot state at all.
+    val moved = movedBy(CertificationCorpora.LegacyEip158StateCorpus, withoutClearing)
+    assert(moved.length == 74, s"the clause decides ${moved.length.toString} cases here, not 74")
+  }
+
+  property("the legacy tier reaches EIP-170's bound on deployed code in exactly one case") {
+    // The whole of this fork's published coverage of that proposal, in both
+    // corpora together: one case, named, in the older tier. The case is asserted
+    // rather than the count, because the count alone would still read as
+    // coverage if this case were dropped and an unrelated one began to move.
+    //
+    // Recorded as a coverage fact and not as a complaint. What actually pins
+    // EIP-170 is its own unit coverage; the corpora contribute one case, and a
+    // reader who assumes a certified fork is a fork whose every proposal the
+    // corpus exercises would be wrong here.
+    val moved = movedBy(CertificationCorpora.LegacyEip158StateCorpus, withoutTheCodeBound)
+    assert(
+      moved == Vector("codesizeOOGInvalidSize[d0g0v0]"),
+      s"the bound decides ${moved.length.toString} cases here: ${moved.mkString(", ")}"
+    )
   }
 
   property("no corpus is resolved through a height that is not an activation on its network") {
