@@ -1,0 +1,218 @@
+package org.fukuii.evm.fixtures
+
+import org.scalatest.flatspec.AnyFlatSpec
+
+import org.fukuii.types.TransactionType
+
+/** What format the reader names for one combination of a state case's arrays.
+  *
+  * ==Why this is worth its own suite==
+  *
+  * The format decides whether a transaction is refused for its envelope before
+  * anything else happens to it, so a reader that names the wrong one reports a
+  * refusal the fixture never asked for -- or executes a case the fixture
+  * expects to be refused. Neither shows up as a reader fault: it shows up as
+  * the machine disagreeing with the corpus, which is the one thing a
+  * certification run is supposed to mean.
+  *
+  * ==None of these cases is run, so nothing here is an expectation==
+  *
+  * Each is decoded and its transaction's format read. The state root every case
+  * carries is a syntactic requirement of the shape and is deliberately written
+  * as zero, which no run produces -- a plausible-looking root here would read as
+  * a claim about a state nobody computed.
+  *
+  * The transaction bodies are modelled on the mixed shape the published corpora
+  * actually carry -- `ethereum/legacytests` @ `1f581b8c`
+  * `Cancun/GeneralStateTests/stEIP2930/coinbaseT01.json`, whose `accessLists`
+  * is `[null, [...], [...]]` against three `data` entries, and whose per-entry
+  * `txbytes` begins `0xf8` at index 0 and `0x01` at indexes 1 and 2. That file
+  * is in a directory this build does not read, and no case in the four corpora
+  * it does read carries a null entry, so the shape is reproduced here rather
+  * than quoted from material the suite can reach.
+  */
+class StateFixtureSpec extends AnyFlatSpec:
+
+  private def fixture(transaction: String, entries: String): String =
+    """{ "classified": {
+      |  "env": {
+      |    "currentCoinbase": "0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba",
+      |    "currentDifficulty": "0x020000",
+      |    "currentGasLimit": "0x05f5e100",
+      |    "currentNumber": "0x01",
+      |    "currentTimestamp": "0x03e8"
+      |  },
+      |  "pre": {
+      |    "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b": {
+      |      "balance": "0x0de0b6b3a7640000", "code": "0x", "nonce": "0x00", "storage": {}
+      |    }
+      |  },
+      |  "transaction": { TRANSACTION },
+      |  "post": { "Frontier": [ ENTRIES ] }
+      |} }""".stripMargin
+      .replace("TRANSACTION", transaction)
+      .replace("ENTRIES", entries)
+
+  /** The fields every transaction body here shares, so that a body below states
+    * only what decides its format.
+    */
+  private val common: String =
+    """"nonce": "0x00",
+      |"gasPrice": "0x0a",
+      |"gasLimit": [ "0x0186a0" ],
+      |"to": "0x095e7baea6a6c7c4c2dfeb977efac326af552d87",
+      |"value": [ "0x00" ],
+      |"data": [ "0x", "0x", "0x" ],
+      |"sender": "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b"""".stripMargin
+
+  private val zeroRoot: String = "0x" + "00" * 32
+
+  /** One post entry per `data` index, with no published bytes, so the fields
+    * are what the reader has to decide from.
+    */
+  private val threeUnsignedEntries: String =
+    (0 to 2)
+      .map(index => s"""{ "hash": "$zeroRoot", "indexes": { "data": $index, "gas": 0, "value": 0 } }""")
+      .mkString(",")
+
+  private def signedEntry(bytes: String): String =
+    s"""{ "hash": "$zeroRoot", "indexes": { "data": 0, "gas": 0, "value": 0 }, "txbytes": "$bytes" }"""
+
+  private val unsignedEntry: String =
+    s"""{ "hash": "$zeroRoot", "indexes": { "data": 0, "gas": 0, "value": 0 } }"""
+
+  /** A case whose access lists are null at one index and present at the others,
+    * which is the shape the field's presence cannot express.
+    */
+  private val mixedAccessLists: String =
+    fixture(
+      common + ""","accessLists": [ null, [], [ { "address": "0x0000000000000000000000000000000000003000",
+        |"storageKeys": [] } ] ]""".stripMargin,
+      threeUnsignedEntries
+    )
+
+  /** A case whose only distinguishing content is `extra`, publishing no bytes,
+    * so the fields are the whole of what the reader has to decide from.
+    *
+    * Publishing bytes here would put the envelope in charge, and every case
+    * built on this would be exercising that path rather than the ordering it
+    * names.
+    */
+  private def statingOnly(extra: String): String =
+    fixture(common + "," + extra, unsignedEntry)
+
+  /** The format the reader named for one combination, or nothing when the case
+    * did not decode or holds no such combination.
+    *
+    * Nothing rather than a default: a fixture this suite got wrong must not
+    * read as a format the reader chose.
+    */
+  private def kindAt(contents: String, data: Int): Option[TransactionType] =
+    StateFixture
+      .decodeFile("classification", contents)
+      .toOption
+      .flatMap(_.fixtures.find(_.name.endsWith("[d" + data + "g0v0]")))
+      .map(_.transaction.kind)
+
+  /** What the reader made of the whole case, for the clue on a failure. */
+  private def decoded(contents: String): String =
+    StateFixture
+      .decodeFile("classification", contents)
+      .fold(identity, _.fixtures.map(f => f.name + "=" + f.transaction.kind).mkString(" "))
+
+  /** A case carrying an access list at index 0 and published bytes that
+    * contradict it, so only one of the two can be what the reader used.
+    */
+  private def envelope(bytes: String): String =
+    fixture(common + ""","accessLists": [ [], [], [] ]""", signedEntry(bytes))
+
+  "an index whose access list is null" should "be read as the format predating the envelope" in
+    // The whole of the defect: read from the field's presence, this index is an
+    // access-list transaction, and a fork before EIP-2930 refuses the control
+    // the case put beside its typed payloads.
+    assert(kindAt(mixedAccessLists, 0) == Some(TransactionType.Legacy), decoded(mixedAccessLists))
+
+  "an index whose access list is empty" should "be read as an access-list transaction" in
+    // `[]` is not null. An empty list is a typed transaction listing nothing,
+    // and collapsing the two would make the fix indistinguishable from naming
+    // every index legacy.
+    assert(kindAt(mixedAccessLists, 1) == Some(TransactionType.AccessList), decoded(mixedAccessLists))
+
+  "an index whose access list names an address" should "be read as an access-list transaction" in
+    assert(kindAt(mixedAccessLists, 2) == Some(TransactionType.AccessList), decoded(mixedAccessLists))
+
+  "a case stating no access lists" should "be read as the format predating the envelope" in {
+    val plain = fixture(common, threeUnsignedEntries)
+    assert(kindAt(plain, 0) == Some(TransactionType.Legacy), decoded(plain))
+  }
+
+  "a case stating a maximum fee" should "be read as a fee-market transaction" in {
+    val feeMarket = statingOnly(""""maxFeePerGas": "0x07", "maxPriorityFeePerGas": "0x01"""")
+    assert(kindAt(feeMarket, 0) == Some(TransactionType.DynamicFee), decoded(feeMarket))
+  }
+
+  "a case stating both a maximum fee and an access list" should "be read as a fee-market transaction" in {
+    // Both fields are stated together throughout the published corpora, because
+    // a fee-market transaction may carry an access list. Whichever is tested
+    // first decides, so the two orderings are distinguishable only here.
+    val both = statingOnly(""""maxFeePerGas": "0x07", "accessLists": [ [], [], [] ]""")
+    assert(kindAt(both, 0) == Some(TransactionType.DynamicFee), decoded(both))
+  }
+
+  "a case stating versioned hashes" should "be read as a blob transaction" in {
+    // It states a maximum fee as well, because a blob transaction carries the
+    // fee-market fields too. Deciding on those alone names this one fee-market,
+    // which is what the ordering exists to prevent.
+    val blob = statingOnly(
+      """"maxFeePerGas": "0x07", "maxPriorityFeePerGas": "0x01",
+        |"blobVersionedHashes": [ "0x0100000000000000000000000000000000000000000000000000000000000000" ]""".stripMargin
+    )
+    assert(kindAt(blob, 0) == Some(TransactionType.Blob), decoded(blob))
+  }
+
+  "a case stating an authorization list" should "be read as a set-code transaction" in {
+    val setCode = statingOnly(
+      """"maxFeePerGas": "0x07", "maxPriorityFeePerGas": "0x01", "authorizationList": []"""
+    )
+    assert(kindAt(setCode, 0) == Some(TransactionType.SetCode), decoded(setCode))
+  }
+
+  "published bytes beginning an RLP sequence" should "settle the format over fields naming an access list" in {
+    // The fields say typed and the bytes say otherwise. The bytes are the
+    // transaction; the fields are a convention about which of them a filler
+    // wrote.
+    val legacy = envelope("0xf8")
+    assert(kindAt(legacy, 0) == Some(TransactionType.Legacy), decoded(legacy))
+  }
+
+  it should "read the shortest such sequence as one" in {
+    // `0xc0` is the empty sequence and the lowest head there is, so it is where
+    // the two RLP shapes meet. A bound one above it sends every empty sequence
+    // back to the fields.
+    val shortest = envelope("0xc0")
+    assert(kindAt(shortest, 0) == Some(TransactionType.Legacy), decoded(shortest))
+  }
+
+  "published bytes beginning with a type tag" should "settle the format over fields naming none" in {
+    val typed = fixture(common, signedEntry("0x01f8"))
+    assert(kindAt(typed, 0) == Some(TransactionType.AccessList), decoded(typed))
+  }
+
+  it should "name the fee-market format for the tag EIP-1559 assigns" in {
+    val typed = fixture(common, signedEntry("0x02f8"))
+    assert(kindAt(typed, 0) == Some(TransactionType.DynamicFee), decoded(typed))
+  }
+
+  "published bytes beginning an RLP string" should "leave the format to the fields" in {
+    // `0x80` heads a byte string, which is neither shape a transaction takes.
+    // Resolving it here would answer with a format and report nothing; the
+    // fields answer instead, and the bytes fail where they are decoded.
+    val stringHead = envelope("0x80")
+    assert(kindAt(stringHead, 0) == Some(TransactionType.AccessList), decoded(stringHead))
+  }
+
+  "published bytes beginning with zero" should "leave the format to the fields" in
+    // Legacy's number is not a tag any proposal assigns, so these bytes are
+    // malformed rather than legacy -- and reading them as legacy would silently
+    // overrule an access list the case does state.
+    assert(kindAt(envelope("0x00f8"), 0) == Some(TransactionType.AccessList), decoded(envelope("0x00f8")))

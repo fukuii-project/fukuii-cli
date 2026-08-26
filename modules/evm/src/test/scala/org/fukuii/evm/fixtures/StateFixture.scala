@@ -161,12 +161,12 @@ object StateFixture:
       case Right(text) => FixtureValues.bytesOf(text).map(Some(_))
 
   private def transactionOf(json: Json, entry: Json, indexes: Indexes): Either[String, StateTransaction] =
-    val cursor = json.hcursor
-    val kind =
-      if cursor.downField("maxFeePerGas").focus.isDefined then TransactionType.DynamicFee
-      else if cursor.downField("accessLists").focus.isDefined then TransactionType.AccessList
-      else TransactionType.Legacy
     for
+      // Absent is a fact about the corpus; present-and-unreadable is a broken
+      // fixture. Folding the second into the first would answer with the stated
+      // sender and report nothing, which is the one outcome this must not have.
+      signed <- signedBytesOf(entry)
+      kind = kindOf(json, signed, indexes)
       nonce <- FixtureValues.quantityAt(json, "nonce")
       gasPrice <- priceOf(json, kind)
       gasLimit <- selected(json, "gasLimit", indexes.gas).flatMap(FixtureValues.quantity)
@@ -174,11 +174,90 @@ object StateFixture:
       data <- selected(json, "data", indexes.data).flatMap(FixtureValues.bytesOf)
       sender <- FixtureValues.addressAt(json, "sender")
       to <- recipientOf(json)
-      // Absent is a fact about the corpus; present-and-unreadable is a broken
-      // fixture. Folding the second into the first would answer with the stated
-      // sender and report nothing, which is the one outcome this must not have.
-      signed <- signedBytesOf(entry)
     yield StateTransaction(nonce, gasPrice, gasLimit, to, value, data, sender, signed, kind)
+
+  /** Which of EIP-2718's formats this one combination is.
+    *
+    * ==The envelope names the format; the fields only imply it==
+    *
+    * Where the corpus publishes the signed bytes they carry the format
+    * themselves, so nothing has to be inferred from which fields a file
+    * happened to write -- and the format named here cannot then disagree with
+    * the transaction recovered from those same bytes. The fields answer only
+    * for a case that publishes none.
+    */
+  private def kindOf(json: Json, signed: Option[Bytes], indexes: Indexes): TransactionType =
+    signed.flatMap(envelopeKind).getOrElse(impliedKind(json, indexes))
+
+  /** The lowest leading byte that begins an RLP sequence, and so the shape that
+    * predates the envelope.
+    */
+  private val SequenceHead: Int = 0xc0
+
+  /** The format published bytes are in, where their leading byte names one.
+    *
+    * A byte that is neither a sequence head nor a tag a proposal has assigned
+    * names no format -- an RLP string head, or an unassigned tag -- so it
+    * yields nothing here rather than being resolved to a format anyway.
+    * Whatever is wrong with those bytes is reported where they are decoded, and
+    * guessing here would answer with a format and report nothing. A leading
+    * zero is among them: [[TransactionType.Legacy]]'s number is not a tag any
+    * proposal assigns, so bytes beginning `0x00` are malformed rather than
+    * legacy.
+    */
+  private def envelopeKind(bytes: Bytes): Option[TransactionType] =
+    bytes.toIArray.headOption.map(_ & 0xff).flatMap { head =>
+      if head >= SequenceHead then Some(TransactionType.Legacy)
+      else if head == TransactionType.Legacy.number then None
+      else TransactionType.fromNumber(head)
+    }
+
+  /** The format the transaction object's own fields imply, for a case that
+    * publishes no signed bytes.
+    *
+    * ==Per index, because the field that names the envelope is indexed too==
+    *
+    * `accessLists` is an array parallel to `data`: entry `i` belongs to
+    * `data[i]`, and a null entry is that index saying it is the shape predating
+    * the envelope. Reading the field's PRESENCE instead names every index of
+    * such a file typed -- including the legacy ones, which at a fork before
+    * EIP-2930 refuses a control the fixture expects to execute. `[]` is not
+    * null: an empty access list is a typed transaction listing nothing, and the
+    * two are what separate the envelope being refused from the list being
+    * empty.
+    *
+    * None of the other three is parallel to `data`, which is why only this one
+    * is subscripted: `maxFeePerGas` is one value for the whole case, and the
+    * two lists are the transaction's own contents rather than a choice per
+    * combination.
+    *
+    * ==The order is the field's, not the reader's==
+    *
+    * A transaction of a later format carries the earlier formats' fields as
+    * well -- a blob transaction states `maxFeePerGas`, a fee-market one may
+    * state an access list -- so the most recent format that fits wins. That
+    * ordering is `Transaction.Builder.guessType` in `besu-eth/besu` @
+    * `c2addd94`, and the same order arrives as a chain of overrides in
+    * `NethermindEth/nethermind` @ `c35ce1b1`
+    * `src/Nethermind/Ethereum.Test.Base/JsonToEthereumTest.cs`.
+    */
+  private def impliedKind(json: Json, indexes: Indexes): TransactionType =
+    val cursor = json.hcursor
+    def states(field: String): Boolean = cursor.downField(field).focus.isDefined
+    if states("authorizationList") then TransactionType.SetCode
+    else if states("blobVersionedHashes") then TransactionType.Blob
+    else if states("maxFeePerGas") || states("maxPriorityFeePerGas") then TransactionType.DynamicFee
+    else if listedAt(json, indexes.data) then TransactionType.AccessList
+    else TransactionType.Legacy
+
+  /** Whether `accessLists` carries a non-null entry for this combination. */
+  private def listedAt(json: Json, index: Int): Boolean =
+    json.hcursor
+      .downField("accessLists")
+      .focus
+      .flatMap(_.asArray)
+      .flatMap(_.lift(index))
+      .exists(!_.isNull)
 
   /** A fee-market transaction states no gas price. It is invalid at this fork
     * whatever it states, so the price it is charged at never matters and zero
