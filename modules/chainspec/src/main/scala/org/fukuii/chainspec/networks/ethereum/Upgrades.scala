@@ -2,7 +2,7 @@ package org.fukuii.chainspec.networks.ethereum
 
 import org.fukuii.bytes.{UInt256, UInt64}
 import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment, UpgradeRules}
-import org.fukuii.chainspec.proposals.eip.{Eip150, Eip155, Eip160, Eip170, Eip2, Eip7}
+import org.fukuii.chainspec.proposals.eip.{Eip150, Eip155, Eip160, Eip161, Eip170, Eip2, Eip7}
 import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, NewAccountCharge, OpcodeTable, Precompile, PrecompileSet}
 import org.fukuii.execution.{AdmissionRules, ExecutionRules}
 import org.fukuii.types.TransactionType
@@ -256,25 +256,26 @@ object Upgrades:
     */
   val tangerineWhistle: UpgradeRules = homestead.adopting(Eip150.component)
 
-  /** [[tangerineWhistle]] with EIP-155, EIP-160 and EIP-170 adopted.
+  /** [[tangerineWhistle]] with EIP-155, EIP-160, EIP-161 and EIP-170 adopted.
     *
-    * The order is the order the three compose in. It is immaterial -- the three
-    * write a member of the admission facet, a price in the machine's schedule
-    * and a bound in the machine's rules respectively -- and it is stated because
-    * two deltas touching one field compose to whichever ran last.
+    * The order is the order the four compose in. It is immaterial -- they write
+    * a member of the admission facet, a price in the machine's schedule, three
+    * members of the machine's rules with one of the settlement's, and a bound in
+    * the machine's rules, and no two of them name one field -- and it is stated
+    * because two deltas touching one field compose to whichever ran last.
     *
-    * ==The upgrade this network calls Spurious Dragon carries four proposals,
-    * and this composition is three of them==
+    * ==This composition is the whole of what this network calls Spurious
+    * Dragon==
     *
     * `ethereum/EIPs` @ `9e393a79d`, EIP-607 *Hardfork Meta: Spurious Dragon*
-    * (Final) lists EIP-155, EIP-160, EIP-161 and EIP-170. The one absent here is
-    * EIP-161, which is four clauses reaching both the machine and settlement.
-    * **So this value states which proposals produced it and does not claim to be
-    * the whole upgrade** -- which is what a component list is for, and the
-    * standing [[org.fukuii.chainspec.networks.ethereum.Mainnet]] already has
-    * where EIP-606 includes a proposal that is devp2p rather than a rule.
+    * (Final) lists exactly these four. That is a property of this upgrade rather
+    * than a property a composition has to have: a component list states which
+    * proposals produced a rule set and never claims to be an upgrade, which is
+    * what the standing [[org.fukuii.chainspec.networks.ethereum.Mainnet]]
+    * already relies on where EIP-606 includes a proposal that is devp2p rather
+    * than a rule.
     *
-    * ==Three proposals, three facets, and the grouping is this network's alone==
+    * ==Four proposals, four facets, and the grouping is this network's alone==
     *
     * Ethereum took these together. `ethereumclassic/core-geth` @ `4185df450`
     * puts `EIP155Block` and `EIP160FBlock` at 3,000,000 on Ethereum Classic and
@@ -284,4 +285,4 @@ object Upgrades:
     * different list; one derived from a fork's name could not express it at all.
     */
   val spuriousDragon: UpgradeRules =
-    tangerineWhistle.adopting(Eip155.component, Eip160.component, Eip170.component)
+    tangerineWhistle.adopting(Eip155.component, Eip160.component, Eip161.component, Eip170.component)

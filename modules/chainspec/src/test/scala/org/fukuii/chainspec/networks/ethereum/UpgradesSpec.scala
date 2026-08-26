@@ -1,8 +1,8 @@
 package org.fukuii.chainspec.networks.ethereum
 
-import org.fukuii.bytes.UInt256
+import org.fukuii.bytes.{UInt256, UInt64}
 import org.fukuii.chainspec.ProposalId
-import org.fukuii.evm.{Cost, Opcode, OpcodeTable, Operation}
+import org.fukuii.evm.{Cost, NewAccountCharge, Opcode, OpcodeTable, Operation, PrecompileSet}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Properties every rule set this network composed has to hold. */
@@ -43,9 +43,37 @@ class UpgradesSpec extends AnyFlatSpec:
           ProposalId.Eip(150),
           ProposalId.Eip(155),
           ProposalId.Eip(160),
+          ProposalId.Eip(161),
           ProposalId.Eip(170)
         ),
       "a composition's recorded components are not the ones it adopted"
+    )
+
+  it should "carry every clause of EIP-161 at the upgrade that adopted it" in
+    // Asserted at the NETWORK rather than at the component, because the
+    // settlement member here sat on the record with no production reader and no
+    // network setting it, and a component nothing adopts leaves it exactly
+    // there. All four in one case on purpose: the document's clause (c) is
+    // satisfied by clause (d) rather than by a member of its own, so a rule set
+    // carrying the machine's three and not the settlement's would claim a clause
+    // it does not have.
+    assert(
+      Upgrades.spuriousDragon.evm.createdAccountNonce == UInt64.fromBits(1L) &&
+        Upgrades.spuriousDragon.evm.newAccountCharge == NewAccountCharge.WhenValueReachesADeadDestination &&
+        Upgrades.spuriousDragon.evm.touchSurvivesFailure == Set(PrecompileSet.Ripemd160) &&
+        Upgrades.spuriousDragon.execution.touchedEmptyAccountsAreDeleted,
+      "the upgrade that adopts EIP-161 does not carry one of its clauses"
+    )
+
+  it should "have carried none of them at the upgrade before it" in
+    // The control. Without it the case above holds for a network that had them
+    // all along, and no earlier proposal sets any of the four.
+    assert(
+      Upgrades.tangerineWhistle.evm.createdAccountNonce == UInt64.Zero &&
+        Upgrades.tangerineWhistle.evm.newAccountCharge == NewAccountCharge.WhenTheDestinationIsAbsent &&
+        Upgrades.tangerineWhistle.evm.touchSurvivesFailure.isEmpty &&
+        !Upgrades.tangerineWhistle.execution.touchedEmptyAccountsAreDeleted,
+      "a clause of EIP-161 was in force before the upgrade that adopts it"
     )
 
   it should "run the original instruction set with nothing added at genesis" in
