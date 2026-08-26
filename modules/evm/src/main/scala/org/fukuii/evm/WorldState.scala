@@ -74,8 +74,13 @@ trait WorldState:
   /** Whether this state holds an account at `address` at all.
     *
     * Distinct from every other read, which answer for an absent account with
-    * the empty account's value. `CALL` prices its destination by this, and a
-    * creation refuses an address this answers for.
+    * the empty account's value -- so this is the only read that can tell an
+    * absent account from one holding nothing, and a rule that must not tell them
+    * apart is written over the others.
+    * [[org.fukuii.evm.EvmRules.newAccountCharge]] decides which of the two a
+    * call's surcharge asks for, and a creation asks neither: it reads the count,
+    * the code and the storage, which [[org.fukuii.evm.Interpreter.deployableAt]]
+    * states.
     */
   def accountExists(address: Address): Boolean
 

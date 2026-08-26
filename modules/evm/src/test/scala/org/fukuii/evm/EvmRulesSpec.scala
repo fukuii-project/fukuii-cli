@@ -134,7 +134,8 @@ class EvmRulesSpec extends AnyFlatSpec:
       gasForwarded = GasForwarding.Whole,
       codeDepositMustSucceed = false,
       maxCodeSize = None,
-      createdAccountNonce = UInt64.Zero
+      createdAccountNonce = UInt64.Zero,
+      newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent
     )
     assert(rebuilt == base, "two identical configurations built separately compared as different rules")
   }

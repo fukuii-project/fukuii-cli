@@ -111,6 +111,77 @@ enum GasForwarding:
     case Whole                => requested
     case AllButOneSixtyFourth => requested.min(remaining - remaining / 64)
 
+/** When an operation pays the surcharge for bringing its destination into
+  * being.
+  *
+  * ==Data rather than a boolean, for the reason [[GasForwarding]] is==
+  *
+  * The two readings do not differ by a threshold. One asks a single question of
+  * the destination; the other asks a different question of the destination AND
+  * a question about the operation, so they read different state and take
+  * different arguments. A flag would leave that difference at the two sites
+  * that levy the charge, where a proposal moving it could be applied at one and
+  * not the other with nothing naming both.
+  *
+  * ==A network that read it a third way adds a case==
+  *
+  * That is the same deliberate act [[GasForwarding]] requires, and it is what
+  * keeps the machine free of a quantity a caller could get wrong: neither case
+  * below carries a number, so the surcharge itself stays the schedule's.
+  */
+enum NewAccountCharge:
+
+  /** The destination is an account this state has never held.
+    *
+    * What the operation carries makes no difference: a call sending nothing to
+    * an address nothing has used still brings an account into being, and pays
+    * for it.
+    */
+  case WhenTheDestinationIsAbsent
+
+  /** The operation moves value, and the destination is *dead* -- either
+    * non-existent, or existing and holding nothing.
+    *
+    * ==Both halves changed at once, and neither is a repricing==
+    *
+    * EIP-161(b): *"whereas `CALL` and `SUICIDE` would charge 25,000 gas when the
+    * destination is non-existent, now the charge SHALL only be levied if the
+    * operation transfers more than zero value and the destination account is
+    * dead"* (`ethereum/EIPs` @ `96523ef4d`, `EIPS/eip-161.md`, Final). The
+    * figures do not move; what a network sets them to stays
+    * [[GasSchedule.newAccount]]'s and [[GasSchedule.selfDestructNewAccount]]'s.
+    *
+    * Three implementations state the same pair. The executable specification
+    * writes the call side as `if value == 0 or is_account_alive(state, to)` and
+    * the destruction side as `not is_account_alive(beneficiary) and
+    * get_account(current_target).balance != 0`
+    * (`forks/spurious_dragon/vm/instructions/system.py` at `ccaaaba58`);
+    * `ethereum/go-ethereum-pow` @ `v1.10.26` writes
+    * `transfersValue && evm.StateDB.Empty(address)` and
+    * `evm.StateDB.Empty(address) && evm.StateDB.GetBalance(contract.Address()).Sign() != 0`
+    * (`core/vm/gas_table.go`); `besu-eth/besu` @ `c2addd9424` writes
+    * `recipient == null || recipient.isEmpty()` under a zero-value early return,
+    * and the same predicate against a non-zero inheritance
+    * (`SpuriousDragonGasCalculator.java`).
+    *
+    * **What a destruction moves is the whole balance of the account ending**,
+    * which is why its half of the condition is that balance rather than an
+    * operand. All three sources read it there.
+    *
+    * ==It also settles clause (c), which is why nothing here refuses to create==
+    *
+    * The same document forbids an account changing state from non-existent to
+    * existent-but-empty. The executable specification does not implement that
+    * as a refusal: `state_tracker.py` is byte-identical across the two forks and
+    * still creates, and the fork satisfies the clause by creating the account
+    * and deleting it again at the end of the transaction -- the
+    * invariant-preserving alternative the proposal's own title names. This case
+    * is what makes the two shapes agree in the meantime: the surcharge is the
+    * only price in the machine that could tell an absent destination from an
+    * empty one, and under this reading it cannot.
+    */
+  case WhenValueReachesADeadDestination
+
 /** The rules one chain runs, as a value a fork produces rather than a branch the
   * machine takes.
   *
@@ -261,6 +332,12 @@ enum GasForwarding:
   *   the two agree because a creation only reaches an address that [[
   *   Interpreter.deployableAt]] admits, which is an address whose count is
   *   already zero.
+  * @param newAccountCharge
+  *   when an operation pays the surcharge for bringing its destination into
+  *   being. It settles a condition and never a figure: what the two operations
+  *   that levy it pay stays [[GasSchedule.newAccount]]'s and
+  *   [[GasSchedule.selfDestructNewAccount]]'s, and a network moving one of those
+  *   is a repricing that leaves this alone.
   */
 final case class EvmRules(
     table: OpcodeTable,
@@ -269,7 +346,8 @@ final case class EvmRules(
     gasForwarded: GasForwarding,
     codeDepositMustSucceed: Boolean,
     maxCodeSize: Option[Int],
-    createdAccountNonce: UInt64
+    createdAccountNonce: UInt64,
+    newAccountCharge: NewAccountCharge
 ):
 
   /** These rules with each proposal applied, in the order given.

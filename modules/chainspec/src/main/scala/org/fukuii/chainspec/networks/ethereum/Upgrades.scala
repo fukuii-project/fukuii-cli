@@ -3,7 +3,7 @@ package org.fukuii.chainspec.networks.ethereum
 import org.fukuii.bytes.{UInt256, UInt64}
 import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment, UpgradeRules}
 import org.fukuii.chainspec.proposals.eip.{Eip150, Eip155, Eip160, Eip170, Eip2, Eip7}
-import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, OpcodeTable, Precompile, PrecompileSet}
+import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, NewAccountCharge, OpcodeTable, Precompile, PrecompileSet}
 import org.fukuii.execution.{AdmissionRules, ExecutionRules}
 import org.fukuii.types.TransactionType
 
@@ -209,7 +209,8 @@ object Upgrades:
         gasForwarded = GasForwarding.Whole,
         codeDepositMustSucceed = false,
         maxCodeSize = None,
-        createdAccountNonce = UInt64.Zero
+        createdAccountNonce = UInt64.Zero,
+        newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent
       ),
       execution = ExecutionRules(
         touchedEmptyAccountsAreDeleted = false,

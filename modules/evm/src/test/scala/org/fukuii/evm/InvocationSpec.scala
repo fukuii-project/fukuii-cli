@@ -296,6 +296,41 @@ class InvocationSpec extends AnyFlatSpec:
   private def grandchildOf(target: Address, count: Long): Address =
     ContractAddress.of(target, UInt64.fromBits(count))
 
+  /** The rules levying the surcharge on a dead destination that is sent
+    * something, rather than on one this state has never held.
+    */
+  private def chargingTheDead: EvmRules =
+    EvmFixtures.rules.copy(newAccountCharge = NewAccountCharge.WhenValueReachesADeadDestination)
+
+  /** The same reading, over the schedule that prices ending an invocation. */
+  private def chargingDeadBeneficiaries: EvmRules =
+    charging.copy(newAccountCharge = NewAccountCharge.WhenValueReachesADeadDestination)
+
+  /** A world holding an account at `address` with nothing in it.
+    *
+    * The state the two conditions disagree about: it EXISTS, so the earlier one
+    * levies nothing, and it is DEAD, so the later one levies the surcharge.
+    * Every fixture reading either condition needs this shape available, because
+    * an absent account and a funded one are the two both conditions agree on.
+    */
+  private def holdingNothingAt(address: Address): EvmFixtures.MapWorldState =
+    val state = world()
+    state.touch(address)
+    state
+
+  /** What a call costs before the two surcharges, with the gas it forwards
+    * charged and handed back unspent by a callee that has no code to run.
+    */
+  private val bareCall: BigInt = schedule.veryLow * 7 + schedule.callBase
+
+  /** What a call sending something costs beyond that, the stipend coming back
+    * with the rest of what the callee did not spend.
+    */
+  private val sendingCall: BigInt = schedule.callValue - schedule.callStipend
+
+  /** What ending an invocation costs before the surcharge, under [[charging]]. */
+  private val bareDestruction: BigInt = schedule.veryLow + destructionCharge
+
   // ── What an invocation is given, and what it leaves behind ───────────────
 
   "an invocation" should "bring the account it runs as into being" in {
@@ -1095,6 +1130,165 @@ class InvocationSpec extends AnyFlatSpec:
       outcome == Right(Outcome.Halted(Halt.OutOfGas)),
       "the whole charge was affordable to a frame holding one unit less than it"
     )
+  }
+
+  // ── When bringing the destination into being is charged for ──────────────
+  //
+  // Two conditions, two operations, and the pair of them disagree about exactly
+  // two states: a destination sent nothing, and a destination that exists while
+  // holding nothing. Every case below stands on one of those two, with the
+  // states both conditions agree on kept beside them as controls.
+
+  "a call under the earlier surcharge" should "pay it for a destination this state has never held, whatever it sends" in {
+    // The standing reading, restated here as the control the case below is
+    // measured against rather than left implicit in another section.
+    val (frame, _) = runIn(EvmFixtures.environment(), 100000, calling(0xf1, other, 1000))
+    assert(frame.gasLeft == BigInt(100000) - bareCall - schedule.newAccount, "an absent destination is charged for")
+  }
+
+  it should "pay nothing for a destination that exists while holding nothing" in {
+    // The other half of what the earlier reading asks: existence alone, with no
+    // regard for what the account holds.
+    val (frame, _) = runIn(
+      EvmFixtures.environmentUnder(EvmFixtures.rules, holdingNothingAt(other)),
+      100000,
+      calling(0xf1, other, 1000, value = 40)
+    )
+    assert(
+      frame.gasLeft == BigInt(100000) - bareCall - sendingCall,
+      "the earlier condition asks whether the account exists and nothing else"
+    )
+  }
+
+  "a call under the later surcharge" should "pay nothing for a destination it sends nothing to" in {
+    // The first of the two states the readings disagree about. Under the earlier
+    // one this same call pays the surcharge, which the control above measures.
+    val (frame, _) = runIn(EvmFixtures.environmentUnder(chargingTheDead), 100000, calling(0xf1, other, 1000))
+    assert(
+      frame.gasLeft == BigInt(100000) - bareCall,
+      "the charge is levied only where the operation transfers more than zero value"
+    )
+  }
+
+  it should "pay it for a destination this state has never held and does send to" in {
+    // The control on the case above: without it, a surcharge deleted outright
+    // would pass.
+    val funded = world()
+    funded.balances(runner) = EvmFixtures.word(50)
+    val (frame, _) = runIn(
+      EvmFixtures.environmentUnder(chargingTheDead, funded),
+      100000,
+      calling(0xf1, other, 1000, value = 40)
+    )
+    assert(
+      frame.gasLeft == BigInt(100000) - bareCall - sendingCall - schedule.newAccount,
+      "an absent destination is still dead, so a call sending to it still pays"
+    )
+  }
+
+  it should "pay it for a destination that exists while holding nothing" in {
+    // The second state the readings disagree about, and the reason the condition
+    // is not simply existence: dead is non-existent OR empty.
+    val holder = holdingNothingAt(other)
+    holder.balances(runner) = EvmFixtures.word(50)
+    val (frame, _) = runIn(
+      EvmFixtures.environmentUnder(chargingTheDead, holder),
+      100000,
+      calling(0xf1, other, 1000, value = 40)
+    )
+    assert(
+      frame.gasLeft == BigInt(100000) - bareCall - sendingCall - schedule.newAccount,
+      "an account holding nothing is dead however long this state has held it"
+    )
+  }
+
+  it should "pay nothing for a destination holding something" in {
+    // The other control: an account with a balance is alive under either
+    // reading, so a condition that charged unconditionally would fail here.
+    val holder = world()
+    holder.balances(other) = EvmFixtures.word(1)
+    holder.balances(runner) = EvmFixtures.word(50)
+    val (frame, _) = runIn(
+      EvmFixtures.environmentUnder(chargingTheDead, holder),
+      100000,
+      calling(0xf1, other, 1000, value = 40)
+    )
+    assert(
+      frame.gasLeft == BigInt(100000) - bareCall - sendingCall,
+      "a balance is one of the three terms, so an account holding one is alive"
+    )
+  }
+
+  it should "pay nothing for a delegated call, whatever value that call carries" in {
+    // The delegating form moves nothing -- the move was made by the invocation
+    // whose identity it borrows -- so it cannot reach the condition however dead
+    // the account it runs as is. Both authorities express that by giving the
+    // form no surcharge term at all: the specification's `delegatecall` adds
+    // only a base and a transfer term it never earns, and go-ethereum's
+    // `gasDelegateCall` adds neither.
+    val holder = world()
+    holder.codes(other) = codeOf(hex(stopping))
+    val environment = EvmFixtures.environmentUnder(chargingTheDead.copy(table = admitting), holder)
+    val (frame, _) = runIn(
+      environment,
+      100000,
+      delegating(other, 1000),
+      // The account it runs as holds nothing and is therefore dead, and the
+      // value is carried rather than transferred, which is the state a form
+      // reading the value without reading the form would charge for.
+      Message(caller, runner, Some(runner), EvmFixtures.word(40), Bytes.Empty, transfersValue = false)
+    )
+    assert(
+      frame.gasLeft == BigInt(100000) - schedule.veryLow * 6 - schedule.callBase - schedule.zero,
+      "a form that moves nothing was charged for bringing an account into being"
+    )
+  }
+
+  "an invocation ending under the earlier surcharge" should "pay nothing where the beneficiary exists while holding nothing" in {
+    // The control that makes the two cases below measurements: under this
+    // reading an account's emptiness is not asked about at all.
+    val (frame, _) = runIn(EvmFixtures.environmentUnder(charging, holdingNothingAt(other)), 100000, destroying(other))
+    assert(frame.gasLeft == BigInt(100000) - bareDestruction, "the earlier condition asks only whether it exists")
+  }
+
+  "an invocation ending under the later surcharge" should "pay nothing where it has nothing to give" in {
+    // The first disagreement, on this operation. What it moves is the whole
+    // balance of the account ending, so an account ending with nothing transfers
+    // nothing and cannot bring the beneficiary into being. The standing case for
+    // the earlier reading charges the surcharge over this same empty world.
+    val (frame, _) = runIn(EvmFixtures.environmentUnder(chargingDeadBeneficiaries), 100000, destroying(other))
+    assert(
+      frame.gasLeft == BigInt(100000) - bareDestruction,
+      "the balance of the account ending is what decides whether this operation transfers anything"
+    )
+  }
+
+  it should "pay it where it has something to give and the beneficiary has never existed" in {
+    val funded = world()
+    funded.balances(runner) = EvmFixtures.word(500)
+    val (frame, _) = runIn(EvmFixtures.environmentUnder(chargingDeadBeneficiaries, funded), 100000, destroying(other))
+    assert(
+      frame.gasLeft == BigInt(100000) - bareDestruction - destructionSurcharge,
+      "an absent beneficiary paid something is still brought into being, and that is still charged for"
+    )
+  }
+
+  it should "pay it where the beneficiary exists while holding nothing" in {
+    val holder = holdingNothingAt(other)
+    holder.balances(runner) = EvmFixtures.word(500)
+    val (frame, _) = runIn(EvmFixtures.environmentUnder(chargingDeadBeneficiaries, holder), 100000, destroying(other))
+    assert(
+      frame.gasLeft == BigInt(100000) - bareDestruction - destructionSurcharge,
+      "a beneficiary holding nothing is dead, which is the state the earlier condition charges nothing for"
+    )
+  }
+
+  it should "pay nothing where the beneficiary holds something" in {
+    val holder = world()
+    holder.balances(other) = EvmFixtures.word(1)
+    holder.balances(runner) = EvmFixtures.word(500)
+    val (frame, _) = runIn(EvmFixtures.environmentUnder(chargingDeadBeneficiaries, holder), 100000, destroying(other))
+    assert(frame.gasLeft == BigInt(100000) - bareDestruction, "a beneficiary holding a balance is alive")
   }
 
   // ── Which invocations move the value they carry ──────────────────────────

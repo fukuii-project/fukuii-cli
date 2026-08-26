@@ -44,11 +44,13 @@ package org.fukuii.evm
   * ==A message call's price is four numbers, not one==
   *
   * [[callBase]] is what the operation costs before anything about its
-  * destination is known; [[newAccount]] is added where this state has never
-  * held the account being called; [[callValue]] is added where anything is sent;
-  * and [[callStipend]] is given back to the callee out of that last charge, so
-  * that an account paid something always has enough gas to notice. They are
-  * separate fields because proposals have moved them separately.
+  * destination is known; [[newAccount]] is added where the call brings the
+  * destination into being, under a condition
+  * [[org.fukuii.evm.EvmRules.newAccountCharge]] rather than this schedule
+  * settles; [[callValue]] is added where anything is sent; and [[callStipend]]
+  * is given back to the callee out of that last charge, so that an account paid
+  * something always has enough gas to notice. They are separate fields because
+  * proposals have moved them separately.
   *
   * ==Memory expansion is deliberately absent==
   *

@@ -210,7 +210,8 @@ object EvmFixtures:
     gasForwarded = GasForwarding.Whole,
     codeDepositMustSucceed = false,
     maxCodeSize = None,
-    createdAccountNonce = UInt64.Zero
+    createdAccountNonce = UInt64.Zero,
+    newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent
   )
 
   val block: BlockContext = BlockContext(

@@ -537,12 +537,23 @@ object Interpreter:
             _ = if !frame.alreadyRegistered(originator) then frame.refundCounter += schedule.refundSelfDestruct
             // The account paid out to is looked at before anything is charged,
             // which is the reason this operation cannot carry a settled price:
-            // what it costs depends on the state its operand names. At the
+            // what it costs depends on the state its operand names, and under
+            // one reading on the state of the account ending as well. At the
             // original specification both terms are nothing.
+            //
+            // WHAT THIS OPERATION MOVES IS THE WHOLE BALANCE OF THE ACCOUNT
+            // ENDING, so that balance is what answers whether it moves value at
+            // all, and it is read here rather than below because a price is
+            // settled before it is paid.
             _ <- frame.charge(
               schedule.selfDestruct +
-                (if environment.world.accountExists(beneficiary) then BigInt(0)
-                 else schedule.selfDestructNewAccount)
+                newAccountSurcharge(
+                  environment.rules,
+                  environment.world,
+                  beneficiary,
+                  !environment.world.balanceOf(originator).isZero,
+                  schedule.selfDestructNewAccount
+                )
             )
           yield
             val world = environment.world
@@ -607,10 +618,12 @@ object Interpreter:
     *
     * ==The price is settled before the destination is looked at==
     *
-    * Everything the caller pays -- the settled part, the surcharge for an
-    * account this state has never held, the surcharge for sending anything, and
-    * the whole of the gas actually forwarded -- is charged in one go, before any
-    * balance is read. What the callee receives is that forwarded gas plus a
+    * Everything the caller pays -- the settled part, the surcharge for bringing
+    * the destination into being, the surcharge for sending anything, and the
+    * whole of the gas actually forwarded -- is charged in one go, before any
+    * balance is read. [[EvmRules.newAccountCharge]] is what decides when the
+    * first of those two surcharges is levied at all, and the two conditions it
+    * chooses between do not agree about what a call sending nothing pays. What the callee receives is that forwarded gas plus a
     * stipend where value was sent, which comes out of the surcharge the caller
     * already paid rather than out of the caller's remaining gas.
     *
@@ -639,13 +652,12 @@ object Interpreter:
   ): Either[Fault, Unit] =
     val schedule = environment.schedule
     val world = environment.world
-    // Bound once and read five times, because inheriting the caller's identity
-    // is not one difference but five: no value comes off the stack, no surcharge
-    // is paid for sending one, no stipend is forwarded, no balance can refuse
-    // the call, and NOTHING MOVES. The specification reaches the same five by
-    // giving this form its own entry point that charges a base and a request and
-    // nothing else, then hands the shared path a flag saying not to move
-    // anything.
+    // Bound once, because inheriting the caller's identity is not one difference
+    // but five: no value comes off the stack, no surcharge is paid for sending
+    // one, no stipend is forwarded, no balance can refuse the call, and NOTHING
+    // MOVES. The specification reaches the same five by giving this form its own
+    // entry point that charges a base and a request and nothing else, then hands
+    // the shared path a flag saying not to move anything.
     val inherits = form == CallForm.WithTheNamedAccountsCodeKeepingTheCaller
     val taken =
       for
@@ -661,16 +673,19 @@ object Interpreter:
           case CallForm.ToTheAccountNamed                        => codeAddress
           case CallForm.WithTheNamedAccountsCode                 => frame.message.currentTarget
           case CallForm.WithTheNamedAccountsCodeKeepingTheCaller => frame.message.currentTarget
+        // Deliberately NOT `Message.transfersValue`, which this form also
+        // decides and which is a weaker claim: that field says the invocation
+        // performs the transfer at all, and is true of a call sending nothing.
+        sends = !inherits && !value.isZero
         ownPrice = schedule.callBase +
-          (if world.accountExists(runsAs) then BigInt(0) else schedule.newAccount) +
-          (if inherits || value.isZero then BigInt(0) else schedule.callValue)
+          newAccountSurcharge(environment.rules, world, runsAs, sends, schedule.newAccount) +
+          (if sends then schedule.callValue else BigInt(0))
         memoryCost = expansionCost(frame, (inputOffset, inputSize), (outputOffset, outputSize))
         granted = environment.rules.gasForwarded
           .forward(spare(frame.gasLeft, ownPrice + memoryCost), requested.toBigInt)
         _ <- reach(frame, ownPrice + granted, (inputOffset, inputSize), (outputOffset, outputSize))
       yield
-        val forwarded =
-          granted + (if inherits || value.isZero then BigInt(0) else schedule.callStipend)
+        val forwarded = granted + (if sends then schedule.callStipend else BigInt(0))
         val input = regionOf(frame, inputOffset, inputSize)
         (codeAddress, runsAs, value, forwarded, input, outputOffset, outputSize)
 
@@ -1031,6 +1046,63 @@ object Interpreter:
     */
   def deployableAt(world: WorldState, address: Address): Boolean =
     world.nonceOf(address) == UInt64.Zero && world.codeOf(address).isEmpty && !world.hasStorage(address)
+
+  /** Whether `address` is DEAD: either this state holds no account there, or it
+    * holds one that has nothing.
+    *
+    * ==Read the sibling above before reusing either, because they read alike==
+    *
+    * [[deployableAt]] is a collision rule -- no count, no code, and **no
+    * storage**. This is EIP-161's account condition -- no count, no code, and
+    * **no balance**. They share two terms and differ in two, so either one
+    * standing in for the other compiles, agrees on most addresses, and is wrong
+    * on exactly the ones each was written for. **Storage is deliberately absent
+    * here**: the proposal defines *empty* as *"no code and zero nonce and zero
+    * balance"* and says nothing about it (`ethereum/EIPs` @ `96523ef4d`,
+    * `EIPS/eip-161.md`, Final).
+    *
+    * ==Dead and empty coincide here, and that is the seam's doing rather than
+    * the proposal's==
+    *
+    * The proposal defines *dead* as *"either it is non-existent or it is
+    * empty"*, which reads as two conditions to test. [[WorldState]] answers
+    * every read for an absent account with the empty account's value, so an
+    * absent account already satisfies all three terms and the first condition is
+    * subsumed by the second. `ethereum/go-ethereum-pow` @ `v1.10.26` reaches the
+    * same place and writes it as one function: `StateDB.Empty`, whose own
+    * documentation is *"whether the state object is either non-existent or empty
+    * according to the EIP161 specification"*.
+    */
+  def deadAt(world: WorldState, address: Address): Boolean =
+    world.nonceOf(address) == UInt64.Zero && world.codeOf(address).isEmpty && world.balanceOf(address).isZero
+
+  /** What bringing an operation's destination into being adds to its price.
+    *
+    * ==One home for a branch two operations take==
+    *
+    * `CALL` and `SELFDESTRUCT` levy this at figures a schedule names separately,
+    * and the CONDITION is the one thing the two share: the proposal that changes
+    * it changes it for both at once. A copy at each site could be moved at one
+    * and left at the other with nothing naming both, which is a divergence worth
+    * one indirection to make unwritable.
+    *
+    * ==`valueMoves` is the operation's answer and not this function's==
+    *
+    * What counts as moving value differs between the two -- a call reads its
+    * operand, a destruction reads the whole balance of the account ending -- so
+    * each site answers it and neither can be answered here.
+    */
+  private def newAccountSurcharge(
+      rules: EvmRules,
+      world: WorldState,
+      destination: Address,
+      valueMoves: Boolean,
+      charge: BigInt
+  ): BigInt =
+    val levied = rules.newAccountCharge match
+      case NewAccountCharge.WhenTheDestinationIsAbsent       => !world.accountExists(destination)
+      case NewAccountCharge.WhenValueReachesADeadDestination => valueMoves && deadAt(world, destination)
+    if levied then charge else BigInt(0)
 
   /** Takes what a nested invocation earned into the invocation that started it.
     *
