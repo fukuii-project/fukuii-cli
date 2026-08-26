@@ -631,9 +631,10 @@ object Interpreter:
     * whole of the gas actually forwarded -- is charged in one go, before any
     * balance is read. [[EvmRules.newAccountCharge]] is what decides when the
     * first of those two surcharges is levied at all, and the two conditions it
-    * chooses between do not agree about what a call sending nothing pays. What the callee receives is that forwarded gas plus a
-    * stipend where value was sent, which comes out of the surcharge the caller
-    * already paid rather than out of the caller's remaining gas.
+    * chooses between do not agree about what a call sending nothing pays. What
+    * the callee receives is that forwarded gas plus a stipend where value was
+    * sent, which comes out of the surcharge the caller already paid rather than
+    * out of the caller's remaining gas.
     *
     * ==How much is forwarded is the fork's to say, and it is settled first==
     *
@@ -641,9 +642,9 @@ object Interpreter:
     * of it the callee gets, out of what the caller would still hold once this
     * operation's own price and its memory were paid. That is why the memory cost
     * is worked out here rather than left to `reach` to fold in: the figure has
-    * to exist before anything is taken. Where a chain caps nothing the answer is the whole
-    * request, so a caller asking for more than it can cover runs out of gas on
-    * the charge below rather than quietly getting less.
+    * to exist before anything is taken. Where a chain caps nothing the answer
+    * is the whole request, so a caller asking for more than it can cover runs
+    * out of gas on the charge below rather than quietly getting less.
     *
     * ==A nested invocation that fails costs the caller everything it forwarded==
     *
