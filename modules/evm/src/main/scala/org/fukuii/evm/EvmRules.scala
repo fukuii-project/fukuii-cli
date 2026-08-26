@@ -316,8 +316,14 @@ enum NewAccountCharge:
   *   ==A number rather than a flag, following the one client that parameterizes
   *   it==
   *
-  *   The proposal's own wording is about a starting value -- *"increment the
-  *   nonce over and above its normal starting value by one"* -- and
+  *   The proposal's own wording is about a starting value, and its parenthetical
+  *   is the whole argument for a number: *"increment the nonce over and above
+  *   its normal starting value by one (for normal networks, this will be simply
+  *   1, however test-nets with non-zero default starting nonces will be
+  *   different)"* (`ethereum/EIPs` @ `96523ef4d`, `EIPS/eip-161.md`, Final). A
+  *   network whose default is not zero reaches a value neither of a flag's two
+  *   states can name.
+  *
   *   `besu-eth/besu` @ `c2addd9424` holds exactly that, a
   *   `long initialContractNonce` its fork definitions pass `0` and then `1`,
   *   written unconditionally at `ContractCreationProcessor.java:161`.
