@@ -297,7 +297,7 @@ object BlockProcessor:
       .map(reason => BlockRejection(index, reason))
       .map { settling =>
         val settlement =
-          TransactionProcessor.settle(settling, journal, destroyAccount, block, blockHashAt, evm)
+          TransactionProcessor.settle(settling, journal, destroyAccount, block, blockHashAt, evm, execution)
         val used = output.gasUsed + settlement.gasUsed
         BlockOutput(
           receipts = output.receipts :+ receiptFor(transaction, settlement, used, stateRootAfterTransaction, execution),

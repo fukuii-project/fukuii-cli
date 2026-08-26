@@ -173,7 +173,8 @@ object TransactionProcessor:
       destroyAccount: Address => Unit,
       block: BlockContext,
       blockHashAt: BigInt => Hash,
-      rules: EvmRules
+      rules: EvmRules,
+      execution: ExecutionRules
   ): Settlement =
     val sender = transaction.sender
     val signedAt = world.nonceOf(sender)
@@ -188,7 +189,7 @@ object TransactionProcessor:
     )
     val available = transaction.gasLimit - transaction.intrinsicGas
     val (frame, outcome) = invoke(transaction, world, environment, signedAt, available)
-    account(transaction, world, destroyAccount, block, frame, outcome)
+    account(transaction, world, destroyAccount, block, frame, outcome, rules, execution)
 
   /** Runs the transaction's one outermost invocation, whichever shape it has.
     *
@@ -257,6 +258,16 @@ object TransactionProcessor:
     * Half of the gas the transaction actually consumed. A cap against the limit
     * would let a transaction that spent little claim a refund it never earned
     * the room for.
+    *
+    * ==Clearing runs last, and the proposal says so in as many words==
+    *
+    * *"At the end of the transaction is immediately following the execution of
+    * the suicide list, prior to the determination of the state trie root for
+    * receipt population"* (`ethereum/EIPs` @ `96523ef4d`, `EIPS/eip-161.md`,
+    * Final). So it goes after the registrations above, which is where every
+    * implementation puts it, and before [[BlockProcessor]] takes the root a
+    * receipt carries. Reads still answer after the commit, because a journal
+    * with nothing held passes them through.
     */
   private def account(
       transaction: AdmittedTransaction,
@@ -264,7 +275,9 @@ object TransactionProcessor:
       destroyAccount: Address => Unit,
       block: BlockContext,
       frame: Frame,
-      outcome: Either[Unsupported, Outcome]
+      outcome: Either[Unsupported, Outcome],
+      rules: EvmRules,
+      execution: ExecutionRules
   ): Settlement =
     val (gasLeft, succeeded, unbuilt) = outcome match
       case Left(gap)                            => (BigInt(0), false, Some(gap))
@@ -279,7 +292,80 @@ object TransactionProcessor:
     moveBalance(world, block.coinbase, used * transaction.gasPrice)
     world.commit()
     if succeeded then frame.accountsToDelete.foreach(destroyAccount)
+    if execution.touchedEmptyAccountsAreDeleted then
+      touchedAccounts(frame, succeeded, block, rules).foreach: address =>
+        if world.accountExists(address) && Interpreter.deadAt(world, address) then destroyAccount(address)
     Settlement(used, if succeeded then frame.logs else Vector.empty, succeeded, unbuilt)
+
+  /** Every account this transaction reached, as the clearing rule is offered
+    * them.
+    *
+    * ==Offered unfiltered, and whether each is empty is asked at the one site
+    * that consumes this==
+    *
+    * [[org.fukuii.evm.Frame.touchedAccounts]] states why the question is asked
+    * once rather than at each recording site.
+    *
+    * ==The beneficiary is always here, and it is never the invocation's==
+    *
+    * The fee is paid whether or not the invocation succeeded, so the account it
+    * reaches is reached on both paths -- while everything the invocation reached
+    * is discarded on one of them. The proposal counts it: an account changes
+    * state when *"as the block author ('miner') it is the recipient of
+    * block-rewards or transaction-fees of zero or more value"*, and its Notes
+    * name *"a zero-gas-price fees transfer"* as one of the four contexts that
+    * can leave an account holding nothing (`ethereum/EIPs` @ `96523ef4d`,
+    * `EIPS/eip-161.md`, Final). `ethereum/execution-specs` @ `ccaaaba58` keeps
+    * it out of the machine's set for exactly that reason and settles it in a
+    * branch of its own.
+    *
+    * **The beneficiary is credited unconditionally above and removed again
+    * here**, where that specification declines to credit a zero and removes only
+    * an account that was already there. The two leave the same state, and
+    * `besu-eth/besu` @ `c2addd9424` and `ethereum/go-ethereum-pow` @ `v1.10.26`
+    * both take the route this does.
+    *
+    * ==THE SWITCH: whether the exception survives the OUTERMOST failure is one
+    * expression, and it is the `else` below==
+    *
+    * A nested invocation that failed has already met the machine's own half of
+    * the rule, which keeps [[org.fukuii.evm.EvmRules.touchSurvivesFailure]] and
+    * drops everything else. The outermost invocation has no caller to do that
+    * for it, and the authorities differ:
+    *
+    *   - `ethereum/execution-specs` @ `ccaaaba58` wipes the whole set with no
+    *     exception. `forks/spurious_dragon/vm/interpreter.py`'s
+    *     `process_message_call` assigns an empty set on any error, and the
+    *     exception lives only in `incorporate_child_on_error`, which an
+    *     outermost invocation never reaches.
+    *   - `ethereum/go-ethereum-pow` @ `v1.10.26` keeps it. `stateObject.touch`
+    *     increments the dirty-set count for the exempt address with no journal
+    *     entry beside it (`core/state/state_object.go`), so no revert decrements
+    *     it and `StateDB.Finalise` still sees the address.
+    *     `besu-eth/besu` @ `c2addd9424` keeps it too:
+    *     `AbstractMessageProcessor`'s force-delete runs from the frame-failure
+    *     path, which the initial frame reaches like any other.
+    *
+    * **This keeps it, and the reason is which of the two produced the blocks.**
+    * The window is narrow and was not synthetic: the proposal states its own
+    * activation at 2,675,000, and `ethereum/execution-specs`' own comment
+    * records the exempt account being cleared at 2,675,119 despite running out
+    * of gas -- the case is live in between, and the client that produced those
+    * blocks is the second reading. **Neither published corpus decides it**: no
+    * fixture in either tier sends its transaction to that address, so two
+    * production implementations agreeing is the whole of the evidence for it.
+    * The other reading is `else Set.empty` on the line below and nothing else.
+    */
+  private def touchedAccounts(
+      frame: Frame,
+      succeeded: Boolean,
+      block: BlockContext,
+      rules: EvmRules
+  ): Set[Address] =
+    val reachedByTheMachine =
+      if succeeded then frame.touchedAccounts
+      else frame.touchedAccounts & rules.touchSurvivesFailure
+    reachedByTheMachine + block.coinbase
 
   /** `account`'s balance moved by `delta`, refusing a result no account can
     * hold.

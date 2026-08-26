@@ -4,7 +4,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 import scala.collection.mutable
 
-import org.fukuii.bytes.{Address, Bytes, UInt64}
+import org.fukuii.bytes.{Address, Bytes, Hash, UInt64}
 import org.fukuii.evm.{
   ContractAddress,
   Cost,
@@ -13,6 +13,8 @@ import org.fukuii.evm.{
   JournaledWorldState,
   Opcode,
   Operation,
+  PrecompileSet,
+  StateTrieWorldState,
   Unsupported,
   Word
 }
@@ -122,6 +124,35 @@ class TransactionProcessorSpec extends AnyFlatSpec:
       IntrinsicGas.of(schedule, data, to.isEmpty)
     )
 
+  /** Settlement at every height before an account reached and left holding
+    * nothing ceases to exist.
+    */
+  private val notClearing: ExecutionRules =
+    ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = false)
+
+  /** The same, from the height that deletes one. */
+  private val clearing: ExecutionRules = notClearing.copy(touchedEmptyAccountsAreDeleted = true)
+
+  /** The address the RIPEMD-160 native answers at, which is the one address any
+    * surveyed network exempts from the rule that a reach is undone with the
+    * invocation that made it.
+    */
+  private val exempt: Address = PrecompileSet.Ripemd160
+
+  /** Rules under which reaching [[exempt]] is not undone by a failure. */
+  private val exempting: EvmRules = EvmFixtures.rules.copy(touchSurvivesFailure = Set(exempt))
+
+  /** Calls [[exempt]] forwarding nothing, so the native cannot be paid for and
+    * the invocation it runs in halts, then stops.
+    */
+  private val callsTheNativeTooCheaply: Bytes = EvmFixtures.bytesOf("0x6000600060006000600060036000f100")
+
+  /** The same call, then two removals from a stack holding one thing, so the
+    * OUTERMOST invocation halts after the native's has already failed.
+    */
+  private val callsTheNativeTooCheaplyThenHalts: Bytes =
+    EvmFixtures.bytesOf("0x6000600060006000600060036000f15050")
+
   /** What one settlement did, as the three things a case below asks about. */
   final private case class Ran(
       settlement: Settlement,
@@ -133,11 +164,14 @@ class TransactionProcessorSpec extends AnyFlatSpec:
       admitted: AdmittedTransaction,
       code: Map[Address, Bytes] = Map.empty,
       rules: EvmRules = EvmFixtures.rules,
-      funded: BigInt = Funded
+      funded: BigInt = Funded,
+      execution: ExecutionRules = notClearing,
+      present: Set[Address] = Set.empty
   ): Ran =
     val base = new EvmFixtures.MapWorldState
     base.setBalance(sender, Word(funded))
     code.foreach((address, bytes) => base.setCode(address, bytes))
+    present.foreach(base.touch)
     val destroyed = mutable.ArrayBuffer.empty[Address]
     def record(address: Address): Unit =
       val _ = destroyed.append(address)
@@ -147,7 +181,8 @@ class TransactionProcessorSpec extends AnyFlatSpec:
       record,
       block,
       EvmFixtures.blockHashAt,
-      rules
+      rules,
+      execution
     )
     Ran(settlement, base, destroyed.toVector)
 
@@ -265,7 +300,8 @@ class TransactionProcessorSpec extends AnyFlatSpec:
         (_: Address) => (),
         block,
         EvmFixtures.blockHashAt,
-        EvmFixtures.rules
+        EvmFixtures.rules,
+        notClearing
       )
     )
   }
@@ -377,4 +413,203 @@ class TransactionProcessorSpec extends AnyFlatSpec:
     assert(
       settle(transaction(), Map(recipient -> adds)).settlement.unbuilt.isEmpty,
       "the gap must come from the table saying ADD computes its own price, and from nothing else"
+    )
+
+  // ── What a transaction reached, and what that costs an empty account ──────
+  //
+  // Every case below is stated as a call to the removal, not as a state, for the
+  // reason the section above is: what the removal then does to the trie is the
+  // trie's contract. The two roots at the end are the exception, and they are
+  // there because a create-then-delete is only equal to a never-create at the
+  // level a root is taken over.
+
+  "an account a transaction reached and left holding nothing" should "be destroyed" in
+    assert(
+      settle(transaction(value = 0), execution = clearing).destroyed.contains(recipient),
+      "an account reached by a transfer of nothing is left in the trie holding nothing"
+    )
+
+  it should "survive where the network has not adopted the rule" in
+    // The gate, and the control without which every case here would pass against
+    // a settlement that swept unconditionally.
+    assert(
+      settle(transaction(value = 0), execution = notClearing).destroyed.isEmpty,
+      "an account was cleared at a height whose rules do not clear one"
+    )
+
+  it should "survive where the transaction left it holding something" in
+    // The predicate, and the one place the two look-alike account tests come
+    // apart: this account has a balance and no storage, so `deployableAt` admits
+    // it and `deadAt` does not.
+    assert(
+      !settle(transaction(value = 1000), execution = clearing).destroyed.contains(recipient),
+      "an account holding a balance was cleared as though it held nothing"
+    )
+
+  "an account a nested invocation reached" should "be destroyed when the transaction succeeds" in
+    // The proposal's primary case: an account that ALREADY EXISTS holding
+    // nothing has nothing transferred to it through a call. It is seeded rather
+    // than left absent so that the call is not charged for bringing it into
+    // being -- at this schedule that surcharge is larger than the gas the
+    // transaction has left, and the transaction would halt before reaching the
+    // callee at all.
+    assert(
+      settle(transaction(), Map(recipient -> callsThenStops), execution = clearing, present = Set(callee)).destroyed
+        .contains(callee),
+      "a reach a nested invocation made is its caller's once that invocation ends normally"
+    )
+
+  it should "not be destroyed when the transaction then fails" in
+    // The revert rule, which is the absence of an act rather than an act: the
+    // outermost invocation halted, so what it took up goes with its logs. Seeded
+    // for the reason above, and here the seeding is what makes the case a
+    // measurement -- unseeded, the transaction halts at the call rather than
+    // after it and the account is never reached.
+    assert(
+      !settle(transaction(), Map(recipient -> callsThenHalts), execution = clearing, present = Set(callee)).destroyed
+        .contains(callee),
+      "an account reached inside a transaction that failed was cleared anyway"
+    )
+
+  // ── The one address whose reaching is not undone ──────────────────────────
+
+  "an account an exempt address names, reached by an invocation that failed" should "be destroyed" in
+    // The historical case, in the shape that produced it: a call to a native
+    // that cannot be paid for, inside a transaction that goes on to succeed.
+    assert(
+      settle(
+        transaction(),
+        Map(recipient -> callsTheNativeTooCheaply),
+        rules = exempting,
+        execution = clearing,
+        present = Set(exempt)
+      ).destroyed.contains(exempt),
+      "the one reach a failure does not undo was undone"
+    )
+
+  it should "survive where the network exempts nothing" in
+    // The control. Without it the case above passes against a settlement that
+    // kept every reach a failed invocation made, which is the pre-amendment
+    // behavior the proposal's Addendum corrects.
+    assert(
+      !settle(
+        transaction(),
+        Map(recipient -> callsTheNativeTooCheaply),
+        execution = clearing,
+        present = Set(exempt)
+      ).destroyed.contains(exempt),
+      "a reach a failed invocation made survived at a network exempting no address"
+    )
+
+  it should "survive where the failure left no account there to destroy" in
+    // Exempt, reached, and absent: the invocation that brought it into being was
+    // undone, so the reach outlives the account. go-ethereum-pow at v1.10.26
+    // meets the same state and skips it -- Finalise's own comment says the
+    // address can be in the dirty set and not in the object map.
+    assert(
+      !settle(
+        transaction(),
+        Map(recipient -> callsTheNativeTooCheaply),
+        rules = exempting,
+        execution = clearing
+      ).destroyed.contains(exempt),
+      "an address that does not exist was destroyed"
+    )
+
+  "an exempt address reached before the OUTERMOST invocation failed" should "be destroyed" in
+    // The reading two production implementations share and the executable
+    // specification does not. Reversing it is one expression in
+    // `TransactionProcessor`, and this case and the next are what say which way
+    // it points.
+    assert(
+      settle(
+        transaction(),
+        Map(recipient -> callsTheNativeTooCheaplyThenHalts),
+        rules = exempting,
+        execution = clearing,
+        present = Set(exempt)
+      ).destroyed.contains(exempt),
+      "the exemption stopped at the outermost invocation, which is the specification's reading and not this one"
+    )
+
+  it should "survive where the network exempts nothing" in
+    assert(
+      !settle(
+        transaction(),
+        Map(recipient -> callsTheNativeTooCheaplyThenHalts),
+        execution = clearing,
+        present = Set(exempt)
+      ).destroyed.contains(exempt),
+      "an outermost failure kept a reach at a network exempting no address"
+    )
+
+  // ── The block's beneficiary, which is nobody's invocation ─────────────────
+
+  "the block's beneficiary" should "be destroyed where the fee left it holding nothing" in
+    assert(
+      settle(transaction(gasPrice = 0, value = 0), execution = clearing).destroyed.contains(coinbase),
+      "a fee of nothing brings the beneficiary into being, and nothing removed it again"
+    )
+
+  it should "be destroyed even where the transaction failed" in
+    // The fee is paid on both paths, so the account it reaches is reached on
+    // both -- while everything the invocation reached is discarded on one of
+    // them. A beneficiary taken from the frame's own set would be missed here.
+    assert(
+      settle(
+        transaction(gasPrice = 0),
+        Map(recipient -> callsThenHalts),
+        execution = clearing,
+        present = Set(callee)
+      ).destroyed.contains(coinbase),
+      "a beneficiary left holding nothing by a failed transaction was not removed"
+    )
+
+  it should "survive where the fee left it something" in
+    assert(
+      !settle(transaction(), execution = clearing).destroyed.contains(coinbase),
+      "a beneficiary paid a fee was cleared as though it had been paid nothing"
+    )
+
+  /** The state root a zero-fee settlement leaves, with `beneficiary` as the
+    * block's, over a real trie.
+    *
+    * Nothing else in the two runs differs, so two roots that disagree disagree
+    * about the beneficiary's leaf and about nothing else.
+    */
+  private def rootAfterZeroFee(beneficiary: Address, execution: ExecutionRules): Hash =
+    val trie = EvmFixtures.stateTrie()
+    val base = new StateTrieWorldState(trie)
+    base.setBalance(sender, Word(Funded))
+    val _ = TransactionProcessor.settle(
+      transaction(gasPrice = 0, value = 0),
+      new JournaledWorldState(base),
+      trie.destroyAccount,
+      block.copy(coinbase = beneficiary),
+      EvmFixtures.blockHashAt,
+      EvmFixtures.rules,
+      execution
+    )
+    trie.stateRoot
+
+  "a beneficiary brought into being by a fee of nothing and removed again" should
+    "leave the root one never brought into being would" in
+    // The specification declines to credit a zero and removes only an account
+    // already there; this credits unconditionally and removes what that
+    // created. The two agree only if the removal leaves no leaf, which is a
+    // claim about the trie and not about the settlement -- so it is asserted
+    // over a root rather than over a call.
+    assert(
+      rootAfterZeroFee(EvmFixtures.address(0x77), clearing) ==
+        rootAfterZeroFee(EvmFixtures.address(0x88), clearing),
+      "two blocks differing only in a beneficiary that holds nothing produced different state roots"
+    )
+
+  it should "have left two roots without the clearing, or the case above tests nothing" in
+    // The control. Were the beneficiary never written at all, the case above
+    // would hold for a settlement that swept nothing.
+    assert(
+      rootAfterZeroFee(EvmFixtures.address(0x77), notClearing) !=
+        rootAfterZeroFee(EvmFixtures.address(0x88), notClearing),
+      "a beneficiary paid nothing left no leaf, so the case above is not measuring the removal"
     )

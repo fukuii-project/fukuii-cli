@@ -179,7 +179,8 @@ object StateFixtureRunner:
           trie.destroyAccount,
           fixture.block,
           VmFixtureRunner.blockHashOf,
-          rules.evm
+          rules.evm,
+          rules.execution
         )
         judge(fixture, base, trie, Right(settlement))
 
