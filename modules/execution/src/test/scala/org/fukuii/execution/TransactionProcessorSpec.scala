@@ -73,6 +73,17 @@ class TransactionProcessorSpec extends AnyFlatSpec:
   /** Adds two operands, so an invocation over it reaches `ADD`. */
   private val adds: Bytes = EvmFixtures.bytesOf("0x6003600501")
 
+  /** Initialization code that meets a byte naming no operation, so a deployment
+    * over it halts.
+    */
+  private val haltingInit: Bytes = EvmFixtures.bytesOf("0x0c")
+
+  /** Rules giving a created account a count before its initialization code
+    * runs, which is the state a failed deployment has to leave nothing of.
+    */
+  private val countingCreations: EvmRules =
+    EvmFixtures.rules.copy(createdAccountNonce = UInt64.fromBits(1L))
+
   /** Rules whose table says `ADD` works out its own price, where this build
     * prices it from the table.
     *
@@ -172,6 +183,18 @@ class TransactionProcessorSpec extends AnyFlatSpec:
       settle(transaction(to = None, data = Bytes.Empty)).world
         .accountExists(ContractAddress.of(sender, UInt64.Zero)),
       "the address is derived from the count the sender held when it signed, not from the one it holds after"
+    )
+
+  it should "leave nothing at that address where its initialization code halted" in
+    // Observed after `commit`, which is what makes this a different reading from
+    // the machine's own: the count a deployment is created with is written
+    // outside the snapshot its execution takes, so a reversal missing from the
+    // creating side reaches the state a root is taken over rather than stopping
+    // at a journal nothing published.
+    assert(
+      !settle(transaction(to = None, data = haltingInit), rules = countingCreations).world
+        .accountExists(ContractAddress.of(sender, UInt64.Zero)),
+      "a failed deployment committed the account it was given"
     )
 
   "the intrinsic charge" should "be the figure admission stated, not one settlement works out" in
