@@ -232,6 +232,16 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     * Compared per case rather than by the two divergence totals, for the same
     * reason -- a change that repaired one case and broke another would leave
     * those totals equal while changing what the corpus said.
+    *
+    * ==The pairing is positional, so it is checked before it is relied on==
+    *
+    * `zip` truncates to the shorter side rather than complaining, so a rerun
+    * yielding fewer outcomes would leave the tail of the first run compared
+    * against nothing and report a LOW count -- which reads as a corpus that
+    * decides less, not as a rerun that went wrong. The names are compared as
+    * sequences rather than the two lengths, because two runs of the same length
+    * over different cases pair each verdict with a stranger's and every
+    * mismatch is then counted as a case that moved.
     */
   private def movedBy(
       reports: Vector[CorpusReport],
@@ -243,6 +253,11 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
       .rerun(corpus, change)
       .getOrElse(fail("assembled once and not the second time: " + corpus))
       .outcomes
+    if asIs.map(_.name) != altered.map(_.name) then
+      fail(
+        "the rerun of " + corpus + " did not answer for the same cases in the same order: " +
+          asIs.length.toString + " outcomes first and " + altered.length.toString + " on the rerun"
+      )
     asIs.zip(altered).collect { case (before, after) if before != after => before.name }
 
   /** The chain identifier stopped being readable out of a signature. */
@@ -284,9 +299,8 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     * tier because that corpus publishes no signed bytes for any case, so no
     * signature is ever recovered and nothing ever asks which chain it names.
     */
-  private val coverage =
-    Table(
-      ("proposal", "corpus", "without it", "cases decided"),
+  private val coverageRows: Vector[(String, String, UpgradeRules => UpgradeRules, Int)] =
+    Vector(
       ("EIP-155", CertificationCorpora.GeneratedSpuriousDragonCorpus, withoutChainIdSignatures, 500),
       ("EIP-155", CertificationCorpora.LegacyEip158StateCorpus, withoutChainIdSignatures, 0),
       ("EIP-160", CertificationCorpora.GeneratedSpuriousDragonCorpus, withoutTheExpReprice, 1),
@@ -297,17 +311,46 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
       ("EIP-170", CertificationCorpora.LegacyEip158StateCorpus, withoutTheCodeBound, 1)
     )
 
-  property("each tier at this fork decides the cases the coverage matrix records") {
-    // `assembled` is called here and never inside `forAll`, for the reason its
-    // own documentation gives: the table's handler catches Throwable to attach
-    // the failing row, which would turn an absent corpus from every case
-    // cancelling into every case failing.
+  /** Every row above rerun, once each, keyed by the proposal and the corpus.
+    *
+    * ==A rerun is a whole pass over a corpus, and two properties want the same
+    * row==
+    *
+    * [[CertificationCorpora.rerun]] rebuilds the harness and runs every case
+    * again, and the older tier here is 2394 files that the baseline already
+    * reads three times. Computing per call meant the row naming the case below
+    * was run twice for one answer, so this holds each row's result and both
+    * readers take it from here.
+    *
+    * ==Forced outside `forAll`, like [[assembled]] and for its reason==
+    *
+    * The initializer cancels where there is no corpus, and a cancellation
+    * raised inside a table's handler is reported as a failure. So each property
+    * below reads this before entering `forAll`, never inside one.
+    */
+  private lazy val movedPerRow: Map[(String, String), Vector[String]] =
     val reports = assembled
-    forAll(coverage) { (proposal: String, corpus: String, without: UpgradeRules => UpgradeRules, decided: Int) =>
-      val moved = movedBy(reports, corpus, without)
+    coverageRows.map { case (proposal, corpus, without, _) =>
+      (proposal, corpus) -> movedBy(reports, corpus, without)
+    }.toMap
+
+  /** The rows as the matrix asserts them. The rule removed is absent because
+    * [[movedPerRow]] has already applied it, and a function renders as nothing
+    * a reader can use in a failing row anyway.
+    */
+  private val coverage =
+    Table(
+      ("proposal", "corpus", "cases decided"),
+      coverageRows.map { case (proposal, corpus, _, decided) => (proposal, corpus, decided) }*
+    )
+
+  property("each tier at this fork decides the cases the coverage matrix records") {
+    val moved = movedPerRow
+    forAll(coverage) { (proposal: String, corpus: String, decided: Int) =>
+      val names = moved((proposal, corpus))
       assert(
-        moved.length == decided,
-        s"$corpus decides ${moved.length.toString} cases on $proposal rather than ${decided.toString}"
+        names.length == decided,
+        s"$corpus decides ${names.length.toString} cases on $proposal rather than ${decided.toString}"
       )
     }
   }
@@ -320,7 +363,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     // Recorded as a coverage fact and not as a complaint: what pins EIP-170 is
     // its own unit coverage, and a reader who takes a certified fork to be one
     // whose every proposal the published corpora exercise would be wrong here.
-    val moved = movedBy(assembled, CertificationCorpora.LegacyEip158StateCorpus, withoutTheCodeBound)
+    val moved = movedPerRow(("EIP-170", CertificationCorpora.LegacyEip158StateCorpus))
     assert(
       moved == Vector("codesizeOOGInvalidSize[d0g0v0]"),
       s"the bound decides these cases: ${moved.mkString(", ")}"
