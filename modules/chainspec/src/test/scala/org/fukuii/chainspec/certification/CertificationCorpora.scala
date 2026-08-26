@@ -103,8 +103,34 @@ object CertificationCorpora:
     */
   val GeneratedTangerineWhistleCorpus: String = "execution-specs-fixtures state_tests/for_tangerinewhistle"
 
-  /** The same directory as the tier above, resolved through the other network's
-    * schedule instead.
+  /** The same tier filled for the fork after that.
+    *
+    * ==Which of the fork's four proposals this corpus can actually decide==
+    *
+    * It sees EIP-161's clearing and it does **not** see EIP-170's bound on
+    * deployed code. Both halves are measured by rerunning the corpus with the
+    * rule in question switched off and comparing verdicts, in
+    * `CertificationCorporaSpec`; each is the other's control, since a rerun that
+    * failed to apply its own argument would report both as unseen.
+    *
+    * ==Reading the files gives the wrong answer for the first of those, and
+    * gives it convincingly==
+    *
+    * No case here holds an empty account in its pre-state and none publishes one
+    * in a post state, which reads as a corpus with nothing for the clause to
+    * delete. It is the reverse: the empty accounts are made during execution,
+    * where a zero-value call reaches a precompile or an address with no account,
+    * and **the absence of them afterwards is what the clause working looks
+    * like.** Switching it off moves 48 of the 537 verdicts.
+    *
+    * So a count of empty accounts in the JSON measures the corpus's expected
+    * OUTPUT and is not evidence about its coverage, which is why the assertion
+    * beside this is a differential run and not a property of the files.
+    */
+  val GeneratedSpuriousDragonCorpus: String = "execution-specs-fixtures state_tests/for_spuriousdragon"
+
+  /** The same directory as the Tangerine Whistle tier, resolved through the
+    * other network's schedule instead.
     *
     * ==One corpus, two schedules, and that is the whole claim==
     *
@@ -143,6 +169,7 @@ object CertificationCorpora:
   private[certification] val EthereumFrontierStarts: Long = 0L
   private[certification] val EthereumHomesteadStarts: Long = 1150000L
   private[certification] val EthereumTangerineWhistleStarts: Long = 2463000L
+  private[certification] val EthereumSpuriousDragonStarts: Long = 2675000L
   private[certification] val ClassicGasRepriceStarts: Long = 2500000L
 
   /** Every network-and-height pair the corpora above are resolved at.
@@ -158,6 +185,7 @@ object CertificationCorpora:
       ethereum.Mainnet.network -> EthereumFrontierStarts,
       ethereum.Mainnet.network -> EthereumHomesteadStarts,
       ethereum.Mainnet.network -> EthereumTangerineWhistleStarts,
+      ethereum.Mainnet.network -> EthereumSpuriousDragonStarts,
       ethereumclassic.Mainnet.network -> ClassicGasRepriceStarts
     )
 
@@ -210,6 +238,8 @@ object CertificationCorpora:
     // into certifying different machines under one section's name.
     val tangerineWhistle = rulesAt(ethereumSchedule, EthereumTangerineWhistleStarts)
 
+    val spuriousDragon = rulesAt(ethereumSchedule, EthereumSpuriousDragonStarts)
+
     val gasReprice = rulesAt(classicSchedule, ClassicGasRepriceStarts)
 
     // Taken from the same schedule the rules are taken from, so the pair cannot
@@ -254,6 +284,13 @@ object CertificationCorpora:
         tangerineWhistle
       ),
       StateCorpus(
+        GeneratedSpuriousDragonCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_spuriousdragon"),
+        "SpuriousDragon",
+        ethereumChain,
+        spuriousDragon
+      ),
+      StateCorpus(
         ClassicTangerineWhistleCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_tangerinewhistle"),
         "TangerineWhistle",
@@ -261,6 +298,31 @@ object CertificationCorpora:
         gasReprice
       )
     )
+
+  /** One censused state corpus run again with its rules altered, or nothing
+    * where the harness cannot be assembled.
+    *
+    * ==What a corpus MENTIONS and what it can SEE are different claims==
+    *
+    * A tier filled for a fork is routinely taken to certify that fork's
+    * proposals, and for one of them here that is false: a rule whose case the
+    * corpus never states is a rule the corpus agrees with however it is
+    * implemented. Reading the files cannot settle which is which, because the
+    * absence being looked for is the absence of a state no field names.
+    *
+    * Turning the rule off and rerunning does settle it. Verdicts that move mean
+    * the corpus discriminates; verdicts that do not mean it never asked. Both
+    * directions are asserted, because a rerun that silently failed to apply its
+    * change would report every corpus as blind.
+    */
+  private[certification] def rerun(corpus: String, change: UpgradeRules => UpgradeRules): Option[CorpusReport] =
+    for
+      root <- FixtureCorpus.root
+      registry <- KnownNetworks.registry.toOption
+      ethereumSchedule <- registry.at(ethereum.Mainnet.network.chainId)
+      classicSchedule <- registry.at(ethereumclassic.Mainnet.network.chainId)
+      wanted <- stateCorporaAt(root, ethereumSchedule, classicSchedule).find(_.name == corpus)
+    yield stateReport(wanted.copy(rules = change(wanted.rules)))
 
   private def assemble(
       root: Path,

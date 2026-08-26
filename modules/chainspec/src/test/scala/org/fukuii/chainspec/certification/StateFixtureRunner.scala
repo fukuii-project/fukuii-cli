@@ -74,7 +74,13 @@ object StateFixtureRunner:
       "TransactionException.INSUFFICIENT_ACCOUNT_FUNDS" -> Refusal.InsufficientAccountFunds,
       "TransactionException.INVALID_SIGNATURE_VRS" -> Refusal.InvalidSignature,
       "TransactionException.SENDER_NOT_EOA" -> Refusal.SenderNotEoa,
-      "TransactionException.WRONG_CHAIN_ID" -> Refusal.WrongChainId
+      "TransactionException.WRONG_CHAIN_ID" -> Refusal.WrongChainId,
+      // The name the corpus actually writes for the rule the entry above was
+      // meant to reach: 68 files in the generated tier use this spelling and
+      // none uses that one. Both are kept because a key that matches nothing
+      // cannot produce a wrong verdict, and which of the two a future corpus
+      // writes is the corpus's to decide -- but only this one is doing any work.
+      "TransactionException.INVALID_CHAINID" -> Refusal.WrongChainId
     )
 
   /** Runs `fixture` as `chainId`'s network at `rules`.

@@ -2,7 +2,7 @@ package org.fukuii.chainspec.certification
 
 import org.fukuii.bytes.UInt64
 import org.fukuii.chainspec.networks.KnownNetworks
-import org.fukuii.chainspec.{Activation, Network, Registry}
+import org.fukuii.chainspec.{Activation, Network, Registry, UpgradeRules}
 import org.fukuii.evm.fixtures.*
 
 import org.scalatest.prop.TableDrivenPropertyChecks
@@ -62,6 +62,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     // into a run per post entry -- so 650 cases carrying this key become 1096.
     CertificationCorpora.LegacyEip150StateCorpus -> CorpusCensus(files = 2394, cases = 2840, skipped = 1744),
     CertificationCorpora.GeneratedTangerineWhistleCorpus -> CorpusCensus(files = 33, cases = 536, skipped = 0),
+    CertificationCorpora.GeneratedSpuriousDragonCorpus -> CorpusCensus(files = 34, cases = 537, skipped = 0),
     // The same 33 files as the row above, resolved through the other network's
     // schedule at that network's own activation. The figures are identical
     // because the corpus is: what differs is which schedule was asked, and at
@@ -138,7 +139,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     assert(names == census.keySet, s"assembled ${names.toString} against a census of ${census.keySet.toString}")
   }
 
-  property("the census covers seven corpora, counted") {
+  property("the census covers eight corpora, counted") {
     // THE REMOVAL CASE, which the pairing cannot see. Dropping a corpus from the
     // census AND from what the harness assembles leaves those two agreeing with
     // each other, leaves the same six properties registered, and leaves the
@@ -150,12 +151,13 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     // available to whoever needs a red build green after an upstream corpus
     // moves, which is exactly the moment a ratchet earns its keep.
     //
-    // Seven: the interpreter tier, the state tier read for Frontier and again
-    // for EIP-150, the generated state tier filled for Frontier, Homestead and
-    // Tangerine Whistle, and that last one read a second time through the other
-    // network's schedule. Raising this is adding a corpus. Lowering it is
-    // dropping certified cases, and that is a decision rather than a tidy-up.
-    assert(census.size == 7, s"the census covers ${census.size.toString} corpora rather than seven")
+    // Eight: the interpreter tier, the state tier read for Frontier, again for
+    // EIP-150 and again for EIP-158, the generated state tier filled for
+    // Frontier, Homestead and Tangerine Whistle, and that last one read a second
+    // time through the other network's schedule. Raising this is adding a
+    // corpus. Lowering it is dropping certified cases, and that is a decision
+    // rather than a tidy-up.
+    assert(census.size == 8, s"the census covers ${census.size.toString} corpora rather than eight")
   }
 
   property("every censused corpus holds the files the census records") {
@@ -205,6 +207,57 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
       throughEthereum.outcomes == throughClassic.outcomes,
       throughEthereum.describe + " || " + throughClassic.describe
     )
+  }
+
+  /** The fork's clearing clause switched off, leaving everything else in force. */
+  private val withoutClearing: UpgradeRules => UpgradeRules =
+    rules => rules.copy(execution = rules.execution.copy(touchedEmptyAccountsAreDeleted = false))
+
+  /** The fork's bound on deployed code lifted, leaving everything else in force. */
+  private val withoutTheCodeBound: UpgradeRules => UpgradeRules =
+    rules => rules.copy(evm = rules.evm.copy(maxCodeSize = None))
+
+  private def rerun(corpus: String, change: UpgradeRules => UpgradeRules): CorpusReport =
+    CertificationCorpora.rerun(corpus, change).getOrElse(cancel("no fixture corpus"))
+
+  /** How many of a corpus's cases answer differently once a rule is removed,
+    * which is the size of that corpus's coverage of that rule.
+    *
+    * Counted per case rather than read off the two divergence totals: a rule
+    * whose removal fixed one case and broke another would leave those totals
+    * equal while changing what the corpus said.
+    */
+  private def movedBy(corpus: String, change: UpgradeRules => UpgradeRules): Int =
+    val asIs = found(assembled, corpus).outcomes
+    val altered = rerun(corpus, change).outcomes
+    asIs.zip(altered).count((before, after) => before != after)
+
+  property("the generated tier filled for this fork does see EIP-161's clearing") {
+    // Measured, and it is the opposite of what reading the files suggests. No
+    // case in this directory holds an empty account in its PRE-state, from which
+    // it is natural -- and wrong -- to conclude the clause is unreachable here.
+    // The empty accounts are made during execution: a zero-value call to a
+    // precompile or to an address with no account leaves one behind, and 48 of
+    // the 537 cases change verdict when the clause stops removing them.
+    //
+    // The corpus publishing no empty account in any post state is the same fact
+    // seen from the other side. It is what a corpus looks like when clearing
+    // WORKS, not when it is untested.
+    val moved = movedBy(CertificationCorpora.GeneratedSpuriousDragonCorpus, withoutClearing)
+    assert(moved == 48, s"switching the clause off moved ${moved.toString} verdicts rather than 48")
+  }
+
+  property("the same tier does not see EIP-170's bound on deployed code") {
+    // The other half, and the reason the property above is worth stating rather
+    // than assumed: the two proposals landed in one upgrade and this corpus
+    // discriminates on one of them only. Lifting the bound moves no verdict, so
+    // nothing here would notice a build that had never implemented it.
+    //
+    // Its control is the property above -- same rerun, same corpus, a different
+    // rule removed, verdicts move. Without that pairing this one would be
+    // satisfied just as well by a rerun that quietly ignored its argument.
+    val moved = movedBy(CertificationCorpora.GeneratedSpuriousDragonCorpus, withoutTheCodeBound)
+    assert(moved == 0, s"lifting the bound moved ${moved.toString} verdicts, so this tier does reach it after all")
   }
 
   property("no corpus is resolved through a height that is not an activation on its network") {
