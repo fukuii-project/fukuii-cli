@@ -135,7 +135,8 @@ class EvmRulesSpec extends AnyFlatSpec:
       codeDepositMustSucceed = false,
       maxCodeSize = None,
       createdAccountNonce = UInt64.Zero,
-      newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent
+      newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent,
+      touchSurvivesFailure = Set.empty
     )
     assert(rebuilt == base, "two identical configurations built separately compared as different rules")
   }

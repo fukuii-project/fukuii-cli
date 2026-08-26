@@ -1366,3 +1366,114 @@ class InvocationSpec extends AnyFlatSpec:
       "an account sending value to itself did not end with what it started with"
     )
   }
+
+  // ── What an invocation records having reached ────────────────────────────
+  //
+  // The record and the state-side touch beside it are two acts, and only the
+  // second is reversed by a snapshot. Each case here reads the frame's own
+  // record rather than world state, because the difference between them is
+  // exactly what a settlement later acts on.
+
+  "an invocation" should "record the account it runs as" in {
+    val (frame, _) = runIn(EvmFixtures.environment(world()), 100000, stopping)
+    assert(
+      frame.touchedAccounts == Set(runner),
+      "an account an invocation ran as is reached by that invocation, whatever the invocation then did"
+    )
+  }
+
+  "a nested invocation that stopped" should "give its caller what it reached" in {
+    val holder = world()
+    holder.codes(other) = codeOf(hex(stopping))
+    val (frame, _) = runIn(EvmFixtures.environment(holder), 100000, calling(0xf1, other, 40000))
+    assert(
+      frame.touchedAccounts == Set(runner, other),
+      "a reach a nested invocation made is its caller's once that invocation ends normally"
+    )
+  }
+
+  "a nested invocation that halted" should "give its caller nothing it reached" in {
+    val holder = world()
+    holder.codes(other) = codeOf(hex(halting))
+    val (frame, _) = runIn(EvmFixtures.environment(holder), 100000, calling(0xf1, other, 40000))
+    assert(
+      frame.touchedAccounts == Set(runner),
+      "a reach made inside an invocation that halted outlived it"
+    )
+  }
+
+  it should "give its caller an address the rules exempt from that" in {
+    // The exception the proposal's Addendum preserves. Every implementation that
+    // narrows it names one address; the rules carry a set so a network can name
+    // none.
+    val holder = world()
+    holder.codes(other) = codeOf(hex(halting))
+    val exempting = EvmFixtures.rules.copy(touchSurvivesFailure = Set(other))
+    val (frame, _) =
+      runIn(EvmFixtures.environmentUnder(exempting, holder), 100000, calling(0xf1, other, 40000))
+    assert(
+      frame.touchedAccounts == Set(runner, other),
+      "an address the rules exempt lost its reach with the invocation that made it"
+    )
+  }
+
+  it should "give its caller nothing else, exempting an address it also reached" in {
+    // The intersection, from the side the case above cannot see: a failed
+    // invocation with a non-empty exemption must still drop everything the
+    // exemption does not name. Written as a chain so the dropped address is one
+    // a nested invocation reached and STOPPED at, which is the reach that would
+    // otherwise have survived on its own merits.
+    val third = EvmFixtures.address(0x44)
+    val holder = world()
+    holder.codes(other) = codeOf(hex(calling(0xf1, third, 20000) ++ halting))
+    holder.codes(third) = codeOf(hex(stopping))
+    val exempting = EvmFixtures.rules.copy(touchSurvivesFailure = Set(other))
+    val (frame, _) =
+      runIn(EvmFixtures.environmentUnder(exempting, holder), 100000, calling(0xf1, other, 60000))
+    assert(
+      frame.touchedAccounts == Set(runner, other),
+      "an exemption naming one address carried a second one up with it"
+    )
+  }
+
+  "an invocation that ends itself" should "record the account it pays out to" in {
+    // The proposal's own second context: an empty account has zero value
+    // transferred to it through SELFDESTRUCT.
+    val (frame, _) = runIn(EvmFixtures.environment(world()), 100000, destroying(other))
+    assert(
+      frame.touchedAccounts == Set(runner, other),
+      "the account a destruction pays out to was not recorded as reached"
+    )
+  }
+
+  "a creation that stopped" should "give its creator the account it made" in {
+    val environment = EvmFixtures.environment(world())
+    val (frame, _) = runIn(environment, 100000, creating(deploying))
+    assert(
+      frame.touchedAccounts == Set(runner, grandchildOf(runner, 0)),
+      "an account a creation brought into being was not recorded as reached by its creator"
+    )
+  }
+
+  "a creation that halted at an exempt address" should "still give its creator that address" in {
+    // The creating operation reaches the same failure path the calling one does,
+    // and a counterpart applied at one and not the other is a divergence nothing
+    // else here would name.
+    val created = grandchildOf(runner, 0)
+    val exempting = EvmFixtures.rules.copy(touchSurvivesFailure = Set(created))
+    val (frame, _) =
+      runIn(EvmFixtures.environmentUnder(exempting, world()), 100000, creating(hex(halting)))
+    assert(
+      frame.touchedAccounts == Set(runner, created),
+      "a creation that halted dropped a reach the rules exempt"
+    )
+  }
+
+  it should "give its creator nothing where the rules exempt nothing" in
+    // The control for the case above, and for the one two above it: without it
+    // both hold for a machine that never discards what a failed creation
+    // reached.
+    assert(
+      runIn(EvmFixtures.environment(world()), 100000, creating(hex(halting)))._1.touchedAccounts == Set(runner),
+      "a creation that halted left its creator holding a reach at an address that no longer exists"
+    )

@@ -232,7 +232,8 @@ object Upgrades:
         codeDepositMustSucceed = false,
         maxCodeSize = None,
         createdAccountNonce = UInt64.Zero,
-        newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent
+        newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent,
+        touchSurvivesFailure = Set.empty
       ),
       execution = ExecutionRules(
         touchedEmptyAccountsAreDeleted = false,

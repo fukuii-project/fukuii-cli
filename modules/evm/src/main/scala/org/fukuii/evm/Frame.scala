@@ -80,6 +80,31 @@ final class Frame(
     */
   var accountsToDelete: Set[Address] = Set.empty
 
+  /** The accounts this invocation has reached in a way that could have changed
+    * them, whether or not it did.
+    *
+    * ==Candidates, never a conclusion==
+    *
+    * Recorded unfiltered: whether a member is left holding nothing is asked
+    * once, by whatever ends the transaction, rather than at each site that
+    * records one. The specification asks at both ends and reaches the same set,
+    * because its end-of-transaction check re-asks -- an account that stops
+    * holding nothing in between is dropped by both. The reverse needs a balance
+    * to fall to nothing, which takes either code or a transaction count, and
+    * either of those makes the account non-empty by a different term.
+    *
+    * ==Recording is not the state-side act, and only one of the two is undone
+    * here==
+    *
+    * [[WorldState.touch]] brings an account into being and is reversed by a
+    * snapshot; this records that the account was reached and is not. What
+    * discards it is the absence of an act -- an invocation that ends
+    * exceptionally is never taken up, so what it recorded goes with its logs and
+    * its registrations. [[EvmRules.touchSurvivesFailure]] is the one exception,
+    * and it is read where the taking-up would have happened rather than here.
+    */
+  var touchedAccounts: Set[Address] = Set.empty
+
   val stack: Stack = new Stack
 
   val memory: Memory = new Memory

@@ -211,7 +211,8 @@ object EvmFixtures:
     codeDepositMustSucceed = false,
     maxCodeSize = None,
     createdAccountNonce = UInt64.Zero,
-    newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent
+    newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent,
+    touchSurvivesFailure = Set.empty
   )
 
   val block: BlockContext = BlockContext(

@@ -1,6 +1,6 @@
 package org.fukuii.evm
 
-import org.fukuii.bytes.UInt64
+import org.fukuii.bytes.{Address, UInt64}
 
 /** A change one proposal makes to the rules a chain runs.
   *
@@ -344,6 +344,43 @@ enum NewAccountCharge:
   *   that levy it pay stays [[GasSchedule.newAccount]]'s and
   *   [[GasSchedule.selfDestructNewAccount]]'s, and a network moving one of those
   *   is a repricing that leaves this alone.
+  * @param touchSurvivesFailure
+  *   the addresses whose reaching by an invocation is NOT undone when that
+  *   invocation fails. Everywhere else the rule is that it is:
+  *   [[Frame.touchedAccounts]] states how, and the empty set is every network at
+  *   every height that has adopted no exception.
+  *
+  *   ==What the exception is, established rather than inferred from the name==
+  *
+  *   The proposal's own References note 3 quotes the security alert that
+  *   produced it: one client *"was failing to revert empty account deletions
+  *   when the transaction causing the deletions of empty accounts ended with an
+  *   out-of-gas exception"*, and *"an additional issue was found in Parity,
+  *   where the Parity client incorrectly failed to revert empty account
+  *   deletions in a more limited set of contexts involving out-of-gas calls to
+  *   precompiled contracts; the new Geth behavior matches Parity's"*
+  *   (`ethereum/EIPs` @ `96523ef4d`, `EIPS/eip-161.md`, Final). So the amended
+  *   revert rule was adopted WITH that exception preserved, deliberately, and
+  *   the exception is precompile-shaped.
+  *
+  *   ==A set of addresses rather than a flag, because the field already
+  *   disagrees across two networks==
+  *
+  *   `besu-eth/besu` @ `c2addd9424` holds the same shape, a set threaded into
+  *   both processors from `MainnetProtocolSpecs.java`, and it is the client that
+  *   had to serve two networks: `besu-eth/besu-etc` @ `eb4248c997` builds its
+  *   Ethereum Classic definitions WITHOUT that set, while
+  *   `ethereumclassic/core-geth` @ `4185df450` applies the exception on that
+  *   network ungated. A set expresses both readings as data and the empty set as
+  *   a network having declined it; a flag naming the incident could express
+  *   neither, and a single held address could not express none.
+  *
+  *   Every other surveyed implementation narrows the exception to one hardcoded
+  *   address -- `ethereum/execution-specs` @ `ccaaaba58`,
+  *   `ethereum/go-ethereum-pow` @ `v1.10.26`, `NethermindEth/nethermind` @
+  *   `c35ce1b1ab` and `bluealloy/revm` @ `3064c0901c`. **That the narrowing is
+  *   historical rather than semantic is an inference and not established**: no
+  *   client explains the choice, and nothing here depends on it.
   */
 final case class EvmRules(
     table: OpcodeTable,
@@ -353,7 +390,8 @@ final case class EvmRules(
     codeDepositMustSucceed: Boolean,
     maxCodeSize: Option[Int],
     createdAccountNonce: UInt64,
-    newAccountCharge: NewAccountCharge
+    newAccountCharge: NewAccountCharge,
+    touchSurvivesFailure: Set[Address]
 ):
 
   /** These rules with each proposal applied, in the order given.

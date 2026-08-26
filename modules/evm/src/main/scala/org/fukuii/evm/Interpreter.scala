@@ -82,7 +82,11 @@ object Interpreter:
     else
       val world = environment.world
       val taken = world.snapshot()
+      // Two acts that read as one. The first brings the account into being and
+      // is reversed below; the second records that it was reached, and nothing
+      // in this function undoes that.
       world.touch(frame.message.currentTarget)
+      frame.touchedAccounts = frame.touchedAccounts + frame.message.currentTarget
       transfer(world, frame.message)
       val result = frame.message.codeAddress.flatMap(precompiles.at) match
         case Some(precompile) => Right(runNatively(frame, precompile))
@@ -565,6 +569,10 @@ object Interpreter:
             world.setBalance(beneficiary, beneficiaryHeld.add(originatorHeld))
             world.setBalance(originator, Word.Zero)
             frame.accountsToDelete = frame.accountsToDelete + originator
+            // The account paid out to is reached by this whatever it receives,
+            // which the proposal names in its own list of the four ways an
+            // account is left holding nothing.
+            frame.touchedAccounts = frame.touchedAccounts + beneficiary
             frame.running = false
         )
 
@@ -713,7 +721,9 @@ object Interpreter:
                   incorporate(frame, nested, gasLeft)
                   writeBack(frame, outputOffset, outputSize, output)
                   Word.One
-                case Outcome.Halted(_) => Word.Zero
+                case Outcome.Halted(_) =>
+                  incorporateAfterFailure(frame, nested, environment.rules)
+                  Word.Zero
               exceptional(frame.stack.push(answer).map(_ => advance(frame)))
 
   /** Starts a nested invocation that deploys a new account's code.
@@ -793,7 +803,9 @@ object Interpreter:
                 case Outcome.Stopped(gasLeft, _) =>
                   incorporate(frame, nested, gasLeft)
                   wordOf(target)
-                case Outcome.Halted(_) => Word.Zero
+                case Outcome.Halted(_) =>
+                  incorporateAfterFailure(frame, nested, environment.rules)
+                  Word.Zero
               exceptional(frame.stack.push(answer).map(_ => advance(frame)))
 
   /** Runs a deployment and stores whatever it returned as the new account's
@@ -1135,12 +1147,39 @@ object Interpreter:
     * Only a nested invocation that ended normally reaches this. One that halted
     * has nothing to give: its gas is gone, and its logs, its refunds and its
     * registrations are discarded along with the state it wrote.
+    * [[incorporateAfterFailure]] is the other half of that rule, and the two are
+    * written apart for the reason the specification writes two functions.
     */
   private def incorporate(frame: Frame, nested: Frame, gasLeft: BigInt): Unit =
     frame.gasLeft += gasLeft
     frame.logs = frame.logs ++ nested.logs
     frame.refundCounter += nested.refundCounter
     frame.accountsToDelete = frame.accountsToDelete | nested.accountsToDelete
+    frame.touchedAccounts = frame.touchedAccounts | nested.touchedAccounts
+
+  /** Takes up the one thing a nested invocation that halted still gives its
+    * caller: a reach at an address whose reaches are not undone.
+    *
+    * ==Discarding everything else is the absence of a call, and this is why
+    * there is a call at all==
+    *
+    * [[incorporate]] is not reached from a halted invocation, which is what
+    * discards its gas, its logs, its refunds and its registrations. A reach is
+    * the one accumulator with an exception, so it is the one that needs a
+    * counterpart rather than a silence. Where [[EvmRules.touchSurvivesFailure]]
+    * is empty -- every network at every height before the proposal that names
+    * an address -- this is the same silence written out.
+    *
+    * ==One intersection covers what the specification writes as two arms==
+    *
+    * Its `incorporate_child_on_error` re-adds the exempt address when the
+    * child's own set holds it, and again when the child's own account IS that
+    * address. Here the second is already the first: [[run]] records the account
+    * an invocation runs as into that invocation's own set, so a call that
+    * reached the address at all reached it through the set.
+    */
+  private def incorporateAfterFailure(frame: Frame, nested: Frame, rules: EvmRules): Unit =
+    frame.touchedAccounts = frame.touchedAccounts | (nested.touchedAccounts & rules.touchSurvivesFailure)
 
   /** Copies as much of what a nested invocation returned as the caller made
     * room for, and no more.
