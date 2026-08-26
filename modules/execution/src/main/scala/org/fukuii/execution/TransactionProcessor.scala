@@ -293,6 +293,11 @@ object TransactionProcessor:
     world.commit()
     if succeeded then frame.accountsToDelete.foreach(destroyAccount)
     if execution.touchedEmptyAccountsAreDeleted then
+      // The existence check is load-bearing, not defensive: `deadAt` answers
+      // true for an absent account by design, so the pair is what the
+      // specification spells `account_exists_and_is_empty` -- and it is what
+      // narrows the wider set `Interpreter.incorporateAfterFailure` builds back
+      // to the one that specification would have destroyed.
       touchedAccounts(frame, succeeded, block, rules).foreach: address =>
         if world.accountExists(address) && Interpreter.deadAt(world, address) then destroyAccount(address)
     Settlement(used, if succeeded then frame.logs else Vector.empty, succeeded, unbuilt)

@@ -1170,13 +1170,22 @@ object Interpreter:
     * is empty -- every network at every height before the proposal that names
     * an address -- this is the same silence written out.
     *
-    * ==One intersection covers what the specification writes as two arms==
+    * ==One intersection covers what the specification writes as two arms, and
+    * is WIDER than the two of them==
     *
     * Its `incorporate_child_on_error` re-adds the exempt address when the
     * child's own set holds it, and again when the child's own account IS that
     * address. Here the second is already the first: [[run]] records the account
     * an invocation runs as into that invocation's own set, so a call that
     * reached the address at all reached it through the set.
+    *
+    * **That second arm carries a guard this one does not** -- that the account
+    * exists and is empty -- so what this leaves in the set is a strict superset
+    * of what the specification leaves in its own. The two settle at the same
+    * state only because the single site that consumes the set asks that same
+    * question again before destroying anything, and
+    * `org.fukuii.execution.TransactionProcessor.account` is where it is asked.
+    * Its existence check is that guard rather than a defensive one.
     */
   private def incorporateAfterFailure(frame: Frame, nested: Frame, rules: EvmRules): Unit =
     frame.touchedAccounts = frame.touchedAccounts | (nested.touchedAccounts & rules.touchSurvivesFailure)
