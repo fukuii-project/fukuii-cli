@@ -149,8 +149,9 @@ attached to a citation.
 
 | Path under the corpus root | Upstream | Ref | Authoritative for |
 |---|---|---|---|
-| `ethereumclassic/core-geth` | [ethereumclassic/core-geth](https://github.com/ethereumclassic/core-geth) | `master` | **ETC consensus, Frontier through Spiral** — the reference implementation, and what mainnet runs. **The sole external authority for MESS**, which client code spells `ecbp1100` (the registry spells it ECIP-1100; searching the registry's spelling returns zero here). Silent on post-Spiral and Olympia work, which is not disagreement |
+| `ethereumclassic/core-geth` | [ethereumclassic/core-geth](https://github.com/ethereumclassic/core-geth) | `master` | **ETC consensus, Frontier through Spiral** — the reference implementation, and what mainnet runs. **The reference implementation of MESS**, which client code spells `ecbp1100` (the registry spells it ECIP-1100; searching the registry's spelling returns zero here). **It is no longer the SOLE external implementation** — see `diega/etc-cl` below, which implements the same rule from the specification rather than from this source, and under a different license. Silent on post-Spiral and Olympia work, which is not disagreement |
 | `besu-eth/besu-etc` | [besu-eth/besu](https://github.com/besu-eth/besu) | `etc-frozen` — **pinned, see below** | **JVM implementation shape on the historical ETC era, and nothing else.** It carries ETC's fork schedule and it carries no MESS. An absence here is evidence about besu-etc: it was a reference client during ETC development, never a mainstream deployment, and was never asked to be complete |
+| `diega/etc-cl` | [diega/etc-cl](https://github.com/diega/etc-cl) | `2bfafc41b37fc649bec30a16d99077ecad8c5c82` (2026-03-01) — **untagged, full history; cite the SHA** | **Two things, and the second is the one no other entry supplies.** ▸ **A proof-of-work CONSENSUS LAYER** — an out-of-process consensus driver that lets a post-Merge execution client run a proof-of-work chain over the Engine API, because modern execution clients dropped total-difficulty tracking, ethash and difficulty-based fork choice. It is therefore the **counterfactual architecture** to a single binary carrying pluggable consensus: the same problem, solved by separation instead. Chain-agnostic by its own account, with chain-specific parameters confined to one crate. ▸ **A second, independent implementation of MESS, and the only one outside the reference client.** `crates/sync/src/mess.rs` cites `_specs/ecip-1100.md` by URL as its reference, and a calibrated sweep of `crates/` returns **zero** core-geth references against one specification reference. It reproduces the curve constants and both specification-stated safety values independently. **Its license is MIT**, which is why it is worth naming separately from the reference client: this is the one place the rule can be read without reading LGPL source. **Bounds.** It is not an authority for any ETC consensus VALUE — the ECIP is, and the reference client is what mainnet runs. Its own docstring records that its arithmetic was checked against the Go implementation, so treat it as a corroborating second reading rather than a clean-room one |
 
 ### A second core-geth exists in the corpus, and it is not the one to cite
 
@@ -753,6 +754,36 @@ from admitting the networks above — see `AGENTS.md` § Overview:
 | `scroll-tech/go-ethereum` | [scroll-tech/go-ethereum](https://github.com/scroll-tech/go-ethereum) | `develop` | A zkEVM that **disables an opcode**: `// SELFDESTRUCT is disabled in Scroll`, in `eips.go` and `jump_table.go`. **Evidence that an opcode table must support subtraction, not only addition** |
 | `0xPolygonHermez/cdk-erigon` | [0xPolygonHermez/cdk-erigon](https://github.com/0xPolygonHermez/cdk-erigon) | `zkevm` | Polygon's zkEVM/CDK line, which ships a **parallel interpreter** — `interpreter_zkevm.go`, `jump_table_zkevm.go`, `gas_table_zkevm.go`. Evidence that a second machine is expressible as a second table rather than a second client |
 | `OffchainLabs/nitro` | [OffchainLabs/nitro](https://github.com/OffchainLabs/nitro) | `master` | Arbitrum — ArbOS, its own gas model and system precompiles. **A different machine**, listed so nobody re-derives that it is one |
+| `Consensys/quorum` | [Consensys/quorum](https://github.com/Consensys/quorum) | `master` | **GoQuorum — cloned for its CONSENSUS, and excluded on its EVM.** Measured with this section's own instrument, calibrated against stock geth (`quorum` 0, `mps` 0, control `opSstore` 3): inside `core/vm` it carries `quorum` in **10** files and `mps` in **6**, reaching `interpreter.go`, `jump_table.go`, `instructions.go`, `stack.go` and `memory.go` — **not the precompile registry but the machine**, the opposite end of the range from `ava-labs/subnet-evm`'s zero and `op-geth`'s one. Its private-state divergence is the same exclusion `hyperledger-firefly/ethconnect` records from the consumer side. **What it IS authoritative for: QBFT, IBFT and Raft**, at `consensus/istanbul/{qbft,ibft}/{core,engine,types}` and `raft/` — see the caveat below |
+
+### `Consensys/quorum` is a second QBFT implementation, and its independence is PARTIAL
+
+Cloned 2026-08-26 for proof-of-authority work, where besu was until then the **only** QBFT/IBFT2
+implementation in the corpus — `besu-eth/besu-etc` shares besu's root commit `7dfc2e408` and is a
+fork of it, so it was never a second opinion.
+
+**It shares `ethereum/go-ethereum`'s root commit exactly — `5db3335dce766bd679c54ea44f6df08a7ff74762`.**
+Three consequences, and only the third is the obvious one:
+
+- **For Clique or anything EVM-level it is NOT a second opinion**, being a geth fork like
+  `0xPolygon/bor`, `ronin/ronin` and `scroll-tech/go-ethereum`. Do not count it toward Clique.
+- **For QBFT and IBFT it IS separate code** — geth never carried either, so those trees are
+  GoQuorum's own work in Go against besu's in Java.
+- **Separate code is not a separate reading of the specification.** besu and GoQuorum are both
+  ConsenSys projects: **implementation-independent, not specification-independent**, the same
+  distinction this file already draws for the Olympia overlays. A fixture citing both should say so
+  rather than claim a clean second opinion.
+
+**It is archived** — GitHub reports `archived: true` and its HEAD merges a branch named
+`end-support` (`5ffacc482`, 2026-06-05). Its content will never move again, which makes it a stable
+oracle and, by this project's dying-upstream rule, a candidate for preservation rather than a pin.
+
+**Two naming traps, and both return a confident zero.** GoQuorum files QBFT under `istanbul/`, so
+searching `qbft` alone under-reports it — 26 path hits against 88 for `istanbul` — exactly as
+`openethereum` files AuRa under `authority_round` and returns zero for `aura`. And `istanbul` is a
+**homonym**: the 59 hits in `ethereum/execution-specs`, 26 in `NomicFoundation/hardhat` and 13 in
+`ethereum/legacytests` are the Istanbul *fork*, `eip_1108` and friends, not the consensus algorithm.
+Count the engine directory, never the string.
 
 ---
 
@@ -760,7 +791,14 @@ from admitting the networks above — see `AGENTS.md` § Overview:
 
 Authoritative for the **consumer side of the Engine API** and for **framework
 structure** across implementation languages. None is an authority for Ethereum
-Classic, which has no consensus layer.
+Classic, which has no BEACON CHAIN.
+
+**That is narrower than "no consensus layer", and the wording was corrected on
+2026-08-26 because the broader claim is false.** `diega/etc-cl`, in the Ethereum
+Classic table above, is a consensus layer for Ethereum Classic — a proof-of-work
+one, driving an execution client over the same Engine API these clients drive.
+What Ethereum Classic has no instance of is a proof-of-stake beacon chain, which
+is what every row below implements.
 
 | Path under the corpus root | Upstream | Ref |
 |---|---|---|
@@ -1051,6 +1089,42 @@ consequences: an unfetched `archive/` is **empty and correct, not broken** —
 (`modules/evm/src/test/scala/org/fukuii/evm/fixtures/NetworkFixtureCorpus.scala`): the
 `FUKUII_TESTS_ROOT` environment variable, falling back to a `.local/fukuii-tests-root`
 pointer file when it is unset.
+
+---
+
+## Downstream consumers — evidence about what a node must SERVE
+
+**A category with one member so far, and the category matters more than the member.**
+Every other entry in this file is an *implementation of the protocol*, cited for what a node must
+**do**. These are cited for what a node must **serve**: the RPC surface as a real integrator
+actually calls it, rather than as any one client chose to expose it. **No client in this corpus can
+answer that**, because a client is never its own consumer — its RPC layer records its own choices,
+not an integrator's requirements.
+
+**The boundary is strict and runs the same way as `fukuii-project/fukuii-tests`'s.** A consumer is
+authoritative for **what it calls, in what order, and what it does with the answer** — all of it
+readable from its source. It is authoritative for **no consensus value, no protocol rule, and no
+specification claim**. Where a consumer and a specification disagree about what a method *means*,
+the specification governs and the disagreement is the finding.
+
+| Path under the corpus root | Upstream | Ref | Authoritative for |
+|---|---|---|---|
+| `hyperledger-firefly/evmconnect` | [hyperledger-firefly/evmconnect](https://github.com/hyperledger-firefly/evmconnect) | `v1.5.1-31-g1e5d5cc` | **The node-facing surface, and the one to read first.** FireFly's reference connector for EVM chains — every JSON-RPC call the stack makes to a node originates here. Its `pkg/etherrors/error_mapping.go` is the sharpest single artifact in this section: it classifies node failures by **substring match on the error message**, and states in its own comment that nothing in Ethereum JSON-RPC formally defines them |
+| `hyperledger-firefly/transaction-manager` | [hyperledger-firefly/transaction-manager](https://github.com/hyperledger-firefly/transaction-manager) | `v1.5.2-5-g162a945` | Nonce management, confirmation tracking and event-stream checkpointing above the connector. Its `pkg/ffcapi` is the connector-neutral contract, so it shows **which node behaviors are assumed portable across chains** and which are EVM-specific |
+| `hyperledger-firefly/signer` | [hyperledger-firefly/signer](https://github.com/hyperledger-firefly/signer) | `v1.2.1-14-gc215e8a` | The JSON-RPC client itself (`pkg/rpcbackend`, HTTP and WebSocket), plus RLP, ABI and keystore-v3 handling. Read it for the **transport** contract — batching, concurrency limiting, subscription lifecycle — separately from the method set |
+| `hyperledger-firefly/ethconnect` | [hyperledger-firefly/ethconnect](https://github.com/hyperledger-firefly/ethconnect) | `v3.4.0` | The **permissioned** connector, and the only place in this section where `priv_*` and `eea_*` appear. Evidence about what a private-transaction deployment demands — which fukuii does not target; the clone keeps that exclusion checkable rather than remembered |
+| `hyperledger-firefly/firefly` | [hyperledger-firefly/firefly](https://github.com/hyperledger-firefly/firefly) | `v1.5.0-6-g28b672fb5` | The orchestration core. **It talks to a connector over REST and WebSocket and makes NO JSON-RPC call to a node at all** — measured, and recorded here because it is the natural place to look and the wrong one. Its value is `smart_contracts/ethereum/` and `doc-site/`: what FireFly deploys on-chain, and which networks it documents |
+
+**Read `evmconnect` before `firefly`.** The repository named for the product is the orchestration
+layer; the requirements on a node live one level down. A survey that reads only `firefly` finds
+nothing and concludes wrongly.
+
+**Four of the five carry a tag-WITH-DISTANCE ref** (`v1.5.1-31-g1e5d5cc` and similar), because each
+tracks a moving default branch and none was checked out at a release. `ethconnect` is the exception
+and sits exactly on `v3.4.0`. **Cite the SHA, or the tag with its distance suffix — a bare `v1.5.1`
+names a commit these clones are not on.** The form is not new here: `ethereumclassic/core-geth` is
+already recorded as `v1.12.20-8-g4185df450` above, and reading it as *"the tag"* would be the same
+error at a clone this project cites far more often.
 
 ---
 
