@@ -336,12 +336,19 @@ object TransactionProcessor:
     *   - `ethereum/execution-specs` @ `ccaaaba58` wipes the whole set with no
     *     exception. `forks/spurious_dragon/vm/interpreter.py`'s
     *     `process_message_call` assigns an empty set on any error, and the
-    *     exception lives only in `incorporate_child_on_error`, which an
-    *     outermost invocation never reaches.
-    *   - `ethereum/go-ethereum-pow` @ `v1.10.26` keeps it. `stateObject.touch`
-    *     increments the dirty-set count for the exempt address with no journal
-    *     entry beside it (`core/state/state_object.go`), so no revert decrements
-    *     it and `StateDB.Finalise` still sees the address.
+    *     exception lives only in `vm/__init__.py`'s
+    *     `incorporate_child_on_error`, which an outermost invocation never
+    *     reaches.
+    *   - `ethereum/go-ethereum-pow` @ `v1.10.26` keeps it, through a second
+    *     increment that no entry backs. `stateObject.touch` journals a
+    *     `touchChange` like any other change, and `journal.revert` decrements
+    *     the dirty-set count for every entry it unwinds -- so the reach on its
+    *     own does not survive. For the exempt address `touch` then calls
+    *     `journal.dirty` a second time, raising that count with no entry beside
+    *     it (`core/state/state_object.go`, `core/state/journal.go`), and that is
+    *     the increment no revert can reach, so `StateDB.Finalise` still iterates
+    *     the address. Its own comment there records the same: the address
+    *     *"will persist in the journal even though the journal is reverted"*.
     *     `besu-eth/besu` @ `c2addd9424` keeps it too:
     *     `AbstractMessageProcessor`'s force-delete runs from the frame-failure
     *     path, which the initial frame reaches like any other.
