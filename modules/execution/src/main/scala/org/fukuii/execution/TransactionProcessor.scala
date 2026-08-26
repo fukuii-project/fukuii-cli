@@ -362,9 +362,9 @@ object TransactionProcessor:
     *
     * **Neither published corpus decides it, and the measurement is narrower
     * than "no case names that address".** The generated tier for this fork
-    * carries 34 cases and not one of them mentions it at all. The legacy tier
-    * holds exactly one case sending a transaction there -- and that case
-    * publishes no post section for this fork and holds no account at the
+    * carries 537 cases across 34 files, and the address is in none of them. The
+    * legacy tier holds exactly one case sending a transaction there -- and that
+    * case publishes no post section for this fork and holds no account at the
     * address in its pre-state, so it neither runs under these rules nor presents
     * the existing-and-empty account the decision turns on. So two production
     * implementations agreeing is the whole of the evidence, and the other
