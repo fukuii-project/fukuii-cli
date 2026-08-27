@@ -390,7 +390,8 @@ object AltBn128:
     * known to be reduced: an encoding of exactly `p` compares unequal to the
     * zero it stands for, so moving the bound after either test would change
     * which rule refuses such an input, and moving it after BOTH would admit it.
-    * The same ordering holds in [[twistPointAt]] for the same reason.
+    * The same ordering holds in [[twistPointAt]] for the same reason, where the
+    * bound itself carries a residual this one does not.
     */
   private def pointAt(input: IArray[Byte], offset: Int): Option[G1] =
     val x = wordAt(input, offset)
@@ -410,6 +411,32 @@ object AltBn128:
     * `(a, b)`"*. Reading the two the other way round produces a different point
     * that is on the curve about as often as the right one is not, so the
     * ordering is not one a curve check would report.
+    *
+    * ==The field bound is EQUIVALENT-MODULO-AN-OPEN-QUESTION, so no vector can
+    * be written for it==
+    *
+    * Refusing components ABOVE the modulus rather than AT it would admit one
+    * encoded as exactly `p`, which every operation below reduces to zero. So
+    * the two spellings agree on every input but one: a point of the `q`-order
+    * subgroup carrying a zero component, encoded with `p` in that component's
+    * place. Whether this curve has such a point is open, and until it is
+    * settled there is no input on which the two can be told apart.
+    *
+    * A zero whole COORDINATE is ruled out. The twist has order `q * (2p - q)`,
+    * which is coprime to six, so it carries neither two- nor three-torsion --
+    * which is what a point with `y` zero and a point with `x` zero
+    * respectively would be. A zero COMPONENT
+    * is a different condition and is not ruled out -- and no argument from this
+    * family's shape can rule it out, because a small curve built by the same
+    * recipe at `u = -3`, over this curve's own `9 + i`, has a `q`-order point
+    * whose `x` is `168 + 0i`. An argument that closed the question here would
+    * close it there and be false.
+    *
+    * **So this is a question about the curve rather than a coverage gap
+    * awaiting a vector, and no effort should be spent writing one.** Deciding
+    * it means enumerating a component across the whole field. The comparison
+    * that ships is EIP-197's own text: *"An encoding value of `p` or larger is
+    * invalid"*.
     */
   private def twistPointAt(input: IArray[Byte], offset: Int): Option[G2] =
     val coordinates = IArray.tabulate(4)(index => wordAt(input, offset + index * WordWidth))
