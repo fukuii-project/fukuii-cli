@@ -137,12 +137,17 @@ object Nibbles:
     * unreachable from [[Nibbles.toCompact]], so accepting them would let this
     * trie hold a node no conforming implementation would have written.
     *
-    * Refusing the second of those is a departure from every client surveyed,
-    * which all ignore that nibble. It is recorded as a departure rather than
-    * left to be rediscovered, and it is safe in the direction that matters: a
-    * non-canonical flag byte is a distinct byte string with a distinct digest,
-    * so no trie a conforming writer built can contain one and refusing it
-    * cannot change a root.
+    * Refusing the second of those is a departure from both decoders read here,
+    * each of which drops that nibble without inspecting it:
+    * `ethereum/go-ethereum` @ `6bb0588ad`'s `compactToHex` chops
+    * `2 - base[0]&1` nibbles off the front, and `besu-eth/besu` @ `c2addd9424`'s
+    * `CompactEncoding.decode` reads the flag byte's low nibble only on the
+    * odd-length branch. Refusing the first is not a departure from either --
+    * besu rejects the same shape as `(metadata & 0xc0) == 0`. The second is
+    * recorded as a departure rather than left to be rediscovered, and it is safe
+    * in the direction that matters: a non-canonical flag byte is a distinct byte
+    * string with a distinct digest, so no trie a conforming writer built can
+    * contain one and refusing it cannot change a root.
     */
   def fromCompact(compact: IArray[Byte]): Either[TrieError, (Nibbles, Boolean)] =
     if compact.isEmpty then Left(TrieError.EmptyCompactPath)

@@ -164,13 +164,15 @@ final class StateTrie(
     *
     * ==Dropping the memo is the whole mechanism, and it is the field's==
     *
-    * No implementation surveyed asks a trie to erase itself. The executable
-    * specification pops the address out of its storage-trie map
-    * (`apply_changes_to_state`, `state._storage_tries.pop(address, None)`) and
-    * excludes it from the copy the root is computed over; go-ethereum moves the
-    * object into `stateObjectsDestruct`; besu raises `storageWasCleared` and
-    * treats the account as fresh; ethrex carries `removed_storage` beside
-    * `removed`. Each drops a handle and lets the next write start from nothing.
+    * None of the four implementations read here asks a trie to erase itself.
+    * `ethereum/execution-specs` @ `ccaaaba58` pops the address out of its
+    * storage-trie map (`apply_changes_to_state`,
+    * `state._storage_tries.pop(address, None)`) and excludes it from the copy
+    * the root is computed over; `ethereum/go-ethereum` @ `6bb0588ad` moves the
+    * object into `stateObjectsDestruct`; `besu-eth/besu` @ `c2addd9424` raises
+    * `storageWasCleared` and treats the account as fresh; `lambdaclass/ethrex` @
+    * `2367dc810` carries `removed_storage` beside `removed`. Each drops a handle
+    * and lets the next write start from nothing.
     *
     * Eviction works here for the same reason, and rests on [[storageTrieFor]]
     * returning an empty trie — see the requirement on that parameter, which this
@@ -182,7 +184,7 @@ final class StateTrie(
     * **They are independent here**: both are synchronous, neither reads what the
     * other writes, and reversing them produces the identical observable state.
     * The order is faithfulness to the specification's shape rather than a
-    * dependency -- an earlier version of this sentence implied otherwise.
+    * dependency.
     */
   def destroyAccount(address: Address): Unit =
     // The evicted trie is the thing being discarded, so its handle is bound away

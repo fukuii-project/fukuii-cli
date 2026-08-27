@@ -29,8 +29,9 @@ import scala.util.Using
   *
   * That parameter is required to return an EMPTY trie each time it is called,
   * because account destruction is expressed by dropping the memoized storage
-  * trie and letting the next call rebuild one -- the mechanism every surveyed
-  * implementation uses. [[StoredNodeTrie]] satisfies it, its root reference
+  * trie and letting the next call rebuild one -- the mechanism each of the four
+  * implementations read for [[StateTrie.destroyAccount]] uses, and that scaladoc
+  * names them at their refs. [[StoredNodeTrie]] satisfies it, its root reference
   * starting empty. This does not: it holds no state of its own and addresses
   * `(namespace, version)` directly, so a freshly constructed one sees every
   * entry already written under that pair, and a destruction through it would

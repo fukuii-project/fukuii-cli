@@ -65,9 +65,14 @@ enum TrieError:
     * progress through: descending it consumes nothing, so a chain of them does
     * not terminate.
     *
-    * Every surveyed client accepts this shape, so refusing it is a deliberate
-    * departure. It is safe against history because no conforming writer can have
-    * produced such a node, and it cannot change a root for the same reason.
+    * The two decoders read for this shape both accept it: `besu-eth/besu` @
+    * `c2addd9424`'s `decodeExtension` takes the path and never measures it, and
+    * `ethereum/go-ethereum` @ `6bb0588ad`'s `decodeShort` builds a `shortNode`
+    * from whatever `compactToHex` returns. The wider field is enumerated under
+    * [[EmptyExtensionChild]], which was surveyed for that shape rather than this
+    * one. So refusing it is a deliberate departure. It is safe against history
+    * because no conforming writer can have produced such a node, and it cannot
+    * change a root for the same reason.
     */
   case EmptyExtensionSegment
 
