@@ -163,6 +163,14 @@ class InvocationSpec extends AnyFlatSpec:
   private val reportingValue: Seq[Int] =
     Seq(0x34) ++ push1(0x00) ++ Seq(0x52) ++ push1(0x20) ++ push1(0x00) :+ 0xf3
 
+  /** Fills the first word of memory with ones.
+    *
+    * A case asserting that a callee reported ZERO cannot tell that from a callee
+    * that never ran, since unwritten memory reads as zero too. Run before the
+    * call, this makes the two different readings.
+    */
+  private val fillingTheFirstWord: Seq[Int] = push32("ff" * 32) ++ push1(0x00) ++ Seq(0x52)
+
   private val schedule = EvmFixtures.schedule
 
   /** What the deployment inside [[deploying]] costs to run: four pushes and a
@@ -2021,36 +2029,62 @@ class InvocationSpec extends AnyFlatSpec:
     )
   }
 
-  it should "hand the invocation it starts nothing, whatever its caller holds" in {
+  it should "hand the invocation it starts nothing, whatever the invocation making it carries" in {
+    // THE INVOCATION MAKING THE CALL CARRIES FORTY, which is what tells this
+    // form from the one that inherits the value it was itself invoked with: no
+    // value comes off the stack for either, so a form reading the wrong source
+    // is invisible from a caller carrying nothing.
     val funded = world()
     funded.balances(runner) = EvmFixtures.word(500)
     funded.codes(other) = codeOf(hex(reportingValue))
     val (frame, _) = runIn(
       EvmFixtures.environment(funded, withTable = admittingStaticCall),
       100000,
-      staticCalling(other, 40000, answerRoom = 32)
+      fillingTheFirstWord ++ staticCalling(other, 40000, answerRoom = 32),
+      EvmFixtures.message(value = EvmFixtures.word(40), transfersValue = false)
     )
     assert(Word.fromBytes(frame.memory.read(0, 32)) == Word.Zero, "the invocation was started carrying something")
   }
 
-  it should "have handed it the value where an ordinary call made it, or the case above reads nothing" in {
-    // The control. Without it the zero above holds for a callee that never
-    // reported anything, and the two runs share every byte but the operation.
+  it should "move nothing to the account it names, whatever the invocation making it carries" in {
+    // The same defect read where a chain reads it. A form inheriting the value
+    // would also transfer it, since this form is one that performs the transfer.
+    val funded = world()
+    funded.balances(runner) = EvmFixtures.word(500)
+    funded.codes(other) = codeOf(hex(stopping))
+    val environment = EvmFixtures.environment(funded, withTable = admittingStaticCall)
+    val _ = runIn(
+      environment,
+      100000,
+      staticCalling(other, 40000),
+      EvmFixtures.message(value = EvmFixtures.word(40), transfersValue = false)
+    )
+    assert(environment.world.balanceOf(other) == Word.Zero, "the named account was paid by a call that sends nothing")
+  }
+
+  it should "have handed it the value where an ordinary call made it, or the two cases above read nothing" in {
+    // The control, and it stands the same ground: the same caller, the same
+    // callee, the same word of ones under the answer, and only the operation
+    // different.
     val funded = world()
     funded.balances(runner) = EvmFixtures.word(500)
     funded.codes(other) = codeOf(hex(reportingValue))
     val (frame, _) = runIn(
       EvmFixtures.environment(funded, withTable = admittingStaticCall),
       100000,
-      calling(0xf1, other, 40000, value = 40, answerRoom = 32)
+      fillingTheFirstWord ++ calling(0xf1, other, 40000, value = 40, answerRoom = 32),
+      EvmFixtures.message(value = EvmFixtures.word(40), transfersValue = false)
     )
     assert(
       Word.fromBytes(frame.memory.read(0, 32)) == EvmFixtures.word(40),
-      "the callee did not report the value it was called with, so the case above measures nothing"
+      "the callee did not report the value it was called with, so the cases above measure nothing"
     )
   }
 
   it should "ask the invocation it starts not to change state" in {
+    // The control is "CALL should run the code at the account named", which runs
+    // this same callee at this same budget and finds the slot written -- without
+    // it, an unset slot would also be what a callee that never ran leaves.
     val holder = world()
     holder.codes(other) = codeOf(hex(storing))
     val environment = EvmFixtures.environment(holder, withTable = admittingStaticCall)
