@@ -10,6 +10,7 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip160,
   Eip161,
   Eip170,
+  Eip198,
   Eip2,
   Eip211,
   Eip214,
@@ -302,14 +303,15 @@ object Upgrades:
   val spuriousDragon: UpgradeRules =
     tangerineWhistle.adopting(Eip155.component, Eip160.component, Eip161.component, Eip170.component)
 
-  /** [[spuriousDragon]] with EIP-100, EIP-649, EIP-140, EIP-211, EIP-214 and
-    * EIP-658 adopted.
+  /** [[spuriousDragon]] with EIP-100, EIP-649, EIP-140, EIP-211, EIP-214,
+    * EIP-658 and EIP-198 adopted.
     *
-    * The order is the order the six compose in. It is immaterial -- two name
+    * The order is the order the seven compose in. It is immaterial -- two name
     * what a block owes the mechanism that produced it, three add operations at
-    * four bytes none of the others touches, and one settles what a receipt's
-    * first field holds -- and it is stated because two deltas touching one field
-    * compose to whichever ran last.
+    * four bytes none of the others touches, one settles what a receipt's first
+    * field holds, and one places a native at an address none of them reaches --
+    * and it is stated because two deltas touching one field compose to
+    * whichever ran last.
     *
     * ==Three facets, and the pairing within each is the document's rather than
     * this network's==
@@ -333,6 +335,12 @@ object Upgrades:
     * `org.fukuii.chainspec.proposals.eip.Eip658` states what such a network
     * would get.
     *
+    * EIP-198 writes the machine too, and it is the only one of the seven that
+    * reaches the precompile set rather than the operation table. It depends on
+    * none of the others and none of them depends on it: a native answers at an
+    * address, so it shares no byte with the three that add operations and
+    * nothing about it is reachable from a table.
+    *
     * Which proposals of this network's upgrade are carried here is stated on
     * the schedule entry that resolves them, because that is where a reader asks
     * what a node validates at a height.
@@ -344,5 +352,6 @@ object Upgrades:
       Eip140.component,
       Eip211.component,
       Eip214.component,
-      Eip658.component
+      Eip658.component,
+      Eip198.component
     )

@@ -75,7 +75,8 @@ class UpgradesSpec extends AnyFlatSpec:
           ProposalId.Eip(140),
           ProposalId.Eip(211),
           ProposalId.Eip(214),
-          ProposalId.Eip(658)
+          ProposalId.Eip(658),
+          ProposalId.Eip(198)
         ),
       "a composition's recorded components are not the ones it adopted"
     )

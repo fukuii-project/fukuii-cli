@@ -281,21 +281,21 @@ object Mainnet:
     * as `"byzantiumBlock": 4370000` in
     * `config/src/main/resources/mainnet.json`.
     *
-    * ==Six of the nine proposals this upgrade names are implemented==
+    * ==Seven of the nine proposals this upgrade names are implemented==
     *
     * EIP-609 § *Included EIPs* lists EIP-100, EIP-140, EIP-196, EIP-197,
     * EIP-198, EIP-211, EIP-214, EIP-649 and EIP-658.
     * [[Upgrades.byzantium]] carries EIP-100, EIP-649, EIP-140, EIP-211,
-    * EIP-214 and EIP-658 and records all six in its component list; the other
-    * three are not there, so a node built from this entry validates less across
-    * this boundary than the network did. **The entry names the network's
-    * upgrade; it does not claim to implement all of it**, which is the standing
-    * [[homestead]] has for a different reason and [[spuriousDragon]] had until
-    * its fourth proposal landed.
+    * EIP-214, EIP-658 and EIP-198 and records all seven in its component list;
+    * the other two are not there, so a node built from this entry validates
+    * less across this boundary than the network did. **The entry names the
+    * network's upgrade; it does not claim to implement all of it**, which is
+    * the standing [[homestead]] has for a different reason and
+    * [[spuriousDragon]] had until its fourth proposal landed.
     *
-    * The three that are missing are the three that add a native -- EIP-196 and
-    * EIP-197 at the alt-bn128 curve, EIP-198 at modular exponentiation -- so
-    * what this entry cannot yet do is answer a call to one of them.
+    * The two that are missing are EIP-196 and EIP-197, the pair that places
+    * natives at the alt-bn128 curve, so what this entry cannot yet do is answer
+    * a call to either of those two addresses.
     *
     * ==Resolving a partial upgrade at this height is nearer the network than
     * resolving none==
