@@ -63,6 +63,8 @@ enum Opcode(val code: Int):
   case GasPrice extends Opcode(0x3a)
   case ExtCodeSize extends Opcode(0x3b)
   case ExtCodeCopy extends Opcode(0x3c)
+  case ReturnDataSize extends Opcode(0x3d)
+  case ReturnDataCopy extends Opcode(0x3e)
   case BlockHash extends Opcode(0x40)
   case Coinbase extends Opcode(0x41)
   case Timestamp extends Opcode(0x42)
@@ -155,6 +157,7 @@ enum Opcode(val code: Int):
   case CallCode extends Opcode(0xf2)
   case Return extends Opcode(0xf3)
   case DelegateCall extends Opcode(0xf4)
+  case Revert extends Opcode(0xfd)
   case SelfDestruct extends Opcode(0xff)
 
 object Opcode:

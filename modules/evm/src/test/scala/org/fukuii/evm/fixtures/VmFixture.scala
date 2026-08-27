@@ -233,6 +233,15 @@ object VmFixtureRunner:
     (outcome, fixture.expectation) match
       case (Left(unsupported), _) =>
         Verdict.Diverged(Vector("this build cannot run " + unsupported.opcode.toString))
+      // One arm for both expectations, because neither states anything about a
+      // revert: a fixture carrying a post-state expects completion and one
+      // without expects an exceptional halt. It is unproducible under the rule
+      // set this corpus is run at, which admits no operation that reverts, so
+      // reaching it means the rule set changed rather than the fixture failing.
+      case (Right(Outcome.Reverted(gasLeft, _)), _) =>
+        Verdict.Diverged(
+          Vector("reverted with " + gasLeft.toString + " gas left, which this corpus states no expectation for")
+        )
       case (Right(Outcome.Halted(halt)), None)    => Verdict.Agreed
       case (Right(Outcome.Halted(halt)), Some(_)) =>
         Verdict.Diverged(Vector("halted with " + halt.toString + " where the fixture expects completion"))

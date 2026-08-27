@@ -234,7 +234,8 @@ object OpcodeTable:
     * added to the enum and forgotten here fails loudly rather than joining the
     * root in silence. That direction is the one worth failing.
     */
-  private def laterThanOriginal: Set[Opcode] = Set(Opcode.DelegateCall)
+  private def laterThanOriginal: Set[Opcode] =
+    Set(Opcode.DelegateCall, Opcode.ReturnDataSize, Opcode.ReturnDataCopy, Opcode.Revert)
 
   /** The three families whose members differ only in a count, and which are
     * priced alike across all of them.

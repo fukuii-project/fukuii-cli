@@ -359,6 +359,77 @@ class InvocationSpec extends AnyFlatSpec:
   /** What ending an invocation costs before the surcharge, under [[charging]]. */
   private val bareDestruction: BigInt = schedule.veryLow + destructionCharge
 
+  // ── The two documents that add a cheap failure and a buffer to read it ────
+
+  private val second = EvmFixtures.address(0x44)
+
+  /** The table with the three operations two documents add, which is the only
+    * way any of them runs. Held apart from the rules every other case here runs
+    * under, so that none of them starts admitting an operation it was written
+    * without.
+    */
+  private val admittingReturnData: OpcodeTable =
+    EvmFixtures.rules.table
+      .adding(Operation(Opcode.Revert, Cost.Computed))
+      .adding(Operation(Opcode.ReturnDataSize, Cost.Fixed(schedule.base)))
+      .adding(Operation(Opcode.ReturnDataCopy, Cost.Computed))
+
+  private def admitting(holder: EvmFixtures.MapWorldState): Environment =
+    EvmFixtures.environment(holder, withTable = admittingReturnData)
+
+  /** Abandons the invocation at once, having named an empty region. */
+  private val reverting: Seq[Int] = push1(0x00) ++ push1(0x00) :+ 0xfd
+
+  /** What [[reverting]] costs: two pushes and a charge that is memory alone,
+    * over a region taking none.
+    */
+  private val revertingCost: BigInt = schedule.veryLow * 2 + schedule.zero
+
+  /** Writes 0x2a into memory and abandons the invocation naming that byte. */
+  private val revertingWithAByte: Seq[Int] =
+    push1(0x2a) ++ push1(0x00) ++ Seq(0x53) ++ push1(0x01) ++ push1(0x00) :+ 0xfd
+
+  /** Writes 42 to slot 1 and then abandons the invocation, so the write has to
+    * be dropped.
+    */
+  private val storingThenReverting: Seq[Int] = push1(0x2a) ++ push1(0x01) ++ Seq(0x55) ++ reverting
+
+  /** Emits one entry and then abandons the invocation. */
+  private val emittingThenReverting: Seq[Int] = push1(0x00) ++ push1(0x00) ++ Seq(0xa0) ++ reverting
+
+  /** Hands back 0x2a as the code to deploy, and then abandons the deployment
+    * naming that same byte -- so a creation from this leaves nothing behind and
+    * a payload to read.
+    */
+  private val deployingThenReverting: String = hex(revertingWithAByte)
+
+  /** A world in which [[other]] hands back one byte and [[second]] runs the
+    * program given, which is the shape every buffer-lifetime case takes: fill
+    * the buffer with a call that answers, then reach it with a second act.
+    */
+  private def answeringThen(program: Seq[Int]): EvmFixtures.MapWorldState =
+    val holder = world()
+    holder.codes(other) = codeOf(hex(returning))
+    holder.codes(second) = codeOf(hex(program))
+    holder
+
+  /** The first half of every such case: a call to [[other]], which answers with
+    * one byte and so leaves the buffer holding it.
+    */
+  private val fillingTheBuffer: Seq[Int] = calling(0xf1, other, 40000)
+
+  /** Runs `program` in a frame that reports itself already `depth` invocations
+    * deep, which is how a case reaches the refusal the nesting limit produces
+    * without building a thousand frames to get there.
+    */
+  private def atDepth(depth: Int, program: Seq[Int]): (Frame, Either[Unsupported, Outcome]) =
+    runIn(
+      admitting(answeringThen(stopping)),
+      200000,
+      program,
+      EvmFixtures.message(transfersValue = true).copy(depth = depth)
+    )
+
   // ── What an invocation is given, and what it leaves behind ───────────────
 
   "an invocation" should "bring the account it runs as into being" in {
@@ -529,7 +600,7 @@ class InvocationSpec extends AnyFlatSpec:
     val (frame, _) = runIn(EvmFixtures.environment(holder), 100000, calling(0xf1, other, 1000))
     assert(
       frame.gasLeft == BigInt(100000) - schedule.veryLow * 7 - schedule.callBase - 1000,
-      "there is no cheap failure at this fork, so a halted nesting keeps everything it was given"
+      "a nesting that halted keeps everything it was given, which is what separates it from one that reverted"
     )
   }
 
@@ -1477,3 +1548,251 @@ class InvocationSpec extends AnyFlatSpec:
       runIn(EvmFixtures.environment(world()), 100000, creating(hex(halting)))._1.touchedAccounts == Set(runner),
       "a creation that halted left its creator holding a reach at an address that no longer exists"
     )
+
+  // ── A nested invocation that was abandoned rather than halted ──────────────
+
+  "a callee that reverted" should "hand back what it did not spend" in {
+    val holder = world()
+    holder.codes(other) = codeOf(hex(reverting))
+    val (frame, _) = runIn(admitting(holder), 100000, calling(0xf1, other, 1000))
+    assert(
+      frame.gasLeft == BigInt(100000) - bareCall - revertingCost,
+      "only what the callee actually spent is kept, and the rest of the thousand comes back"
+    )
+  }
+
+  it should "differ from one that halted by exactly what it left unspent" in {
+    // The pair, run against the same caller so that every figure on the calling
+    // side cancels. Without it the case above holds for a machine that hands
+    // back a plausible amount arrived at some other way.
+    val reverted = world()
+    reverted.codes(other) = codeOf(hex(reverting))
+    val halted = world()
+    halted.codes(other) = codeOf(hex(halting))
+    val afterRevert = runIn(admitting(reverted), 100000, calling(0xf1, other, 1000))._1.gasLeft
+    val afterHalt = runIn(admitting(halted), 100000, calling(0xf1, other, 1000))._1.gasLeft
+    assert(
+      afterRevert - afterHalt == BigInt(1000) - revertingCost,
+      "the difference between the two failures is the remainder one of them keeps"
+    )
+  }
+
+  it should "answer zero, exactly as one that halted does" in {
+    val holder = world()
+    holder.codes(other) = codeOf(hex(reverting))
+    val (frame, _) = runIn(admitting(holder), 100000, calling(0xf1, other, 1000))
+    assert(
+      frame.stack.peek(0) == Right(Word.Zero),
+      "the document puts it there: in the same way as all other failures, the calling opcode returns 0"
+    )
+  }
+
+  it should "drop the storage it wrote" in {
+    val holder = world()
+    holder.codes(other) = codeOf(hex(storingThenReverting))
+    val environment = admitting(holder)
+    val _ = runIn(environment, 100000, calling(0xf1, other, 40000))
+    assert(
+      environment.world.storageAt(other, EvmFixtures.word(1)) == Word.Zero,
+      "the whole point of the operation is that the state changes are rolled back"
+    )
+  }
+
+  it should "discard the entries it emitted" in {
+    val holder = world()
+    holder.codes(other) = codeOf(hex(emittingThenReverting))
+    val (frame, _) = runIn(admitting(holder), 100000, calling(0xf1, other, 4000))
+    assert(
+      frame.logs.isEmpty,
+      "a revert is a failure for everything but the gas, so its entries go the way a halted one's do"
+    )
+  }
+
+  it should "copy its payload into the room the caller made" in {
+    // "The error message will be available to the caller in the returndata
+    // buffer and will also be copied to the output area" (ethereum/EIPs @
+    // 9e393a79, EIPS/eip-140.md, Final). This is the second half of that
+    // sentence, and it is the half a machine that only fills the buffer would
+    // fail.
+    val holder = world()
+    holder.codes(other) = codeOf(hex(revertingWithAByte))
+    val (frame, _) = runIn(admitting(holder), 100000, calling(0xf1, other, 40000, answerRoom = 1))
+    assert(frame.memory.read(0, 1) == codeOf("2a"), "the payload is handled the way a regular answer is")
+  }
+
+  it should "leave its payload in the caller's buffer" in {
+    val holder = world()
+    holder.codes(other) = codeOf(hex(revertingWithAByte))
+    val (frame, _) = runIn(admitting(holder), 100000, calling(0xf1, other, 40000))
+    assert(frame.returnData == codeOf("2a"), "the first half of the same sentence, with no output area involved")
+  }
+
+  // ── The buffer, and what each way of ending an invocation leaves in it ─────
+
+  "the return-data buffer" should "hold nothing on a frame that has started nothing" in {
+    val (frame, _) = runIn(admitting(world()), 100000, stopping)
+    assert(frame.returnData == Bytes.Empty, "this buffer is created empty for each new call frame")
+  }
+
+  it should "hold what a callee that stopped handed back" in {
+    val holder = world()
+    holder.codes(other) = codeOf(hex(returning))
+    val (frame, _) = runIn(admitting(holder), 100000, calling(0xf1, other, 40000))
+    assert(frame.returnData == codeOf("2a"), "the complete return data of the call is stored in the buffer")
+  }
+
+  it should "be emptied by a callee that halted" in {
+    // Run after a call that filled it, which is what makes this discriminate: a
+    // machine that simply never writes the buffer on this path would pass an
+    // assertion made against a frame that had called nothing.
+    val holder = answeringThen(halting)
+    val (frame, _) = runIn(admitting(holder), 200000, fillingTheBuffer ++ calling(0xf1, second, 40000))
+    assert(
+      frame.returnData == Bytes.Empty,
+      "an invocation that halted has no output, so the buffer its caller reads holds nothing"
+    )
+  }
+
+  it should "be emptied by a call refused for a balance the caller does not hold" in {
+    val holder = answeringThen(stopping)
+    val (frame, _) =
+      runIn(admitting(holder), 200000, fillingTheBuffer ++ calling(0xf1, second, 40000, value = 40))
+    assert(
+      frame.returnData == Bytes.Empty,
+      "a call-like opcode that does not instantiate a call frame leaves the buffer empty"
+    )
+  }
+
+  it should "be left empty by a call refused for its depth" in {
+    // WEAKER THAN THE CASE ABOVE, and the reason is a property of the machine
+    // rather than of this case. Every call-like operation in one frame is made
+    // at that frame's own depth, so a frame whose calls are refused for depth
+    // can never have had one succeed and fill its buffer first. What this pins
+    // is that such a refusal writes nothing; the balance case above is what
+    // pins that a refusal CLEARS what was already there.
+    val (frame, _) = atDepth(Stack.Limit, fillingTheBuffer)
+    assert(frame.returnData == Bytes.Empty, "a call that instantiated no frame left something in the buffer")
+  }
+
+  it should "have been filled by the same call one depth lower, or the case above tests nothing" in {
+    // The control. Without it the case above holds for a machine whose calls
+    // never fill the buffer at all, and the depth is doing none of the work.
+    val (frame, _) = atDepth(Stack.Limit - 1, fillingTheBuffer)
+    assert(frame.returnData == codeOf("2a"), "the same program one depth lower did not reach the callee either")
+  }
+
+  it should "be emptied by a creation that deployed" in {
+    // THE ONE PLACE THE BUFFER DOES NOT CARRY WHAT THE CHILD HANDED BACK. The
+    // document names it as an exception: "CREATE and CREATE2 are considered to
+    // return the empty buffer in the success case and the failure data in the
+    // failure case" (ethereum/EIPs @ 9e393a79, EIPS/eip-211.md, Final). Run
+    // after a call that filled it, so a machine that leaves the buffer alone
+    // here fails rather than passing over an already-empty one.
+    val holder = answeringThen(stopping)
+    val (frame, _) = runIn(admitting(holder), 200000, fillingTheBuffer ++ creating(deploying))
+    assert(
+      frame.returnData == Bytes.Empty,
+      "a deployment that succeeded must not leave the code it deployed readable as return data"
+    )
+  }
+
+  it should "hold what a creation that reverted named" in {
+    val holder = answeringThen(stopping)
+    val (frame, _) = runIn(admitting(holder), 200000, fillingTheBuffer ++ creating(deployingThenReverting))
+    assert(frame.returnData == codeOf("2a"), "the failure data is the half of that exception that is not empty")
+  }
+
+  "a deployment that reverted" should "leave no account behind" in {
+    // The deployment's own snapshot is what undoes the count the created
+    // account was given, and it is taken above the write. A reversal reached
+    // only by the invocation's own snapshot would leave an account at this
+    // address holding that count.
+    val environment = admitting(world())
+    val _ = runIn(environment, 200000, creating(deployingThenReverting))
+    assert(
+      !environment.world.accountExists(ContractAddress.of(runner, UInt64.Zero)),
+      "the account the deployment was given goes with the rest of what it wrote"
+    )
+  }
+
+  it should "answer zero" in {
+    val (frame, _) = runIn(admitting(world()), 200000, creating(deployingThenReverting))
+    assert(frame.stack.peek(0) == Right(Word.Zero), "a deployment that was abandoned deployed nothing and says so")
+  }
+
+  it should "hand back what it did not spend" in {
+    // The pair with the halting deployment beside it, run over programs of the
+    // same length so that the difference is which end each reaches. A creation
+    // is given everything the creator holds, so the figure the two differ by is
+    // whatever the abandoned one had left.
+    val reverted = runIn(admitting(world()), 200000, creating(deployingThenReverting))._1.gasLeft
+    val halted = runIn(admitting(world()), 200000, creating(hex(halting)))._1.gasLeft
+    assert(reverted > halted, "a deployment that halted keeps nothing, and one that was abandoned keeps the rest")
+  }
+
+  it should "be emptied by a creation that halted" in {
+    val holder = answeringThen(stopping)
+    val (frame, _) = runIn(admitting(holder), 200000, fillingTheBuffer ++ creating(hex(halting)))
+    assert(frame.returnData == Bytes.Empty, "a deployment that halted has no output either")
+  }
+
+  it should "be emptied by a creation refused before anything ran" in {
+    // An endowment the creator does not hold, so the creation is refused ahead
+    // of the deployment. The specification clears the buffer before that
+    // refusal rather than after it.
+    val holder = answeringThen(stopping)
+    val (frame, _) = runIn(admitting(holder), 200000, fillingTheBuffer ++ creating(deploying, endowment = 40))
+    assert(frame.returnData == Bytes.Empty, "a creation that instantiated no frame leaves the buffer empty")
+  }
+
+  // ── Reading the buffer ────────────────────────────────────────────────────
+
+  "RETURNDATASIZE after a call" should "report the length of what the callee handed back" in {
+    val holder = world()
+    holder.codes(other) = codeOf(hex(returning))
+    val (frame, _) = runIn(admitting(holder), 100000, calling(0xf1, other, 40000) :+ 0x3d)
+    assert(frame.stack.peek(0) == Right(EvmFixtures.word(1)), "one byte was handed back, so the buffer holds one")
+  }
+
+  "RETURNDATACOPY after a call" should "copy the callee's answer out of the buffer" in {
+    // The caller made no room, so nothing was written back and the byte found
+    // in memory can only have come through the buffer.
+    val holder = world()
+    holder.codes(other) = codeOf(hex(returning))
+    val reading = push1(0x01) ++ push1(0x00) ++ push1(0x40) :+ 0x3e
+    val (frame, _) = runIn(admitting(holder), 100000, calling(0xf1, other, 40000, answerRoom = 0) ++ reading)
+    assert(frame.memory.read(0x40, 1) == codeOf("2a"), "the buffer is readable independently of the output area")
+  }
+
+  it should "charge the settled part, the whole words copied, and the memory taken" in {
+    // Measured as the difference between the same program with and without the
+    // copy, so every figure the call itself costs cancels. A per-word term read
+    // from another field would change this difference; this schedule prices the
+    // copying term apart from every tier so that it can.
+    val holder = world()
+    holder.codes(other) = codeOf(hex(returning))
+    val call = calling(0xf1, other, 40000, answerRoom = 0)
+    val reading = push1(0x01) ++ push1(0x00) ++ push1(0x00) :+ 0x3e
+    val without = runIn(admitting(holder), 100000, call)._1.gasLeft
+    val holderAgain = world()
+    holderAgain.codes(other) = codeOf(hex(returning))
+    val withCopy = runIn(admitting(holderAgain), 100000, call ++ reading)._1.gasLeft
+    assert(
+      without - withCopy == schedule.veryLow * 3 + schedule.veryLow + schedule.copyPerWord + GasCost.MemoryPerWord,
+      "three pushes, the settled part, one whole word copied, and the word of memory it lands in"
+    )
+  }
+
+  it should "halt reading past what the callee handed back" in {
+    // One byte came back, so two is one too many. This is the case that would
+    // pass silently if the copy reused the padding read the other three copying
+    // operations take.
+    val holder = world()
+    holder.codes(other) = codeOf(hex(returning))
+    val reading = push1(0x02) ++ push1(0x00) ++ push1(0x00) :+ 0x3e
+    val (_, outcome) = runIn(admitting(holder), 100000, calling(0xf1, other, 40000, answerRoom = 0) ++ reading)
+    assert(
+      outcome == Right(Outcome.Halted(Halt.OutOfBoundsRead)),
+      "accessing the return data buffer beyond its size results in a failure"
+    )
+  }

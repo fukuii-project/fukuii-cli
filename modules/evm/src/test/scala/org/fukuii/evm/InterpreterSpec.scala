@@ -68,6 +68,19 @@ class InterpreterSpec extends AnyFlatSpec:
     val (_, outcome) = exec(1000000, opcode.code)
     outcome.isLeft
 
+  /** The table with the three operations two documents add, which is the only
+    * way any of them runs. Held apart from [[table]] so that every other case
+    * in this spec goes on measuring a machine that has none of them.
+    */
+  private val admittingReturnData: OpcodeTable =
+    table
+      .adding(Operation(Opcode.Revert, Cost.Computed))
+      .adding(Operation(Opcode.ReturnDataSize, Cost.Fixed(schedule.base)))
+      .adding(Operation(Opcode.ReturnDataCopy, Cost.Computed))
+
+  private def execAdmitting(gas: Int, program: Int*): (Frame, Either[Unsupported, Outcome]) =
+    execIn(EvmFixtures.environment(withTable = admittingReturnData), gas, program*)
+
   "running off the end of the code" should "end normally rather than exceptionally" in {
     val (_, outcome) = exec(100, 0x60, 0x01)
     assert(
@@ -790,5 +803,123 @@ class InterpreterSpec extends AnyFlatSpec:
     assert(
       outcome == Right(Outcome.Stopped(BigInt(100) - schedule.veryLow * 2 - schedule.zero, Bytes.Empty)),
       "an empty answer is not a missing one"
+    )
+  }
+
+  // ── Abandoning an invocation, and the buffer the next one reads ────────────
+
+  "REVERT" should "end the invocation keeping its gas and handing back the region" in {
+    // The same program as RETURN's first case with the last byte changed, so
+    // the pair states the whole difference between the two operations: the
+    // charge and the payload are identical and the end is not.
+    val (_, outcome) = execAdmitting(100, 0x60, 0x2a, 0x60, 0x00, 0x53, 0x60, 0x01, 0x60, 0x00, 0xfd)
+    assert(
+      outcome == Right(
+        Outcome.Reverted(
+          BigInt(100) - schedule.veryLow * 5 - GasCost.MemoryPerWord - schedule.zero,
+          EvmFixtures.bytesOf("2a")
+        )
+      ),
+      "an abandoned invocation keeps what it had not spent and the bytes it named"
+    )
+  }
+
+  it should "end execution before the rest of the code runs" in {
+    val (frame, _) = execAdmitting(100, 0x60, 0x00, 0x60, 0x00, 0xfd, 0x60, 0x01)
+    assert(frame.stack.isEmpty, "the PUSH after REVERT never ran")
+  }
+
+  it should "leave the program counter where it stood" in {
+    val (frame, _) = execAdmitting(100, 0x60, 0x00, 0x60, 0x00, 0xfd, 0x60, 0x01)
+    assert(frame.pc == 4, "the specification moves it for neither of the two operations that end an invocation")
+  }
+
+  it should "hand back nothing where the region is empty" in {
+    // Also what pins the price: the settled part is the tier RETURN takes and
+    // not another, which this schedule can tell apart because every tier in it
+    // holds a distinct value.
+    val (_, outcome) = execAdmitting(100, 0x60, 0x00, 0x60, 0x00, 0xfd)
+    assert(
+      outcome == Right(Outcome.Reverted(BigInt(100) - schedule.veryLow * 2 - schedule.zero, Bytes.Empty)),
+      "an empty payload is not a missing one, and the charge is memory alone"
+    )
+  }
+
+  it should "halt keeping nothing where it cannot pay for the memory it names" in {
+    // The document says so in as many words: "in case there is not enough gas
+    // left to cover the cost of REVERT or there is a stack underflow, the
+    // effect of the REVERT instruction will equal to that of a regular out of
+    // gas exception, i.e. it will consume all gas" (ethereum/EIPs @ 9e393a79,
+    // EIPS/eip-140.md, Final). Thirteen pays for the two pushes and leaves
+    // three against a charge of four.
+    val (_, outcome) = execAdmitting(13, 0x60, 0x20, 0x60, 0x00, 0xfd)
+    assert(
+      outcome == Right(Outcome.Halted(Halt.OutOfGas)),
+      "an unaffordable REVERT is an ordinary exceptional halt and keeps nothing"
+    )
+  }
+
+  it should "halt where there is nothing on the stack to name a region with" in {
+    val (_, outcome) = execAdmitting(100, 0xfd)
+    assert(outcome == Right(Outcome.Halted(Halt.StackUnderflow)), "the same document puts a stack underflow here too")
+  }
+
+  "RETURNDATASIZE" should "report nothing on a frame that has started no invocation" in {
+    val (frame, _) = execAdmitting(100, 0x3d)
+    assert(frame.stack.peek(0) == Right(w(0)), "the buffer is created empty for each new call frame")
+  }
+
+  it should "cost the base tier" in {
+    val (_, outcome) = execAdmitting(100, 0x3d)
+    assert(
+      outcome == Right(Outcome.Stopped(BigInt(100) - schedule.base, Bytes.Empty)),
+      "the document prices it by naming CALLDATASIZE, which takes this tier"
+    )
+  }
+
+  "RETURNDATACOPY" should "copy nothing from the end of an empty buffer" in {
+    // "Reading 0 bytes from the end of the buffer will read 0 bytes"
+    // (ethereum/EIPs @ 9e393a79, EIPS/eip-211.md, Final). Nothing is copied and
+    // the settled part alone is paid, which is what a copy of nothing costs.
+    val (_, outcome) = execAdmitting(100, 0x60, 0x00, 0x60, 0x00, 0x60, 0x00, 0x3e)
+    assert(
+      outcome == Right(Outcome.Stopped(BigInt(100) - schedule.veryLow * 4, Bytes.Empty)),
+      "a copy of nothing from the end of the buffer is allowed and costs the settled part"
+    )
+  }
+
+  it should "halt reading nothing from one byte past the end" in {
+    // The other half of the same sentence: "reading 0 bytes from one-byte out
+    // of the buffer causes an exception". The pair is what makes the bound
+    // strict rather than a bound on what is actually copied -- a machine that
+    // checked only the bytes it moves would pass the case above and this one.
+    val (_, outcome) = execAdmitting(100, 0x60, 0x00, 0x60, 0x01, 0x60, 0x00, 0x3e)
+    assert(
+      outcome == Right(Outcome.Halted(Halt.OutOfBoundsRead)),
+      "a zero-length read past the end is refused, not treated as touching nothing"
+    )
+  }
+
+  it should "halt reading a byte the buffer does not hold" in {
+    val (_, outcome) = execAdmitting(100, 0x60, 0x01, 0x60, 0x00, 0x60, 0x00, 0x3e)
+    assert(
+      outcome == Right(Outcome.Halted(Halt.OutOfBoundsRead)),
+      "the three copying operations that pad would answer a run of zeros here, and this one must not"
+    )
+  }
+
+  it should "halt where the start and the size would wrap a machine word" in {
+    // A START OF 2^64 - 1 AND A SIZE OF ONE. The sum is 2^64, which is past the
+    // end of any buffer -- and is zero in sixty-four bits, and zero again in
+    // thirty-two, so a machine that narrows either operand before adding admits
+    // a read the network refuses and reports success. The document names the
+    // condition itself: "if start + length overflows or results in a value
+    // larger than RETURNDATASIZE, the current call stops in an out-of-gas
+    // condition" (ethereum/EIPs @ 9e393a79, EIPS/eip-211.md, Final).
+    val program = Seq(0x60, 0x01) ++ (0x67 +: Seq.fill(8)(0xff)) ++ Seq(0x60, 0x00, 0x3e)
+    val (_, outcome) = execAdmitting(1000000, program*)
+    assert(
+      outcome == Right(Outcome.Halted(Halt.OutOfBoundsRead)),
+      "the bound was tested on a sum taken at a width the operands do not fit"
     )
   }

@@ -23,14 +23,16 @@ import org.fukuii.types.Log
   * those three values, not a branch in this file, and a network named anywhere
   * below would mean the seam had been crossed.
   *
-  * ==The loop ends three ways and only two of them are results==
+  * ==The loop ends four ways and only three of them are results==
   *
   * Running off the end of the code is a normal stop, exactly as `STOP` is --
   * the specification's loop condition is the program counter against the code
   * length, with no terminator required. An exceptional halt ends execution with
-  * every remaining unit of gas consumed. The third is [[Unsupported]], which is
-  * not an end the machine can reach on any chain: it says this build cannot run
-  * an entry the table admits, and it is a different type for that reason.
+  * every remaining unit of gas consumed. A revert ends it keeping the
+  * remainder and a payload, and is a failure for every other purpose. The
+  * fourth is [[Unsupported]], which is not an end the machine can reach on any
+  * chain: it says this build cannot run an entry the table admits, and it is a
+  * different type for that reason.
   *
   * ==Order within an operation is the specification's, not a convenience==
   *
@@ -49,8 +51,9 @@ object Interpreter:
     *
     * ==The undo is the reason this is not just the loop==
     *
-    * At this fork an invocation that halts leaves no trace, and that has to be
-    * true of the outermost invocation as much as of a nested one -- the
+    * An invocation that fails leaves no trace, whether it halted or reverted,
+    * and that has to be true of the outermost invocation as much as of a
+    * nested one -- the
     * specification takes its snapshot inside the one function both paths go
     * through, and go-ethereum marks its journal in the same place. A caller that
     * ran the loop directly and reverted afterwards would be re-implementing this
@@ -91,9 +94,14 @@ object Interpreter:
       val result = frame.message.codeAddress.flatMap(precompiles.at) match
         case Some(precompile) => Right(runNatively(frame, precompile))
         case None             => execute(frame, environment)
+      // Written out rather than as a stop and a wildcard, so that a further way
+      // for an invocation to end cannot be added without this deciding what it
+      // does about the writes that invocation made.
       result match
-        case Right(Outcome.Stopped(_, _)) => ()
-        case _                            => world.restore(taken)
+        case Right(Outcome.Stopped(_, _))  => ()
+        case Right(Outcome.Reverted(_, _)) => world.restore(taken)
+        case Right(Outcome.Halted(_))      => world.restore(taken)
+        case Left(_)                       => world.restore(taken)
       result
 
   /** Charges for a precompile and runs it, or halts because it cannot be paid
@@ -162,19 +170,23 @@ object Interpreter:
     fault match
       case None                          => Right(Outcome.Stopped(frame.gasLeft, frame.output))
       case Some(Fault.Exceptional(halt)) =>
-        // The frame is left where a caller would read it, and at this fork an
-        // exceptional halt keeps nothing: a remainder still showing here is gas
-        // the caller would hand back twice.
+        // The frame is left where a caller would read it, and an exceptional
+        // halt keeps nothing: a remainder still showing here is gas the caller
+        // would hand back twice.
         frame.gasLeft = BigInt(0)
         Right(Outcome.Halted(halt))
+      // Nothing is taken and nothing is emptied, which is the whole of the
+      // difference from the arm above.
+      case Some(Fault.Reverted)         => Right(Outcome.Reverted(frame.gasLeft, frame.output))
       case Some(Fault.NotBuilt(opcode)) => Left(Unsupported(opcode))
 
-  /** What stopped the loop, separating a chain-reachable end from a gap in this
-    * build. Private because only [[run]] may decide which of the two a caller
+  /** What stopped the loop, separating the chain-reachable ends from a gap in
+    * this build. Private because only [[run]] may decide which of them a caller
     * sees.
     */
   private enum Fault:
     case Exceptional(halt: Halt)
+    case Reverted
     case NotBuilt(opcode: Opcode)
 
   private def step(
@@ -387,6 +399,34 @@ object Interpreter:
       case Opcode.CodeCopy =>
         exceptional(copyInto(frame, schedule.veryLow, schedule)(frame.code.bytes))
 
+      // ── What the last invocation this one started handed back ──────────────
+
+      case Opcode.ReturnDataSize =>
+        pushing(frame, operation)(Word(BigInt(frame.returnData.length)))
+
+      // THE ONE COPYING OPERATION THAT REFUSES RATHER THAN PADS, so it shares
+      // the family's charge and not its read. `copyInto` ends in `bufferRead`,
+      // which zero-fills past the end of its source -- correct for the three
+      // above and a silent state root difference here.
+      //
+      // The charge is settled before the refusal, which is the specification's
+      // order (`ethereum/execution-specs` @ `20f7f6271a`,
+      // `src/ethereum/forks/byzantium/vm/instructions/environment.py:434-441`).
+      // Neither is observable, both ends taking everything; `besu-eth/besu` @
+      // `fdf1247c6d` checks the bound first and reports a different reason.
+      case Opcode.ReturnDataCopy =>
+        exceptional(
+          for
+            memoryStart <- frame.stack.pop()
+            sourceStart <- frame.stack.pop()
+            size <- frame.stack.pop()
+            start <- copyCharge(frame, schedule.veryLow, schedule, memoryStart, size)
+            _ <- withinReturnData(frame, sourceStart, size)
+          yield
+            if !size.isZero then frame.memory.write(start, sliceOf(frame.returnData, sourceStart, size))
+            advance(frame)
+        )
+
       // ── Another account ────────────────────────────────────────────────────
 
       case Opcode.Balance =>
@@ -500,6 +540,23 @@ object Interpreter:
             frame.output = regionOf(frame, offset, size)
             frame.running = false
         )
+
+      // Everything `RETURN` does with memory, at the same price, ending the
+      // invocation the other way: what it wrote is discarded, what it had not
+      // spent stays with it, and its caller is told it failed. The proposal
+      // states the equivalence itself -- "the semantics of `REVERT` with
+      // respect to memory and memory cost are identical to those of `RETURN`"
+      // (`ethereum/EIPs` @ `9e393a79`, `EIPS/eip-140.md`, Final).
+      case Opcode.Revert =>
+        val named =
+          for
+            offset <- frame.stack.pop()
+            size <- frame.stack.pop()
+            _ <- reach(frame, schedule.zero, (offset, size))
+          yield frame.output = regionOf(frame, offset, size)
+        named match
+          case Left(halt) => Left(Fault.Exceptional(halt))
+          case Right(())  => Left(Fault.Reverted)
 
       // ── Ending this invocation and giving its balance away ─────────────────
 
@@ -646,13 +703,15 @@ object Interpreter:
     * is the whole request, so a caller asking for more than it can cover runs
     * out of gas on the charge below rather than quietly getting less.
     *
-    * ==A nested invocation that fails costs the caller everything it forwarded==
+    * ==What a failed nested invocation gives back depends on how it failed==
     *
-    * There is no cheap failure at this fork, so a callee that halts returns no
-    * gas and the caller learns of it only from the zero this pushes. The two
-    * refusals that happen before the callee starts -- too little balance, and
-    * too deeply nested -- are different: they hand the forwarded gas straight
-    * back, because nothing ran.
+    * A callee that halts returns no gas; one that reverts returns whatever it
+    * had not spent, and its payload reaches both the caller's output area and
+    * the caller's return-data buffer. Either way the caller learns of the
+    * failure only from the zero this pushes. The two refusals that happen
+    * before the callee starts -- too little balance, and too deeply nested --
+    * are different again: they hand the forwarded gas straight back, because
+    * nothing ran.
     */
   private def messageCall(
       frame: Frame,
@@ -701,6 +760,11 @@ object Interpreter:
     taken match
       case Left(halt) => Left(Fault.Exceptional(halt))
       case Right((codeAddress, runsAs, value, forwarded, input, outputOffset, outputSize)) =>
+        // Cleared here so that a refusal below hands the caller an empty buffer
+        // rather than whatever the invocation before this one left in it. The
+        // specification clears it in the same place -- ahead of the depth check
+        // in the shared path, and again in each form's own balance refusal.
+        frame.returnData = Bytes.Empty
         if (!inherits && world.balanceOf(frame.message.currentTarget).toBigInt < value.toBigInt) ||
           frame.message.depth + 1 > Stack.Limit
         then
@@ -721,9 +785,23 @@ object Interpreter:
                 case Outcome.Stopped(gasLeft, output) =>
                   incorporate(frame, nested, gasLeft)
                   writeBack(frame, outputOffset, outputSize, output)
+                  frame.returnData = output
                   Word.One
+                // The payload reaches the output area as well as the buffer,
+                // which the proposal states rather than leaves to be inferred:
+                // it "will also be copied to the output area, i.e. it is
+                // handled in the same way as the regular return data is
+                // handled" (`ethereum/EIPs` @ `9e393a79`, `EIPS/eip-140.md`,
+                // Final). The specification reaches it structurally, writing
+                // the child's output back on both branches of one function.
+                case Outcome.Reverted(gasLeft, output) =>
+                  incorporateAfterFailure(frame, nested, environment.rules, gasLeft)
+                  writeBack(frame, outputOffset, outputSize, output)
+                  frame.returnData = output
+                  Word.Zero
                 case Outcome.Halted(_) =>
-                  incorporateAfterFailure(frame, nested, environment.rules)
+                  incorporateAfterFailure(frame, nested, environment.rules, BigInt(0))
+                  frame.returnData = Bytes.Empty
                   Word.Zero
               exceptional(frame.stack.push(answer).map(_ => advance(frame)))
 
@@ -775,6 +853,10 @@ object Interpreter:
     taken match
       case Left(halt)                              => Left(Fault.Exceptional(halt))
       case Right((endowment, initCode, forwarded)) =>
+        // Cleared before any of the three refusals below, which is where the
+        // specification clears it: none of them instantiates a frame, so none
+        // of them may leave the previous invocation's payload readable.
+        frame.returnData = Bytes.Empty
         val creator = frame.message.currentTarget
         val count = world.nonceOf(creator)
         val target = ContractAddress.of(creator, count)
@@ -801,11 +883,27 @@ object Interpreter:
             case Left(unsupported) => Left(Fault.NotBuilt(unsupported.opcode))
             case Right(outcome)    =>
               val answer = outcome match
+                // A DEPLOYMENT THAT SUCCEEDED LEAVES THE BUFFER EMPTY, which
+                // is the one place the buffer does not carry what the child
+                // handed back. The proposal names it as an exception in its own
+                // words -- "`CREATE` and `CREATE2` are considered to return the
+                // empty buffer in the success case and the failure data in the
+                // failure case" (`ethereum/EIPs` @ `9e393a79`,
+                // `EIPS/eip-211.md`, Final) -- and it is what keeps a new
+                // account's code out of its creator's reach as return data.
                 case Outcome.Stopped(gasLeft, _) =>
                   incorporate(frame, nested, gasLeft)
+                  frame.returnData = Bytes.Empty
                   wordOf(target)
+                // No write-back, because a creation names no output area: the
+                // payload is readable only through the buffer.
+                case Outcome.Reverted(gasLeft, output) =>
+                  incorporateAfterFailure(frame, nested, environment.rules, gasLeft)
+                  frame.returnData = output
+                  Word.Zero
                 case Outcome.Halted(_) =>
-                  incorporateAfterFailure(frame, nested, environment.rules)
+                  incorporateAfterFailure(frame, nested, environment.rules, BigInt(0))
+                  frame.returnData = Bytes.Empty
                   Word.Zero
               exceptional(frame.stack.push(answer).map(_ => advance(frame)))
 
@@ -961,6 +1059,16 @@ object Interpreter:
             case Right(()) =>
               world.setCode(nested.message.currentTarget, code)
               Right(Outcome.Stopped(nested.gasLeft, code))
+      // Undone like a halt and emptied like neither: `undone` would take the gas
+      // the revert kept and discard the payload the proposal makes readable, so
+      // the reversal is written out rather than shared. The specification runs
+      // the same restore for both, its own branch turning on whether an error
+      // was recorded and not on which kind
+      // (`ethereum/execution-specs` @ `20f7f6271a`,
+      // `src/ethereum/forks/byzantium/vm/interpreter.py:178,194-195`).
+      case Right(Outcome.Reverted(gasLeft, output)) =>
+        world.restore(taken)
+        Right(Outcome.Reverted(gasLeft, output))
       case Right(Outcome.Halted(halt)) => Right(undone(halt))
 
   /** Whether a creation may deploy at `address`.
@@ -1158,14 +1266,25 @@ object Interpreter:
     frame.accountsToDelete = frame.accountsToDelete | nested.accountsToDelete
     frame.touchedAccounts = frame.touchedAccounts | nested.touchedAccounts
 
-  /** Takes up the one thing a nested invocation that halted still gives its
-    * caller: a reach at an address whose reaches are not undone.
+  /** Takes up what a nested invocation that failed still gives its caller:
+    * whatever gas it did not spend, and a reach at an address whose reaches are
+    * not undone.
+    *
+    * ==The gas is an argument rather than a branch, because the specification
+    * has one function here and not two==
+    *
+    * Its `incorporate_child_on_error` ends `evm.gas_left += child_evm.gas_left`
+    * (`ethereum/execution-specs` @ `20f7f6271a`,
+    * `src/ethereum/forks/byzantium/vm/__init__.py:196`), which is nothing for
+    * an invocation that halted and the remainder for one that reverted. The
+    * difference is what the child left, never a rule about which failure it
+    * was, so a caller passes the figure and this adds it unconditionally.
     *
     * ==Discarding everything else is the absence of a call, and this is why
     * there is a call at all==
     *
-    * [[incorporate]] is not reached from a halted invocation, which is what
-    * discards its gas, its logs, its refunds and its registrations. A reach is
+    * [[incorporate]] is not reached from a failed invocation, which is what
+    * discards its logs, its refunds and its registrations. A reach is
     * the one accumulator with an exception, so it is the one that needs a
     * counterpart rather than a silence. Where [[EvmRules.touchSurvivesFailure]]
     * is empty -- every network at every height before the proposal that names
@@ -1188,7 +1307,8 @@ object Interpreter:
     * `org.fukuii.execution.TransactionProcessor.account` is where it is asked.
     * Its existence check is that guard rather than a defensive one.
     */
-  private def incorporateAfterFailure(frame: Frame, nested: Frame, rules: EvmRules): Unit =
+  private def incorporateAfterFailure(frame: Frame, nested: Frame, rules: EvmRules, gasLeft: BigInt): Unit =
+    frame.gasLeft += gasLeft
     frame.touchedAccounts = frame.touchedAccounts | (nested.touchedAccounts & rules.touchSurvivesFailure)
 
   /** Copies as much of what a nested invocation returned as the caller made
@@ -1365,6 +1485,43 @@ object Interpreter:
     val settled = base + schedule.copyPerWord * words
     if size.isZero then frame.charge(settled).map(_ => 0)
     else expand(frame, settled, offset, size.toBigInt)
+
+  /** Refuses a read reaching past the end of the buffer it reads from.
+    *
+    * ==The sum is taken before anything is narrowed, and that is the whole of
+    * the difficulty==
+    *
+    * Both operands are full width, so a sum taken in a machine word wraps and
+    * admits a read the network refuses. The specification widens both to
+    * unbounded integers before comparing
+    * (`ethereum/execution-specs` @ `20f7f6271a`,
+    * `src/ethereum/forks/byzantium/vm/instructions/environment.py:440`), and
+    * `ethereum/go-ethereum-pow` @ `v1.10.26` adds them in 256 bits and refuses
+    * on the narrowing rather than after it
+    * (`core/vm/instructions.go:329-338`).
+    *
+    * ==A read of nothing is still checked==
+    *
+    * The proposal states the boundary in both directions: "reading 0 bytes
+    * from the end of the buffer will read 0 bytes; reading 0 bytes from
+    * one-byte out of the buffer causes an exception"
+    * (`ethereum/EIPs` @ `9e393a79`, `EIPS/eip-211.md`, Final). So this is asked
+    * whatever the size, and only the copy that follows it is skipped when
+    * there is nothing to copy.
+    */
+  private def withinReturnData(frame: Frame, start: Word, size: Word): Either[Halt, Unit] =
+    if start.toBigInt + size.toBigInt > BigInt(frame.returnData.length) then Left(Halt.OutOfBoundsRead)
+    else Right(())
+
+  /** `size` bytes of `source` from `start`, both already known to be inside it.
+    *
+    * Narrowing is safe only because of that: [[withinReturnData]] has refused
+    * anything reaching past the end, so both operands fit the index the source
+    * is held at.
+    */
+  private def sliceOf(source: Bytes, start: Word, size: Word): Bytes =
+    val from = start.toBigInt.toInt
+    Bytes.fromIArray(source.toIArray.slice(from, from + size.toBigInt.toInt))
 
   /** `size` bytes of `source` from `start`, zero-filled where it runs out.
     *

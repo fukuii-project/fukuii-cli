@@ -154,6 +154,27 @@ class TransactionProcessorSpec extends AnyFlatSpec:
   private val callsTheNativeTooCheaplyThenHalts: Bytes =
     EvmFixtures.bytesOf("0x6000600060006000600060036000f15050")
 
+  /** Rules admitting the operation that abandons an invocation, which is the
+    * only way it runs.
+    */
+  private val admittingRevert: EvmRules =
+    EvmFixtures.rules.copy(table = EvmFixtures.rules.table.adding(Operation(Opcode.Revert, Cost.Computed)))
+
+  /** Writes 42 to slot 1 and then abandons the invocation, so the write has to
+    * be dropped and the remainder handed back.
+    */
+  private val storesThenReverts: Bytes = EvmFixtures.bytesOf("0x602a60015560006000fd")
+
+  /** What a transaction ending in [[storesThenReverts]] spends: the intrinsic
+    * charge, four pushes, the setting price, and a charge that is memory alone
+    * over a region taking none.
+    */
+  private val revertingSpend: BigInt =
+    schedule.transactionBase + schedule.veryLow * 4 + schedule.storageSet + schedule.zero
+
+  /** Emits one entry and then abandons the invocation. */
+  private val emitsThenReverts: Bytes = EvmFixtures.bytesOf("0x60006000a060006000fd")
+
   /** What one settlement did, as the three things a case below asks about. */
   final private case class Ran(
       settlement: Settlement,
@@ -629,4 +650,64 @@ class TransactionProcessorSpec extends AnyFlatSpec:
       rootAfterZeroFee(EvmFixtures.address(0x77), notClearing) !=
         rootAfterZeroFee(EvmFixtures.address(0x88), notClearing),
       "a beneficiary paid nothing left no leaf, so the case above is not measuring the removal"
+    )
+
+  // ── A transaction whose invocation was abandoned rather than halted ────────
+
+  "a transaction whose invocation reverted" should "be charged only what it spent" in
+    assert(
+      settle(transaction(), Map(recipient -> storesThenReverts), admittingRevert).settlement.gasUsed ==
+        revertingSpend,
+      "the whole point of the operation is that the rollback does not consume all gas"
+    )
+
+  it should "be charged less than the limit a halted one pays" in
+    // The pair, against the same limit. Without it the case above holds for a
+    // settlement that arrived at a plausible figure some other way, and the
+    // figure that would be wrong is the one an exceptional halt produces.
+    assert(
+      settle(transaction(), Map(recipient -> storesThenReverts), admittingRevert).settlement.gasUsed <
+        settle(transaction(), Map(recipient -> callsThenHalts, callee -> selfDestructs)).settlement.gasUsed,
+      "a settlement charging a revert the whole limit is charging it as though it had halted"
+    )
+
+  it should "report that it did not succeed" in
+    assert(
+      !settle(transaction(), Map(recipient -> storesThenReverts), admittingRevert).settlement.succeeded,
+      "the gas is the only thing a revert keeps; every other consequence is a failure's"
+    )
+
+  it should "emit no logs" in
+    assert(
+      settle(transaction(), Map(recipient -> emitsThenReverts), admittingRevert).settlement.logs.isEmpty,
+      "what the invocation emitted before it was abandoned is discarded with the state it wrote"
+    )
+
+  it should "have emitted one where the same code stopped instead, or the case above tests nothing" in
+    // The control. The program is the same up to its last five bytes, which
+    // stop the invocation rather than abandoning it.
+    assert(
+      settle(
+        transaction(),
+        Map(recipient -> EvmFixtures.bytesOf("0x60006000a000")),
+        admittingRevert
+      ).settlement.logs.length == 1,
+      "the emitting half of the program above never ran, so the empty log tells us nothing"
+    )
+
+  it should "leave nothing of the storage it wrote" in
+    assert(
+      settle(transaction(), Map(recipient -> storesThenReverts), admittingRevert).world
+        .storageAt(recipient, EvmFixtures.word(1)) == Word(BigInt(0)),
+      "a rollback that reached the settlement but not the state would be a state root nobody could source"
+    )
+
+  it should "have written it where the same code stopped instead, or the case above tests nothing" in
+    assert(
+      settle(
+        transaction(),
+        Map(recipient -> EvmFixtures.bytesOf("0x602a60015500")),
+        admittingRevert
+      ).world.storageAt(recipient, EvmFixtures.word(1)) == EvmFixtures.word(42),
+      "the storing half of the program above never ran, so the empty slot tells us nothing"
     )

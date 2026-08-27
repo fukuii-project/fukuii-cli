@@ -58,9 +58,43 @@ final class Frame(
   var running: Boolean = true
 
   /** What the invocation hands back. Empty until an operation sets it, which
-    * at this fork only `RETURN` does.
+    * `RETURN` and `REVERT` do.
     */
   var output: Bytes = Bytes.Empty
+
+  /** What the invocation this one most recently started handed back.
+    *
+    * ==Not [[output]], and confusing the two is a state root apart==
+    *
+    * [[output]] is what THIS invocation gives its caller; this is what its LAST
+    * CHILD gave it. The proposal draws the same line, placing the buffer "of
+    * the caller" and populating it after a call-like operation rather than
+    * during one.
+    *
+    * ==Whoever starts an invocation sets this, at every exit that operation
+    * has==
+    *
+    * Nothing propagates it: a child's own buffer dies with the child's frame,
+    * and an operation that refuses before a frame exists leaves an empty
+    * buffer rather than the one its caller was holding. So the rule is a
+    * property of assigning at every exit, which is why the operations that
+    * nest write it on the paths that run nothing as well as on the paths that
+    * do.
+    *
+    * ==Per frame rather than shared, which is a choice the proposal permits
+    * either way==
+    *
+    * It sanctions sharing one buffer across frames, "because at most one will
+    * be non-empty at any time", and `ethereum/go-ethereum-pow` @ `v1.10.26`
+    * takes that route with a field on its interpreter cleared on entry to
+    * every invocation (`core/vm/interpreter.go:64,130`). Sharing it here would
+    * mean adding that clearing step for no reason but to emulate a per-frame
+    * field, so the field is per frame -- which is where the executable
+    * specification puts it too, beside its own output
+    * (`ethereum/execution-specs` @ `20f7f6271a`,
+    * `src/ethereum/forks/byzantium/vm/__init__.py:143`).
+    */
+  var returnData: Bytes = Bytes.Empty
 
   /** What this invocation has emitted, oldest first.
     *

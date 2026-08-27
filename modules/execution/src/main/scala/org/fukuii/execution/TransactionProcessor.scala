@@ -246,15 +246,24 @@ object TransactionProcessor:
   /** Settles what the invocation left: the refund, the fee, and the accounts it
     * registered.
     *
-    * ==What a failed invocation earned is nothing, and that has three parts==
+    * ==What a failed invocation earned is nothing, and that is three things==
     *
-    * Its gas is gone, its logs go with it, and so do its refunds and its
-    * registrations. The specification reaches the same place by resetting all
-    * four on the value its message call returns; here the frame still holds
-    * them, so each is read only where the invocation succeeded. An account
-    * registered by an invocation that then halted must not be destroyed, which
-    * is the one of the four whose omission would be a state root difference
-    * rather than a receipt difference.
+    * Its logs go with it, and so do its refunds and its registrations. The
+    * specification reaches the same place by emptying all three on the value
+    * its message call returns; here the frame still holds them, so each is read
+    * only where the invocation succeeded. An account registered by an
+    * invocation that then failed must not be destroyed, which is the one of the
+    * three whose omission would be a state root difference rather than a
+    * receipt difference.
+    *
+    * ==Its gas is a fourth thing and does NOT follow that rule==
+    *
+    * A halt keeps nothing; a revert keeps whatever it had not spent. So what
+    * returns to the sender is read from which failure it was rather than from
+    * the fact that it failed, and the specification reports it that way too:
+    * `gas_left=evm.gas_left` sits on every path, beside the three that are
+    * emptied on the error alone (`ethereum/execution-specs` @ `20f7f6271a`,
+    * `src/ethereum/forks/byzantium/vm/interpreter.py:123-140`).
     *
     * ==The refund is capped against what was spent, not against the limit==
     *
@@ -283,9 +292,10 @@ object TransactionProcessor:
       execution: ExecutionRules
   ): Settlement =
     val (gasLeft, succeeded, unbuilt) = outcome match
-      case Left(gap)                            => (BigInt(0), false, Some(gap))
-      case Right(Outcome.Stopped(remaining, _)) => (remaining, true, None)
-      case Right(Outcome.Halted(_))             => (BigInt(0), false, None)
+      case Left(gap)                             => (BigInt(0), false, Some(gap))
+      case Right(Outcome.Stopped(remaining, _))  => (remaining, true, None)
+      case Right(Outcome.Reverted(remaining, _)) => (remaining, false, None)
+      case Right(Outcome.Halted(_))              => (BigInt(0), false, None)
     val spent = transaction.gasLimit - gasLeft
     val earned = if succeeded then frame.refundCounter else BigInt(0)
     val refunded = (spent / 2).min(earned)

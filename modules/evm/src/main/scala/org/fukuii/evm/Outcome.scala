@@ -4,15 +4,34 @@ import org.fukuii.bytes.Bytes
 
 /** How an invocation ended.
   *
-  * ==Two ends, not five==
+  * ==Three ends, and the middle one keeps what the last one takes==
   *
-  * At this fork there is no cheap failure. An operation that cannot proceed
-  * raises an exceptional halt, and the specification says what that costs:
-  * execution ends immediately with all remaining gas consumed. So a caller
-  * distinguishes success from failure and never distinguishes two failures by
-  * what came back, which is why the reasons in [[Halt]] are diagnostic rather
-  * than semantic. `REVERT`, which is the first cheap failure, arrives at a
-  * later fork and will be a third member here rather than a flag on the second.
+  * A failure that consumes everything and a failure that hands the remainder
+  * back are different results, and a caller has to tell them apart: the second
+  * returns gas to the frame that started it and carries a payload the first
+  * cannot have. The two differ in exactly those two fields and in nothing else
+  * -- the state an invocation wrote is discarded on both, and both report
+  * failure to whatever settles the transaction.
+  *
+  * The specification writes the difference as two exception handlers over one
+  * body: the exceptional one sets `evm.gas_left = Uint(0)` and `evm.output =
+  * b""` before recording the error, and the cheap one records the error alone
+  * (`ethereum/execution-specs` @ `20f7f6271a`,
+  * `src/ethereum/forks/byzantium/vm/interpreter.py:269-276`). The rollback is
+  * outside both, on the error rather than on its kind
+  * (`:278-279`).
+  *
+  * ==The cheap failure carries no reason, and that is the proposal's answer
+  * rather than an omission here==
+  *
+  * [[Halted]] names why it halted because a caller diagnosing a divergence
+  * needs it. [[Reverted]] has nothing to name: the proposal calls its payload
+  * an *"error message"* and says its content *"is not defined by this EIP"*
+  * (`ethereum/EIPs` @ `9e393a79`, `EIPS/eip-140.md`, Final). The specification
+  * agrees structurally -- its `Revert` is a sibling of `ExceptionalHalt` under
+  * a common base rather than a member of it
+  * (`src/ethereum/forks/byzantium/vm/exceptions.py`), so there is no reason
+  * class for it to carry.
   */
 enum Outcome:
 
@@ -20,6 +39,12 @@ enum Outcome:
     * program counter running off the end of the code.
     */
   case Stopped(gasLeft: BigInt, output: Bytes)
+
+  /** Execution was abandoned deliberately. What the invocation wrote is
+    * discarded, what it had not spent is handed back, and the bytes it named
+    * reach its caller.
+    */
+  case Reverted(gasLeft: BigInt, output: Bytes)
 
   /** Execution ended exceptionally. No gas remains, which is why none is
     * reported.
