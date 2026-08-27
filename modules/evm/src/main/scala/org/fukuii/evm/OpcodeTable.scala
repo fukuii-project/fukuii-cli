@@ -235,7 +235,7 @@ object OpcodeTable:
     * root in silence. That direction is the one worth failing.
     */
   private def laterThanOriginal: Set[Opcode] =
-    Set(Opcode.DelegateCall, Opcode.ReturnDataSize, Opcode.ReturnDataCopy, Opcode.Revert)
+    Set(Opcode.DelegateCall, Opcode.ReturnDataSize, Opcode.ReturnDataCopy, Opcode.Revert, Opcode.StaticCall)
 
   /** The three families whose members differ only in a count, and which are
     * priced alike across all of them.

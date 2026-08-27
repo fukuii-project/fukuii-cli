@@ -133,6 +133,36 @@ class InvocationSpec extends AnyFlatSpec:
     */
   private val refusing: Message = EvmFixtures.message(transfersValue = true, isStatic = true)
 
+  /** Six operands, not seven: this form takes no value off the stack, and what
+    * it hands the invocation it starts is always nothing.
+    */
+  private def staticCalling(
+      target: Address,
+      gas: Int,
+      inputAt: Int = 0,
+      inputSize: Int = 0,
+      answerAt: Int = 0,
+      answerRoom: Int = 0
+  ): Seq[Int] =
+    push1(answerRoom) ++ push1(answerAt) ++ push1(inputSize) ++ push1(inputAt) ++
+      push20(target) ++ push2(gas) :+ 0xfa
+
+  /** The table with the operation that asks for an invocation forbidden to
+    * change state, which is the only way it runs.
+    */
+  private def admittingStaticCall: OpcodeTable =
+    EvmFixtures.rules.table.adding(Operation(Opcode.StaticCall, Cost.Computed))
+
+  /** Reads slot one and hands back the word it holds, so a caller can tell whose
+    * storage the invocation ran under.
+    */
+  private val reportingSlotOne: Seq[Int] =
+    push1(0x01) ++ Seq(0x54) ++ push1(0x00) ++ Seq(0x52) ++ push1(0x20) ++ push1(0x00) :+ 0xf3
+
+  /** Hands back the value the invocation was called with. */
+  private val reportingValue: Seq[Int] =
+    Seq(0x34) ++ push1(0x00) ++ Seq(0x52) ++ push1(0x20) ++ push1(0x00) :+ 0xf3
+
   private val schedule = EvmFixtures.schedule
 
   /** What the deployment inside [[deploying]] costs to run: four pushes and a
@@ -1955,4 +1985,135 @@ class InvocationSpec extends AnyFlatSpec:
     holder.codes(other) = codeOf(hex(storing))
     val (frame, _) = runIn(EvmFixtures.environment(holder), 100000, calling(0xf1, other, 40000), refusing)
     assert(frame.stack.peek(0) == Right(Word.Zero), "a nesting refused for the prohibition read as one that succeeded")
+  }
+
+  // ── The operation that asks for an invocation forbidden to change state ───
+
+  "STATICCALL" should "run the code at the account named, under that account's storage" in {
+    val holder = world()
+    holder.codes(other) = codeOf(hex(reportingSlotOne))
+    holder.slots((other, EvmFixtures.word(1))) = EvmFixtures.word(42)
+    val (frame, _) = runIn(
+      EvmFixtures.environment(holder, withTable = admittingStaticCall),
+      100000,
+      staticCalling(other, 40000, answerRoom = 32)
+    )
+    assert(
+      Word.fromBytes(frame.memory.read(0, 32)) == EvmFixtures.word(42),
+      "the storage read was the caller's rather than the named account's, which is what separates this from CALLCODE"
+    )
+  }
+
+  it should "take six operands rather than seven" in {
+    // Six are pushed. An operation taking a value off the stack as well would
+    // find the stack a word short and underflow, so this case tells the two
+    // shapes apart without reading a price.
+    val holder = world()
+    holder.codes(other) = codeOf(hex(stopping))
+    val (frame, _) = runIn(
+      EvmFixtures.environment(holder, withTable = admittingStaticCall),
+      100000,
+      staticCalling(other, 40000)
+    )
+    assert(
+      frame.stack.depth == 1,
+      "six operands went in and the one answer did not come out alone, so some other number was taken"
+    )
+  }
+
+  it should "hand the invocation it starts nothing, whatever its caller holds" in {
+    val funded = world()
+    funded.balances(runner) = EvmFixtures.word(500)
+    funded.codes(other) = codeOf(hex(reportingValue))
+    val (frame, _) = runIn(
+      EvmFixtures.environment(funded, withTable = admittingStaticCall),
+      100000,
+      staticCalling(other, 40000, answerRoom = 32)
+    )
+    assert(Word.fromBytes(frame.memory.read(0, 32)) == Word.Zero, "the invocation was started carrying something")
+  }
+
+  it should "have handed it the value where an ordinary call made it, or the case above reads nothing" in {
+    // The control. Without it the zero above holds for a callee that never
+    // reported anything, and the two runs share every byte but the operation.
+    val funded = world()
+    funded.balances(runner) = EvmFixtures.word(500)
+    funded.codes(other) = codeOf(hex(reportingValue))
+    val (frame, _) = runIn(
+      EvmFixtures.environment(funded, withTable = admittingStaticCall),
+      100000,
+      calling(0xf1, other, 40000, value = 40, answerRoom = 32)
+    )
+    assert(
+      Word.fromBytes(frame.memory.read(0, 32)) == EvmFixtures.word(40),
+      "the callee did not report the value it was called with, so the case above measures nothing"
+    )
+  }
+
+  it should "ask the invocation it starts not to change state" in {
+    val holder = world()
+    holder.codes(other) = codeOf(hex(storing))
+    val environment = EvmFixtures.environment(holder, withTable = admittingStaticCall)
+    val _ = runIn(environment, 100000, staticCalling(other, 40000))
+    assert(
+      environment.world.storageAt(other, EvmFixtures.word(1)) == Word.Zero,
+      "the callee wrote, so it was not asked to refrain"
+    )
+  }
+
+  it should "read as a failed nesting where the callee tried to write" in {
+    val holder = world()
+    holder.codes(other) = codeOf(hex(storing))
+    val (frame, _) = runIn(
+      EvmFixtures.environment(holder, withTable = admittingStaticCall),
+      100000,
+      staticCalling(other, 40000)
+    )
+    assert(frame.stack.peek(0) == Right(Word.Zero), "a nesting refused for the prohibition read as one that succeeded")
+  }
+
+  it should "be allowed from an invocation already asked not to change state" in {
+    // This operation is not on the proposal's list of what a read-only
+    // invocation may not do, and it is the one that puts an invocation there.
+    val holder = world()
+    holder.codes(other) = codeOf(hex(stopping))
+    val (frame, _) = runIn(
+      EvmFixtures.environment(holder, withTable = admittingStaticCall),
+      100000,
+      staticCalling(other, 40000),
+      refusing
+    )
+    assert(frame.stack.peek(0) == Right(Word.One), "the operation that asks for a read-only invocation was refused")
+  }
+
+  "STATICCALL's own price" should "carry no surcharge for a destination this state has never held" in {
+    // The rules here levy that surcharge on an ABSENT destination without
+    // reading whether value moves, and this form's destination is the account
+    // it names, so the term is genuinely at stake. Both authorities leave it out
+    // of this operation's price rather than computing one that comes to
+    // nothing.
+    val (frame, _) = runIn(
+      EvmFixtures.environment(world(), withTable = admittingStaticCall),
+      100000,
+      staticCalling(other, 40000)
+    )
+    assert(
+      frame.gasLeft == BigInt(100000) - schedule.veryLow * 6 - schedule.callBase,
+      "six pushes and the settled part, with nothing charged for a destination this operation cannot bring into being"
+    )
+  }
+
+  it should "be a surcharge an ordinary call to the same destination does pay, or the case above pins nothing" in {
+    // The control, and the one that makes the case above a measurement: the same
+    // absent destination, sent nothing, under the same rules, charged. Without
+    // it the figure above would hold for rules that levy no surcharge at all.
+    val (frame, _) = runIn(
+      EvmFixtures.environment(world(), withTable = admittingStaticCall),
+      100000,
+      calling(0xf1, other, 40000)
+    )
+    assert(
+      frame.gasLeft == BigInt(100000) - schedule.veryLow * 7 - schedule.callBase - schedule.newAccount,
+      "these rules charge nothing for an absent destination, so the case above is not about the surcharge"
+    )
   }

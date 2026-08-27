@@ -644,23 +644,28 @@ object Interpreter:
         messageCall(frame, environment, CallForm.WithTheNamedAccountsCode)
       case Opcode.DelegateCall =>
         messageCall(frame, environment, CallForm.WithTheNamedAccountsCodeKeepingTheCaller)
+      case Opcode.StaticCall =>
+        messageCall(frame, environment, CallForm.ToTheAccountNamedWithoutChangingState)
 
       case unbuilt => Left(Fault.NotBuilt(unbuilt))
 
   /** Which account a message call runs as, whose code it runs, and whose
     * identity the invocation carries.
     *
-    * ==Two axes, and the second one arrived later==
+    * ==Three axes, each arriving with a form==
     *
     * While there were two forms they differed in exactly one thing -- which
     * account runs -- and one sentence covered them. The third moves a second
     * axis: it keeps the caller and the value its own caller was invoked with, so
-    * the code it runs cannot tell it was reached indirectly. **That is what
-    * makes this an enumeration of forms rather than a boolean**, and it is why
-    * the shared implementation reads the form four times rather than once.
+    * the code it runs cannot tell it was reached indirectly. The fourth moves a
+    * third: it settles what the invocation it starts is allowed to do rather
+    * than who it is. **That is what makes this an enumeration of forms rather
+    * than a boolean**, and it is why the shared implementation reads the form at
+    * five places rather than one.
     *
-    * All three take the account to borrow code from off the stack. Only the
-    * first two take a value off it as well.
+    * All four take the account to borrow code from off the stack. Two of them
+    * take a value off it as well; of the other two, one inherits the value it
+    * carries and one has none.
     */
   private enum CallForm:
 
@@ -681,6 +686,19 @@ object Interpreter:
       * stipend, and cannot be refused for a balance it never spends.
       */
     case WithTheNamedAccountsCodeKeepingTheCaller
+
+    /** The account named on the stack runs, under its own storage, and whatever
+      * it starts is asked not to change state.
+      *
+      * It sends nothing, and sends nothing by construction rather than by the
+      * caller's choice: no value comes off the stack, so the operation takes six
+      * operands where the first two take seven. The transfer is still performed
+      * -- of nothing -- which is what the specification does by passing
+      * `should_transfer_value=True` beside `value=U256(0)`
+      * (`ethereum/execution-specs` @ `20f7f6271a`,
+      * `src/ethereum/forks/byzantium/vm/instructions/system.py`).
+      */
+    case ToTheAccountNamedWithoutChangingState
 
   /** Starts a nested invocation of another account's code.
     *
@@ -730,11 +748,19 @@ object Interpreter:
     // entry point that charges a base and a request and nothing else, then hands
     // the shared path a flag saying not to move anything.
     val inherits = form == CallForm.WithTheNamedAccountsCodeKeepingTheCaller
+    val forbidsChangingState = form == CallForm.ToTheAccountNamedWithoutChangingState
     val taken =
       for
         requested <- frame.stack.pop()
         named <- frame.stack.pop()
-        value <- if inherits then Right(frame.message.value) else frame.stack.pop()
+        // Written out per form rather than as a pair of flags, because this is
+        // what settles how many operands the operation takes and a form added
+        // without an answer here would silently read one belonging to something
+        // else.
+        value <- form match
+          case CallForm.ToTheAccountNamed | CallForm.WithTheNamedAccountsCode => frame.stack.pop()
+          case CallForm.WithTheNamedAccountsCodeKeepingTheCaller              => Right(frame.message.value)
+          case CallForm.ToTheAccountNamedWithoutChangingState                 => Right(Word.Zero)
         inputOffset <- frame.stack.pop()
         inputSize <- frame.stack.pop()
         outputOffset <- frame.stack.pop()
@@ -742,14 +768,32 @@ object Interpreter:
         codeAddress = addressOf(named)
         runsAs = form match
           case CallForm.ToTheAccountNamed                        => codeAddress
+          case CallForm.ToTheAccountNamedWithoutChangingState    => codeAddress
           case CallForm.WithTheNamedAccountsCode                 => frame.message.currentTarget
           case CallForm.WithTheNamedAccountsCodeKeepingTheCaller => frame.message.currentTarget
         // Deliberately NOT `Message.transfersValue`, which this form also
         // decides and which is a weaker claim: that field says the invocation
         // performs the transfer at all, and is true of a call sending nothing.
         sends = !inherits && !value.isZero
+        // THE FORM THAT SENDS NOTHING BY CONSTRUCTION CARRIES NO SURCHARGE
+        // TERM AT ALL, which is not the same as carrying one that happens to be
+        // nothing: its destination is the account it names and so can be
+        // absent, and [[NewAccountCharge.WhenTheDestinationIsAbsent]] does not
+        // read whether value moves. Both authorities omit the term rather than
+        // zeroing it -- the specification's `staticcall` passes an `extra_gas`
+        // of the base alone where `call` adds a `create_gas_cost`
+        // (`ethereum/execution-specs` @ `20f7f6271a`,
+        // `src/ethereum/forks/byzantium/vm/instructions/system.py`), and
+        // `gasStaticCall` adds memory and the forwarded request where `gasCall`
+        // adds `params.CallNewAccountGas` (`ethereum/go-ethereum-pow` @
+        // `v1.10.26`, `core/vm/gas_table.go`).
+        //
+        // The two borrowing forms keep the term, whose scaladoc argues why a
+        // chain never levies it on them. That argument does not reach this form,
+        // because this one's destination is not the account already running.
         ownPrice = schedule.callBase +
-          newAccountSurcharge(environment.rules, world, runsAs, sends, schedule.newAccount) +
+          (if forbidsChangingState then BigInt(0)
+           else newAccountSurcharge(environment.rules, world, runsAs, sends, schedule.newAccount)) +
           (if sends then schedule.callValue else BigInt(0))
         memoryCost = expansionCost(frame, (inputOffset, inputSize), (outputOffset, outputSize))
         granted = environment.rules.gasForwarded
@@ -791,7 +835,12 @@ object Interpreter:
               value = value,
               data = input,
               transfersValue = !inherits,
-              isStatic = frame.message.isStatic,
+              // A STICKY OR: one form sets the flag and none clears it, so a
+              // nesting under an invocation already asked not to change state
+              // stays that way whichever form asked for it. The specification
+              // writes the same expression --
+              // `is_static=params.is_staticcall or evm.message.is_static`.
+              isStatic = frame.message.isStatic || forbidsChangingState,
               depth = frame.message.depth + 1
             ),
             Code(world.codeOf(codeAddress)),
