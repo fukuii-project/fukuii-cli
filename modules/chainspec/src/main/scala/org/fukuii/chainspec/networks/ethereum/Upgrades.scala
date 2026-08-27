@@ -2,7 +2,7 @@ package org.fukuii.chainspec.networks.ethereum
 
 import org.fukuii.bytes.{UInt256, UInt64}
 import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment, UpgradeRules}
-import org.fukuii.chainspec.proposals.eip.{Eip150, Eip155, Eip160, Eip161, Eip170, Eip2, Eip7}
+import org.fukuii.chainspec.proposals.eip.{Eip100, Eip150, Eip155, Eip160, Eip161, Eip170, Eip2, Eip649, Eip7}
 import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, NewAccountCharge, OpcodeTable, Precompile, PrecompileSet}
 import org.fukuii.execution.{AdmissionRules, ExecutionRules}
 import org.fukuii.types.TransactionType
@@ -286,3 +286,26 @@ object Upgrades:
     */
   val spuriousDragon: UpgradeRules =
     tangerineWhistle.adopting(Eip155.component, Eip160.component, Eip161.component, Eip170.component)
+
+  /** [[spuriousDragon]] with EIP-100 and EIP-649 adopted.
+    *
+    * The order is the order the two compose in. It is immaterial -- one names
+    * the algorithm difficulty is targeted by and the other names an amount and
+    * a delay, so no two of the three deltas touch one field -- and it is stated
+    * because two deltas touching one field compose to whichever ran last.
+    *
+    * ==Both deltas write the consensus facet and no other==
+    *
+    * [[spuriousDragon]] and every rule set it was reached through differ from
+    * their predecessors somewhere in the machine, in settlement or in
+    * admission; this one differs from its predecessor in nothing but what a
+    * block owes the mechanism that produced it, and
+    * `org.fukuii.chainspec.proposals.eip.Eip100Spec` and
+    * `org.fukuii.chainspec.proposals.eip.Eip649Spec` each assert the other
+    * three facets survive as the same values rather than as equal copies.
+    *
+    * Which proposals of this network's upgrade are carried here is stated on
+    * the schedule entry that resolves them, because that is where a reader asks
+    * what a node validates at a height.
+    */
+  val byzantium: UpgradeRules = spuriousDragon.adopting(Eip100.component, Eip649.component)

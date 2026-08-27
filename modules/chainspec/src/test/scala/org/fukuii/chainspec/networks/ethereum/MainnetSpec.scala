@@ -45,7 +45,15 @@ class MainnetSpec extends AnyFlatSpec:
   "the schedule" should "carry this network's canonical enumeration in order" in
     assert(
       schedule.entries.map(label) ==
-        Vector("Frontier", "Frontier Thawing", "Homestead", "DAO Fork", "Tangerine Whistle", "Spurious Dragon"),
+        Vector(
+          "Frontier",
+          "Frontier Thawing",
+          "Homestead",
+          "DAO Fork",
+          "Tangerine Whistle",
+          "Spurious Dragon",
+          "Byzantium"
+        ),
       "an enumeration missing an entry misnumbers every entry after it, which is silent rather than absent"
     )
 
@@ -102,7 +110,8 @@ class MainnetSpec extends AnyFlatSpec:
         Activation.AtBlock(UInt64.fromBits(1150000L)),
         Activation.AtBlock(UInt64.fromBits(1920000L)),
         Activation.AtBlock(UInt64.fromBits(2463000L)),
-        Activation.AtBlock(UInt64.fromBits(2675000L))
+        Activation.AtBlock(UInt64.fromBits(2675000L)),
+        Activation.AtBlock(UInt64.fromBits(4370000L))
       ),
       "genesis is excluded by EIP-2124 and thawing by enforcing nothing, leaving the ones that are neither"
     )
