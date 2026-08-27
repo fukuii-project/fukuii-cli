@@ -74,7 +74,7 @@ B2 = f2mul((3, 0), f2inv((9, 1)))
 
 def g2_double(point):
     x, y = point
-    slope = f2mul(((3 * x[0]) % P, (3 * x[1]) % P), f2inv(f2mul((2, 0), y)))
+    slope = f2mul(f2mul((3, 0), f2mul(x, x)), f2inv(f2mul((2, 0), y)))
     xr = f2sub(f2mul(slope, slope), f2mul((2, 0), x))
     return (xr, f2sub(f2mul(slope, f2sub(x, xr)), y))
 
@@ -234,7 +234,7 @@ def from_eest(root):
                 continue
             digest = storage.get("0x02")
             if digest is None:
-                continue
+                raise SystemExit(f"case succeeded and states no digest, so it would be dropped: {identifier}")
             lines.append(f"{op} 0x{data.hex()} keccak:{unprefixed(digest).zfill(64)} eest/{bucket}/{label}")
     return lines
 
@@ -271,12 +271,49 @@ HEADER = """\
 """
 
 
+# EIP-197's own generator of the second group, and that generator with one
+# coefficient moved. The classifier below is used to NAME a refusal and to
+# cross-check every answering row, so it is calibrated against a point it must
+# admit and one it must reject before either use -- a subgroup test that always
+# says "not in the subgroup" would name every on-curve refusal `subgroup` and
+# still look like it was working.
+GENERATOR = (
+    11559732032986387107991004021392285783925812861821192530917403151452391805634,
+    10857046999023057135944570762232829481370756359578518086990519993285655852781,
+    4082367875863433681332203403145435568316851327593401208105741076214120093531,
+    8495653923123431417604973247489272438418190587263600148770280649306958101930,
+)
+
+
+def calibrate():
+    encoded = b"".join(value.to_bytes(32, "big") for value in GENERATOR)
+    if classify_g2(encoded, 0) is not None:
+        raise SystemExit("classifier rejects the generator of the second group")
+    moved = list(GENERATOR)
+    moved[0] = (moved[0] + 1) % P
+    perturbed = b"".join(value.to_bytes(32, "big") for value in moved)
+    if classify_g2(perturbed, 0) != "curve":
+        raise SystemExit("classifier admits a point one step off the curve")
+
+
 def main():
     if len(sys.argv) != 5:
         print(__doc__.strip().splitlines()[2], file=sys.stderr)
         return 2
+    calibrate()
     geth, besu, eest, out_path = (Path(argument) for argument in sys.argv[1:])
     lines = from_geth(geth) + from_besu(besu) + from_eest(eest)
+
+    # Every row a corpus says ANSWERS must be one the model above finds nothing
+    # wrong with. A disagreement is either the model or the corpus being wrong
+    # and neither is something to emit quietly.
+    for line in lines:
+        op, encoded, expectation, name = line.split()
+        if expectation == "halt":
+            continue
+        found = refusal(op, bytes.fromhex(encoded[2:]))
+        if found != "unclassified":
+            raise SystemExit(f"corpus states an answer for a row the rules refuse: {name} ({found})")
 
     Path(out_path).write_text(HEADER + "\n".join(lines) + "\n")
     kinds = {"literal": 0, "keccak": 0, "halt": 0}

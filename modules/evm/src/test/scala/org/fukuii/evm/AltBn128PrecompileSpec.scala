@@ -46,17 +46,25 @@ class AltBn128PrecompileSpec extends AnyFlatSpec:
     * group's order, so it is admitted by every rule EIP-196 states and refused
     * by the one EIP-197 adds.
     *
-    * Its first coordinate is 8, which is what makes it worth naming rather than
-    * reading out of the corpus: everything else about the encoding is zero
-    * except the ordinate the curve equation forces. Taken from the fixture
-    * release, `tests@v20.0.1`,
+    * Its first coordinate is 2048 with no imaginary part, which is what makes
+    * it worth naming rather than reading out of the corpus: everything about
+    * the encoding is zero except that and the ordinate the curve equation
+    * forces. Taken from the fixture release, `tests@v20.0.1`,
     * `blockchain_tests/for_byzantium/byzantium/eip197_ec_pairing/ecpairing_fuzzed/invalid_g2_subgroup`,
     * case `invalid_g2_subgroup_0`.
+    *
+    * ==Built from numbers rather than from a hex literal, and that is not
+    * style==
+    * A four-word encoding written as hex is a string a transcription can split
+    * in the wrong place, and the result stays a plausible input: one nibble too
+    * many makes the whole call 193 bytes, which the length rule refuses --
+    * so a test asserting a refusal still passes, having reached a different
+    * rule. [[word]] cannot produce a field of any other width.
     */
   private val offSubgroup =
-    zeroWord + word(BigInt(8)) +
-      "00104e75a20b641566a0c71c9069a5256391aa31e22021d36c037c108dfb79c66" +
-      "200bf257ae3d66a589214f980a2ae34f9544be2fcbcc13b21f4c1642f31aa4d20"
+    word(BigInt(0)) + word(BigInt(2048)) +
+      word(BigInt("104e75a20b641566a0c71c9069a5256391aa31e22021d36c037c108dfb79c662", 16)) +
+      word(BigInt("00bf257ae3d66a589214f980a2ae34f9544be2fcbcc13b21f4c1642f31aa4d20", 16))
 
   /** The second group's generator, which is on the same curve AND of the
     * group's order -- so a rule that refused the point above by accident would
@@ -83,6 +91,23 @@ class AltBn128PrecompileSpec extends AnyFlatSpec:
       ),
       "EIP-196 states one figure for ECMUL and the input it reads is a fixed width"
     )
+
+  "each of the three" should "charge from the price it was built with rather than from a constant" in {
+    // Built at figures no fork states, so an entry that answered a fork's own
+    // number would be visible. Without this the two cases above pass against an
+    // implementation that ignores its argument entirely, because they build
+    // each entry at the very figure such an implementation would return.
+    val ownPrice = Precompile.AltBn128Add(BigInt(7))
+    val ownScale = Precompile.AltBn128Mul(BigInt(11))
+    val ownPairing = Precompile.AltBn128PairingCheck(BigInt(13), BigInt(17))
+    assert(
+      ownPrice.gasFor(Bytes.Empty) == BigInt(7) &&
+        ownScale.gasFor(Bytes.Empty) == BigInt(11) &&
+        ownPairing.gasFor(Bytes.Empty) == BigInt(13) &&
+        ownPairing.gasFor(bytesOf("00" * 192)) == BigInt(30),
+      "an entry answered a figure other than the one it was built with"
+    )
+  }
 
   "a pairing check" should "cost the base and one more per whole pair" in
     assert(
@@ -162,6 +187,13 @@ class AltBn128PrecompileSpec extends AnyFlatSpec:
   // `p`, so an implementation that reduced instead of refusing would answer
   // alike for both -- which is what makes these a boundary rather than two
   // inputs that happen to fail.
+  //
+  // AT the modulus exactly, the curve rule refuses first and the bound is not
+  // what decides it, so this case pins the outcome rather than the rule. It
+  // cannot be written so that it does: reading p as zero leaves a point on the
+  // curve only if three is a square in this field, and three is not one. The
+  // bound itself is pinned by the case below, where the reduced coordinate
+  // names a point that IS on the curve.
   "a coordinate at the field modulus" should "be refused rather than reduced to the point at infinity" in
     assert(
       add.run(bytesOf(word(fieldModulus) + zeroWord + infinity)) == Left(Halt.InvalidParameter) &&
