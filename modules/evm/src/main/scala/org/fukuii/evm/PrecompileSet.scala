@@ -116,6 +116,15 @@ object PrecompileSet:
     */
   val ModExp: Address = addressOf(0x05)
 
+  /** The sum of two points of the first group of `alt_bn128`. */
+  val AltBn128Add: Address = addressOf(0x06)
+
+  /** A point of the first group of `alt_bn128` scaled by a whole word. */
+  val AltBn128Mul: Address = addressOf(0x07)
+
+  /** Whether a list of point pairs of `alt_bn128` pairs to one. */
+  val AltBn128PairingCheck: Address = addressOf(0x08)
+
   /** The address a low number names, which is how the field writes these: a
     * precompile sits at the low end of the space and everything above it is
     * zero.

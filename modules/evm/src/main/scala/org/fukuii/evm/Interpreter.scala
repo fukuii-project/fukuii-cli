@@ -105,12 +105,18 @@ object Interpreter:
       result
 
   /** Charges for a precompile and runs it, or halts because it cannot be paid
-    * for.
+    * for or because the input has no answer.
     *
     * The charge comes first, so an invocation that cannot afford the answer
     * never computes it. A shortfall is an ordinary exceptional halt and keeps
     * nothing, which is the same rule [[execute]] applies to an operation that
     * cannot pay.
+    *
+    * A precompile that refuses its input keeps nothing either, and for the same
+    * reason: every member of [[Halt]] is an exceptional halt. So the two arms
+    * differ in the reason they carry and in nothing a caller can observe --
+    * which is why the remainder is zeroed in both rather than only in the
+    * first.
     */
   private def runNatively(frame: Frame, precompile: Precompile): Outcome =
     frame.charge(precompile.gasFor(frame.message.data)) match
@@ -118,8 +124,13 @@ object Interpreter:
         frame.gasLeft = BigInt(0)
         Outcome.Halted(halt)
       case Right(()) =>
-        frame.output = precompile.run(frame.message.data)
-        Outcome.Stopped(frame.gasLeft, frame.output)
+        precompile.run(frame.message.data) match
+          case Left(halt) =>
+            frame.gasLeft = BigInt(0)
+            Outcome.Halted(halt)
+          case Right(answer) =>
+            frame.output = answer
+            Outcome.Stopped(frame.gasLeft, frame.output)
 
   /** Moves an invocation's value from its caller to the account it runs as,
     * where the invocation is one that moves it at all.

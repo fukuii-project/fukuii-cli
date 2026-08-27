@@ -89,47 +89,51 @@ class PrecompileSpec extends AnyFlatSpec:
 
   "ecrecover" should "recover the published signer from the assembled vector" in
     assert(
-      ecRecover.run(signature(BigInt(28), validR, validS)).toHex == signer,
+      ecRecover.run(signature(BigInt(28), validR, validS)).map(_.toHex) == Right(signer),
       "the assembly below is what every negative case moves one field of, so it has to be right first"
     )
 
   it should "answer nothing for a recovery identifier one below the pair it admits" in
-    assert(ecRecover.run(signature(BigInt(26), validR, validS)).isEmpty, "26 is not a value this fork admits")
+    assert(
+      ecRecover.run(signature(BigInt(26), validR, validS)) == Right(Bytes.Empty),
+      "26 is not a value this fork admits"
+    )
 
   it should "answer nothing for a recovery identifier one above the pair it admits" in
     assert(
-      ecRecover.run(signature(BigInt(29), validR, validS)).isEmpty,
+      ecRecover.run(signature(BigInt(29), validR, validS)) == Right(Bytes.Empty),
       "29 maps onto a recovery identifier the curve has and this fork does not admit, so only this check rejects it"
     )
 
   it should "answer nothing for a zero r" in
-    assert(ecRecover.run(signature(BigInt(28), BigInt(0), validS)).isEmpty, "r must be at least one")
+    assert(ecRecover.run(signature(BigInt(28), BigInt(0), validS)) == Right(Bytes.Empty), "r must be at least one")
 
   it should "answer nothing for a zero s" in
-    assert(ecRecover.run(signature(BigInt(28), validR, BigInt(0))).isEmpty, "s must be at least one")
+    assert(ecRecover.run(signature(BigInt(28), validR, BigInt(0))) == Right(Bytes.Empty), "s must be at least one")
 
   it should "answer nothing for an r above the curve order" in
     assert(
-      ecRecover.run(signature(BigInt(28), aboveEveryOrder, validS)).isEmpty,
+      ecRecover.run(signature(BigInt(28), aboveEveryOrder, validS)) == Right(Bytes.Empty),
       "an out-of-range r answers, not faults"
     )
 
   it should "answer nothing for an s above the curve order" in
     assert(
-      ecRecover.run(signature(BigInt(28), validR, aboveEveryOrder)).isEmpty,
+      ecRecover.run(signature(BigInt(28), validR, aboveEveryOrder)) == Right(Bytes.Empty),
       "an out-of-range s answers, not faults"
     )
 
   it should "answer nothing for an empty input" in
     assert(
-      ecRecover.run(Bytes.Empty).isEmpty,
+      ecRecover.run(Bytes.Empty) == Right(Bytes.Empty),
       "a short input is read as one whose remaining fields are zero, and a zero v is not admitted"
     )
 
   it should "ignore everything past the signature it reads" in
     assert(
-      ecRecover.run(Bytes.fromArray(signature(BigInt(28), validR, validS).toArray ++ new Array[Byte](64))).toHex ==
-        signer,
+      ecRecover
+        .run(Bytes.fromArray(signature(BigInt(28), validR, validS).toArray ++ new Array[Byte](64)))
+        .map(_.toHex) == Right(signer),
       "the input it reads is a fixed width, so trailing bytes change nothing"
     )
 
@@ -142,19 +146,27 @@ class PrecompileSpec extends AnyFlatSpec:
   // ── The digests and the copy ─────────────────────────────────────────────
 
   "sha256" should "answer a whole word" in
-    assert(sha256.run(filling(7)).length == Word.Width, "the digest is already a word wide and is not padded")
+    assert(
+      sha256.run(filling(7)).map(_.length) == Right(Word.Width),
+      "the digest is already a word wide and is not padded"
+    )
 
   "ripemd160" should "answer a whole word, not the width of its digest" in
-    assert(ripemd160.run(filling(7)).length == Word.Width, "the 20-byte digest sits in the low end of a word")
+    assert(
+      ripemd160.run(filling(7)).map(_.length) == Right(Word.Width),
+      "the 20-byte digest sits in the low end of a word"
+    )
 
   it should "leave the bytes above its digest zero" in
     assert(
-      ripemd160.run(filling(7)).toHex.take((Word.Width - org.fukuii.crypto.Ripemd160.Width) * 2) == "0" * 24,
+      ripemd160.run(filling(7)).map(_.toHex.take((Word.Width - org.fukuii.crypto.Ripemd160.Width) * 2)) == Right(
+        "0" * 24
+      ),
       "the padding is on the left"
     )
 
   "identity" should "answer nothing for an empty input" in
-    assert(identity.run(Bytes.Empty).isEmpty, "a copy of nothing is nothing")
+    assert(identity.run(Bytes.Empty) == Right(Bytes.Empty), "a copy of nothing is nothing")
 
   it should "charge only its base for an empty input" in
     assert(identity.gasFor(Bytes.Empty) == EvmFixtures.schedule.precompileIdentityBase, "no bytes is no words")
@@ -167,7 +179,7 @@ class PrecompileSpec extends AnyFlatSpec:
     // can hold, so an implementation reading the operands first would try to
     // build it. `ethereum/execution-specs` @ `20f7f6271a`, modexp.py:48-50.
     assert(
-      modExp.run(modExpInput(0, BigInt(2).pow(200), 0, "ff")).isEmpty,
+      modExp.run(modExpInput(0, BigInt(2).pow(200), 0, "ff")) == Right(Bytes.Empty),
       "a pair of empty declared lengths is answered before anything is read"
     )
 
@@ -182,12 +194,12 @@ class PrecompileSpec extends AnyFlatSpec:
     )
 
   it should "answer nothing for an input of no bytes at all" in
-    assert(modExp.run(Bytes.Empty).isEmpty, "three lengths read past the end are three zeroes")
+    assert(modExp.run(Bytes.Empty) == Right(Bytes.Empty), "three lengths read past the end are three zeroes")
 
   it should "answer at the modulus's declared width where the value is narrower" in
     // 7**2 mod 11 = 5 in a modulus declared four bytes wide.
     assert(
-      modExp.run(modExpInput(1, 1, 4, "0702" + "0000000b")).toHex == "00000005",
+      modExp.run(modExpInput(1, 1, 4, "0702" + "0000000b")).map(_.toHex) == Right("00000005"),
       "the answer is as wide as the modulus was declared, not as wide as the value"
     )
 
@@ -195,7 +207,7 @@ class PrecompileSpec extends AnyFlatSpec:
     // "if modulus == 0: evm.output = Bytes(b"\x00") * modulus_length",
     // modexp.py:60-61.
     assert(
-      modExp.run(modExpInput(1, 1, 3, "0702" + "000000")).toHex == "000000",
+      modExp.run(modExpInput(1, 1, 3, "0702" + "000000")).map(_.toHex) == Right("000000"),
       "a modulus of zero is answered in zeroes rather than refused"
     )
 
@@ -204,7 +216,7 @@ class PrecompileSpec extends AnyFlatSpec:
     // the power of nothing -- which is the arm an implementation shortcutting a
     // zero exponent to one would answer 0x000001 for.
     assert(
-      modExp.run(modExpInput(1, 0, 3, "07" + "000001")).toHex == "000000",
+      modExp.run(modExpInput(1, 0, 3, "07" + "000001")).map(_.toHex) == Right("000000"),
       "a modulus of one leaves nothing behind, whatever the exponent is"
     )
 
@@ -214,8 +226,8 @@ class PrecompileSpec extends AnyFlatSpec:
     // right-pads it with 31 zero bytes". `ethereum/EIPs` @ `9e393a79`,
     // EIPS/eip-198.md.
     assert(
-      modExp.run(modExpInput(1, 2, 32, "03" + "ffff" + "80")).toHex ==
-        "3b01b01ac41f2d6e917c6d6a221ce793802469026d9ab7578fa2e79e4da6aaab",
+      modExp.run(modExpInput(1, 2, 32, "03" + "ffff" + "80")).map(_.toHex) ==
+        Right("3b01b01ac41f2d6e917c6d6a221ce793802469026d9ab7578fa2e79e4da6aaab"),
       "a modulus shorter than its declared length is read as one padded on the right"
     )
 

@@ -5,7 +5,14 @@ import org.fukuii.bytes.{Address, Bytes, Hash}
 // carry the ecosystem's names for the ENTRIES -- `Sha256`, `Ripemd160` -- and a
 // nested class would otherwise shadow the primitive its own body calls. The
 // alias names what each object is rather than renaming it: a digest.
-import org.fukuii.crypto.{Keccak256, Ripemd160 as Ripemd160Digest, Secp256k1, Sha256 as Sha256Digest, Signature}
+import org.fukuii.crypto.{
+  AltBn128,
+  Keccak256,
+  Ripemd160 as Ripemd160Digest,
+  Secp256k1,
+  Sha256 as Sha256Digest,
+  Signature
+}
 
 /** A contract the machine runs natively rather than by interpreting code.
   *
@@ -16,15 +23,24 @@ import org.fukuii.crypto.{Keccak256, Ripemd160 as Ripemd160Digest, Secp256k1, Sh
   * exceptional halt. Answering first and pricing afterwards would spend gas the
   * caller did not have, which is a divergence rather than an inefficiency.
   *
-  * ==Failing is an answer here, not a refusal==
+  * ==Two ways to fail, and they are answered in different places==
   *
-  * [[run]] returns bytes for every input, and there is no shape in this
-  * signature for declining. A precompile handed input it cannot make sense of
-  * answers with nothing, having consumed its whole charge, and the invocation
-  * SUCCEEDS -- the specification returns early leaving the output empty, and
-  * go-ethereum returns a nil output beside a nil error. The one failure a
-  * precompile at this fork can produce is running out of gas, and that is
-  * settled by the charge above rather than by anything below.
+  * Running out of gas is settled by the charge above, before [[run]] is
+  * reached. Input the native cannot make sense of is [[run]]'s own, and the two
+  * are not the same failure: the first is a caller who could not pay for an
+  * answer, the second is a caller who paid and asked something that has none.
+  *
+  * ==A refusal is NOT an empty answer, and three of the natives here would
+  * read as though it were==
+  *
+  * The earliest natives answer with nothing rather than declining -- a
+  * signature that recovers no address produces no bytes and a SUCCESSFUL
+  * invocation. That is the specification's own rule for them and it is not a
+  * general one: a native introduced later refuses outright, halting
+  * exceptionally and keeping nothing. Collapsing the two would make a refused
+  * curve point look like a signature that failed to recover, which is a
+  * different chain outcome -- the first reverts the invocation and the second
+  * does not.
   *
   * ==Open by construction, which is why this is a trait and not an enum==
   *
@@ -37,8 +53,12 @@ trait Precompile:
   /** What `input` costs, settled before anything is computed from it. */
   def gasFor(input: Bytes): BigInt
 
-  /** The answer, which is empty where the input cannot be made sense of. */
-  def run(input: Bytes): Bytes
+  /** The answer, or why the input has none.
+    *
+    * A refusal consumes the whole invocation: every member of [[Halt]] is an
+    * exceptional halt, so a caller sees a failed call and gets nothing back.
+    */
+  def run(input: Bytes): Either[Halt, Bytes]
 
 /** The natives this machine can run, each priced by whoever builds the set.
   *
@@ -75,7 +95,12 @@ trait Precompile:
   * and `params/protocol_params.go`. [[ModExp]] arrives with a later proposal
   * and is `ethereum/execution-specs` @ `20f7f6271a`,
   * `forks/byzantium/vm/precompiled_contracts/modexp.py`, read against
-  * `ethereum/go-ethereum-pow` @ `v1.10.26`, `core/vm/contracts.go`.
+  * `ethereum/go-ethereum-pow` @ `v1.10.26`, `core/vm/contracts.go`. The three
+  * that answer over a curve arrive with two further proposals and are
+  * `ethereum/EIPs` @ `dbfa6bee83`, `EIPS/eip-196.md` and `EIPS/eip-197.md`,
+  * read against the same specification's
+  * `forks/byzantium/vm/precompiled_contracts/alt_bn128.py` and the same
+  * client's `core/vm/contracts.go`.
   */
 object Precompile:
 
@@ -103,12 +128,12 @@ object Precompile:
     */
   final case class EcRecover(gas: BigInt) extends Precompile:
     def gasFor(input: Bytes): BigInt = gas
-    def run(input: Bytes): Bytes = signerOf(input)
+    def run(input: Bytes): Either[Halt, Bytes] = Right(signerOf(input))
 
   /** The SHA-256 digest of the input. */
   final case class Sha256(base: BigInt, perWord: BigInt) extends Precompile:
     def gasFor(input: Bytes): BigInt = costPerWord(base, perWord, input)
-    def run(input: Bytes): Bytes = Bytes.fromIArray(Sha256Digest.hash(input.toIArray).toBytes)
+    def run(input: Bytes): Either[Halt, Bytes] = Right(Bytes.fromIArray(Sha256Digest.hash(input.toIArray).toBytes))
 
   /** The RIPEMD-160 digest, left-padded into a whole word.
     *
@@ -117,12 +142,12 @@ object Precompile:
     */
   final case class Ripemd160(base: BigInt, perWord: BigInt) extends Precompile:
     def gasFor(input: Bytes): BigInt = costPerWord(base, perWord, input)
-    def run(input: Bytes): Bytes = leftPadded(Ripemd160Digest.hash(input.toIArray))
+    def run(input: Bytes): Either[Halt, Bytes] = Right(leftPadded(Ripemd160Digest.hash(input.toIArray)))
 
   /** The input, unchanged. */
   final case class Identity(base: BigInt, perWord: BigInt) extends Precompile:
     def gasFor(input: Bytes): BigInt = costPerWord(base, perWord, input)
-    def run(input: Bytes): Bytes = input
+    def run(input: Bytes): Either[Halt, Bytes] = Right(input)
 
   /** `base ** exponent mod modulus`, over operands whose widths the input
     * itself declares.
@@ -200,7 +225,9 @@ object Precompile:
       (multiplicationComplexity(baseLength.max(modulusLength)) *
         adjustedExponentLength(exponentLength, exponentHead).max(1)) / divisor
 
-    def run(input: Bytes): Bytes =
+    def run(input: Bytes): Either[Halt, Bytes] = Right(answerFor(input))
+
+    private def answerFor(input: Bytes): Bytes =
       val baseLength = lengthAt(input, 0)
       val exponentLength = lengthAt(input, Word.Width)
       val modulusLength = lengthAt(input, 2 * Word.Width)
@@ -215,6 +242,62 @@ object Precompile:
           val base = valueAt(input, BaseOffset, baseLength)
           val exponent = valueAt(input, exponentOffset, exponentLength)
           leftPaddedTo(answerWidth, base.modPow(exponent, modulus))
+
+  /** The sum of two points of the first group of `alt_bn128`.
+    *
+    * Flat-priced, because the input it reads is a fixed width however much was
+    * supplied -- and it is supplied at any width, EIP-196 padding a short input
+    * with zeroes and ignoring anything past the two points.
+    */
+  final case class AltBn128Add(gas: BigInt) extends Precompile:
+    def gasFor(input: Bytes): BigInt = gas
+    def run(input: Bytes): Either[Halt, Bytes] = answering(AltBn128.sum(input.toIArray))
+
+  /** A point of the first group of `alt_bn128` scaled by a whole word.
+    *
+    * Flat-priced for [[AltBn128Add]]'s reason. The scalar is unconstrained --
+    * one at or above the group's order names a point rather than an error --
+    * so the only refusal here is the point itself.
+    */
+  final case class AltBn128Mul(gas: BigInt) extends Precompile:
+    def gasFor(input: Bytes): BigInt = gas
+    def run(input: Bytes): Either[Halt, Bytes] = answering(AltBn128.scaled(input.toIArray))
+
+  /** Whether the pairing product over a list of point pairs is one.
+    *
+    * ==One "point" is a PAIR, which is what the price counts==
+    *
+    * EIP-197 gives the charge as `80 000 * k + 100 000` where *"`k` is the
+    * number of points or, equivalently, the length of the input divided by
+    * 192"* -- and 192 is a point from each group, so the document's "point" is
+    * both of them together. Charging per encoded point would double the price.
+    *
+    * ==The charge is settled from a floor and the length rule is checked
+    * after==
+    *
+    * An input whose length is not a whole number of pairs is charged for the
+    * pairs it does contain and then refused, which is the specification's
+    * order: it charges from `len(data) // 192` and raises afterwards. So a
+    * caller supplying 191 bytes pays the base and gets nothing, and one who
+    * cannot pay the base is turned away before the length is ever looked at.
+    */
+  final case class AltBn128PairingCheck(base: BigInt, perPoint: BigInt) extends Precompile:
+    def gasFor(input: Bytes): BigInt = base + perPoint * BigInt(input.length / AltBn128.PairWidth)
+    def run(input: Bytes): Either[Halt, Bytes] =
+      AltBn128
+        .pairingIsOne(input.toIArray)
+        .map(held => Word(if held then BigInt(1) else BigInt(0)).toBytes)
+        .toRight(Halt.InvalidParameter)
+
+  /** An answer the curve produced, or the halt its absence means.
+    *
+    * The three natives above share one refusal because the curve gives them
+    * one: a field element at or above the modulus, a point off the curve and a
+    * point off the group are the same outcome to a caller, which is the whole
+    * invocation failing and keeping nothing.
+    */
+  private def answering(answer: Option[IArray[Byte]]): Either[Halt, Bytes] =
+    answer.map(Bytes.fromIArray).toRight(Halt.InvalidParameter)
 
   /** A settled charge plus one per whole word, counting a partial word as a
     * whole one.

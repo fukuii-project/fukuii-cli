@@ -266,7 +266,7 @@ class PrecompilePropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
   property("ecrecover answers what go-ethereum and besu publish") {
     forAll(recoveries) { (name: String, input: String, expectedHex: String) =>
-      assert(of(PrecompileSet.EcRecover).run(bytes(input)).toHex == expectedHex, name)
+      assert(of(PrecompileSet.EcRecover).run(bytes(input)).map(_.toHex) == Right(expectedHex), name)
     }
   }
 
@@ -281,19 +281,19 @@ class PrecompilePropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
   property("sha256 answers the digest, unpadded") {
     forAll(digests) { (input: String, sha256Hex: String, _: String) =>
-      assert(of(PrecompileSet.Sha256).run(ascii(input)).toHex == sha256Hex, "sha256 of " + input)
+      assert(of(PrecompileSet.Sha256).run(ascii(input)).map(_.toHex) == Right(sha256Hex), "sha256 of " + input)
     }
   }
 
   property("ripemd160 answers the digest in the low end of a word") {
     forAll(digests) { (input: String, _: String, ripemd160Hex: String) =>
-      assert(of(PrecompileSet.Ripemd160).run(ascii(input)).toHex == ripemd160Hex, "ripemd160 of " + input)
+      assert(of(PrecompileSet.Ripemd160).run(ascii(input)).map(_.toHex) == Right(ripemd160Hex), "ripemd160 of " + input)
     }
   }
 
   property("identity answers exactly what it was given") {
     forAll(digests) { (input: String, _: String, _: String) =>
-      assert(of(PrecompileSet.Identity).run(ascii(input)) == ascii(input), "identity of " + input)
+      assert(of(PrecompileSet.Identity).run(ascii(input)) == Right(ascii(input)), "identity of " + input)
     }
   }
 
@@ -353,7 +353,7 @@ class PrecompilePropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
   property("modexp answers what the corpus states") {
     val answered = Table("vector", modExpCorpus.filter(_.answer.isDefined)*)
     forAll(answered) { (vector: ModExpVector) =>
-      assert(modExp.run(vector.input) == vector.answer.get, vector.name)
+      assert(modExp.run(vector.input) == Right(vector.answer.get), vector.name)
     }
   }
 
@@ -369,6 +369,6 @@ class PrecompilePropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
       ) =>
         val input =
           bytes(declared(baseLength) + declared(exponentLength) + declared(modulusLength) + operands)
-        assert(modExp.run(input).toHex == answer, source)
+        assert(modExp.run(input).map(_.toHex) == Right(answer), source)
     }
   }

@@ -26,7 +26,7 @@ class PrecompileSetSpec extends AnyFlatSpec:
     */
   private val marker: Precompile = new Precompile:
     def gasFor(input: Bytes): BigInt = BigInt(1)
-    def run(input: Bytes): Bytes = EvmFixtures.bytesOf("ff")
+    def run(input: Bytes): Either[Halt, Bytes] = Right(EvmFixtures.bytesOf("ff"))
 
   // ── The addresses ────────────────────────────────────────────────────────
 

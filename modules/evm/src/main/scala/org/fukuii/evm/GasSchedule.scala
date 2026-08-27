@@ -151,6 +151,14 @@ final case class GasSchedule(
     // than a placement and a repricing at once, the shape `transactionCreate`
     // above is held at zero for.
     precompileModExpDivisor: BigInt,
+    precompileAltBn128Add: BigInt,
+    precompileAltBn128Mul: BigInt,
+    // What a pairing check costs before any pair is read, and what each pair
+    // adds. A "point" is the ecosystem's word for one PAIR here -- a point from
+    // each group, 192 bytes -- because that is what the proposal's own formula
+    // counts.
+    precompileAltBn128PairingBase: BigInt,
+    precompileAltBn128PairingPerPoint: BigInt,
     // THE TRANSACTION-INTRINSIC PRICES. They belong here and not beside the
     // caller that charges them, because both authorities keep them in the same
     // repriceable record as everything above -- and because EIP-2028 is exactly
