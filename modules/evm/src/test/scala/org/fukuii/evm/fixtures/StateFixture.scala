@@ -44,12 +44,45 @@ final case class ExpectedRejection(stated: Set[String]):
   /** The corpus's wording, for a divergence a reader has to act on. */
   def describe: String = stated.toVector.sorted.mkString(" or ")
 
-/** What a state fixture expects one combination to produce. */
+/** What a state fixture expects one combination to produce.
+  *
+  * @param receipt
+  *   the receipt the fixture published, as the octets a receipts trie stores,
+  *   or nothing where it published none.
+  *
+  *   **Read from the `rlp` member and never from the field that names the
+  *   fork's rule**, which is what a reader is drawn to and cannot use. A
+  *   receipt object carries seven members and the one stating whether the
+  *   transaction succeeded is SIXTH: `transactionHash`, `type`,
+  *   `cumulativeGasUsed`, `bloom`, `logs`, then `postState` or `status`, then
+  *   `rlp`. Its NAME is the fork's answer, so a reader keyed on it needs a
+  *   fork-dependent branch, and the wrong branch asks for a member that is not
+  *   there and reports nothing published -- a check that vanishes rather than
+  *   fails. `rlp` is spelled the same at every fork, so reading it needs no
+  *   branch to get wrong, and it holds the same statement plus the other three
+  *   fields.
+  *
+  *   Measured over the generated tier at the `tests@v20.0.1` release,
+  *   2026-08-27, across the four directories this build reads and the one
+  *   filled for the fork that replaces the field: that member order holds for
+  *   every receipt in all five -- 524, 535, 526 and 526 filled for Frontier
+  *   through Spurious Dragon, and 1834 for Byzantium. The four earlier ones
+  *   state `postState` and the last states `status`, and no receipt in any of
+  *   them states both. So a reader branching on the name would be right in one
+  *   half of the corpus and silent in the other, which is the shape that
+  *   reports nothing rather than failing.
+  *
+  *   **The legacy tier publishes no receipt at all**, so this is empty for
+  *   every case in it: all 31,291 post entries across its 2,394 files carry
+  *   exactly `hash`, `indexes` and `logs`. Agreement there is not evidence
+  *   about a receipt.
+  */
 final case class StateExpectation(
     root: Hash,
     logs: Option[Hash],
     state: Option[Map[Address, FixtureAccount]],
-    rejection: Option[ExpectedRejection]
+    rejection: Option[ExpectedRejection],
+    receipt: Option[Bytes]
 )
 
 /** One executable combination of a state fixture: a name, a pre-state, one
@@ -303,6 +336,32 @@ object StateFixture:
       ExpectedRejection(text.split('|').map(_.trim).filter(_.nonEmpty).toSet)
     }
 
+  /** The octets of the receipt a combination publishes, where it publishes one.
+    *
+    * ==Absent and unreadable are kept apart, as they are for a signature==
+    *
+    * A fixture that states no receipt is a fact about the corpus. A receipt
+    * object with no `rlp` in it is a broken file, and folding the second into
+    * the first would drop the comparison silently on exactly the fixture whose
+    * shape had changed.
+    *
+    * Across the five generated directories read for this, a receipt is present
+    * on every entry expecting execution and on no entry naming an exception --
+    * so its absence carries the same information as `expectException` and is
+    * not a second thing to check.
+    */
+  private def receiptOf(entry: Json): Either[String, Option[Bytes]] =
+    entry.hcursor.downField("receipt").focus match
+      case None       => Right(None)
+      case Some(json) =>
+        json.hcursor
+          .downField("rlp")
+          .as[String]
+          .left
+          .map(_ => "a published receipt states no rlp")
+          .flatMap(FixtureValues.bytesOf)
+          .map(Some(_))
+
   private def expectationOf(entry: Json): Either[String, StateExpectation] =
     val cursor = entry.hcursor
     val rejection = rejectionOf(entry)
@@ -314,4 +373,5 @@ object StateFixture:
       state <- cursor.downField("state").focus match
         case None       => Right(None)
         case Some(json) => FixtureValues.accounts(json).map(Some(_))
-    yield StateExpectation(root, logs, state, rejection)
+      receipt <- receiptOf(entry)
+    yield StateExpectation(root, logs, state, rejection, receipt)

@@ -2,7 +2,7 @@ package org.fukuii.execution
 
 import org.fukuii.bytes.{Address, Hash, UInt64}
 import org.fukuii.evm.{BlockContext, EvmRules, JournaledWorldState, Unsupported, WorldState}
-import org.fukuii.types.{Log, PostStateOrStatus, Receipt, Transaction}
+import org.fukuii.types.{Log, PostStateOrStatus, Receipt, Transaction, TransactionType}
 
 /** What processing one block produced.
   *
@@ -303,7 +303,8 @@ object BlockProcessor:
           TransactionProcessor.settle(settling, journal, destroyAccount, block, blockHashAt, evm, execution)
         val used = output.gasUsed + settlement.gasUsed
         BlockOutput(
-          receipts = output.receipts :+ receiptFor(transaction, settlement, used, stateRootAfterTransaction, execution),
+          receipts = output.receipts :+
+            receiptFor(transaction.transactionType, settlement, used, stateRootAfterTransaction, execution),
           gasUsed = used,
           unbuilt = output.unbuilt.orElse(settlement.unbuilt)
         )
@@ -331,9 +332,24 @@ object BlockProcessor:
     * nothing else it could be: a receipt's bloom is a function of its own logs,
     * and taking it from anywhere else is how a receipts root goes wrong in a
     * way no other field reveals.
+    *
+    * ==Reachable from outside a block, because a receipt is settled one
+    * transaction at a time==
+    *
+    * A caller that settles a transaction without a block around it holds
+    * everything below and has no other way to reach the receipt that
+    * transaction leaves. Keeping this private would leave such a caller to
+    * write the fork branch again, and a second reading of
+    * [[ExecutionRules.receiptCarriesStatus]] is exactly the duplicate that
+    * makes a corpus agree with a copy of the rule rather than with the rule.
+    *
+    * It asks for the format rather than the transaction because the format is
+    * all it reads of one, and a caller holding a transaction that was never
+    * signed -- which the published state corpora are full of -- has a format
+    * and no envelope to take it from.
     */
-  private def receiptFor(
-      transaction: Transaction,
+  def receiptFor(
+      transactionType: TransactionType,
       settlement: Settlement,
       cumulativeGasUsed: BigInt,
       stateRootAfterTransaction: () => Hash,
@@ -344,7 +360,7 @@ object BlockProcessor:
         if settlement.succeeded then PostStateOrStatus.Successful else PostStateOrStatus.Failed
       else PostStateOrStatus.PostState(stateRootAfterTransaction())
     Receipt.withDerivedBloom(
-      transaction.transactionType,
+      transactionType,
       outcome,
       cumulativeReceiptGas(cumulativeGasUsed),
       settlement.logs

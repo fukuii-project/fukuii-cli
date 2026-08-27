@@ -2,12 +2,13 @@ package org.fukuii.chainspec.certification
 
 import org.fukuii.evm.fixtures.*
 
-import org.fukuii.bytes.{Address, UInt64}
+import org.fukuii.bytes.{Address, Bytes, Hash, UInt64}
 import org.fukuii.chainspec.UpgradeRules
 import org.fukuii.crypto.Keccak256
 import org.fukuii.evm.{JournaledWorldState, StateTrieWorldState}
 import org.fukuii.execution.{
   Admission,
+  BlockProcessor,
   OfferedTransaction,
   Refusal,
   Settlement,
@@ -16,7 +17,7 @@ import org.fukuii.execution.{
 }
 import org.fukuii.rlp.RlpCodec
 import org.fukuii.trie.StateTrie
-import org.fukuii.types.{Log, Transaction}
+import org.fukuii.types.{Log, Receipt, Transaction}
 
 /** Runs one state fixture: seeds the pre-state, admits the transaction, settles
   * whatever was admitted, and compares the state it reached against the
@@ -153,11 +154,11 @@ object StateFixtureRunner:
     // ones -- and a client meeting one on the wire refuses it by format first
     // for the same reason.
     if !TransactionAdmission.admitsFormat(fixture.transaction.kind, rules.admission) then
-      judge(fixture, base, trie, Left(Refusal.TypeNotAdmitted))
+      judge(fixture, base, trie, rules, Left(Refusal.TypeNotAdmitted))
     else
       signerOf(fixture.transaction, chainId, rules) match
         case Signer.Unreadable(detail) => Verdict.Skipped(SkipReason.Undecodable(detail))
-        case Signer.Refused(reason)    => judge(fixture, base, trie, Left(reason))
+        case Signer.Refused(reason)    => judge(fixture, base, trie, rules, Left(reason))
         case Signer.Settled(sender)    => executeSigned(fixture, sender, rules, trie, base)
 
   private def executeSigned(
@@ -177,7 +178,7 @@ object StateFixtureRunner:
       rules.admission,
       rules.evm.schedule
     ) match
-      case Admission.Refused(reason)    => judge(fixture, base, trie, Left(reason))
+      case Admission.Refused(reason)    => judge(fixture, base, trie, rules, Left(reason))
       case Admission.Admitted(admitted) =>
         val settlement = TransactionProcessor.settle(
           admitted,
@@ -188,7 +189,7 @@ object StateFixtureRunner:
           rules.evm,
           rules.execution
         )
-        judge(fixture, base, trie, Right(settlement))
+        judge(fixture, base, trie, rules, Right(settlement))
 
   /** The fixture's transaction as the values admission reads.
     *
@@ -220,6 +221,7 @@ object StateFixtureRunner:
       fixture: StateFixture,
       base: StateTrieWorldState,
       trie: StateTrie,
+      rules: UpgradeRules,
       outcome: Either[Refusal, Settlement]
   ): Verdict =
     val expected = fixture.expectation
@@ -241,9 +243,70 @@ object StateFixtureRunner:
       val slots = (address: Address) => fixture.pre.get(address).fold(Set.empty[BigInt])(_.storage.keySet)
       FixtureValues.divergences(base, wanted, slots)
     }
+    val receipt = expected.receipt.zip(outcome.toOption).flatMap { case (published, settled) =>
+      receiptDivergence(published, receiptLeftBy(fixture, settled, root, rules))
+    }
     val all =
-      rootDivergence.toVector ++ logDivergence.toVector ++ settlement.toVector ++ unbuilt.toVector ++ accounts
+      rootDivergence.toVector ++ logDivergence.toVector ++ settlement.toVector ++ unbuilt.toVector ++
+        receipt.toVector ++ accounts
     if all.isEmpty then Verdict.Agreed else Verdict.Diverged(all)
+
+  /** The receipt this transaction leaves, built by the layer a node runs.
+    *
+    * ==The cumulative figure is this transaction's own, and only because a
+    * state fixture is one transaction==
+    *
+    * A receipt states the gas the BLOCK has used through it, which is the same
+    * number as the transaction's own where there is nothing before it. That is
+    * a property of this corpus rather than of receipts, and it is why the
+    * accumulation across a block is `org.fukuii.execution.BlockProcessorSpec`'s
+    * to assert and not reachable here at all.
+    *
+    * The root passed is the one already taken above, so a fork whose receipts
+    * carry a root compares against the same state this verdict compares against
+    * -- and a fork whose receipts carry a status never asks for it.
+    */
+  private def receiptLeftBy(
+      fixture: StateFixture,
+      settlement: Settlement,
+      root: Hash,
+      rules: UpgradeRules
+  ): Receipt =
+    BlockProcessor.receiptFor(fixture.transaction.kind, settlement, settlement.gasUsed, () => root, rules.execution)
+
+  /** How the receipt this build produced differs from the one the fixture
+    * published, where it does.
+    *
+    * ==The octets decide, and the decode is only for the report==
+    *
+    * What a receipts trie stores is these bytes, so a receipt that encodes
+    * differently is a different receipts root whatever its fields say. Comparing
+    * the decoded values instead would put this build's own decoder in front of
+    * the comparison, where a decoder that dropped a distinction would hide an
+    * encoder that dropped the same one.
+    *
+    * So the verdict is the byte comparison and the wording below is a reading of
+    * why -- including the case where every field agrees, which means the two
+    * encode one set of values two ways and is a finding in its own right.
+    */
+  private def receiptDivergence(published: Bytes, built: Receipt): Option[String] =
+    Option.when(Bytes.fromIArray(Receipt.canonicalBytes(built)) != published) {
+      Receipt.fromCanonicalBytes(published.toIArray) match
+        case Left(error)   => "the published receipt does not decode: " + error
+        case Right(wanted) =>
+          val fields = Vector(
+            differing("first field", built.postStateOrStatus, wanted.postStateOrStatus),
+            differing("cumulative gas", built.cumulativeGasUsed.toBigInt, wanted.cumulativeGasUsed.toBigInt),
+            differing("format", built.transactionType, wanted.transactionType),
+            differing("bloom", built.logsBloom.toHex, wanted.logsBloom.toHex),
+            Option.when(built.logs != wanted.logs)("its logs")
+          ).flatten
+          if fields.isEmpty then "receipt: the same values encoded to octets the published receipt does not hold"
+          else "receipt: " + fields.mkString("; ")
+    }
+
+  private def differing[A](field: String, built: A, wanted: A): Option[String] =
+    Option.when(built != wanted)(field + " " + built.toString + " != " + wanted.toString)
 
   /** Which of the refusals a fixture names this build can actually produce. */
   private def accepted(expectation: ExpectedRejection): Set[Refusal] =

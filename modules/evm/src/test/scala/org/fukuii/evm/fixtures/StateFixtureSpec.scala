@@ -4,7 +4,8 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 import org.fukuii.types.TransactionType
 
-/** What format the reader names for one combination of a state case's arrays.
+/** What the reader makes of one combination of a state case's arrays: which
+  * format it names, and what it takes as the receipt the case published.
   *
   * ==Why this is worth its own suite==
   *
@@ -14,6 +15,11 @@ import org.fukuii.types.TransactionType
   * expects to be refused. Neither shows up as a reader fault: it shows up as
   * the machine disagreeing with the corpus, which is the one thing a
   * certification run is supposed to mean.
+  *
+  * The receipt fails the other way and is worse for it. A reader that finds no
+  * receipt reports a case with nothing to compare, which is indistinguishable
+  * from a corpus that published none -- so the check does not fail, it stops
+  * existing. The cases below are what separate the two.
   *
   * ==None of these cases is run, so nothing here is an expectation==
   *
@@ -126,6 +132,26 @@ class StateFixtureSpec extends AnyFlatSpec:
   private def envelope(bytes: String): String =
     fixture(common + ""","accessLists": [ [], [], [] ]""", signedEntry(bytes))
 
+  /** A post entry publishing `receipt`, so a case can state one whose members
+    * and octets say different things.
+    */
+  private def entryPublishing(receipt: String): String =
+    s"""{ "hash": "$zeroRoot", "indexes": { "data": 0, "gas": 0, "value": 0 }, "receipt": $receipt }"""
+
+  /** What the reader expects of the first combination, or the reason the file
+    * did not decode.
+    */
+  private def expectationIn(contents: String): Either[String, StateExpectation] =
+    StateFixture
+      .decodeFile("classification", contents)
+      .flatMap(_.fixtures.headOption.map(_.expectation).toRight("the case yielded no combination"))
+
+  /** The receipt octets the reader took, as hex, so a failure reads as a value
+    * rather than as an array.
+    */
+  private def receiptIn(contents: String): Either[String, Option[String]] =
+    expectationIn(contents).map(_.receipt.map(_.toHex))
+
   "an index whose access list is null" should "be read as the format predating the envelope" in
     // The whole of the defect: read from the field's presence, this index is an
     // access-list transaction, and a fork before EIP-2930 refuses the control
@@ -209,6 +235,33 @@ class StateFixtureSpec extends AnyFlatSpec:
     // fields answer instead, and the bytes fail where they are decoded.
     val stringHead = envelope("0x80")
     assert(kindAt(stringHead, 0) == Some(TransactionType.AccessList), decoded(stringHead))
+  }
+
+  "a combination publishing a receipt" should "take its octets from the rlp member" in {
+    // The correction this reader is written around. A receipt states whether
+    // its transaction succeeded in a member whose NAME is the fork's answer --
+    // `postState` before EIP-658 and `status` from it -- and states the same
+    // thing again inside `rlp`. Here the two disagree on purpose, so a reader
+    // that had keyed on either name answers differently from one that reads the
+    // octets.
+    val disagreeing =
+      fixture(common, entryPublishing("""{ "postState": "0x", "status": true, "rlp": "0xc1c0" }"""))
+    assert(receiptIn(disagreeing) == Right(Some("c1c0")), receiptIn(disagreeing).toString)
+  }
+
+  "a combination publishing no receipt" should "carry none rather than empty octets" in
+    // The legacy tier publishes no receipt anywhere and this build reads it
+    // three times, so absence is the ordinary case and not an edge one. Nothing
+    // distinguishes a receipt of no bytes from a case that published none,
+    // which is why the absence is modelled rather than defaulted.
+    assert(receiptIn(fixture(common, unsignedEntry)) == Right(None), receiptIn(fixture(common, unsignedEntry)).toString)
+
+  "a combination whose receipt states no rlp" should "make the file undecodable" in {
+    // Present-and-unreadable is a broken fixture and absent is a fact about the
+    // corpus. Folding the first into the second would drop the comparison
+    // silently on exactly the file whose shape had changed.
+    val withoutOctets = fixture(common, entryPublishing("""{ "status": true }"""))
+    assert(receiptIn(withoutOctets).isLeft, receiptIn(withoutOctets).toString)
   }
 
   "published bytes beginning with zero" should "leave the format to the fields" in
