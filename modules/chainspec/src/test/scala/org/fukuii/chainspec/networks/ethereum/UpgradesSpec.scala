@@ -2,7 +2,7 @@ package org.fukuii.chainspec.networks.ethereum
 
 import org.fukuii.bytes.{UInt256, UInt64}
 import org.fukuii.chainspec.{DifficultyAdjustment, ProposalId}
-import org.fukuii.evm.{Cost, NewAccountCharge, Opcode, OpcodeTable, Operation, PrecompileSet}
+import org.fukuii.evm.{Cost, NewAccountCharge, Opcode, OpcodeTable, Operation, Precompile, PrecompileSet}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Properties every rule set this network composed has to hold. */
@@ -143,6 +143,26 @@ class UpgradesSpec extends AnyFlatSpec:
         Upgrades.byzantium.consensus.blockReward == ether(3) &&
         Upgrades.byzantium.consensus.difficultyBombDelay == BigInt(3000000),
       "the upgrade that adopts EIP-100 and EIP-649 does not carry one of their values"
+    )
+
+  it should "answer natively at the fifth address from the upgrade that adopts EIP-198" in
+    // Asserted at the NETWORK for the reason the two cases above give. The
+    // component's own spec certifies the delta and would pass with the
+    // component adopted by nothing, which for a native means every height on
+    // this network running an empty account's code where the network answers.
+    assert(
+      Upgrades.byzantium.evm.precompiles
+        .at(PrecompileSet.ModExp)
+        .contains(Precompile.ModExp(Upgrades.byzantium.evm.schedule.precompileModExpDivisor)),
+      "the upgrade that adopts EIP-198 does not place its native, or places it at another price"
+    )
+
+  it should "have answered at no such address at the upgrade before it" in
+    // The control, and the wording is deliberately its own for the reason the
+    // next one records.
+    assert(
+      Upgrades.spuriousDragon.evm.precompiles.at(PrecompileSet.ModExp).isEmpty,
+      "an upgrade below the one adopting EIP-198 already answered at that address"
     )
 
   it should "have carried none of their three values at the upgrade before it" in

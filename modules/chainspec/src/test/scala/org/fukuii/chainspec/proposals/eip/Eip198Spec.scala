@@ -48,6 +48,23 @@ class Eip198Spec extends AnyFlatSpec:
       "0x05 answers something other than this document's native, or at some other price"
     )
 
+  it should "read that divisor out of the rules it is applied to" in {
+    // The case above cannot see a delta naming 20, because 20 is what this
+    // network's schedule states and the two agree. So the delta is applied a
+    // second time to rules stating something else, where a literal answers the
+    // network's figure and the schedule's reader answers the other one.
+    val elsewhere = base.copy(evm = base.evm.copy(schedule = base.evm.schedule.copy(precompileModExpDivisor = 7)))
+    assert(
+      elsewhere
+        .adopting(Eip198.component)
+        .evm
+        .precompiles
+        .at(PrecompileSet.ModExp)
+        .contains(Precompile.ModExp(BigInt(7))),
+      "a network stating its own divisor got someone else's"
+    )
+  }
+
   it should "have run nothing at that address before it was adopted" in
     // The control. Without it the two cases above pass against a set that
     // already carried the entry, and an absent entry is what every height

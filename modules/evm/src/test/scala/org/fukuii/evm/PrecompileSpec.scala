@@ -262,6 +262,59 @@ class PrecompileSpec extends AnyFlatSpec:
       "the charge was narrowed or saturated somewhere"
     )
 
+  it should "count eight for every exponent byte past the first word" in
+    // No published vector reaches this term. Every input in the corpora
+    // declares an exponent of at most one word -- the two the proposal itself
+    // supplies declare exactly 32, where 8 * (32 - 32) is nothing -- so the
+    // multiplier is invisible to all of them.
+    //
+    // The exponent here is the proposal's own worked example for
+    // ADJUSTED_EXPONENT_LENGTH: a hundred bytes whose first three are
+    // 00 00 01. The figure asserted is 8 * (100 - 32) + 232 = 776 squarings
+    // over a difficulty of 1024, which is what three implementations compute --
+    // `ethereum/execution-specs` @ `20f7f6271a` takes `bit_length() - 1` of the
+    // first word, `ethereum/go-ethereum-pow` @ `v1.10.26` takes `BitLen() - 1`
+    // of the same bytes, and `besu-eth/besu` @ `fdf1247c6d` takes
+    // `bitLength() - 1` in `ByzantiumGasCalculator`.
+    //
+    // **The proposal states 253 rather than 232 for that index, and it is
+    // wrong.** Its first 32 exponent bytes spell 2**232, whose highest bit is
+    // at 232; 253 would need a value at least 2**253. The normative clause
+    // above the example -- "plus the index of the highest bit in the first 32
+    // bytes of EXPONENT" -- is what is implemented, and the three
+    // implementations agree with it against the example. Had the document's
+    // figure held, this call would cost 40806.
+    assert(
+      modExp.gasFor(modExpInput(32, 100, 32, "aa" * 32 + "000001" + "00" * 97 + "ff" * 32)) == BigInt(39731),
+      "the term counting exponent bytes past the first word is wrong"
+    )
+
+  it should "count nothing for a leading word that is entirely zero" in
+    // "If all of the first 32 bytes of EXPONENT are zero, return exactly
+    // 8 * (length_of_EXPONENT - 32)", `ethereum/EIPs` @ `9e393a79`,
+    // EIPS/eip-198.md. 8 * (40 - 32) = 64 squarings over a difficulty of 1024.
+    // The clause is a floor at zero rather than a subtraction: an
+    // implementation taking the bit index of an empty word as -1 charges 3225
+    // here.
+    assert(
+      modExp.gasFor(modExpInput(32, 40, 32, "aa" * 32 + "00" * 32 + "0000000000000001" + "ff" * 32)) ==
+        BigInt(3276),
+      "an all-zero leading word moved the price"
+    )
+
+  it should "read no more than one word of the exponent into the price" in
+    // The companion to the case below, which establishes the same cap by an
+    // equality and cannot see the cap being widened -- both of its inputs
+    // would grow the same bit index and stay equal to each other. This one
+    // states the figure: 8 * (40 - 32) + 255 = 319 squarings over 1024.
+    // Reading all forty bytes instead would put the highest bit at 319 and
+    // charge 19609.
+    assert(
+      modExp.gasFor(modExpInput(32, 40, 32, "aa" * 32 + "80" + "00" * 31 + "00" * 8 + "ff" * 32)) ==
+        BigInt(16332),
+      "more than the exponent's first word reached the price"
+    )
+
   it should "take only the exponent's leading word into the price" in {
     // Two calls whose exponents agree in their first word and differ past it.
     // The price counts eight for every byte past that word and the position of
