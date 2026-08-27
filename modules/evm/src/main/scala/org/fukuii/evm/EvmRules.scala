@@ -86,7 +86,7 @@ enum GasForwarding:
     * `allButOneSixtyFourth(value) = value - value / 64` -- and
     * `ethereum/go-ethereum` @ `6bb0588ad` and `ethereumclassic/core-geth` @
     * `4185df450` write the same arithmetic as `gas - gas/64` in
-    * `core/vm/gas.go`. **No surveyed client parameterizes the fraction**, and
+    * `core/vm/gas.go`. **None of those three parameterizes the fraction**, and
     * neither does this.
     *
     * ==A network that chose differently adds a case==
@@ -299,11 +299,12 @@ enum NewAccountCharge:
   *   record does not do that.
   *
   *   It is nevertheless a NUMBER here where forwarding is a case, and the
-  *   asymmetry is the field's rather than a preference. No surveyed client
-  *   parameterizes the forwarding fraction; four values of this one are already
-  *   in the field -- `0x6000` at EIP-170, `0xC000` at EIP-7907, `0x10000` at
-  *   EIP-7954, and unbounded -- and two of the clients above read it from a chain
-  *   configuration rather than from their own source. A case per value would
+  *   asymmetry is the field's rather than a preference. None of the three
+  *   clients read for [[GasForwarding]] parameterizes the forwarding fraction;
+  *   four values of this one are already in the field -- `0x6000` at EIP-170,
+  *   `0xC000` at EIP-7907, `0x10000` at EIP-7954, and unbounded -- and two of
+  *   the five named above read it from a chain configuration rather than from
+  *   their own source. A case per value would
   *   have to be extended by a proposal that only moves a number.
   * @param createdAccountNonce
   *   the transaction count an account is given when it is created, before the
@@ -375,8 +376,8 @@ enum NewAccountCharge:
   *   a network having declined it; a flag naming the incident could express
   *   neither, and a single held address could not express none.
   *
-  *   Every other surveyed implementation narrows the exception to one hardcoded
-  *   address -- `ethereum/execution-specs` @ `ccaaaba58`,
+  *   The other four implementations read here narrow the exception to one
+  *   hardcoded address -- `ethereum/execution-specs` @ `ccaaaba58`,
   *   `ethereum/go-ethereum-pow` @ `v1.10.26`, `NethermindEth/nethermind` @
   *   `c35ce1b1ab` and `bluealloy/revm` @ `3064c0901c`. **That the narrowing is
   *   historical rather than semantic is an inference and not established**: no

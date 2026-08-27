@@ -38,11 +38,11 @@ import org.fukuii.execution.ExecutionRules
   * destination while leaving a created account's count at zero makes a
   * deployment given no endowment dead while its own initialization code runs,
   * and a borrowing call out of it that sent something would pay a surcharge
-  * neither authority charges. No surveyed client separates them --
-  * `ethereumclassic/core-geth` @ `4185df450` gates both on one transition and
-  * `ethereum/go-ethereum-pow` @ `v1.10.26` on one fork test -- and
-  * `org.fukuii.evm.Interpreter.newAccountSurcharge` is where the consequence is
-  * worked out. The deltas below are public, so composing `(b)` without `(a)`
+  * neither authority charges. Neither of the two clients read here separates
+  * them -- `ethereumclassic/core-geth` @ `4185df450` gates both on one
+  * transition and `ethereum/go-ethereum-pow` @ `v1.10.26` on one fork test --
+  * and `org.fukuii.evm.Interpreter.newAccountSurcharge` is where the
+  * consequence is worked out. The deltas below are public, so composing `(b)` without `(a)`
   * is expressible; it is the configuration to suspect first if that surcharge
   * ever fires for a borrowing form.
   *
@@ -97,10 +97,11 @@ object Eip161:
     *
     * ==The address is the native's, and it is named as the native's==
     *
-    * Every surveyed implementation that narrows the exception narrows it to this
-    * one address. It is written here as the precompile it belongs to rather than
-    * as a number, because that is what it is; the number itself stays where the
-    * ecosystem's addresses are.
+    * The four implementations that narrow the exception all narrow it to this
+    * one address, and `org.fukuii.evm.EvmRules.touchSurvivesFailure` names them
+    * at their refs rather than this scaladoc repeating them. It is written here
+    * as the precompile it belongs to rather than as a number, because that is
+    * what it is; the number itself stays where the ecosystem's addresses are.
     */
   val exemptFromTheRevert: Proposal = _.copy(touchSurvivesFailure = Set(PrecompileSet.Ripemd160))
 

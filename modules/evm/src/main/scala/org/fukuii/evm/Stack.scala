@@ -6,12 +6,13 @@ import scala.collection.mutable
   *
   * ==It holds words rather than bytes, and that is a surveyed choice==
   *
-  * The executable specification's stack is `List[U256]`, go-ethereum's is
-  * `[]uint256.Int`, revm's is `Vec<U256>`. besu's is `FlexStack<Bytes>` and
-  * converts for arithmetic — the one byte-based stack among those read. This
-  * follows the specification and the majority: a stack of [[Word]] means the
-  * arithmetic operations take and return the type they compute in, and nothing
-  * converts on the hot path.
+  * `ethereum/execution-specs` @ `ccaaaba58` holds `List[U256]`,
+  * `ethereum/go-ethereum` @ `6bb0588ad` holds `[]uint256.Int`, and
+  * `bluealloy/revm` @ `3064c0901c` holds `Vec<U256>`. `besu-eth/besu` @
+  * `c2addd9424` holds `FlexStack<Bytes>` and converts for arithmetic — the one
+  * byte-based stack among the four read. This follows the specification and
+  * three of those four: a stack of [[Word]] means the arithmetic operations take
+  * and return the type they compute in, and nothing converts on the hot path.
   *
   * Errors are values rather than exceptions, which is this codebase's existing
   * shape for a fallible read. The specification raises instead; the difference

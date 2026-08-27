@@ -6,10 +6,11 @@ import org.fukuii.bytes.{Address, Bytes, UInt64}
   *
   * ==The machine declares this, rather than the state layer offering it==
   *
-  * Both surveyed implementations put the interface on this side of the seam:
-  * go-ethereum declares `StateDB` inside `core/vm` and lets `core/state`
-  * satisfy it, and besu keeps `WorldUpdater` and `WorldView` inside its `evm`
-  * module while the trie-backed implementation lives a layer out. The direction
+  * Both implementations read here put the interface on this side of the seam:
+  * `ethereum/go-ethereum` @ `6bb0588ad` declares `StateDB` inside `core/vm` and
+  * lets `core/state` satisfy it, and `besu-eth/besu` @ `c2addd9424` keeps
+  * `WorldUpdater` and `WorldView` inside its `evm` module while the trie-backed
+  * implementation lives a layer out. The direction
   * matters because it is what decides who may change the surface: an interface
   * owned by the machine names what execution needs, so a storage layer cannot
   * widen it by accident, and a second implementation costs nothing.

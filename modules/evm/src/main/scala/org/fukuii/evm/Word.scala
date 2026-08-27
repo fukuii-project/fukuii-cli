@@ -17,16 +17,28 @@ import org.fukuii.bytes.Bytes
   *
   * ==The representation is deliberately not the field's, and is swappable==
   *
-  * Every production implementation surveyed represents this as four 64-bit
-  * limbs: go-ethereum and erigon through `holiman/uint256`, nethermind through
-  * `Nethermind.Int256`, reth through `alloy-primitives`, ethrex through
-  * `ethereum-types`, and besu — the JVM peer — through its own in-tree
-  * `record UInt256(long u3, long u2, long u1, long u0)` at `c2addd9424`,
-  * described there as "an optimized version of BigInteger for fixed width
-  * 256-bits integers". besu is visibly mid-migration: its BigInteger-backed
-  * Tuweni word still serves the API surface while the four-long record serves
-  * the `*Optimized` and `v2/operation/` arithmetic — the same operation set
-  * built here.
+  * All six production implementations read here represent this as four 64-bit
+  * limbs, and only besu carries that representation in its own tree.
+  * `besu-eth/besu` @ `c2addd9424` — the JVM peer — declares
+  * `record UInt256(long u3, long u2, long u1, long u0)` in
+  * `evm/src/main/java/org/hyperledger/besu/evm/UInt256.java`, whose javadoc
+  * calls it *"an optimised version of BigInteger for fixed width 256-bits
+  * integers"* and names each field a limb. The other five reach the same
+  * representation through a library, each cited at the ref where it declares
+  * that dependency: `ethereum/go-ethereum` @ `6bb0588ad` and
+  * `erigontech/erigon` @ `7125aa1e8` through `holiman/uint256`,
+  * `paradigmxyz/reth` @ `24f7cd94b` through `alloy-primitives`,
+  * `lambdaclass/ethrex` @ `2367dc810` through `ethereum-types`, and
+  * `NethermindEth/nethermind` @ `c35ce1b1ab` through `Nethermind.Int256`.
+  *
+  * **None of those four libraries is in this project's reference corpus.** So
+  * what a reader can re-check from here is besu's representation directly, and
+  * for the other five which library each routes through — not the limb count
+  * inside those libraries.
+  *
+  * besu is visibly mid-migration: its BigInteger-backed Tuweni word still
+  * serves the API surface while the four-long record serves the `*Optimized`
+  * and `v2/operation/` arithmetic — the same operation set built here.
   *
   * This starts on `BigInt` regardless, and the reason is that the field's
   * reason is throughput, which nothing here can currently weigh: no

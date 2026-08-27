@@ -1125,11 +1125,11 @@ object Interpreter:
     * this on a dead destination while leaving that count at zero would make an
     * account created with no endowment dead while its own initialization code
     * ran, and a borrowing call from it that sent something would pay a surcharge
-    * neither authority charges. No surveyed client separates them:
-    * `ethereumclassic/core-geth` @ `4185df450` gates both on one transition and
-    * `ethereum/go-ethereum-pow` @ `v1.10.26` on one fork test. A configuration
-    * that did is the first thing to look at if this ever fires for a borrowing
-    * form.
+    * neither authority charges. Neither of the two clients read here separates
+    * them: `ethereumclassic/core-geth` @ `4185df450` gates both on one
+    * transition and `ethereum/go-ethereum-pow` @ `v1.10.26` on one fork test. A
+    * configuration that did is the first thing to look at if this ever fires for
+    * a borrowing form.
     */
   private def newAccountSurcharge(
       rules: EvmRules,
