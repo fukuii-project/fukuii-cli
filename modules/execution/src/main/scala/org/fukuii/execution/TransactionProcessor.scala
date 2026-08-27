@@ -267,9 +267,9 @@ object TransactionProcessor:
     * *"At the end of the transaction is immediately following the execution of
     * the suicide list, prior to the determination of the state trie root for
     * receipt population"* (`ethereum/EIPs` @ `96523ef4d`, `EIPS/eip-161.md`,
-    * Final). So it goes after the registrations above, which is where every
-    * implementation puts it, and before [[BlockProcessor]] takes the root a
-    * receipt carries. Reads still answer after the commit, because a journal
+    * Final). So it goes after the registrations above and before
+    * [[BlockProcessor]] takes the root a receipt carries -- the proposal fixes
+    * the placement, so no count of implementations is doing any work here. Reads still answer after the commit, because a journal
     * with nothing held passes them through.
     */
   private def account(

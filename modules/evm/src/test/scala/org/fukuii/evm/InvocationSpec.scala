@@ -1403,9 +1403,9 @@ class InvocationSpec extends AnyFlatSpec:
   }
 
   it should "give its caller an address the rules exempt from that" in {
-    // The exception the proposal's Addendum preserves. Every implementation that
-    // narrows it names one address; the rules carry a set so a network can name
-    // none.
+    // The exception the proposal's Addendum preserves. The four implementations
+    // read for EvmRules.touchSurvivesFailure each narrow it to one address; the
+    // rules carry a set so a network can name none.
     val holder = world()
     holder.codes(other) = codeOf(hex(halting))
     val exempting = EvmFixtures.rules.copy(touchSurvivesFailure = Set(other))

@@ -179,8 +179,9 @@ class BlockPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
   }
 
   /** A block's elements are its header followed by the body's, flat. Nesting
-    * the body as one element would produce a well-formed list that no client
-    * accepts, so this pins the splice rather than trusting it.
+    * the body as one element would produce a well-formed list that is not the
+    * block encoding the specification defines, so this pins the splice rather
+    * than trusting it.
     */
   property("a block is its header followed by the body's own elements") {
     forAll(blocks) { (v: Vector) =>

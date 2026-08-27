@@ -123,8 +123,8 @@ object Block:
     *
     * The body's own elements are spliced in rather than nested: a block is a
     * flat list of three or four elements, so encoding [[Block.body]] as one
-    * element would produce a well-formed list that no client accepts and a
-    * block hash that matches nothing.
+    * element would produce a well-formed list that is not the block encoding
+    * the specification defines, and a block hash that matches nothing.
     */
   /** A block is its header plus the body's elements, so its arity is the
     * body's plus one.

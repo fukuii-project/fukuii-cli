@@ -228,7 +228,8 @@ object BlockHeader:
     *
     * The seal is spliced in rather than nested, for the reason [[Block]]
     * splices its body in: elements 13 and 14 are the header's own, and nesting
-    * them as one element would be a well-formed header no client accepts.
+    * them as one element would be a well-formed list that is not the flat
+    * header the specification defines.
     *
     * ==Two fields are fixed-width where a reader expects a scalar==
     *
