@@ -148,12 +148,23 @@ object Precompile:
     * A declared length is a whole 256-bit word and the difficulty term squares
     * it, so an intermediate exceeds anything a machine integer holds. Nothing
     * here narrows or saturates, which makes the charge the specification's
-    * exact figure. Two clients whose gas is a machine integer answer a ceiling
-    * in its place -- `ethereum/go-ethereum-pow` @ `v1.10.26` answers
-    * `math.MaxUint64` and `besu-eth/besu` @ `fdf1247c6d` answers
-    * `Long.MAX_VALUE` -- and no caller can tell the two apart, because a
-    * transaction states its gas limit as a 64-bit quantity and so can supply
-    * neither figure.
+    * exact figure.
+    *
+    * Two clients whose gas is a machine integer cannot do that, and they fail
+    * differently. `ethereum/go-ethereum-pow` @ `v1.10.26` computes the whole
+    * product in arbitrary precision and answers `math.MaxUint64` only once it
+    * will not fit, which is a figure no transaction can supply after its
+    * intrinsic charge -- so it refuses exactly where this refuses.
+    * `besu-eth/besu` @ `fdf1247c6d` saturates INSIDE the formula, its
+    * `square()` pinning the squared length at `Long.MAX_VALUE` before the rest
+    * of the term is worked out, so what comes back can be far below its own
+    * ceiling and payable: for a base declared 2**42 bytes wide it answers
+    * 28928590731427686 against 60446291086284574991820 exact. So the two are
+    * different numbers rather than one ceiling standing in for the other.
+    * Unlike geth's ceiling, besu's figure is one a 64-bit gas limit could
+    * state, so what bounds that divergence is the gas a block makes available
+    * rather than the gas a transaction can express -- and the smaller of the
+    * two is above 2**54, some six million times a limit that fits in 32 bits.
     *
     * ==No floor at this fork==
     *

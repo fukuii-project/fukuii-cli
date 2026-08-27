@@ -253,10 +253,9 @@ class PrecompileSpec extends AnyFlatSpec:
     //
     // `besu-eth/besu` @ `fdf1247c6d` answers 28928590731427686 for this input,
     // which is what its `square()` gives once `clampedMultiply` has pinned the
-    // product at `Long.MAX_VALUE`. Both refuse the call at any gas a
-    // transaction can state, so the difference is not observable on a chain --
-    // and a build that adopted the ceiling would be asserting a number the
-    // specification does not have.
+    // product at `Long.MAX_VALUE` -- a figure below its own ceiling, and one a
+    // 64-bit gas limit could state. What keeps the difference off a chain is
+    // the gas a block makes available, not the gas a transaction can express.
     assert(
       modExp.gasFor(modExpInput(BigInt(2).pow(42), 0, 0, "")) == BigInt("60446291086284574991820"),
       "the charge was narrowed or saturated somewhere"
