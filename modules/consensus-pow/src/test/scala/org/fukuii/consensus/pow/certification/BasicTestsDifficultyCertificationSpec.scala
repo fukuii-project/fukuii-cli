@@ -51,8 +51,13 @@ class BasicTestsDifficultyCertificationSpec extends AnyFlatSpec:
   /** Cases this build answers. */
   private val Certified: Int = 108
 
-  /** Cases putting the parent difficulty below the floor, which is the region
-    * the other published tier holds none of.
+  /** Cases stating a parent difficulty below the floor, which is the region the
+    * other published tier holds none of.
+    *
+    * **An input-side count and not a divergence count.** Nine of these are also
+    * refused for their timestamp, so the tier evaluates 81 of them -- which is
+    * the figure that moves when the floor's placement moves, and the one
+    * `EthashDifficultySpec` names.
     */
   private val SubFloor: Int = 90
 

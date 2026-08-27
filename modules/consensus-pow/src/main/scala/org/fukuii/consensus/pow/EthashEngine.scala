@@ -230,18 +230,26 @@ final case class EthashEngine(
     * while the exponential term is not yet zero -- the region the quoted
     * comment says Mainnet stays clear of, and one a network launching near the
     * floor does not. `ethereum/tests` @ `v17.2` states 120 such cases in
-    * `BasicTests/difficultyCustomHomestead.json`, and the 90 whose parent
-    * difficulty is below the floor are exactly the 90 on which the two orders
-    * disagree. Every one of the 90 expects the sum floored. An adjustment of
-    * 1000 under a term of 128 is stated as 131072, which is the floor and not
-    * the 131200 that flooring the adjustment yields.
+    * `BasicTests/difficultyCustomHomestead.json`, 90 of which state a parent
+    * difficulty below the floor.
+    *
+    * **Two figures come out of that file and only one of them is an
+    * observation.** Nine of the 90 also state a block whose timestamp does not
+    * follow its parent's, which this rule refuses before either order computes
+    * anything. So 90 counts the corpus's stated inputs and **81 is what the
+    * tier evaluates**; all 81 expect the sum floored, and the tier's own report
+    * says `diverged=81` under the other order. Whether the nine would disagree
+    * as well is an inference, not claimed here, however plainly each of them
+    * states 131072. An adjustment of 1000 under a term of 128 is stated as
+    * 131072, which is the floor and not the 131200 that flooring the adjustment
+    * yields.
     *
     * ==Each lineage that floors the adjustment is untested over that region==
     *
     * `ethereum/go-ethereum-pow` @ `v1.10.26` skips that file by name in
     * `tests/difficulty_test.go` and skips every remaining case on
     * `test.ParentDifficulty.Cmp(params.MinimumDifficulty) < 0`, which in that
-    * file is those same 90. `ethereumclassic/core-geth` @ `4185df450` points
+    * file is all 90 of them. `ethereumclassic/core-geth` @ `4185df450` points
     * its runner at `DifficultyTests` and reads no `BasicTests` file at all.
     * `besu-eth/besu-etc` @ `eb4248c99` reads one, `difficultyMainNetwork.json`,
     * whose 2,254 cases state no parent difficulty below the floor. So a
@@ -253,7 +261,7 @@ final case class EthashEngine(
     * 99,191,501,402,103 -- some hundreds of millions of times the floor --
     * and none below twice it. **A corpus that could not have disagreed is not
     * evidence that it agrees.** `BasicTestsDifficultyCorpus` is the tier that
-    * reaches it, and the 90 are what it turns on.
+    * reaches it, and the 81 it evaluates are what it turns on.
     *
     * @param parentHasOmmers
     *   whether the parent block itself included any.

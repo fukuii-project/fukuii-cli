@@ -344,9 +344,9 @@ class EthashDifficultySpec extends AnyFlatSpec:
     * floor while the term is not yet nothing. This is that condition at its
     * smallest: one step of adjustment below the floor, at the first height
     * whose term is not zero, so the whole difference between the orders is two.
-    * `BasicTestsDifficultyCertificationSpec` runs the published cases that
-    * state the same condition, and `DifficultyCertificationSpec`'s 18,598 state
-    * it nowhere -- no block of either mainnet is anywhere near the floor, which
+    * `BasicTestsDifficultyCertificationSpec` evaluates the 81 published cases
+    * stating the same condition, and `DifficultyCertificationSpec`'s 18,598
+    * state it nowhere -- no block of either mainnet is anywhere near the floor, which
     * is what `ethereum/execution-specs` @ `ccaaaba58` means by its own comment
     * that the difference *"does not matter"*.
     */
@@ -361,6 +361,43 @@ class EthashDifficultySpec extends AnyFlatSpec:
     assert(
       answered(DifficultyAdjustment.Original, minimumDifficulty, gap = 13) == minimumDifficulty,
       "the floor is what stops a chain adjusting itself below the difficulty its genesis block states"
+    )
+
+  /** The same order under the ommer-aware rule, in both ommer positions.
+    *
+    * ==The published cases reach this condition under one algorithm only==
+    *
+    * `BasicTestsDifficultyCertificationSpec`'s 81 cases are graduated-rule
+    * cases, and the two other files that state a parent difficulty below the
+    * floor resolve rules per block rather than per file, so no tier this build
+    * reads puts the ommer-aware numerator under the floor at a height whose
+    * term is not nothing. The order is otherwise held there by algebra alone --
+    * `(a + b).max(c)` and `a.max(c) + b` part exactly when `a < c` and `b > 0`,
+    * whichever algorithm produced `a` -- and an algebraic argument is not a
+    * case, so these are the cases.
+    *
+    * **Both positions, because the numerator is what the rule varies.** A gap
+    * of 27 puts the multiplier at -2 without ommers and -1 with them, so each
+    * lands below the floor by a different amount and neither reaches it by the
+    * same arithmetic as the other.
+    */
+  it should "be taken over the sum under the ommer-aware rule as well" in
+    assert(
+      answered(DifficultyAdjustment.Eip100, minimumDifficulty, gap = 27, number = BigInt(300000)) ==
+        minimumDifficulty,
+      "the ommer-aware numerator changes what the adjustment is, never where the floor is taken"
+    )
+
+  it should "be taken over the sum under the ommer-aware rule where the parent had ommers" in
+    assert(
+      answered(
+        DifficultyAdjustment.Eip100,
+        minimumDifficulty,
+        gap = 27,
+        number = BigInt(300000),
+        parentHasOmmers = true
+      ) == minimumDifficulty,
+      "the raised numerator reaches the floor from a different adjustment, and the floor is taken the same way"
     )
 
   "a block that does not follow its parent in time" should "be refused as a broken precondition" in

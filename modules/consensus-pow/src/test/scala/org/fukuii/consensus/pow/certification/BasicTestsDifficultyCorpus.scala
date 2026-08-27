@@ -20,8 +20,10 @@ import org.fukuii.consensus.pow.EthashEngine
   * under-tested but unreachable, and a tier that could not have disagreed is not
   * evidence that it agrees. This tier is where the floor is reachable:
   * `ethereum/tests` @ `v17.2` states 120 cases in
-  * `BasicTests/difficultyCustomHomestead.json`, and 90 of them put the adjusted
-  * difficulty below the floor while the exponential term is still growing.
+  * `BasicTests/difficultyCustomHomestead.json`, 90 of which state a parent
+  * difficulty below the floor while the exponential term is still growing. Nine
+  * of those 90 are refused before evaluation, for the reason given below, so 81
+  * is what this tier separates the two orders on.
   *
   * **That is the one thing this tier is for.** It adds 108 answered cases against
   * the other tier's 18,598, and its value is not the count: it is that
