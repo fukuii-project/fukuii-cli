@@ -485,6 +485,7 @@ object Interpreter:
             held = environment.world.storageAt(frame.message.currentTarget, slot)
             _ = refundIfCleared(frame, schedule, held, value)
             _ <- frame.charge(if held.isZero && !value.isZero then schedule.storageSet else schedule.storageReset)
+            _ <- mayChangeState(frame)
           yield
             environment.world.setStorage(frame.message.currentTarget, slot, value)
             advance(frame)
@@ -519,6 +520,7 @@ object Interpreter:
             settled = schedule.logBase + schedule.logDataPerByte * size.toBigInt +
               schedule.logTopic * topicCount
             _ <- reach(frame, settled, (offset, size))
+            _ <- mayChangeState(frame)
           yield
             frame.logs = frame.logs :+ Log(frame.message.currentTarget, topics, regionOf(frame, offset, size))
             advance(frame)
@@ -616,6 +618,7 @@ object Interpreter:
                   schedule.selfDestructNewAccount
                 )
             )
+            _ <- mayChangeState(frame)
           yield
             val world = environment.world
             // Both balances are read before either is written, so an account
@@ -752,6 +755,14 @@ object Interpreter:
         granted = environment.rules.gasForwarded
           .forward(spare(frame.gasLeft, ownPrice + memoryCost), requested.toBigInt)
         _ <- reach(frame, ownPrice + granted, (inputOffset, inputSize), (outputOffset, outputSize))
+        // THE FORM IS TESTED AS WELL AS THE VALUE, because `sends` above is
+        // true of the form that borrows another account's code and that form is
+        // excluded by name -- "As an exception, CALLCODE is not considered
+        // state-changing, even with a non-zero value" (`ethereum/EIPs` @
+        // `9e393a79`, `EIPS/eip-214.md`, Final). Testing the value alone would
+        // refuse a call the network permits.
+        sendsToAnotherAccount = form == CallForm.ToTheAccountNamed && !value.isZero
+        _ <- if sendsToAnotherAccount then mayChangeState(frame) else Right(())
       yield
         val forwarded = granted + (if sends then schedule.callStipend else BigInt(0))
         val input = regionOf(frame, inputOffset, inputSize)
@@ -773,7 +784,16 @@ object Interpreter:
         else
           val invoker = if inherits then frame.message.caller else frame.message.currentTarget
           val nested = new Frame(
-            Message(invoker, runsAs, Some(codeAddress), value, input, !inherits, frame.message.depth + 1),
+            Message(
+              caller = invoker,
+              currentTarget = runsAs,
+              codeAddress = Some(codeAddress),
+              value = value,
+              data = input,
+              transfersValue = !inherits,
+              isStatic = frame.message.isStatic,
+              depth = frame.message.depth + 1
+            ),
             Code(world.codeOf(codeAddress)),
             forwarded,
             frame.registeredSoFar
@@ -848,6 +868,7 @@ object Interpreter:
         // operation's own price a line later, so an over-large grant is
         // unaffordable there by construction.
         _ <- frame.charge(forwarded)
+        _ <- mayChangeState(frame)
       yield (endowment, regionOf(frame, offset, size), forwarded)
 
     taken match
@@ -874,7 +895,21 @@ object Interpreter:
         else
           world.setNonce(creator, UInt64.fromBits(count.toBits + 1))
           val nested = new Frame(
-            Message(creator, target, None, endowment, Bytes.Empty, transfersValue = true, frame.message.depth + 1),
+            // The flag is INHERITED rather than written `false`, though a
+            // creation from an invocation asked not to change state is refused
+            // above and so cannot reach here. One rule at both nesting sites
+            // rather than two, and it stays right if a later proposal ever
+            // admits a creation from one.
+            Message(
+              caller = creator,
+              currentTarget = target,
+              codeAddress = None,
+              value = endowment,
+              data = Bytes.Empty,
+              transfersValue = true,
+              isStatic = frame.message.isStatic,
+              depth = frame.message.depth + 1
+            ),
             Code(initCode),
             forwarded,
             frame.registeredSoFar
@@ -1446,6 +1481,33 @@ object Interpreter:
 
   private def refundIfCleared(frame: Frame, schedule: GasSchedule, held: Word, value: Word): Unit =
     if value.isZero && !held.isZero then frame.refundCounter += schedule.refundStorageClear
+
+  /** Nothing, or the refusal every state-changing operation owes an invocation
+    * that was asked not to change state.
+    *
+    * ==Five arms over nine operations, and the price is paid at all of them==
+    *
+    * A store, an emission at any of the five topic counts, a creation, a
+    * destruction, and a call that sends something. The proposal names exactly
+    * those, with two exclusions worth keeping in view: `CALLCODE` is *"not
+    * considered state-changing, even with a non-zero value"* and the borrowing
+    * form that keeps its caller is not on its list at all (`ethereum/EIPs` @
+    * `9e393a79`, `EIPS/eip-214.md`, Final).
+    *
+    * **Every arm sits after the operation's price is charged**, which is where
+    * both authorities put it: the specification's five raises each follow
+    * `charge_gas` (`ethereum/execution-specs` @ `20f7f6271a`,
+    * `src/ethereum/forks/byzantium/vm/instructions/` -- `storage.py:80`,
+    * `log.py:70`, `system.py:79`, `:298`, `:436`), and
+    * `ethereum/go-ethereum-pow` @ `v1.10.26` charges an operation's constant and
+    * dynamic gas in the interpreter before calling it at all. Two of the five
+    * earn a refund earlier still and lose it, because the frame is dropped.
+    *
+    * One helper rather than five copies: the condition is one proposal's, and a
+    * copy at each site could be moved at one and left at the others.
+    */
+  private def mayChangeState(frame: Frame): Either[Halt, Unit] =
+    if frame.message.isStatic then Left(Halt.WriteInStaticContext) else Right(())
 
   /** The shape every copying operation shares: three operands, a price in whole
     * words of the amount copied, and a source that is read only once the copy

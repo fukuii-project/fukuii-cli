@@ -201,6 +201,15 @@ object TransactionProcessor:
     * address already in use rather than deploying over it --
     * [[org.fukuii.evm.Interpreter.deployableAt]] holds the survey and the
     * operator decision behind that.
+    *
+    * ==Both shapes may change state, and this is the only layer that can say
+    * so==
+    *
+    * *"This flag is set to `false` initially"* (`ethereum/EIPs` @ `9e393a79`,
+    * `EIPS/eip-214.md`, Final), and initially means here: nothing above an
+    * outermost invocation asks for one, and inside the machine only an
+    * operation can set it. So both constructions below answer `false`, and no
+    * transaction of any type this build admits answers otherwise.
     */
   private def invoke(
       transaction: AdmittedTransaction,
@@ -218,7 +227,8 @@ object TransactionProcessor:
             codeAddress = Some(recipient),
             value = Word(transaction.value),
             data = transaction.data,
-            transfersValue = true
+            transfersValue = true,
+            isStatic = false
           ),
           Code(world.codeOf(recipient)),
           available
@@ -233,7 +243,8 @@ object TransactionProcessor:
             codeAddress = None,
             value = Word(transaction.value),
             data = Bytes.Empty,
-            transfersValue = true
+            transfersValue = true,
+            isStatic = false
           ),
           Code(transaction.data),
           available

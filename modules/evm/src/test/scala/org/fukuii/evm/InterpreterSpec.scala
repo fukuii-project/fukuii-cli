@@ -41,6 +41,14 @@ class InterpreterSpec extends AnyFlatSpec:
     val frame = new Frame(message, Code(Bytes.fromArray(program.map(_.toByte).toArray)), BigInt(gas))
     (frame, Interpreter.run(frame, environment))
 
+  /** A message like [[exec]]'s, asked not to change state.
+    *
+    * Nothing inside this build's machine can set the flag yet, so a spec that
+    * wants one says so when it builds the message -- which is also how the
+    * outermost invocation of a transaction answers it.
+    */
+  private val refusing: Message = EvmFixtures.message(transfersValue = true, isStatic = true)
+
   private def wordOfAddress(byte: Int): Word =
     Word.fromBytes(Bytes.fromIArray(EvmFixtures.address(byte).toBytes))
 
@@ -771,6 +779,77 @@ class InterpreterSpec extends AnyFlatSpec:
       frame.logs.map(_.data.length) == Vector(1, 0),
       "a receipt lists entries in the order they happened, so the order is part of the record"
     )
+  }
+
+  // ── An invocation that was asked not to change state ─────────────────────
+  //
+  // Two of the five arms stay inside one frame and are here; the three that
+  // start a nested invocation are in InvocationSpec, beside the operations they
+  // refuse.
+
+  "a store by an invocation asked not to change state" should "be refused" in {
+    val (_, outcome) = execFor(refusing, EvmFixtures.environment(), 30000, 0x60, 0x2a, 0x60, 0x01, 0x55)
+    assert(
+      outcome == Right(Outcome.Halted(Halt.WriteInStaticContext)),
+      "a store is the first operation the proposal names, and it ran"
+    )
+  }
+
+  it should "be allowed where the invocation may change state, or the case above pins nothing" in {
+    // The control. Without it the refusal above would hold for a program that
+    // never reached the store at all, and every byte of the two is the same.
+    val (_, outcome) = exec(30000, 0x60, 0x2a, 0x60, 0x01, 0x55)
+    assert(
+      outcome == Right(Outcome.Stopped(BigInt(30000) - schedule.veryLow * 2 - schedule.storageSet, Bytes.Empty)),
+      "the store did not run even where nothing forbade it"
+    )
+  }
+
+  it should "run out of gas rather than be refused where it cannot pay" in {
+    // The one place the ORDER of the charge and the refusal is observable: an
+    // invocation too poor to pay for the store halts on the charge, so the
+    // reason a caller sees is the shortfall and not the prohibition. Both
+    // authorities charge first -- `charge_gas` precedes every one of the five
+    // raises in `ethereum/execution-specs` @ `20f7f6271a`, and
+    // `ethereum/go-ethereum-pow` @ `v1.10.26` charges an operation's gas in the
+    // interpreter before calling it.
+    val short = schedule.veryLow * 2 + schedule.storageSet - 1
+    val (_, outcome) = execFor(refusing, EvmFixtures.environment(), short.toInt, 0x60, 0x2a, 0x60, 0x01, 0x55)
+    assert(
+      outcome == Right(Outcome.Halted(Halt.OutOfGas)),
+      "the prohibition was checked before the price, so a shortfall was reported as a prohibition"
+    )
+  }
+
+  it should "have paid for that store one unit more, or the case above measures the wrong shortfall" in {
+    // The control for the figure rather than for the behaviour: one unit more
+    // is affordable, so the shortfall above is genuinely one unit and not a
+    // budget that never reached the operation.
+    val enough = schedule.veryLow * 2 + schedule.storageSet
+    val (_, outcome) = exec(enough.toInt, 0x60, 0x2a, 0x60, 0x01, 0x55)
+    assert(
+      outcome == Right(Outcome.Stopped(BigInt(0), Bytes.Empty)),
+      "one more unit than the shortfall still could not pay"
+    )
+  }
+
+  "an emission by an invocation asked not to change state" should "be refused at no topics" in {
+    val (_, outcome) = execFor(refusing, EvmFixtures.environment(), 4000, 0x60, 0x00, 0x60, 0x00, 0xa0)
+    assert(outcome == Right(Outcome.Halted(Halt.WriteInStaticContext)), "an emission with no topics ran")
+  }
+
+  it should "be refused at four topics as well, since one arm covers the family" in {
+    // The family is refused by a single guard over the five bytes, so a case at
+    // one end of the range says nothing about the other.
+    val program = Seq(0x60, 0x04, 0x60, 0x03, 0x60, 0x02, 0x60, 0x01, 0x60, 0x00, 0x60, 0x00, 0xa4)
+    val (_, outcome) = execFor(refusing, EvmFixtures.environment(), 4000, program*)
+    assert(outcome == Right(Outcome.Halted(Halt.WriteInStaticContext)), "the widest member of the family ran")
+  }
+
+  it should "be allowed where the invocation may change state, or neither case above pins anything" in {
+    val program = Seq(0x60, 0x04, 0x60, 0x03, 0x60, 0x02, 0x60, 0x01, 0x60, 0x00, 0x60, 0x00, 0xa4)
+    val (frame, _) = exec(4000, program*)
+    assert(frame.logs.length == 1, "the emission did not happen even where nothing forbade it")
   }
 
   // ── Ending this invocation with something to hand back ───────────────────

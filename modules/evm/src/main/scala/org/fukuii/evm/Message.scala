@@ -15,6 +15,13 @@ import org.fukuii.bytes.{Address, Bytes}
   * same name, and keeping it now costs a field rather than a later correction
   * at every site that reads one.
   *
+  * ==Two adjacent booleans, so construct this by naming its arguments==
+  *
+  * [[transfersValue]] and [[isStatic]] sit next to each other and neither has a
+  * default, so a positional construction transposing them compiles and runs.
+  * What each costs when it is wrong is on the field itself, and neither is a
+  * failure anything here reports. **Name them.**
+  *
   * @param codeAddress
   *   the account whose code this invocation runs, which is not always the one
   *   it runs AS: the form that borrows another account's code names one here
@@ -45,6 +52,24 @@ import org.fukuii.bytes.{Address, Bytes}
   *   is not a failure anything reports: the value simply moves twice, and only a
   *   caller that has already spent it turns that into an error rather than into
   *   a wrong state root.
+  * @param isStatic
+  *   whether this invocation was asked not to change state. Every operation
+  *   that would -- a store, an emission, a creation, a destruction, and a call
+  *   that sends something -- refuses instead of performing it, and all of them
+  *   refuse with [[Halt.WriteInStaticContext]].
+  *
+  *   It rides here for [[depth]]'s reason: whoever asked for the invocation
+  *   settles it, and it does not move while the invocation runs. **Nothing
+  *   clears it**, which is what makes *"Once this call returns, the flag is
+  *   reset to its value before the call"* (`ethereum/EIPs` @ `9e393a79`,
+  *   `EIPS/eip-214.md`, Final) a consequence of this record belonging to one
+  *   invocation rather than a step anything performs.
+  *
+  *   **It has no default, for [[transfersValue]]'s reason, and the direction of
+  *   the failure is worse.** A forgotten argument would answer `false`, which
+  *   turns an invocation that was asked not to write into one that may, and the
+  *   write it then admits is one the network refuses. A missing argument is a
+  *   compile error; a wrong default is a state root nothing here can catch.
   * @param depth
   *   how many invocations deep this one is, counting the outermost as zero. It
   *   rides here rather than on the frame because it is settled by whoever asked
@@ -69,5 +94,6 @@ final case class Message(
     value: Word,
     data: Bytes,
     transfersValue: Boolean,
+    isStatic: Boolean,
     depth: Int = 0
 )

@@ -90,20 +90,36 @@ object EvmFixtures:
       namespace("code")
     )
 
-  /** An ordinary call: the account whose code runs is the one it runs as.
+  /** An ordinary call: the account whose code runs is the one it runs as, and it
+    * may change state.
     *
     * A test wanting the borrowing form, or a creation, names its own code
     * address -- those are the two shapes where the two addresses differ, and
     * making the common one a default rather than all three keeps the difference
     * visible at the site that needs it.
+    *
+    * **`isStatic` carries a default where [[Message]] refuses one**, on the same
+    * doctrine and because the direction of the failure is the opposite here. In
+    * production a forgotten answer would silently admit a write the network
+    * refuses; in a spec, a case meaning to be static and not saying so asserts a
+    * refusal that does not happen, and fails.
     */
   def message(
       caller: Address = address(0x11),
       currentTarget: Address = address(0x22),
       value: Word = Word.Zero,
       data: Bytes = Bytes.Empty,
-      transfersValue: Boolean
-  ): Message = Message(caller, currentTarget, Some(currentTarget), value, data, transfersValue)
+      transfersValue: Boolean,
+      isStatic: Boolean = false
+  ): Message = Message(
+    caller = caller,
+    currentTarget = currentTarget,
+    codeAddress = Some(currentTarget),
+    value = value,
+    data = data,
+    transfersValue = transfersValue,
+    isStatic = isStatic
+  )
 
   /** A schedule for testing the machine, whose prices are deliberately NOT any
     * network's.

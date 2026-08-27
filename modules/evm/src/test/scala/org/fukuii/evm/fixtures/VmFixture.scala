@@ -195,7 +195,8 @@ object VmFixtureRunner:
           codeAddress = Some(invocation.target),
           value = Word(invocation.value),
           data = invocation.data,
-          transfersValue = true
+          transfersValue = true,
+          isStatic = false
         ),
         Code(invocation.code),
         invocation.gas

@@ -125,6 +125,14 @@ class InvocationSpec extends AnyFlatSpec:
     val frame = new Frame(message, Code(Bytes.fromArray(program.map(_.toByte).toArray)), gas)
     (frame, Interpreter.run(frame, environment))
 
+  /** [[runIn]]'s own message, asked not to change state.
+    *
+    * Nothing inside this build's machine sets the flag yet, so a spec that wants
+    * one says so where it builds the message -- which is also the one place a
+    * transaction's outermost invocation answers it.
+    */
+  private val refusing: Message = EvmFixtures.message(transfersValue = true, isStatic = true)
+
   private val schedule = EvmFixtures.schedule
 
   /** What the deployment inside [[deploying]] costs to run: four pushes and a
@@ -311,7 +319,7 @@ class InvocationSpec extends AnyFlatSpec:
       target: Address
   ): (Frame, Either[Unsupported, Outcome]) =
     val frame = new Frame(
-      Message(runner, target, None, Word.Zero, Bytes.Empty, transfersValue = true),
+      Message(runner, target, None, Word.Zero, Bytes.Empty, transfersValue = true, isStatic = false),
       Code(Bytes.fromArray(initCode.map(_.toByte).toArray)),
       gas
     )
@@ -1342,7 +1350,7 @@ class InvocationSpec extends AnyFlatSpec:
       // The account it runs as holds nothing and is therefore dead, and the
       // value is carried rather than transferred, which is the state a form
       // reading the value without reading the form would charge for.
-      Message(caller, runner, Some(runner), EvmFixtures.word(40), Bytes.Empty, transfersValue = false)
+      Message(caller, runner, Some(runner), EvmFixtures.word(40), Bytes.Empty, transfersValue = false, isStatic = false)
     )
     assert(
       frame.gasLeft == BigInt(100000) - schedule.veryLow * 6 - schedule.callBase - schedule.zero,
@@ -1813,4 +1821,138 @@ class InvocationSpec extends AnyFlatSpec:
       outcome == Right(Outcome.Halted(Halt.OutOfBoundsRead)),
       "accessing the return data buffer beyond its size results in a failure"
     )
+  }
+
+  // ── An invocation that was asked not to change state ──────────────────────
+  //
+  // Three of the five arms start a nested invocation and are here. The two that
+  // stay inside one frame are in InterpreterSpec, beside the operations they
+  // refuse, and the control for the family sits there too.
+
+  "an invocation asked not to change state" should "still read state and end normally" in {
+    // The control the rest of this section stands on: the flag refuses five
+    // operations, not the machine. Without it a refusal planted in the charging
+    // path would satisfy every case below.
+    val (_, outcome) = runIn(EvmFixtures.environment(), 30000, push1(0x01) ++ Seq(0x54, 0x00), refusing)
+    assert(
+      outcome ==
+        Right(Outcome.Stopped(BigInt(30000) - schedule.veryLow - schedule.storageLoad - schedule.zero, Bytes.Empty)),
+      "a read and a stop were refused, so the flag is refusing more than the five operations it names"
+    )
+  }
+
+  "a creation by an invocation asked not to change state" should "be refused" in {
+    // The control is the case above, which deploys this same program at this
+    // same budget under a message differing only in the flag.
+    val (_, outcome) = runIn(EvmFixtures.environment(), 200000, creating(deploying), refusing)
+    assert(outcome == Right(Outcome.Halted(Halt.WriteInStaticContext)), "a creation ran")
+  }
+
+  it should "leave a deployment by an ordinary creator free to change state" in {
+    // The other half of the rule at the creating site, and the only case that
+    // can see it: the flag a deployment inherits is provably false there, since
+    // a creation from an invocation asked not to change state was refused
+    // above -- so the two answers a reader might expect are indistinguishable,
+    // and only a creating site handing its deployment a `true` shows up at all.
+    val environment = EvmFixtures.environment()
+    val _ = runIn(environment, 200000, creating(hex(storing)))
+    assert(
+      environment.world.storageAt(ContractAddress.of(runner, UInt64.Zero), EvmFixtures.word(1)) ==
+        EvmFixtures.word(42),
+      "the deployment was refused a store nothing asked it to give up"
+    )
+  }
+
+  "a destruction by an invocation asked not to change state" should "be refused" in {
+    val funded = world()
+    funded.balances(runner) = EvmFixtures.word(500)
+    val (_, outcome) = runIn(EvmFixtures.environment(funded), 100000, destroying(other), refusing)
+    assert(outcome == Right(Outcome.Halted(Halt.WriteInStaticContext)), "a destruction ran")
+  }
+
+  it should "leave the beneficiary's balance where it found it" in {
+    val funded = world()
+    funded.balances(runner) = EvmFixtures.word(500)
+    val environment = EvmFixtures.environment(funded)
+    val _ = runIn(environment, 100000, destroying(other), refusing)
+    assert(environment.world.balanceOf(other) == Word.Zero, "the balance moved before the refusal, or despite it")
+  }
+
+  "a call sending value by an invocation asked not to change state" should "be refused" in {
+    // The caller holds nothing, so a refusal placed after the balance is read
+    // would answer zero on the stack and end normally instead of halting. The
+    // case above at "answer zero where the caller cannot cover the value" runs
+    // this same program under a message differing only in the flag and gets
+    // exactly that.
+    val holder = world()
+    holder.codes(other) = codeOf(hex(stopping))
+    val (_, outcome) =
+      runIn(EvmFixtures.environment(holder), 100000, calling(0xf1, other, 1000, value = 40), refusing)
+    assert(
+      outcome == Right(Outcome.Halted(Halt.WriteInStaticContext)),
+      "a call carrying value ran, or was refused for its balance rather than for the prohibition"
+    )
+  }
+
+  it should "be allowed where it sends nothing" in {
+    // The case that separates a test on the value from a blanket refusal of the
+    // whole family. Without it, an arm dropping the value from its condition
+    // would pass everything else in this section.
+    val holder = world()
+    holder.codes(other) = codeOf(hex(stopping))
+    val (frame, _) = runIn(EvmFixtures.environment(holder), 100000, calling(0xf1, other, 1000), refusing)
+    assert(frame.stack.peek(0) == Right(Word.One), "a call sending nothing changes no state and was refused")
+  }
+
+  it should "be allowed for the form that borrows another account's code, even sending value" in {
+    // The exception the proposal names outright, and the only case here that
+    // tells a condition on the form from a condition on the value alone.
+    val holder = world()
+    holder.balances(runner) = EvmFixtures.word(500)
+    holder.codes(other) = codeOf(hex(stopping))
+    val (frame, _) =
+      runIn(EvmFixtures.environment(holder), 100000, calling(0xf2, other, 1000, value = 40), refusing)
+    assert(
+      frame.stack.peek(0) == Right(Word.One),
+      "CALLCODE is not considered state-changing, even with a non-zero value"
+    )
+  }
+
+  it should "be allowed for the form that keeps its caller's identity, whatever value it carries" in {
+    // This form appears nowhere on the proposal's list, and it takes no value
+    // off the stack -- so the value under test is the one the outer invocation
+    // was itself given, which is why the message names one.
+    val holder = world()
+    holder.codes(other) = codeOf(hex(stopping))
+    val carrying =
+      EvmFixtures.message(value = EvmFixtures.word(40), transfersValue = false, isStatic = true)
+    val (frame, _) =
+      runIn(EvmFixtures.environment(holder, withTable = admitting), 100000, delegating(other, 1000), carrying)
+    assert(
+      frame.stack.peek(0) == Right(Word.One),
+      "the form that borrows an identity was refused for the value it carries"
+    )
+  }
+
+  "the prohibition" should "reach a nested invocation" in {
+    // Nothing clears the flag and every nesting inherits it, so a callee that
+    // stores is refused although the operation refused is one the outer
+    // invocation never ran. The control is "CALL should run the code at the
+    // account named", which runs this same callee under a message differing
+    // only in the flag and finds the slot written.
+    val holder = world()
+    holder.codes(other) = codeOf(hex(storing))
+    val environment = EvmFixtures.environment(holder)
+    val _ = runIn(environment, 100000, calling(0xf1, other, 40000), refusing)
+    assert(
+      environment.world.storageAt(other, EvmFixtures.word(1)) == Word.Zero,
+      "the callee wrote, so the flag did not reach it"
+    )
+  }
+
+  it should "leave the caller reading the nesting as a failure" in {
+    val holder = world()
+    holder.codes(other) = codeOf(hex(storing))
+    val (frame, _) = runIn(EvmFixtures.environment(holder), 100000, calling(0xf1, other, 40000), refusing)
+    assert(frame.stack.peek(0) == Right(Word.Zero), "a nesting refused for the prohibition read as one that succeeded")
   }
