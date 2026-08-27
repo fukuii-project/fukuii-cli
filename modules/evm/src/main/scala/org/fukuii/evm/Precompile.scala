@@ -338,6 +338,15 @@ object Precompile:
     * 64-bit gas limit can supply -- except where the difficulty term is zero,
     * which takes a base and a modulus both declared empty, and which
     * [[ModExp.run]] answers without reading an operand at all.
+    *
+    * ==A precompile can decline its input now, and this deliberately does
+    * not==
+    *
+    * Declining would refuse a call the specification computes an answer for,
+    * which is a divergence rather than a safety net: nothing about a width this
+    * large makes the input invalid, only unrepresentable by this machine. So it
+    * stays a fault, and a run that reached it would be a defect in the charge
+    * above rather than a fact to report to a caller.
     */
   private def valueAt(input: Bytes, from: BigInt, width: BigInt): BigInt =
     val available = (BigInt(input.length) - from).min(width).max(0)

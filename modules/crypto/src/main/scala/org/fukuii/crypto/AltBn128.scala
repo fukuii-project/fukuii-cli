@@ -382,6 +382,15 @@ object AltBn128:
     * *"An encoding value of `p` or larger is invalid"* -- so a point that would
     * be valid had its coordinates been taken modulo `p` is not one this answers
     * for.
+    *
+    * ==The bound runs first and the two tests after it depend on that==
+    *
+    * Both the point at infinity and the curve equation are decided from the
+    * coordinates AS THEY ARRIVED. That is only sound for coordinates already
+    * known to be reduced: an encoding of exactly `p` compares unequal to the
+    * zero it stands for, so moving the bound after either test would change
+    * which rule refuses such an input, and moving it after BOTH would admit it.
+    * The same ordering holds in [[twistPointAt]] for the same reason.
     */
   private def pointAt(input: IArray[Byte], offset: Int): Option[G1] =
     val x = wordAt(input, offset)

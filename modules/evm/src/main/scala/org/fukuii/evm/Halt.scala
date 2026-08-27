@@ -65,8 +65,14 @@ enum Halt:
 
   /** Input a natively-answered address could not make sense of.
     *
-    * Distinct from running out of gas, which is what a caller sees where a
-    * precompile converts this before returning.
+    * ==Reached by this build, and indistinguishable from [[OutOfGas]] to a
+    * caller==
+    *
+    * Both are exceptional halts, so an invocation reaching either fails, keeps
+    * nothing and hands back nothing. What the two separate is which fact a node
+    * can report about a divergence, never a chain outcome -- and the
+    * specification underlines that by raising this reason where a curve rejects
+    * a point and then converting it to running out of gas before returning.
     */
   case InvalidParameter
 
