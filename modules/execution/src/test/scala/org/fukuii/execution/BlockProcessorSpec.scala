@@ -159,6 +159,21 @@ class BlockProcessorSpec extends AnyFlatSpec:
     */
   private val halts: Bytes = EvmFixtures.bytesOf("0x01")
 
+  /** Reverts over an empty region, so the invocation ends the one way that
+    * keeps its remaining gas.
+    */
+  private val reverts: Bytes = EvmFixtures.bytesOf("0x60006000fd")
+
+  /** Rules carrying `REVERT`, priced from its operands as the document that
+    * introduces it leaves it.
+    *
+    * The base table predates the operation, so an invocation over [[reverts]]
+    * would otherwise meet an entry that is not there and end as a halt -- which
+    * is the outcome the case using this has to be told apart from.
+    */
+  private val admittingRevert: EvmRules =
+    EvmFixtures.rules.copy(table = EvmFixtures.rules.table.adding(Operation(Opcode.Revert, Cost.Computed)))
+
   /** Adds two operands, so an invocation over it reaches `ADD`. */
   private val adds: Bytes = EvmFixtures.bytesOf("0x6003600501")
 
@@ -369,6 +384,22 @@ class BlockProcessorSpec extends AnyFlatSpec:
       run(Seq(transfer(nonce = 0)), code = Map(recipient -> halts)).output.receipts.head.postStateOrStatus ==
         PostStateOrStatus.Failed,
       "a receipt states how its own transaction ended, and a transaction that halted did not succeed"
+    )
+
+  it should "state that a transaction that reverted did not succeed" in
+    // The ending EIP-658 was written for, and the one a status derived from gas
+    // would get wrong: EIP-140 made it possible to fail while keeping gas, so
+    // "it is no longer possible for users to assume that a transaction failed
+    // iff it consumed all gas", and the status is 0 "due to any operation that
+    // can cause the transaction or top-level call to revert" (`ethereum/EIPs` @
+    // `dbfa6bee8`, `EIPS/eip-658.md`, Final).
+    assert(
+      run(
+        Seq(transfer(nonce = 0)),
+        code = Map(recipient -> reverts),
+        evm = admittingRevert
+      ).output.receipts.head.postStateOrStatus == PostStateOrStatus.Failed,
+      "a transaction whose top-level call reverted carries a status of failure"
     )
 
   it should "never ask for an intermediate state root" in
