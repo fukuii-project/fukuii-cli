@@ -281,16 +281,17 @@ object Mainnet:
     * as `"byzantiumBlock": 4370000` in
     * `config/src/main/resources/mainnet.json`.
     *
-    * ==Two of the nine proposals this upgrade names are implemented==
+    * ==Four of the nine proposals this upgrade names are implemented==
     *
     * EIP-609 § *Included EIPs* lists EIP-100, EIP-140, EIP-196, EIP-197,
     * EIP-198, EIP-211, EIP-214, EIP-649 and EIP-658.
-    * [[Upgrades.byzantium]] carries EIP-100 and EIP-649 and records both in its
-    * component list; the other seven are not there, so a node built from this
-    * entry validates less across this boundary than the network did. **The
-    * entry names the network's upgrade; it does not claim to implement all of
-    * it**, which is the standing [[homestead]] has for a different reason and
-    * [[spuriousDragon]] had until its fourth proposal landed.
+    * [[Upgrades.byzantium]] carries EIP-100, EIP-649, EIP-140 and EIP-211 and
+    * records all four in its component list; the other five are not there, so a
+    * node built from this entry validates less across this boundary than the
+    * network did. **The entry names the network's upgrade; it does not claim to
+    * implement all of it**, which is the standing [[homestead]] has for a
+    * different reason and [[spuriousDragon]] had until its fourth proposal
+    * landed.
     *
     * ==Resolving a partial upgrade at this height is nearer the network than
     * resolving none==
