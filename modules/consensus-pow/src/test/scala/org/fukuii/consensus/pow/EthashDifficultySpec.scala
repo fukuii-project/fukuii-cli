@@ -251,7 +251,8 @@ class EthashDifficultySpec extends AnyFlatSpec:
     *
     * Measured before this case was written, by seeding the other one. They part
     * only where the window's span is not a whole number of periods, and the one
-    * span any surveyed network states is exactly twenty of them.
+    * span this build states -- ECIP-1010's 3,000,000 to 5,000,000 -- is exactly
+    * twenty of them.
     *
     * ECIP-1010 @ `f398567f4` derives `delay = (cont_block - pause_block) /
     * 100000` and resumes at `(block.number / 100000) - delay - 2`, so it divides

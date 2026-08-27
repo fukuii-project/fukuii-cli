@@ -136,10 +136,13 @@ final case class EthashEngine(
     * paragraph above assigns upstream is currently assigned to nobody.
     *
     * **A fault channel here is the wrong remedy and is deliberately not taken.**
-    * Every surveyed client settles an ommer's admissibility against the CHAIN,
-    * which this is not handed and could not read; a refusal on this member would
-    * move a validation concern onto the one seam every mechanism implements, on
-    * the strength of a caller that does not exist yet. [[SealFault]] is not the
+    * Both clients read here settle an ommer's admissibility against the CHAIN,
+    * which this is not handed and could not read: `ethereum/go-ethereum-pow` @
+    * `v1.10.26` gathers seven ancestors through `chain.GetHeader` inside
+    * `VerifyUncles`, and `besu-eth/besu-etc` @ `eb4248c997` walks the blockchain
+    * in `MainnetBlockBodyValidator.isOmmerSiblingOfAncestor`. A refusal on this
+    * member would move a validation concern onto the one seam every mechanism
+    * implements, on the strength of a caller that does not exist yet. [[SealFault]] is not the
     * precedent it resembles -- that answers a question about a header a PEER
     * supplied, where the fault is data, whereas everything reaching here has
     * already been validated and a bad age is a caller error. This engine raises
@@ -148,10 +151,13 @@ final case class EthashEngine(
     *
     * **What lands with the ommer validator is therefore this**: no block may
     * reach settlement carrying an ommer outside `1 <= age <=`
-    * [[EthashEngine.OmmerRewardHorizon]], and the tighter bound the surveyed
-    * clients enforce -- six -- is what that validator states. Recorded so the
-    * layer that lands it inherits the requirement rather than rediscovering it
-    * from a raise in production.
+    * [[EthashEngine.OmmerRewardHorizon]], and the tighter bound both of those
+    * clients enforce -- six -- is what that validator states. They reach it
+    * differently: go-ethereum-pow requires the ommer's parent to be among the
+    * seven ancestors it gathered and not the block's own parent, which admits an
+    * age of one through six; besu-etc states it outright as `MAX_GENERATION = 6`
+    * in `AbstractBlockProcessor`. Recorded so the layer that lands it inherits
+    * the requirement rather than rediscovering it from a raise in production.
     */
   override def settlement(
       rules: ConsensusRules,
@@ -331,7 +337,7 @@ final case class EthashEngine(
     * ==Derived from the header's own encoder rather than by listing the fields
     * again==
     *
-    * Both surveyed clients that carry this write the field list out by hand,
+    * Both clients read here that carry this write the field list out by hand,
     * and `besu-eth/besu-etc` @ `eb4248c99` writes it out TWICE -- once in
     * `EthHash.hashHeader` and once in `ProofOfWorkValidationRule.hashHeader` --
     * where the two copies already disagree about the condition guarding the
@@ -514,9 +520,15 @@ final case class EthashEngine(
     * `eb4248c997` transcribe that form; `ethereumclassic/core-geth` @
     * `4185df450` subtracts the span from the reference point instead and
     * divides afterwards. The two agree wherever the span is a whole number of
-    * periods, which the only span any surveyed network states is, so they are
-    * indistinguishable on every published case and part on the first span that
-    * is not. **The delay above is decomposed the other way for the same reason
+    * periods, and the one span this build states is exactly that: ECIP-1010's
+    * 3,000,000 to 5,000,000 spans 2,000,000, or twenty periods of 100,000. **So
+    * no published case can tell the two apart -- not because they agree, but
+    * because nothing published reaches a span that would separate them.** The
+    * discriminating case is written by hand:
+    * [[org.fukuii.consensus.pow.EthashDifficultySpec]]'s window of 300,000 to
+    * 450,000 is one and a half periods, and its own scaladoc records that it is
+    * the only thing in this repository holding the choice. **The delay above is
+    * decomposed the other way for the same reason
     * -- each follows its own proposal's arithmetic**, and reading one of them
     * as this build's general convention is what would get the other wrong.
     *
@@ -525,10 +537,13 @@ final case class EthashEngine(
     * `ethereum/execution-specs` @ `ccaaaba58` computes
     * `((block_number - BOMB_DELAY_BLOCKS) // 100000) - 2` and raises two to that
     * power where it is not negative. Subtracting whole periods instead would
-    * agree only where the delay is an exact multiple of the period -- which
-    * every delay read for this build happens to be, so the two are
-    * indistinguishable on the published corpus and part on the first delay that
-    * is not.
+    * agree only where the delay is an exact multiple of the period. All five
+    * delays this build's difficulty harness drives are exactly that --
+    * 3,000,000, 5,000,000, 9,000,000, 10,700,000 and 11,400,000, each a whole
+    * multiple of 100,000 -- and both shipped schedules carry a delay of zero.
+    * **So the published corpus cannot separate the two orders, and its agreement
+    * is structural rather than evidence.** They part on the first delay that is
+    * not a multiple of the period, and this build states none.
     *
     * ==The delayed block is floored at zero rather than divided while negative==
     *
@@ -618,7 +633,7 @@ final case class EthashEngine(
     * ECIP-1017 numbers its own eras from one and puts the first at *"blocks 1 -
     * 5,000,000"* and the second at *"blocks 5,000,001 - 10,000,000"*, so the
     * step lands on the block AFTER a multiple of the era length rather than on
-    * it. Both surveyed implementations of the proposal carry that offset and
+    * it. Both implementations of the proposal read here carry that offset and
     * carry it differently: `besu-eth/besu-etc` @ `eb4248c99` computes
     * `(blockNumber - 1) % eraLength` and divides what is left, and
     * `openethereum/openethereum` @ `v3.0.1` subtracts one from the quotient on
@@ -790,8 +805,9 @@ object EthashEngine:
   /** How far one block may lower the difficulty, as a count of adjustment
     * steps.
     *
-    * Ninety-nine below, which every surveyed implementation writes as a floor of
-    * `-99` on the multiplier.
+    * Ninety-nine below, which `ethereum/execution-specs` @ `ccaaaba58` writes as
+    * a floor of `-99` on the multiplier -- in `forks/homestead/fork.py` and
+    * again in `forks/byzantium/fork.py`.
     */
   private val MultiplierFloor: BigInt = BigInt(-99)
 
@@ -823,7 +839,7 @@ object EthashEngine:
 
 /** Why a header's seal was refused.
   *
-  * A sum rather than a boolean, because the surveyed clients distinguish these
+  * A sum rather than a boolean, because both clients read here distinguish these
   * and a caller diagnosing a rejected block needs which one it was: an
   * insufficient proof is a peer mining badly, a wrong mixed hash is a peer
   * lying about its own work, and the two below it are not the peer's fault at
@@ -841,8 +857,9 @@ enum SealFault:
 
   /** The header states no difficulty, so there is no bar for a result to clear.
     *
-    * Both surveyed clients refuse this before dividing rather than after --
-    * `Difficulty.Sign() <= 0` in the go-ethereum line and `isZero()` in besu-etc
+    * Both clients read here refuse this before dividing rather than after --
+    * `Difficulty.Sign() <= 0` in `ethereum/go-ethereum-pow` @ `v1.10.26` and
+    * `isZero()` in `besu-eth/besu-etc` @ `eb4248c99`
     * -- because the division the target comes from is what would fail otherwise,
     * and it would fail naming arithmetic rather than the header.
     */

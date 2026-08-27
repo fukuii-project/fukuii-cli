@@ -135,10 +135,10 @@ object DifficultyCorpus:
     * ==The fixture names the block and the rule takes its parent==
     *
     * A case states `currentBlockNumber`, which is the block being settled, so
-    * the parent sits one below it. That is the same arithmetic every surveyed
-    * client performs in the other direction -- `ethereum/go-ethereum-pow` @
-    * `v1.10.26` computes `periodCount := parent.Number + 1` -- and getting it
-    * backwards moves the exponential term by one whole period at every boundary.
+    * the parent sits one below it. That is the same arithmetic
+    * `ethereum/go-ethereum-pow` @ `v1.10.26` performs in the other direction,
+    * computing `periodCount := parent.Number + 1`, and getting it backwards
+    * moves the exponential term by one whole period at every boundary.
     *
     * **Every field the rule does not read is left at its zero rather than
     * invented.** A header is fourteen fields and this case is six scalars; a

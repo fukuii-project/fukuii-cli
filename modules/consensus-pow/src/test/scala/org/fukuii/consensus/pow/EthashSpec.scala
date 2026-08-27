@@ -129,7 +129,7 @@ class EthashSpec extends AnyFlatSpec:
     )
 
   it should "refuse a difficulty of zero rather than divide by it" in
-    assert(!Ethash.clears(zeroSeed, BigInt(0)), "both surveyed clients refuse a zero difficulty before dividing")
+    assert(!Ethash.clears(zeroSeed, BigInt(0)), "both clients read for this rule refuse a zero difficulty first")
 
   it should "read a result with its high bit set as a large number and not a negative one" in
     assert(

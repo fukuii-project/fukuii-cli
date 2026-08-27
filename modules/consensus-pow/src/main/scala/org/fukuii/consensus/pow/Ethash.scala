@@ -22,7 +22,7 @@ import org.fukuii.crypto.{Keccak256, Keccak512}
   * **Validation needs neither the dataset nor the choice.**
   * execution-specs says so in `generate_dataset`'s own words -- *"This function
   * is present only for demonstration purposes. It is not used while validating
-  * blocks."* -- and every surveyed client agrees in its code.
+  * blocks."* -- and both clients read here agree in their code.
   * `ethereum/go-ethereum-pow` @ `v1.10.26` takes
   * `verifySeal(chain, header, fulldag bool)` and falls back to the cache
   * whenever the dataset is not already generated, so even a mining node
@@ -240,11 +240,15 @@ object Ethash:
   /** How many bytes the cache for `epoch` holds.
     *
     * The size grows linearly and is then walked down to the largest value whose
-    * row count is prime, which execution-specs explains as being *"to minimize
-    * the risk of unintended cyclic behavior"*. Every surveyed client computes
-    * it the same way; three of them additionally ship a precomputed table for
-    * the first two thousand epochs, which is a lookup for the same arithmetic
-    * and not a second rule.
+    * row count is prime, which `ethereum/execution-specs` @ `ccaaaba58` explains
+    * as being *"to minimize the risk of unintended cyclic behavior"*. The three
+    * clients read here agree on that arithmetic and differ only in whether they
+    * precompute it: `ethereum/go-ethereum-pow` @ `v1.10.26` and
+    * `ethereumclassic/core-geth` @ `4185df450` each ship a table covering the
+    * first 2,048 epochs, declared `var cacheSizes = [maxEpoch]uint64{...}` with
+    * `maxEpoch = 2048`, while `besu-eth/besu-etc` @ `eb4248c997` ships none and
+    * computes it at `EthHash.cacheSize`. A table is a lookup for the same
+    * arithmetic and not a second rule.
     */
   def cacheSize(epoch: BigInt): Long =
     largestPrimeRowed(CacheInitBytes + CacheGrowthBytes * bounded(epoch), HashBytes)
@@ -437,7 +441,8 @@ object Ethash:
     * Nothing here streams or memory-maps: the whole thing is one array, so a
     * caller asks for a size it can hold. `datasetSize` is taken as a parameter
     * rather than read from the cache's epoch for exactly that reason, and
-    * because both surveyed clients parameterize the same call.
+    * because `ethereum/go-ethereum-pow` @ `v1.10.26` and `besu-eth/besu-etc` @
+    * `eb4248c99` both parameterize the same call.
     */
   def datasetFor(cache: EthashCache, datasetSize: Long): EthashDataset =
     if datasetSize <= 0 || datasetSize % HashBytes != 0 then
@@ -512,7 +517,8 @@ object Ethash:
     * itself is written once.
     *
     * It is a rule about the size ALONE and deliberately not about the epoch:
-    * both surveyed clients evaluate over a dataset built far smaller than any
+    * `ethereum/go-ethereum-pow` @ `v1.10.26` and `besu-eth/besu-etc` @
+    * `eb4248c99` both evaluate over a dataset built far smaller than any
     * epoch states, which is how the full path is exercised at all, so binding
     * the size to [[datasetSize]] here would refuse the one case that makes
     * [[evaluateFull]] checkable.
