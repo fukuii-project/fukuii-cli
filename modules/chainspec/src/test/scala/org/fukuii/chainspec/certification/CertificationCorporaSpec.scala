@@ -6,7 +6,7 @@ import org.fukuii.chainspec.{Activation, DifficultyAdjustment, Network, Registry
 import org.fukuii.evm.fixtures.*
 import org.fukuii.evm.{Opcode, PrecompileSet}
 
-import org.scalatest.prop.TableDrivenPropertyChecks
+import org.scalatest.prop.{TableDrivenPropertyChecks, TableFor3}
 import org.scalatest.propspec.AnyPropSpec
 
 /** How much of a corpus was there, and how much of it ran.
@@ -426,7 +426,8 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
       ("EIP-658", CertificationCorpora.LegacyByzantiumStateCorpus, withoutTheStatusByte, 0)
     )
 
-  /** Every row above rerun, once each, keyed by the proposal and the corpus.
+  /** One group of the rows above rerun, once each, keyed by the proposal and
+    * the corpus.
     *
     * ==A rerun is a whole pass over a corpus, and two properties want the same
     * row==
@@ -437,15 +438,30 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     * was run twice for one answer, so this holds each row's result and both
     * readers take it from here.
     *
-    * ==This is where the certification run spends its time==
+    * ==This is where the certification run spends its time, and it is one
+    * corpus rather than a tier==
     *
-    * One row is one pass over one corpus, and a pass costs about eleven
-    * milliseconds a case whichever tier it is over -- so the matrix is the
-    * dominant cost of the whole suite, and it grows with the product of the
-    * proposals asserted and the tiers they are asserted against rather than
-    * with the number of tests. **A row removed to make the suite quicker is a
-    * proposal nothing measures the corpora against**, which is the trade to
-    * refuse rather than the saving to take.
+    * One row is one pass over one corpus, and the matrix is the dominant cost
+    * of the whole suite. It grows with the product of the proposals asserted
+    * and the tiers they are asserted against rather than with the number of
+    * tests. **A row removed to make the suite quicker is a proposal nothing
+    * measures the corpora against**, which is the trade to refuse rather than
+    * the saving to take. What may be taken instead is running the expensive
+    * rows less often, which is what [[heavyRows]] below does.
+    *
+    * **A pass does NOT cost the same per case whichever tier it is over.**
+    * Measured over all twenty-six rows, an unmodified pass costs 1.80 ms a case
+    * over the generated tier at the earlier fork, 2.20 over the legacy tier
+    * there, 5.47 over the generated tier at the later fork and 12.21 over the
+    * legacy tier there -- a spread of 6.8 times, not the uniform figure a
+    * smaller sample suggested.
+    *
+    * **So "the legacy tier is expensive" is false**, and the same 2394 files
+    * demonstrate it: read at the earlier fork they are the second CHEAPEST
+    * corpus per case, and read at the later one the dearest. Two things
+    * compound there -- 4899 cases against 3036, and each case 5.5 times dearer,
+    * because that fork is where the curve and modular-exponentiation natives
+    * arrive and where the cases exercising them begin to answer.
     *
     * ==Forced outside `forAll`, like [[assembled]] and for its reason==
     *
@@ -453,31 +469,119 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     * raised inside a table's handler is reported as a failure. So each property
     * below reads this before entering `forAll`, never inside one.
     */
-  private lazy val movedPerRow: Map[(String, String), Vector[String]] =
+  private def movedFor(
+      rows: Vector[(String, String, UpgradeRules => UpgradeRules, Int)]
+  ): Map[(String, String), Vector[String]] =
     val reports = assembled
-    coverageRows.map { case (proposal, corpus, without, _) =>
+    rows.map { case (proposal, corpus, without, _) =>
       (proposal, corpus) -> movedBy(reports, corpus, without)
     }.toMap
 
-  /** The rows as the matrix asserts them. The rule removed is absent because
-    * [[movedPerRow]] has already applied it, and a function renders as nothing
-    * a reader can use in a failing row anyway.
+  /** The corpora one rerun of which costs the better part of a minute.
+    *
+    * ==Keyed on the corpus because that is what the measurement found==
+    *
+    * Timed per row over all twenty-six, the legacy tier at the later fork is
+    * 81% of the matrix: nine rows at 55.8 seconds each against 114.3 seconds
+    * for the other seventeen together. Neither of the two shapes a reader
+    * expects is what the numbers show -- it is not a tier, because the same
+    * files at the earlier fork are among the cheapest rows here, and it is not
+    * one or two outlying proposals, because eight of that corpus's nine rows
+    * sit within 3% of their own mean.
+    *
+    * **The split is clean, which is what makes a corpus the right key.** The
+    * cheapest row of this set costs 19.7 seconds and the dearest row outside it
+    * 10.7, so no row named here is cheaper than any row not named -- a rule a
+    * later reader can apply to a new row without re-timing anything.
+    *
+    * **A corpus added later is ordinary until measured, deliberately.** The
+    * failure that direction produces is a slower run, which is loud; naming a
+    * corpus here is what stops rows being asserted on every run, and that is
+    * the quiet direction.
     */
-  private val coverage =
+  private val corporaRerunInMinutes: Set[String] =
+    Set(CertificationCorpora.LegacyByzantiumStateCorpus)
+
+  /** The rows every run asserts, and the rows only a heavy run does.
+    *
+    * `filter` and `filterNot` over one predicate, so the two partition
+    * [[coverageRows]] exactly: a row cannot reach neither set, which written as
+    * two hand-maintained vectors it could.
+    */
+  private val ordinaryRows = coverageRows.filterNot { case (_, corpus, _, _) =>
+    corporaRerunInMinutes.contains(corpus)
+  }
+  private val heavyRows = coverageRows.filter { case (_, corpus, _, _) =>
+    corporaRerunInMinutes.contains(corpus)
+  }
+
+  /** Each group's reruns, held separately so that excluding the tagged property
+    * actually saves its time.
+    *
+    * **One memo over every row would defeat the tag entirely.** Whichever
+    * property ran first would force all twenty-six reruns, so an excluded
+    * property would still have been paid for and the ordinary run would be no
+    * quicker -- a tag that reports a saving it did not make.
+    */
+  private lazy val movedPerOrdinaryRow: Map[(String, String), Vector[String]] = movedFor(ordinaryRows)
+  private lazy val movedPerHeavyRow: Map[(String, String), Vector[String]] = movedFor(heavyRows)
+
+  /** The rows as the matrix asserts them. The rule removed is absent because
+    * the reruns above have already applied it, and a function renders as
+    * nothing a reader can use in a failing row anyway.
+    */
+  private def coverageOf(rows: Vector[(String, String, UpgradeRules => UpgradeRules, Int)]) =
     Table(
       ("proposal", "corpus", "cases decided"),
-      coverageRows.map { case (proposal, corpus, _, decided) => (proposal, corpus, decided) }*
+      rows.map { case (proposal, corpus, _, decided) => (proposal, corpus, decided) }*
     )
 
-  property("each tier decides the cases the coverage matrix records") {
-    val moved = movedPerRow
-    forAll(coverage) { (proposal: String, corpus: String, decided: Int) =>
+  private val ordinaryCoverage = coverageOf(ordinaryRows)
+  private val heavyCoverage = coverageOf(heavyRows)
+
+  // `forAll` over an empty table PASSES, so either half emptied would certify
+  // nothing while reporting green. The two properties below are what make the
+  // set above a choice rather than a switch that can be turned all the way off,
+  // and they are two because one body holding both assertions does not compile:
+  // a discarded `Assertion` is a hard error here.
+  property("the coverage matrix leaves rows an ordinary run asserts") {
+    assert(ordinaryRows.nonEmpty, "every row is behind the tag, so an ordinary run asserts no coverage at all")
+  }
+
+  property("the coverage matrix leaves rows only a heavy run asserts") {
+    assert(heavyRows.nonEmpty, "no row is behind the tag, so the tagged property asserts nothing")
+  }
+
+  /** One group's rows checked against what the matrix records for them.
+    *
+    * Shared by the two properties below so the assertion cannot drift between
+    * them: they differ in which rows they cover and in nothing else, and two
+    * copies of a message is how the halves stop reporting alike.
+    *
+    * **The reruns are forced by the caller, never here.** Each property below
+    * binds its own map first, for the reason [[assembled]] gives -- a
+    * cancellation raised inside a table's handler is reported as a failure.
+    */
+  private def decidesAsRecorded(
+      moved: Map[(String, String), Vector[String]],
+      rows: TableFor3[String, String, Int]
+  ) =
+    forAll(rows) { (proposal: String, corpus: String, decided: Int) =>
       val names = moved((proposal, corpus))
       assert(
         names.length == decided,
         s"$corpus decides ${names.length.toString} cases on $proposal rather than ${decided.toString}"
       )
     }
+
+  property("each tier decides the cases the coverage matrix records") {
+    val moved = movedPerOrdinaryRow
+    decidesAsRecorded(moved, ordinaryCoverage)
+  }
+
+  property("each tier decides the cases the coverage matrix records, over the corpora that cost minutes", Heavy) {
+    val moved = movedPerHeavyRow
+    decidesAsRecorded(moved, heavyCoverage)
   }
 
   property("the one case the coverage matrix records for the bound on deployed code is the one named") {
@@ -488,7 +592,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     // Recorded as a coverage fact and not as a complaint: what pins EIP-170 is
     // its own unit coverage, and a reader who takes a certified fork to be one
     // whose every proposal the published corpora exercise would be wrong here.
-    val moved = movedPerRow(("EIP-170", CertificationCorpora.LegacyEip158StateCorpus))
+    val moved = movedPerOrdinaryRow(("EIP-170", CertificationCorpora.LegacyEip158StateCorpus))
     assert(
       moved == Vector("codesizeOOGInvalidSize[d0g0v0]"),
       s"the bound decides these cases: ${moved.mkString(", ")}"

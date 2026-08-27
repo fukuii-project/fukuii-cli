@@ -25,7 +25,29 @@ import org.scalatest.Tag
   * acceptable for a rule that does not change -- a proof-of-work mixing loop is
   * about as stable as protocol code gets -- and it is not acceptable for anything
   * under active edit. **Run the heavy suite while working in the code it covers**;
-  * `AGENTS.md` § Commands carries the invocation.
+  * `AGENTS.md` § Commands carries the invocation and states when a section owes
+  * one.
+  *
+  * ==The active-edit bar, and what may carry this tag despite it==
+  *
+  * The certification matrix's most expensive rows carry this tag while the fork
+  * they read is under active edit, which the paragraph above appears to forbid.
+  * They are admissible because of WHAT they assert, and the bar is not relaxed
+  * to admit them: a matrix row asserts how many cases a published corpus would
+  * answer differently were one proposal removed, which is a property of that
+  * corpus rather than of the machine. **Whether the machine is right at that
+  * fork is asserted by an untagged property that runs every case of the same
+  * corpus on every ordinary run**, so a rule that regresses under edit still
+  * fails a run nobody had to remember to ask for.
+  *
+  * **The residual is real, and it is what the section-close obligation covers.**
+  * A change that left every published case still agreeing while moving what a
+  * proposal's removal decides would not be seen until the next heavy run. That
+  * is a narrower gap than the bar was written against, not an absent one.
+  *
+  * **So the test to apply is whether an ordinary run would still fail on a
+  * regression in the rule**, rather than whether the rule is under edit. Where
+  * it would not, the bar stands and the expensive thing does not get this tag.
   *
   * ==Why the tag lives in this module's test tree==
   *
