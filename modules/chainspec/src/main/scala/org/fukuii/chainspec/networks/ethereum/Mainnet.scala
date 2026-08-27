@@ -281,17 +281,19 @@ object Mainnet:
     * as `"byzantiumBlock": 4370000` in
     * `config/src/main/resources/mainnet.json`.
     *
-    * ==All nine proposals this upgrade names are implemented==
+    * ==This entry carries all nine proposals the upgrade names==
     *
     * EIP-609 § *Included EIPs* lists EIP-100, EIP-140, EIP-196, EIP-197,
-    * EIP-198, EIP-211, EIP-214, EIP-649 and EIP-658.
-    * [[Upgrades.byzantium]] carries every one of them and records all nine in
-    * its component list, so this entry is the first on this network's schedule
-    * whose rule set is the whole of the upgrade it names rather than part of
-    * it. **An entry names the network's upgrade and does not on its own claim
-    * to implement all of it** -- that is the standing [[homestead]] has for a
-    * different reason -- so the completeness here is a fact about the component
-    * list rather than about the entry naming a codename.
+    * EIP-198, EIP-211, EIP-214, EIP-649 and EIP-658, and
+    * [[Upgrades.byzantium]] adopts every one of them and records all nine in
+    * its component list. So the caveat [[homestead]] carries -- an entry naming
+    * a network upgrade whose rule set is only part of it -- is not one this
+    * entry needs either, which is the standing [[spuriousDragon]] already has.
+    *
+    * **That is a statement about what the composition adopts, and not a
+    * conformance claim.** Which proposals a rule set is built from is checkable
+    * from this file; whether each is implemented correctly is what the
+    * published corpora answer, read at this network's own activation.
     *
     * ==The two names this network gives this upgrade are both in the
     * specification==
