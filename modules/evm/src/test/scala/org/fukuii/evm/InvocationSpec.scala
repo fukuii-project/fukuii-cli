@@ -418,6 +418,13 @@ class InvocationSpec extends AnyFlatSpec:
     */
   private val fillingTheBuffer: Seq[Int] = calling(0xf1, other, 40000)
 
+  /** Hands back two bytes that differ, so a read from the second of them
+    * answers something a read from the first cannot.
+    */
+  private val returningTwo: Seq[Int] =
+    push1(0x2a) ++ push1(0x00) ++ Seq(0x53) ++ push1(0x3b) ++ push1(0x01) ++ Seq(0x53) ++
+      push1(0x02) ++ push1(0x00) :+ 0xf3
+
   /** Runs `program` in a frame that reports itself already `depth` invocations
     * deep, which is how a case reaches the refusal the nesting limit produces
     * without building a thousand frames to get there.
@@ -1781,6 +1788,17 @@ class InvocationSpec extends AnyFlatSpec:
       without - withCopy == schedule.veryLow * 3 + schedule.veryLow + schedule.copyPerWord + GasCost.MemoryPerWord,
       "three pushes, the settled part, one whole word copied, and the word of memory it lands in"
     )
+  }
+
+  it should "read from the offset it was given rather than from the start" in {
+    // Two bytes came back and this asks for the second. Without a case standing
+    // off the start, a copy that ignored its source offset entirely would answer
+    // correctly everywhere else here, since every other case reads from zero.
+    val holder = world()
+    holder.codes(other) = codeOf(hex(returningTwo))
+    val reading = push1(0x01) ++ push1(0x01) ++ push1(0x00) :+ 0x3e
+    val (frame, _) = runIn(admitting(holder), 100000, calling(0xf1, other, 40000, answerRoom = 0) ++ reading)
+    assert(frame.memory.read(0, 1) == codeOf("3b"), "the byte copied is the one at the start of the buffer")
   }
 
   it should "halt reading past what the callee handed back" in {
