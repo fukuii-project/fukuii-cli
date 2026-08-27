@@ -76,7 +76,9 @@ class UpgradesSpec extends AnyFlatSpec:
           ProposalId.Eip(211),
           ProposalId.Eip(214),
           ProposalId.Eip(658),
-          ProposalId.Eip(198)
+          ProposalId.Eip(198),
+          ProposalId.Eip(196),
+          ProposalId.Eip(197)
         ),
       "a composition's recorded components are not the ones it adopted"
     )
@@ -163,6 +165,43 @@ class UpgradesSpec extends AnyFlatSpec:
     assert(
       Upgrades.spuriousDragon.evm.precompiles.at(PrecompileSet.ModExp).isEmpty,
       "an upgrade below the one adopting EIP-198 already answered at that address"
+    )
+
+  it should "answer natively at the three curve addresses from the upgrade that adopts EIP-196 and EIP-197" in
+    // Asserted at the NETWORK for the reason above: each component's own spec
+    // passes with that component adopted by nothing.
+    assert(
+      Upgrades.byzantium.evm.precompiles
+        .at(PrecompileSet.AltBn128Add)
+        .contains(Precompile.AltBn128Add(Upgrades.byzantium.evm.schedule.precompileAltBn128Add)) &&
+        Upgrades.byzantium.evm.precompiles
+          .at(PrecompileSet.AltBn128Mul)
+          .contains(Precompile.AltBn128Mul(Upgrades.byzantium.evm.schedule.precompileAltBn128Mul)) &&
+        Upgrades.byzantium.evm.precompiles
+          .at(PrecompileSet.AltBn128PairingCheck)
+          .contains(
+            Precompile.AltBn128PairingCheck(
+              Upgrades.byzantium.evm.schedule.precompileAltBn128PairingBase,
+              Upgrades.byzantium.evm.schedule.precompileAltBn128PairingPerPoint
+            )
+          ),
+      "the upgrade that adopts the two curve documents does not place a native, or places one at another price"
+    )
+
+  it should "have answered at none of those three at the upgrade before it" in
+    assert(
+      Seq(PrecompileSet.AltBn128Add, PrecompileSet.AltBn128Mul, PrecompileSet.AltBn128PairingCheck)
+        .forall(address => Upgrades.spuriousDragon.evm.precompiles.at(address).isEmpty),
+      "an upgrade below the ones adopting the curve documents already answered at one of those addresses"
+    )
+
+  it should "run eight natives at that upgrade, having launched with four" in
+    // The count rather than the membership, which the two cases above already
+    // state. What this adds is that nothing ELSE arrived: a delta reaching an
+    // address no document names would leave the membership assertions passing.
+    assert(
+      Upgrades.byzantium.evm.precompiles.size == 8 && Upgrades.frontier.evm.precompiles.size == 4,
+      "this network runs some other number of natives at the upgrade that completes Byzantium"
     )
 
   it should "have carried none of their three values at the upgrade before it" in

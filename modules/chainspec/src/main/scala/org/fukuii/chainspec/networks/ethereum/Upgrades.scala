@@ -10,6 +10,8 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip160,
   Eip161,
   Eip170,
+  Eip196,
+  Eip197,
   Eip198,
   Eip2,
   Eip211,
@@ -308,14 +310,14 @@ object Upgrades:
     tangerineWhistle.adopting(Eip155.component, Eip160.component, Eip161.component, Eip170.component)
 
   /** [[spuriousDragon]] with EIP-100, EIP-649, EIP-140, EIP-211, EIP-214,
-    * EIP-658 and EIP-198 adopted.
+    * EIP-658, EIP-198, EIP-196 and EIP-197 adopted.
     *
-    * The order is the order the seven compose in. It is immaterial -- two name
+    * The order is the order the nine compose in. It is immaterial -- two name
     * what a block owes the mechanism that produced it, three add operations at
     * four bytes none of the others touches, one settles what a receipt's first
-    * field holds, and one places a native at an address none of them reaches --
-    * and it is stated because two deltas touching one field compose to
-    * whichever ran last.
+    * field holds, and three place natives at four addresses none of them
+    * reaches -- and it is stated because two deltas touching one field compose
+    * to whichever ran last.
     *
     * ==Three facets, and the pairing within each is the document's rather than
     * this network's==
@@ -339,11 +341,18 @@ object Upgrades:
     * `org.fukuii.chainspec.proposals.eip.Eip658` states what such a network
     * would get.
     *
-    * EIP-198 writes the machine too, and it is the only one of the seven that
-    * reaches the precompile set rather than the operation table. It depends on
-    * none of the others and none of them depends on it: a native answers at an
-    * address, so it shares no byte with the three that add operations and
-    * nothing about it is reachable from a table.
+    * EIP-198, EIP-196 and EIP-197 write the machine too, and they are the three
+    * of the nine that reach the precompile set rather than the operation table.
+    * None of them depends on any of the others and none of the others depends
+    * on them: a native answers at an address, so they share no byte with the
+    * three that add operations and nothing about them is reachable from a
+    * table.
+    *
+    * The last two are read together -- each names the other by number, and the
+    * second's stated purpose is combining them -- and adopted apart, because
+    * neither declares the other a dependency. `Eip196` places two entries from
+    * one document, which is that document's own shape rather than a grouping
+    * this network chose.
     *
     * Which proposals of this network's upgrade are carried here is stated on
     * the schedule entry that resolves them, because that is where a reader asks
@@ -357,5 +366,7 @@ object Upgrades:
       Eip211.component,
       Eip214.component,
       Eip658.component,
-      Eip198.component
+      Eip198.component,
+      Eip196.component,
+      Eip197.component
     )

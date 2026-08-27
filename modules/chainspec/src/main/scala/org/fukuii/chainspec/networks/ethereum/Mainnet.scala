@@ -281,32 +281,17 @@ object Mainnet:
     * as `"byzantiumBlock": 4370000` in
     * `config/src/main/resources/mainnet.json`.
     *
-    * ==Seven of the nine proposals this upgrade names are implemented==
+    * ==All nine proposals this upgrade names are implemented==
     *
     * EIP-609 § *Included EIPs* lists EIP-100, EIP-140, EIP-196, EIP-197,
     * EIP-198, EIP-211, EIP-214, EIP-649 and EIP-658.
-    * [[Upgrades.byzantium]] carries EIP-100, EIP-649, EIP-140, EIP-211,
-    * EIP-214, EIP-658 and EIP-198 and records all seven in its component list;
-    * the other two are not there, so a node built from this entry validates
-    * less across this boundary than the network did. **The entry names the
-    * network's upgrade; it does not claim to implement all of it**, which is
-    * the standing [[homestead]] has for a different reason and
-    * [[spuriousDragon]] had until its fourth proposal landed.
-    *
-    * The two that are missing are EIP-196 and EIP-197, the pair that places
-    * natives at the alt-bn128 curve, so what this entry cannot yet do is answer
-    * a call to either of those two addresses.
-    *
-    * ==Resolving a partial upgrade at this height is nearer the network than
-    * resolving none==
-    *
-    * [[org.fukuii.chainspec.UpgradeSchedule.at]] holds the last rule change at
-    * or below the height it is asked about, so before this entry existed every
-    * height from here upward answered with the preceding rule set -- which
-    * carries none of these proposals and is wrong about all of them. Adding the
-    * entry cannot make an answer above 4,370,000 worse than the answer it
-    * replaces, and it is the only thing that makes any of them reachable from a
-    * schedule at all.
+    * [[Upgrades.byzantium]] carries every one of them and records all nine in
+    * its component list, so this entry is the first on this network's schedule
+    * whose rule set is the whole of the upgrade it names rather than part of
+    * it. **An entry names the network's upgrade and does not on its own claim
+    * to implement all of it** -- that is the standing [[homestead]] has for a
+    * different reason -- so the completeness here is a fact about the component
+    * list rather than about the entry naming a codename.
     *
     * ==The two names this network gives this upgrade are both in the
     * specification==
