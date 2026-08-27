@@ -262,6 +262,19 @@ class PrecompileSpec extends AnyFlatSpec:
       "the charge was narrowed or saturated somewhere"
     )
 
+  it should "price a modulus past a thousand bytes on the third branch of the difficulty" in
+    // The third branch of the difficulty is reachable only above 1024 bytes,
+    // and no published vector goes there -- the widest declares 1024, which is
+    // the second branch's last value. The case below sits on the third branch
+    // with 263 squarings behind it, so a constant of that branch moved by one
+    // moves this figure by thirteen. The 64-bit case above is on the same
+    // branch and cannot do that: its exponent implies a single squaring, so a
+    // difficulty moved by one is divided away.
+    assert(
+      modExp.gasFor(modExpInput(0, 33, 2048, "ff" * 33)) == BigInt(13748377),
+      "the third branch of the difficulty is wrong"
+    )
+
   it should "count eight for every exponent byte past the first word" in
     // No published vector reaches this term. Every input in the corpora
     // declares an exponent of at most one word -- the two the proposal itself

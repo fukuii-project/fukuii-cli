@@ -162,16 +162,22 @@ object Precompile:
     * proposal that also moves [[divisor]], and one here would overcharge every
     * small call this fork admits.
     *
-    * ==Two answers are settled without an exponentiation, and the first is
-    * load-bearing==
+    * ==Two answers are settled without an exponentiation==
     *
-    * A base and a modulus both declared empty answer with nothing, before any
-    * operand is read. That order is the specification's own and it is what
-    * keeps an exponent declared wider than the machine can hold from being
-    * read at all: a pair of empty lengths makes the difficulty term zero, so
-    * the whole call is priced at nothing however long the exponent claims to
-    * be. A modulus of zero answers in zeroes at the modulus's declared length,
-    * that being the length every answer takes.
+    * A base and a modulus both declared empty answer with nothing. A modulus
+    * of zero answers in zeroes at the modulus's declared length, that being
+    * the length every answer takes.
+    *
+    * **The first of the two changes no answer here, and is kept anyway.** The
+    * specification returns there so that an exponent declared wider than any
+    * buffer is never built, and that matters because a pair of empty lengths
+    * makes the difficulty term zero and so prices the call at nothing however
+    * long the exponent claims to be. This implementation never builds one
+    * either way: a modulus declared empty reads as zero, and the zero-modulus
+    * branch below answers before the exponent is touched. So nothing
+    * observable rests on the return. It stays because it is the rule the
+    * specification states, and because without it the answer would rest on
+    * two other branches meeting rather than on that rule.
     */
   final case class ModExp(divisor: BigInt) extends Precompile:
 
@@ -235,8 +241,9 @@ object Precompile:
     * Answering a clamped one would be answering a different number, so it is
     * refused instead. Nothing reaches it: the charge is settled before any
     * operand is read, and a length that wide prices the call above what a
-    * 64-bit gas limit can supply -- except where the base and the modulus are
-    * both empty, which [[ModExp.run]] answers before reading anything.
+    * 64-bit gas limit can supply -- except where the difficulty term is zero,
+    * which takes a base and a modulus both declared empty, and which
+    * [[ModExp.run]] answers without reading an operand at all.
     */
   private def valueAt(input: Bytes, from: BigInt, width: BigInt): BigInt =
     val available = (BigInt(input.length) - from).min(width).max(0)
