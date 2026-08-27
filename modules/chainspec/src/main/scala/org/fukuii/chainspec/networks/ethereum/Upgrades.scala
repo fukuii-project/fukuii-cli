@@ -14,6 +14,7 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip211,
   Eip214,
   Eip649,
+  Eip658,
   Eip7
 }
 import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, NewAccountCharge, OpcodeTable, Precompile, PrecompileSet}
@@ -300,27 +301,36 @@ object Upgrades:
   val spuriousDragon: UpgradeRules =
     tangerineWhistle.adopting(Eip155.component, Eip160.component, Eip161.component, Eip170.component)
 
-  /** [[spuriousDragon]] with EIP-100, EIP-649, EIP-140, EIP-211 and EIP-214
-    * adopted.
+  /** [[spuriousDragon]] with EIP-100, EIP-649, EIP-140, EIP-211, EIP-214 and
+    * EIP-658 adopted.
     *
-    * The order is the order the five compose in. It is immaterial -- two name
-    * what a block owes the mechanism that produced it, and three add operations
-    * at four bytes none of the others touches -- and it is stated because two
-    * deltas touching one field compose to whichever ran last.
+    * The order is the order the six compose in. It is immaterial -- two name
+    * what a block owes the mechanism that produced it, three add operations at
+    * four bytes none of the others touches, and one settles what a receipt's
+    * first field holds -- and it is stated because two deltas touching one field
+    * compose to whichever ran last.
     *
-    * ==Two facets, and the pairing within each is the document's rather than
+    * ==Three facets, and the pairing within each is the document's rather than
     * this network's==
     *
     * EIP-100 and EIP-649 write the consensus facet;
     * `org.fukuii.chainspec.proposals.eip.Eip100Spec` and
     * `org.fukuii.chainspec.proposals.eip.Eip649Spec` each assert the other
-    * three facets survive as the same values rather than as equal copies.
+    * facets survive as the same values rather than as equal copies.
     * EIP-140, EIP-211 and EIP-214 write the machine. The first two are adopted
     * together because each document's own specification asserts something about
     * the other's work: EIP-140 places its payload in a buffer EIP-211 defines,
     * and EIP-211 names EIP-140 by number as the source of the failure data it
     * carries. The third is independent of both and is adopted here because this
     * network took all three at one height.
+    *
+    * EIP-658 writes the settlement facet, and it is the second document here
+    * that names EIP-140 as a dependency -- its header is `requires: 140`,
+    * because a status is what tells a failure that kept its gas from a success.
+    * So the two arrive together on this network and would have to be reasoned
+    * about separately on one that took them apart;
+    * `org.fukuii.chainspec.proposals.eip.Eip658` states what such a network
+    * would get.
     *
     * Which proposals of this network's upgrade are carried here is stated on
     * the schedule entry that resolves them, because that is where a reader asks
@@ -332,5 +342,6 @@ object Upgrades:
       Eip649.component,
       Eip140.component,
       Eip211.component,
-      Eip214.component
+      Eip214.component,
+      Eip658.component
     )

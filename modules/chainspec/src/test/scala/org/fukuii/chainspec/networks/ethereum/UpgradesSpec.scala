@@ -74,7 +74,8 @@ class UpgradesSpec extends AnyFlatSpec:
           ProposalId.Eip(649),
           ProposalId.Eip(140),
           ProposalId.Eip(211),
-          ProposalId.Eip(214)
+          ProposalId.Eip(214),
+          ProposalId.Eip(658)
         ),
       "a composition's recorded components are not the ones it adopted"
     )
@@ -157,6 +158,26 @@ class UpgradesSpec extends AnyFlatSpec:
         Upgrades.spuriousDragon.consensus.blockReward == ether(5) &&
         Upgrades.spuriousDragon.consensus.difficultyBombDelay == BigInt(0),
       "a value of EIP-100 or EIP-649 was in force before the upgrade that adopts it"
+    )
+
+  it should "have a receipt state its transaction's outcome from the upgrade that adopts EIP-658" in
+    // Asserted at the NETWORK for the reason the two cases above give: nothing
+    // sets this member except a component, so a component nothing adopts leaves
+    // it exactly where it was and every reader of the flag goes on answering
+    // the earlier fork's shape.
+    assert(
+      Upgrades.byzantium.execution.receiptCarriesStatus,
+      "the upgrade that adopts EIP-658 leaves a receipt carrying the root it replaces"
+    )
+
+  it should "have had a receipt carrying a root at every upgrade below that one" in
+    // The control, over every earlier composition rather than the one before it.
+    // No proposal below this sets the member, so a flag switched on anywhere in
+    // the chain of compositions would make the case above hold for a network
+    // that never adopted the document -- and only the whole chain can say so.
+    assert(
+      composed.filter(_ != Upgrades.byzantium).forall(!_.execution.receiptCarriesStatus),
+      "a rule set below the upgrade that adopts EIP-658 already carries a status"
     )
 
   it should "credit a beneficiary even where the amount is zero, at every height this build reaches" in
