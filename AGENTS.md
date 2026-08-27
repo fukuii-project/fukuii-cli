@@ -315,10 +315,24 @@ goes stale in the commits that follow rather than in the one that writes it --
 the pair that stood here was measured, correct on the day, and wrong three
 commits later, while `scripts/test-expected-total.txt` was right throughout.
 **Read the default total from that file.** Derive the heavy one as that total
-plus the number of tagged cases, which `git grep -n 'taggedAs Heavy'` lists so
-the count is checkable rather than recalled -- then **confirm it with a real
-run**, because the derivation assumes the tag is the only thing the fourth
-command changes.
+plus the number of tagged cases -- then **confirm it with a real run**, because
+the derivation assumes the tag is the only thing the fourth command changes.
+
+**Counting those cases takes an instrument that reaches BOTH syntaxes, and the
+obvious one reaches only the first.** ScalaTest spells the tag one way in a
+`FlatSpec` and another in a `PropSpec`, so `git grep -n 'taggedAs Heavy'` --
+which this file recommended until it went wrong -- silently omits every tagged
+property and returns a number that looks like an answer. Sweep for the tag's own
+name and read the hits, which is a search returning candidates rather than a
+count:
+
+```
+git grep -nE 'taggedAs Heavy|, Heavy\)' -- '*.scala'
+```
+
+**Calibrate it before believing a total derived from it:** the sweep must return
+at least one hit of each shape, and a run's own summary line is what settles the
+figure either way.
 
 **And the fourth command is STICKY, which is a hollow-run shape this file did not
 previously carry.** `set` mutates the running sbt server's session, so every
@@ -334,9 +348,23 @@ was confirmed to do so, or run the default one first.
 continuous integration -- so what it covers is verified at the moment somebody
 last ran it rather than continuously. **Run it while working in the code it
 covers.** `modules/evm/src/test/scala/org/fukuii/evm/fixtures/Heavy.scala` states
-what the tag is for and what the field does; the tag exists because a full ethash
-dataset takes minutes to generate and no surveyed client pays that on an ordinary
-run either.
+what the tag is for and what the field does.
+
+**A SECTION CLOSES WITH A HEAVY RUN.** That is the whole of the discipline the
+tag depends on, and it is stated here rather than left to the tag's own file
+because this is where a closer looks. Run the fourth command above, check the log
+against the heavy total rather than the default one, and run `sbt shutdown`
+before the next ordinary run.
+
+**What the tag holds back is no longer one mechanism, which is why the
+obligation is worth writing down.** It began as a dataset generation that costs
+minutes and is about as stable as protocol code gets. It now also covers the
+certification matrix's most expensive rows, whose subject -- how much of a
+published corpus each proposal is actually decided by -- moves whenever a fork's
+rules or the corpus do. **Skipping the run at a close is how that census ages
+into a figure nobody has checked**, and the count ratchet cannot see it: the
+tagged cases are absent from an ordinary run by design, so every total still
+reconciles.
 
 **Use `testFull` before treating a run as evidence anything passed.** sbt 2
 caches the test result machine-wide, and that cache survives both `clean` and
