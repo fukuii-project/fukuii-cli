@@ -71,9 +71,50 @@ and cross-references, and a stated reason where a boundary or dependency choice
 is non-obvious. **The one-sentence limit above does not apply to it**; a
 class-level contract doc legitimately runs several lines.
 
-The rule that does reach scaladoc is the vocabulary one. A shared abstraction
-documented in one network family's fork vocabulary carries the same conflation
-risk as naming it that way — `.claude/rules/nomenclature.md` states it.
+**Two rules do reach scaladoc, and this carve-out must not be read as excusing
+either.** The vocabulary one is the first: a shared abstraction documented in
+one network family's fork vocabulary carries the same conflation risk as naming
+it that way — `.claude/rules/nomenclature.md` states it.
+
+**The second is claim durability, and scaladoc is where this project has paid
+for it.** A scaladoc sentence that makes a claim about a *corpus* — every
+client, no implementation, the published fixtures agree — is bound to what its
+author actually read, at refs that cannot move, and is written so that an
+unread member falsifies nothing. Four shapes recur, all of them reading as
+verified for as long as they stand:
+
+- **the sampled universal**, claiming every member of a class where the
+  evidence covers the members consulted;
+- **the valence cut**, where a quotation is truncated so the source reads
+  neutral about something it judges;
+- **the imposed emphasis**, where capitalization or italics inside quotation
+  marks force a reading the source does not carry;
+- **the vacuous corpus**, citing a corpus as agreeing when that corpus could
+  not have disagreed.
+
+The last is the expensive one and the easiest to miss, because the other three
+are visible in the sentence and it is not. **A corpus that cannot discriminate
+the behavior under discussion is not evidence about it**, so a claim resting on
+one names the corpus, the subset actually read, and whether that subset could
+have falsified the claim.
+
+`~/.claude/rules/documentation-development.md` Rule 5 is the authority and
+carries the bound forms.
+
+**The sampled universal is already covered here and the other three are not.**
+`.claude/rules/evidence-and-citation.md` §3 states the remedy for it in written
+form — *"write the smaller true claim that names what you checked"* — and that
+file carries no `paths:`, so it loads every session. **The valence cut, the
+imposed emphasis and the vacuous corpus appear nowhere in it**, and those three
+are what this section adds rather than restates.
+
+**How this arrives is conditional, and that is worth knowing rather than
+assuming.** Rule 5's `paths:` reach no source file, so this section is the only
+place its content meets someone writing Scala. But this file is `paths:`-scoped
+too, and a `paths:` rule fires on the **Read tool** and not on `cat` — the
+header above names the `Explore`/`Plan` and `/compact` gaps and this is a third.
+An agent that reads a `.scala` file through the shell gets none of this, so open
+it explicitly when the claim you are about to write is about a corpus.
 
 ## Never in code — this goes in the commit message
 
