@@ -40,6 +40,23 @@ enum SkipReason:
     */
   case RuleNotBuilt(detail: String)
 
+  /** The case supplies an input the rule under test is not stated over, so the
+    * rule refuses it rather than answering.
+    *
+    * ==Distinct from a rule this build lacks, and from a divergence==
+    *
+    * [[RuleNotBuilt]] is a gap on this side. This is neither side's gap: the
+    * rule exists, the corpus states a case outside what the rule is defined
+    * for, and the refusal is the rule working. Counting it as a divergence
+    * would report a defect where the build is behaving as documented, and
+    * dropping it would let a harness narrow its own input until it agreed with
+    * everything left.
+    *
+    * **The detail carries what the rule refused**, because a reason that only
+    * says "refused" cannot be told from a rule refusing everything.
+    */
+  case InputRefused(detail: String)
+
 /** What running one fixture established. */
 enum Verdict:
   case Agreed
@@ -92,6 +109,7 @@ final case class CorpusReport(corpus: String, filesRead: Int, outcomes: Vector[C
     case SkipReason.NoExpectationAtThisFork => "no-expectation-at-this-fork"
     case SkipReason.Undecodable(_)          => "undecodable"
     case SkipReason.RuleNotBuilt(_)         => "rule-not-built"
+    case SkipReason.InputRefused(_)         => "input-refused"
 
 object CorpusReport:
 
