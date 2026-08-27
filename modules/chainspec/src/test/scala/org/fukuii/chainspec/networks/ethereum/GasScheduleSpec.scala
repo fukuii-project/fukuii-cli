@@ -185,7 +185,7 @@ class GasScheduleSpec extends AnyPropSpec with TableDrivenPropertyChecks:
   }
 
   property("Ethereum's genesis table holds the operations it launched with and no other byte") {
-    // 129, counted, against a vocabulary of 130. **The gap is the point**: the
+    // 129, counted, against a vocabulary of 134. **The gap is the point**: the
     // enum spans forks and this network's genesis table selects from it, so an
     // operation a later proposal adds must be absent here or its delta would be
     // unobservable -- the fork correct, the seam having proved nothing.
