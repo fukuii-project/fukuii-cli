@@ -223,7 +223,7 @@ class PrecompilePropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     val stream = Option(getClass.getResourceAsStream("/modexp-vectors.txt"))
     val source = stream.map(scala.io.Source.fromInputStream(_))
     try
-      source.toSeq.flatMap(_.getLines()).filter(_.nonEmpty).map { line =>
+      source.toSeq.flatMap(_.getLines()).filterNot(line => line.isEmpty || line.startsWith("#")).map { line =>
         val parts = line.split(' ')
         ModExpVector(
           bytes(parts(0)),

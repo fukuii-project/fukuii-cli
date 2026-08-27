@@ -1,3 +1,26 @@
+# MODEXP vectors: <input hex> <gas|-> <0x-prefixed output|-> <name>
+# A `-` is a half the corpus that supplied the row does not state. The output
+# carries an 0x prefix so that an answer of no bytes still occupies its field.
+#
+# geth/*   ethereum/go-ethereum-pow @ v1.10.26,
+#          core/vm/testdata/precompiles/modexp.json, all 17 rows, names and all.
+#          NethermindEth/nethermind @ b92e2a4719 publishes a file identical to
+#          it field for field, so this is one corpus read once rather than two
+#          agreeing. besu-eth/besu @ fdf1247c6d carries the same 17 again.
+# besu/*   besu-eth/besu @ fdf1247c6d,
+#          evm/src/test/java/.../MODEXPPrecompiledContractTest.java. ONE of its
+#          five extra rows is taken. The other four state a Byzantium gas figure
+#          that is besu's own machine-integer ceiling rather than the
+#          specification's number -- three are Long.MAX_VALUE, and the fourth
+#          gives 28928590731427686 for a base declared 2**42 bytes wide, which
+#          is what its square() yields once clampedMultiply has pinned x*x at
+#          Long.MAX_VALUE, against 60446291086284574991820 exact.
+# eest/*   ethereum/execution-specs-fixtures, release tests@v20.0.1,
+#          fixtures/state_tests/for_byzantium/byzantium/eip198_modexp_precompile.
+#          Twelve cases carry an expected output in the case identifier and no
+#          gas figure. ELEVEN are taken: the twelfth states that 2,000,000 gas
+#          does not buy the call, which is a claim about the charge and not
+#          about what the precompile answers.
 00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002003fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2efffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f 13056 0x0000000000000000000000000000000000000000000000000000000000000001 geth/eip_example1
 000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000020fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2efffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f 13056 0x0000000000000000000000000000000000000000000000000000000000000000 geth/eip_example2
 000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000040e09ad9675465c53a109fac66a445c91b292d2bb2c5268addb30cd82f80fcb0033ff97c80a5fc6f39193ae969c6ede6710a6b7ac27078a06d90ef1c72e5c85fb502fc9e1f6beb81516545975218075ec2af118cd8798df6e08a147c60fd6095ac2bb02c2908cf4dd7c81f11c289e4bce98f3553768f392a80ce22bf5c4f4a248c6b 204 0x60008f1614cc01dcfb6bfb09c625cf90b47d4468db81b5f8b7a39d42f332eab9b2da8f2d95311648a8f243f4bb13cfb3d8f7f2a3c014122ebb3ed41b02783adc geth/nagydani-1-square

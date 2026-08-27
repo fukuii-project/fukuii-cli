@@ -104,6 +104,33 @@ BESU_ROW = (
 )
 
 
+HEADER = """\
+# MODEXP vectors: <input hex> <gas|-> <0x-prefixed output|-> <name>
+# A `-` is a half the corpus that supplied the row does not state. The output
+# carries an 0x prefix so that an answer of no bytes still occupies its field.
+#
+# geth/*   ethereum/go-ethereum-pow @ v1.10.26,
+#          core/vm/testdata/precompiles/modexp.json, all 17 rows, names and all.
+#          NethermindEth/nethermind @ b92e2a4719 publishes a file identical to
+#          it field for field, so this is one corpus read once rather than two
+#          agreeing. besu-eth/besu @ fdf1247c6d carries the same 17 again.
+# besu/*   besu-eth/besu @ fdf1247c6d,
+#          evm/src/test/java/.../MODEXPPrecompiledContractTest.java. ONE of its
+#          five extra rows is taken. The other four state a Byzantium gas figure
+#          that is besu's own machine-integer ceiling rather than the
+#          specification's number -- three are Long.MAX_VALUE, and the fourth
+#          gives 28928590731427686 for a base declared 2**42 bytes wide, which
+#          is what its square() yields once clampedMultiply has pinned x*x at
+#          Long.MAX_VALUE, against 60446291086284574991820 exact.
+# eest/*   ethereum/execution-specs-fixtures, release tests@v20.0.1,
+#          fixtures/state_tests/for_byzantium/byzantium/eip198_modexp_precompile.
+#          Twelve cases carry an expected output in the case identifier and no
+#          gas figure. ELEVEN are taken: the twelfth states that 2,000,000 gas
+#          does not buy the call, which is a claim about the charge and not
+#          about what the precompile answers.
+"""
+
+
 def main() -> int:
     if len(sys.argv) != 4:
         print(__doc__.strip().splitlines()[2], file=sys.stderr)
@@ -114,7 +141,7 @@ def main() -> int:
 
     priced = sum(1 for line in lines if line.split()[1] != "-")
     answered = sum(1 for line in lines if line.split()[2] != "-")
-    Path(out_path).write_text("\n".join(lines) + "\n")
+    Path(out_path).write_text(HEADER + "\n".join(lines) + "\n")
     print(f"wrote {out_path}: {len(lines)} vectors ({priced} state gas, {answered} state an output)")
     return 0
 
