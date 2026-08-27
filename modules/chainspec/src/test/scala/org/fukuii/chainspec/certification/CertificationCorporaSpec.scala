@@ -1,9 +1,10 @@
 package org.fukuii.chainspec.certification
 
 import org.fukuii.bytes.UInt64
-import org.fukuii.chainspec.networks.KnownNetworks
-import org.fukuii.chainspec.{Activation, Network, Registry, UpgradeRules}
+import org.fukuii.chainspec.networks.{KnownNetworks, ethereum}
+import org.fukuii.chainspec.{Activation, DifficultyAdjustment, Network, Registry, UpgradeRules}
 import org.fukuii.evm.fixtures.*
+import org.fukuii.evm.{Opcode, PrecompileSet}
 
 import org.scalatest.prop.TableDrivenPropertyChecks
 import org.scalatest.propspec.AnyPropSpec
@@ -68,6 +69,16 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     CertificationCorpora.LegacyEip158StateCorpus -> CorpusCensus(files = 2394, cases = 3036, skipped = 1815),
     CertificationCorpora.GeneratedTangerineWhistleCorpus -> CorpusCensus(files = 33, cases = 536, skipped = 0),
     CertificationCorpora.GeneratedSpuriousDragonCorpus -> CorpusCensus(files = 34, cases = 537, skipped = 0),
+    // The same 2394 files a fourth time, and the fork at which nearly all of
+    // them answer: 2297 carry a section under this key and it expands to 4899
+    // runnable combinations, against 579 files and 1221 combinations one fork
+    // earlier. The 97 skipped are the files that state nothing here at all.
+    CertificationCorpora.LegacyByzantiumStateCorpus -> CorpusCensus(files = 2394, cases = 4899, skipped = 97),
+    // Twice the files of any earlier generated directory and more than three
+    // times the cases. 25 of the 70 sit under this fork's own name, in five
+    // directories each named for one of its nine proposals, which is a shape no
+    // earlier directory of this tier has.
+    CertificationCorpora.GeneratedByzantiumCorpus -> CorpusCensus(files = 70, cases = 1845, skipped = 0),
     // The same 33 files as the row above, resolved through the other network's
     // schedule at that network's own activation. The figures are identical
     // because the corpus is: what differs is which schedule was asked, and at
@@ -144,7 +155,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     assert(names == census.keySet, s"assembled ${names.toString} against a census of ${census.keySet.toString}")
   }
 
-  property("the census covers nine corpora, counted") {
+  property("the census covers eleven corpora, counted") {
     // THE REMOVAL CASE, which the pairing cannot see. Dropping a corpus from the
     // census AND from what the harness assembles leaves those two agreeing with
     // each other, leaves the same six properties registered, and leaves the
@@ -156,13 +167,13 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     // available to whoever needs a red build green after an upstream corpus
     // moves, which is exactly the moment a ratchet earns its keep.
     //
-    // Nine: the interpreter tier, the state tier read for Frontier, again for
-    // EIP-150 and again for EIP-158, the generated state tier filled for
-    // Frontier, Homestead, Tangerine Whistle and Spurious Dragon, and Tangerine
-    // Whistle read a second time through the other network's schedule. Raising
-    // this is adding a corpus. Lowering it is dropping certified cases, and that
-    // is a decision rather than a tidy-up.
-    assert(census.size == 9, s"the census covers ${census.size.toString} corpora rather than nine")
+    // Eleven: the interpreter tier, the state tier read for Frontier, again for
+    // EIP-150, again for EIP-158 and again for Byzantium, the generated state
+    // tier filled for Frontier, Homestead, Tangerine Whistle, Spurious Dragon
+    // and Byzantium, and Tangerine Whistle read a second time through the other
+    // network's schedule. Raising this is adding a corpus. Lowering it is
+    // dropping certified cases, and that is a decision rather than a tidy-up.
+    assert(census.size == 11, s"the census covers ${census.size.toString} corpora rather than eleven")
   }
 
   property("every censused corpus holds the files the census records") {
@@ -268,8 +279,68 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
   private val withoutTheExpReprice: UpgradeRules => UpgradeRules =
     rules => rules.copy(evm = rules.evm.copy(schedule = rules.evm.schedule.copy(expPerByte = BigInt(10))))
 
-  /** How many cases each censused tier at this fork decides on each of the
-    * fork's four proposals, measured by removing the proposal and rerunning.
+  /** The revert operation taken out. */
+  private val withoutRevert: UpgradeRules => UpgradeRules =
+    rules => rules.copy(evm = rules.evm.copy(table = rules.evm.table.removing(Opcode.Revert)))
+
+  /** Both operations of the return-data buffer taken out together, because the
+    * document adds them together and a machine holding one of them is a state
+    * no fork ever shipped.
+    */
+  private val withoutTheReturnDataBuffer: UpgradeRules => UpgradeRules =
+    rules =>
+      rules.copy(evm =
+        rules.evm.copy(table = rules.evm.table.removing(Opcode.ReturnDataSize).removing(Opcode.ReturnDataCopy))
+      )
+
+  /** The static call operation taken out. */
+  private val withoutStaticCall: UpgradeRules => UpgradeRules =
+    rules => rules.copy(evm = rules.evm.copy(table = rules.evm.table.removing(Opcode.StaticCall)))
+
+  /** The native answering at the modular-exponentiation address taken out, so
+    * that address is an ordinary account again.
+    */
+  private val withoutModularExponentiation: UpgradeRules => UpgradeRules =
+    rules => rules.copy(evm = rules.evm.copy(precompiles = rules.evm.precompiles.removing(PrecompileSet.ModExp)))
+
+  /** Both natives of the curve-arithmetic document taken out together: one
+    * document places two addresses, and removing one of them is a machine no
+    * fork ever shipped.
+    */
+  private val withoutCurveArithmetic: UpgradeRules => UpgradeRules =
+    rules =>
+      rules.copy(evm =
+        rules.evm.copy(precompiles =
+          rules.evm.precompiles.removing(PrecompileSet.AltBn128Add).removing(PrecompileSet.AltBn128Mul)
+        )
+      )
+
+  /** The native answering at the pairing-check address taken out. */
+  private val withoutThePairingCheck: UpgradeRules => UpgradeRules =
+    rules =>
+      rules.copy(evm = rules.evm.copy(precompiles = rules.evm.precompiles.removing(PrecompileSet.AltBn128PairingCheck)))
+
+  /** A receipt back to carrying a state root in its first field. */
+  private val withoutTheStatusByte: UpgradeRules => UpgradeRules =
+    rules => rules.copy(execution = rules.execution.copy(receiptCarriesStatus = false))
+
+  /** Difficulty targeted the way the fork before this one targeted it. */
+  private val withoutTheOmmerAwareAdjustment: UpgradeRules => UpgradeRules =
+    rules => rules.copy(consensus = rules.consensus.copy(difficultyAdjustment = DifficultyAdjustment.Eip2))
+
+  /** Both halves of the reward document reverted -- the amount back to what the
+    * chain launched with, and the exponential term back to being measured from
+    * the block being settled.
+    */
+  private val withoutTheRewardReduction: UpgradeRules => UpgradeRules =
+    rules =>
+      rules.copy(consensus =
+        rules.consensus.copy(blockReward = ethereum.Upgrades.launchReward, difficultyBombDelay = BigInt(0))
+      )
+
+  /** How many cases each censused tier decides on each proposal of the two
+    * forks either tier is read at, measured by removing the proposal and
+    * rerunning.
     *
     * ==What a corpus MENTIONS and what it can DECIDE are different claims==
     *
@@ -280,12 +351,36 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     * absent from a correct post state exactly as it is absent from a corpus that
     * never tested it.
     *
-    * ==Neither tier certifies this fork, and the two are near-complements==
+    * **Counting FILE NAMES gets it wrong in the other direction, and the later
+    * fork is where that shows.** No file of the generated tier at that fork has
+    * the revert operation anywhere in its path, and 45 files of the older tier
+    * are named for it -- so a census by name gives the generated tier nothing.
+    * The differential gives it 337 cases against the older tier's 56, because
+    * it reaches the operation through cases filed under later proposals
+    * entirely: a net-gas-metering suite whose call targets revert, and an
+    * every-opcode case. A corpus reaches a rule wherever its cases happen to
+    * exercise it, which no reading of a directory listing recovers.
     *
-    * The generated tier is the only one that reaches EIP-155 and the older tier
-    * is the only one that reaches EIP-170, so dropping either leaves a proposal
-    * of this upgrade decided by nothing at all. That, and not a shortfall on the
-    * clearing clause, is why both are censused.
+    * ==Neither tier certifies either fork, and the two are near-complements==
+    *
+    * At the earlier fork the generated tier is the only one that reaches
+    * EIP-155 and the older tier is the only one that reaches EIP-170, so
+    * dropping either leaves a proposal decided by nothing at all. At the later
+    * fork the same holds for the receipt's status byte, which only the
+    * generated tier publishes -- and the older tier decides three of that
+    * fork's proposals by a wider margin than the generated one does. That is
+    * why both are censused at both.
+    *
+    * ==Two proposals of the later fork are reached by NEITHER tier, and that is
+    * a gap rather than a certification==
+    *
+    * A state fixture settles one transaction against a block it is handed, so
+    * nothing it can express reads what a block's producer is credited or how
+    * the next block's difficulty is targeted. Both zeros are therefore
+    * structural rather than a shortfall in either corpus: no state tier at any
+    * fork can move them. What pins the two is elsewhere -- the difficulty rule
+    * against the published difficulty vectors the mechanism's own module
+    * certifies at this fork, and the reward against its own unit coverage.
     *
     * ==Every row is another row's control==
     *
@@ -294,10 +389,12 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     * sits beside a non-zero produced by the same machinery over the same corpus,
     * so the machinery is shown working at the moment the zero is read.
     *
-    * The two zeros are explainable rather than mysterious, which is the other
-    * thing that makes them safe to assert. EIP-155 is unreachable in the older
-    * tier because that corpus publishes no signed bytes for any case, so no
-    * signature is ever recovered and nothing ever asks which chain it names.
+    * Every zero is explainable rather than mysterious, which is the other thing
+    * that makes them safe to assert. EIP-155 is unreachable in the older tier
+    * because that corpus publishes no signed bytes for any case, so no signature
+    * is ever recovered and nothing ever asks which chain it names; EIP-658 is
+    * unreachable there because that tier publishes no receipt for any case at
+    * any fork, so there is nothing for a status byte to differ in.
     */
   private val coverageRows: Vector[(String, String, UpgradeRules => UpgradeRules, Int)] =
     Vector(
@@ -308,7 +405,25 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
       ("EIP-161", CertificationCorpora.GeneratedSpuriousDragonCorpus, withoutClearing, 48),
       ("EIP-161", CertificationCorpora.LegacyEip158StateCorpus, withoutClearing, 74),
       ("EIP-170", CertificationCorpora.GeneratedSpuriousDragonCorpus, withoutTheCodeBound, 0),
-      ("EIP-170", CertificationCorpora.LegacyEip158StateCorpus, withoutTheCodeBound, 1)
+      ("EIP-170", CertificationCorpora.LegacyEip158StateCorpus, withoutTheCodeBound, 1),
+      ("EIP-100", CertificationCorpora.GeneratedByzantiumCorpus, withoutTheOmmerAwareAdjustment, 0),
+      ("EIP-100", CertificationCorpora.LegacyByzantiumStateCorpus, withoutTheOmmerAwareAdjustment, 0),
+      ("EIP-140", CertificationCorpora.GeneratedByzantiumCorpus, withoutRevert, 337),
+      ("EIP-140", CertificationCorpora.LegacyByzantiumStateCorpus, withoutRevert, 56),
+      ("EIP-196", CertificationCorpora.GeneratedByzantiumCorpus, withoutCurveArithmetic, 184),
+      ("EIP-196", CertificationCorpora.LegacyByzantiumStateCorpus, withoutCurveArithmetic, 989),
+      ("EIP-197", CertificationCorpora.GeneratedByzantiumCorpus, withoutThePairingCheck, 199),
+      ("EIP-197", CertificationCorpora.LegacyByzantiumStateCorpus, withoutThePairingCheck, 141),
+      ("EIP-198", CertificationCorpora.GeneratedByzantiumCorpus, withoutModularExponentiation, 44),
+      ("EIP-198", CertificationCorpora.LegacyByzantiumStateCorpus, withoutModularExponentiation, 340),
+      ("EIP-211", CertificationCorpora.GeneratedByzantiumCorpus, withoutTheReturnDataBuffer, 410),
+      ("EIP-211", CertificationCorpora.LegacyByzantiumStateCorpus, withoutTheReturnDataBuffer, 47),
+      ("EIP-214", CertificationCorpora.GeneratedByzantiumCorpus, withoutStaticCall, 267),
+      ("EIP-214", CertificationCorpora.LegacyByzantiumStateCorpus, withoutStaticCall, 433),
+      ("EIP-649", CertificationCorpora.GeneratedByzantiumCorpus, withoutTheRewardReduction, 0),
+      ("EIP-649", CertificationCorpora.LegacyByzantiumStateCorpus, withoutTheRewardReduction, 0),
+      ("EIP-658", CertificationCorpora.GeneratedByzantiumCorpus, withoutTheStatusByte, 1834),
+      ("EIP-658", CertificationCorpora.LegacyByzantiumStateCorpus, withoutTheStatusByte, 0)
     )
 
   /** Every row above rerun, once each, keyed by the proposal and the corpus.
@@ -318,9 +433,19 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     *
     * [[CertificationCorpora.rerun]] rebuilds the harness and runs every case
     * again, and the older tier here is 2394 files that the baseline already
-    * reads three times. Computing per call meant the row naming the case below
+    * reads four times. Computing per call meant the row naming the case below
     * was run twice for one answer, so this holds each row's result and both
     * readers take it from here.
+    *
+    * ==This is where the certification run spends its time==
+    *
+    * One row is one pass over one corpus, and a pass costs about eleven
+    * milliseconds a case whichever tier it is over -- so the matrix is the
+    * dominant cost of the whole suite, and it grows with the product of the
+    * proposals asserted and the tiers they are asserted against rather than
+    * with the number of tests. **A row removed to make the suite quicker is a
+    * proposal nothing measures the corpora against**, which is the trade to
+    * refuse rather than the saving to take.
     *
     * ==Forced outside `forAll`, like [[assembled]] and for its reason==
     *
@@ -344,7 +469,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
       coverageRows.map { case (proposal, corpus, _, decided) => (proposal, corpus, decided) }*
     )
 
-  property("each tier at this fork decides the cases the coverage matrix records") {
+  property("each tier decides the cases the coverage matrix records") {
     val moved = movedPerRow
     forAll(coverage) { (proposal: String, corpus: String, decided: Int) =>
       val names = moved((proposal, corpus))
@@ -355,7 +480,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     }
   }
 
-  property("the one case in either corpus that the bound on deployed code decides is the one named") {
+  property("the one case the coverage matrix records for the bound on deployed code is the one named") {
     // The count above would still read as coverage if this case were dropped and
     // an unrelated one began to move, which for a rule reached by exactly one
     // case is the whole of the risk. Naming it is what closes that.

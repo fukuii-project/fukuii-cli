@@ -106,8 +106,8 @@ object CertificationCorpora:
     * clause's own case, which the generated corpus does not state anywhere and
     * can only approach through an emptiness it created itself.
     *
-    * It is also **the only place in either corpus where EIP-170's bound on
-    * deployed code decides anything**, and it does so once. Against that it
+    * It is also **the only tier the matrix measures for EIP-170 where that
+    * bound on deployed code decides anything**, and it does so once. Against that it
     * reaches EIP-155 not at all, because it publishes no signed bytes for any
     * case and so never asks a signature which chain it names -- which is what
     * makes the two tiers near-complements rather than one a subset of the other.
@@ -168,6 +168,42 @@ object CertificationCorpora:
     */
   val GeneratedSpuriousDragonCorpus: String = "execution-specs-fixtures state_tests/for_spuriousdragon"
 
+  /** The legacy tier read a fourth time, for the expectations it files under
+    * the name of the fork after that.
+    *
+    * ==Nearly the whole directory answers here==
+    *
+    * 2297 of the 2394 files carry a section under this key against 579 under
+    * EIP-158, and they expand to 4899 runnable combinations. The reason is the
+    * one the EIP-158 tier already states -- a general state test states
+    * expectations for every fork it was authored against, and the later the
+    * fork the more of the corpus has one. The 97 files that state nothing at
+    * all here are what the skip count records.
+    *
+    * **Scale is not coverage, and at this fork the gap between the two is
+    * wide.** Which of the upgrade's proposals this tier can decide is measured
+    * in `CertificationCorporaSpec` by removing a proposal and rerunning: it
+    * decides three of the nine by a wider margin than the generated tier, four
+    * by a narrower one, and two not at all. A count of files predicts none of
+    * that.
+    */
+  val LegacyByzantiumStateCorpus: String = "legacytests Constantinople/GeneralStateTests at Byzantium"
+
+  /** The generated tier filled for the same fork.
+    *
+    * ==The only tier in this harness that publishes a receipt stating a
+    * status==
+    *
+    * Its 1845 cases carry 1834 receipts and every one of them states `status`,
+    * where every receipt in the four earlier directories states `postState` --
+    * so it is the first corpus here whose receipts state the fork's new first
+    * field at all. The legacy tier publishes no receipt for any case at any
+    * fork, all 31291 of its post entries carrying exactly a hash, its indexes
+    * and its logs, which is why registering it at this fork does not reach that
+    * proposal however many cases it carries.
+    */
+  val GeneratedByzantiumCorpus: String = "execution-specs-fixtures state_tests/for_byzantium"
+
   /** The same directory as the Tangerine Whistle tier, resolved through the
     * other network's schedule instead.
     *
@@ -209,6 +245,7 @@ object CertificationCorpora:
   private[certification] val EthereumHomesteadStarts: Long = 1150000L
   private[certification] val EthereumTangerineWhistleStarts: Long = 2463000L
   private[certification] val EthereumSpuriousDragonStarts: Long = 2675000L
+  private[certification] val EthereumByzantiumStarts: Long = 4370000L
   private[certification] val ClassicGasRepriceStarts: Long = 2500000L
 
   /** Every network-and-height pair the corpora above are resolved at.
@@ -225,6 +262,7 @@ object CertificationCorpora:
       ethereum.Mainnet.network -> EthereumHomesteadStarts,
       ethereum.Mainnet.network -> EthereumTangerineWhistleStarts,
       ethereum.Mainnet.network -> EthereumSpuriousDragonStarts,
+      ethereum.Mainnet.network -> EthereumByzantiumStarts,
       ethereumclassic.Mainnet.network -> ClassicGasRepriceStarts
     )
 
@@ -278,6 +316,8 @@ object CertificationCorpora:
     val tangerineWhistle = rulesAt(ethereumSchedule, EthereumTangerineWhistleStarts)
 
     val spuriousDragon = rulesAt(ethereumSchedule, EthereumSpuriousDragonStarts)
+
+    val byzantium = rulesAt(ethereumSchedule, EthereumByzantiumStarts)
 
     val gasReprice = rulesAt(classicSchedule, ClassicGasRepriceStarts)
 
@@ -335,6 +375,20 @@ object CertificationCorpora:
         "SpuriousDragon",
         ethereumChain,
         spuriousDragon
+      ),
+      StateCorpus(
+        LegacyByzantiumStateCorpus,
+        FixtureCorpus.legacy(root).resolve("GeneralStateTests"),
+        "Byzantium",
+        ethereumChain,
+        byzantium
+      ),
+      StateCorpus(
+        GeneratedByzantiumCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_byzantium"),
+        "Byzantium",
+        ethereumChain,
+        byzantium
       ),
       StateCorpus(
         ClassicTangerineWhistleCorpus,
