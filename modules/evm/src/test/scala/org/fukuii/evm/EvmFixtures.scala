@@ -186,6 +186,7 @@ object EvmFixtures:
     precompileRipemd160PerWord = BigInt(122),
     precompileIdentityBase = BigInt(17),
     precompileIdentityPerWord = BigInt(15),
+    precompileModExpDivisor = BigInt(27),
     transactionBase = BigInt(21002),
     transactionDataPerZeroByte = BigInt(19),
     transactionDataPerNonZeroByte = BigInt(70),

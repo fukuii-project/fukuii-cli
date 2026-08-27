@@ -53,8 +53,17 @@ class PrecompileSetSpec extends AnyFlatSpec:
   it should "place the copy at the fourth" in
     assert(PrecompileSet.Identity == addressOf(0x04), "identity answers at 0x04")
 
+  it should "place modular exponentiation at the fifth" in
+    // The address is the machine's and stays here whether or not a chain places
+    // anything at it. `ethereum/EIPs` at `9e393a79`, EIPS/eip-198.md: "At
+    // address 0x00......05, add a precompile".
+    assert(PrecompileSet.ModExp == addressOf(0x05), "modexp answers at 0x05")
+
   it should "answer nothing at the address just above the last" in
-    assert(placed.at(addressOf(0x05)).isEmpty, "0x05 arrives at a later fork and is not this one's")
+    assert(
+      placed.at(PrecompileSet.ModExp).isEmpty,
+      "0x05 arrives at a later fork and is not this configuration's"
+    )
 
   it should "answer nothing at the zero address" in
     assert(placed.at(addressOf(0x00)).isEmpty, "the zero address runs code like any other")

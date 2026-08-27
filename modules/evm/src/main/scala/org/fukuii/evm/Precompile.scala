@@ -44,11 +44,11 @@ trait Precompile:
   *
   * ==What is here is the implementation; WHICH of them a chain runs is not==
   *
-  * These four are what the machine knows how to compute. A chain configuration
-  * decides which of them it places, at which addresses, at which prices -- and
-  * that composition is not here, because it is a network's and this module is
-  * the machine's. [[PrecompileSet.Empty]] is what such a composition is built
-  * over.
+  * What is below is what the machine knows how to compute. A chain
+  * configuration decides which of them it places, at which addresses, at which
+  * prices -- and that composition is not here, because it is a network's and
+  * this module is the machine's. [[PrecompileSet.Empty]] is what such a
+  * composition is built over.
   *
   * Each takes its own prices as constructor arguments rather than reading them
   * from anywhere, so that a repricing is an argument at the point the entry is
@@ -68,10 +68,14 @@ trait Precompile:
   * separately. [[PrecompileSet.equals]] records what that costs and why the
   * residual is safe.
   *
-  * Prices, addresses and failure behavior are `ethereum/execution-specs` @
-  * `ccaaaba58`, `forks/frontier/vm/precompiled_contracts/` and
-  * `forks/frontier/vm/gas.py`, read against `ethereum/go-ethereum` @
-  * `6bb0588ad`, `core/vm/contracts.go` and `params/protocol_params.go`.
+  * Prices, addresses and failure behavior for the four a chain can place from
+  * genesis are `ethereum/execution-specs` @ `ccaaaba58`,
+  * `forks/frontier/vm/precompiled_contracts/` and `forks/frontier/vm/gas.py`,
+  * read against `ethereum/go-ethereum` @ `6bb0588ad`, `core/vm/contracts.go`
+  * and `params/protocol_params.go`. [[ModExp]] arrives with a later proposal
+  * and is `ethereum/execution-specs` @ `20f7f6271a`,
+  * `forks/byzantium/vm/precompiled_contracts/modexp.py`, read against
+  * `ethereum/go-ethereum-pow` @ `v1.10.26`, `core/vm/contracts.go`.
   */
 object Precompile:
 
@@ -120,11 +124,196 @@ object Precompile:
     def gasFor(input: Bytes): BigInt = costPerWord(base, perWord, input)
     def run(input: Bytes): Bytes = input
 
+  /** `base ** exponent mod modulus`, over operands whose widths the input
+    * itself declares.
+    *
+    * ==Six fields, and only the first three are at fixed places==
+    *
+    * Three lengths, one word each, then the base, the exponent and the modulus
+    * laid end to end at exactly those lengths. Every read is right-padded with
+    * zeroes and everything past the last operand is ignored, so no input is
+    * malformed: a caller supplying nothing has declared three lengths of zero.
+    *
+    * ==The charge is settled from the declared lengths, not from the
+    * operands==
+    *
+    * The difficulty of multiplying numbers that wide, times the squarings an
+    * exponent that long implies, over [[divisor]]. The only part of an operand
+    * that reaches the price is the position of the highest set bit in the
+    * exponent's first word, which is what lets the whole charge be settled
+    * before an operand is read.
+    *
+    * ==Arbitrary precision throughout, and deliberately no ceiling==
+    *
+    * A declared length is a whole 256-bit word and the difficulty term squares
+    * it, so an intermediate exceeds anything a machine integer holds. Nothing
+    * here narrows or saturates, which makes the charge the specification's
+    * exact figure. Two clients whose gas is a machine integer answer a ceiling
+    * in its place -- `ethereum/go-ethereum-pow` @ `v1.10.26` answers
+    * `math.MaxUint64` and `besu-eth/besu` @ `fdf1247c6d` answers
+    * `Long.MAX_VALUE` -- and no caller can tell the two apart, because a
+    * transaction states its gas limit as a 64-bit quantity and so can supply
+    * neither figure.
+    *
+    * ==No floor at this fork==
+    *
+    * A short input is charged what the formula gives, which is routinely under
+    * two hundred and is zero for some inputs. The floor arrives with the later
+    * proposal that also moves [[divisor]], and one here would overcharge every
+    * small call this fork admits.
+    *
+    * ==Two answers are settled without an exponentiation, and the first is
+    * load-bearing==
+    *
+    * A base and a modulus both declared empty answer with nothing, before any
+    * operand is read. That order is the specification's own and it is what
+    * keeps an exponent declared wider than the machine can hold from being
+    * read at all: a pair of empty lengths makes the difficulty term zero, so
+    * the whole call is priced at nothing however long the exponent claims to
+    * be. A modulus of zero answers in zeroes at the modulus's declared length,
+    * that being the length every answer takes.
+    */
+  final case class ModExp(divisor: BigInt) extends Precompile:
+
+    def gasFor(input: Bytes): BigInt =
+      val baseLength = lengthAt(input, 0)
+      val exponentLength = lengthAt(input, Word.Width)
+      val modulusLength = lengthAt(input, 2 * Word.Width)
+      val exponentHead = valueAt(input, BaseOffset + baseLength, exponentLength.min(BigInt(Word.Width)))
+      (multiplicationComplexity(baseLength.max(modulusLength)) *
+        adjustedExponentLength(exponentLength, exponentHead).max(1)) / divisor
+
+    def run(input: Bytes): Bytes =
+      val baseLength = lengthAt(input, 0)
+      val exponentLength = lengthAt(input, Word.Width)
+      val modulusLength = lengthAt(input, 2 * Word.Width)
+      if baseLength == 0 && modulusLength == 0 then Bytes.Empty
+      else
+        val exponentOffset = BaseOffset + baseLength
+        val modulusOffset = exponentOffset + exponentLength
+        val answerWidth = asWidth(modulusLength)
+        val modulus = valueAt(input, modulusOffset, modulusLength)
+        if modulus == 0 then zeroes(answerWidth)
+        else
+          val base = valueAt(input, BaseOffset, baseLength)
+          val exponent = valueAt(input, exponentOffset, exponentLength)
+          leftPaddedTo(answerWidth, base.modPow(exponent, modulus))
+
   /** A settled charge plus one per whole word, counting a partial word as a
     * whole one.
     */
   private def costPerWord(base: BigInt, each: BigInt, input: Bytes): BigInt =
     base + each * BigInt((input.length + Word.Width - 1) / Word.Width)
+
+  /** Where the operands begin, the three lengths ahead of them being one word
+    * each.
+    */
+  private val BaseOffset: Int = 3 * Word.Width
+
+  /** One of the three declared lengths, read as a whole word. */
+  private def lengthAt(input: Bytes, offset: Int): BigInt =
+    valueAt(input, BigInt(offset), BigInt(Word.Width))
+
+  /** The number `width` bytes from `from` spell, reading past the end as
+    * zeroes.
+    *
+    * ==The padding is computed rather than materialized, which is what makes
+    * this total==
+    *
+    * `from` and `width` are both read out of 256-bit fields, so either can
+    * name a window far larger than any buffer. Only the bytes actually present
+    * are read; the zeroes behind them move the value left instead of being
+    * written anywhere. So a window that starts past the end, or one whose
+    * present bytes are all zero, answers zero at no cost however wide it claims
+    * to be -- which is what a declared length large enough to matter produces,
+    * since there are no bytes that far into any input.
+    *
+    * ==The one bound, and why it is refused rather than clamped==
+    *
+    * A window carrying a byte that is not zero, behind more padding than a
+    * shift can count bits for, names a number this machine cannot represent.
+    * Answering a clamped one would be answering a different number, so it is
+    * refused instead. Nothing reaches it: the charge is settled before any
+    * operand is read, and a length that wide prices the call above what a
+    * 64-bit gas limit can supply -- except where the base and the modulus are
+    * both empty, which [[ModExp.run]] answers before reading anything.
+    */
+  private def valueAt(input: Bytes, from: BigInt, width: BigInt): BigInt =
+    val available = (BigInt(input.length) - from).min(width).max(0)
+    if available == 0 then BigInt(0)
+    else
+      val present = BigInt(1, bytesAt(input, from.toInt, available.toInt))
+      val padding = (width - available) * 8
+      if present == 0 then BigInt(0)
+      else
+        require(padding.isValidInt, "a right-padded read wider than the largest representable byte array")
+        present << padding.toInt
+
+  /** The multiplication difficulty of operands `length` bytes wide.
+    *
+    * The three branches and their constants are `ethereum/EIPs` @ `9e393a79`,
+    * `EIPS/eip-198.md`, which gives them as `mult_complexity`. Every division
+    * here is a floor, both operands being non-negative.
+    */
+  private def multiplicationComplexity(length: BigInt): BigInt =
+    if length <= 64 then length * length
+    else if length <= 1024 then length * length / 4 + 96 * length - 3072
+    else length * length / 16 + 480 * length - 199680
+
+  /** How many squarings an exponent of this length and leading word implies.
+    *
+    * Bytes past the first word count for eight each; within that word only the
+    * position of the highest set bit counts, so the exponents this fork expects
+    * to be common are charged for what they cost rather than for their width.
+    * `ethereum/EIPs` @ `9e393a79`, `EIPS/eip-198.md` gives it as
+    * `ADJUSTED_EXPONENT_LENGTH`, and the caller takes it against one, which is
+    * where the document puts that floor.
+    */
+  private def adjustedExponentLength(length: BigInt, head: BigInt): BigInt =
+    val highestBit = BigInt((head.bitLength - 1).max(0))
+    if length < Word.Width then highestBit else 8 * (length - Word.Width) + highestBit
+
+  /** A declared length as a width this machine can address.
+    *
+    * Every answer is as wide as the modulus was declared to be, so a length
+    * past what an array can hold is one no answer exists for. It is refused
+    * rather than clamped for [[valueAt]]'s reason, and is unreachable for the
+    * same one.
+    */
+  private def asWidth(length: BigInt): Int =
+    require(length.isValidInt, "a modulus wider than the largest representable byte array")
+    length.toInt
+
+  private def zeroes(width: Int): Bytes =
+    Bytes.fromIArray(IArray.unsafeFromArray(new Array[Byte](width)))
+
+  /** `value` in a buffer of `width` bytes, with its low-order end at the low-order
+    * end of the buffer.
+    *
+    * The encoding a big integer carries is signed, so a value whose leading bit
+    * is set gains a zero byte ahead of it that is not part of the number. Those
+    * bytes are dropped by taking the low-order `width` of whatever arrives,
+    * which is also what makes the answer the modulus's declared width whether
+    * the value is narrower or the encoding is wider.
+    */
+  private def leftPaddedTo(width: Int, value: BigInt): Bytes =
+    val out = new Array[Byte](width)
+    val encoded = value.toByteArray
+    val taken = if encoded.length < width then encoded.length else width
+    var index = 0
+    while index < taken do
+      out(width - taken + index) = encoded(encoded.length - taken + index)
+      index += 1
+    Bytes.fromIArray(IArray.unsafeFromArray(out))
+
+  private def bytesAt(input: Bytes, from: Int, width: Int): Array[Byte] =
+    val raw = input.toIArray
+    val out = new Array[Byte](width)
+    var index = 0
+    while index < width do
+      out(index) = raw(from + index)
+      index += 1
+    out
 
   /** The address that signed, as a whole word, or nothing.
     *

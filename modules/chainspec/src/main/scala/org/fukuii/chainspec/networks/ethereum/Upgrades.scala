@@ -113,6 +113,7 @@ object Upgrades:
     precompileRipemd160PerWord = BigInt(120),
     precompileIdentityBase = BigInt(15),
     precompileIdentityPerWord = BigInt(3),
+    precompileModExpDivisor = BigInt(20),
     transactionBase = BigInt(21000),
     transactionDataPerZeroByte = BigInt(4),
     transactionDataPerNonZeroByte = BigInt(68),

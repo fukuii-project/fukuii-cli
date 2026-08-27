@@ -111,6 +111,11 @@ object PrecompileSet:
   /** The input, unchanged. */
   val Identity: Address = addressOf(0x04)
 
+  /** `base ** exponent mod modulus`, at the first address above the four a
+    * chain can place from its own genesis.
+    */
+  val ModExp: Address = addressOf(0x05)
+
   /** The address a low number names, which is how the field writes these: a
     * precompile sits at the low end of the space and everything above it is
     * zero.

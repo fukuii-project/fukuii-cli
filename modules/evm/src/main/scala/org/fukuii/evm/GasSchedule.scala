@@ -141,6 +141,16 @@ final case class GasSchedule(
     precompileRipemd160PerWord: BigInt,
     precompileIdentityBase: BigInt,
     precompileIdentityPerWord: BigInt,
+    // The divisor in modular exponentiation's price. It is the one precompile
+    // figure here that is not itself a charge: that precompile's charge is
+    // worked out from the widths its input declares and then divided by this.
+    // It is a member for the same reason its siblings are, EIP-2565 moving it
+    // from 20 to 3. A network states it from its own genesis like every other
+    // price here, where it prices nothing until a proposal places the native
+    // that reads it -- which is what leaves that proposal a placement rather
+    // than a placement and a repricing at once, the shape `transactionCreate`
+    // above is held at zero for.
+    precompileModExpDivisor: BigInt,
     // THE TRANSACTION-INTRINSIC PRICES. They belong here and not beside the
     // caller that charges them, because both authorities keep them in the same
     // repriceable record as everything above -- and because EIP-2028 is exactly

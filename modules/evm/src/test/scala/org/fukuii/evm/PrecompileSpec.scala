@@ -11,9 +11,15 @@ import org.scalatest.flatspec.AnyFlatSpec
   * padding of a short input, the truncation of a long one, and what an input
   * the precompile cannot make sense of produces.
   *
-  * Expected behavior is `ethereum/execution-specs` at `ccaaaba58`,
+  * Expected behavior for the four a chain can place from genesis is
+  * `ethereum/execution-specs` at `ccaaaba58`,
   * `frontier/vm/precompiled_contracts/`, read against `ethereum/go-ethereum` at
-  * `6bb0588ad`, `core/vm/contracts.go`.
+  * `6bb0588ad`, `core/vm/contracts.go`. For modular exponentiation it is
+  * `ethereum/execution-specs` at `20f7f6271a`,
+  * `forks/byzantium/vm/precompiled_contracts/modexp.py`, read against
+  * `ethereum/go-ethereum-pow` at `v1.10.26`, `core/vm/contracts.go`, and
+  * against the proposal itself at `ethereum/EIPs` `9e393a79`,
+  * `EIPS/eip-198.md`.
   *
   * ==What is deliberately NOT here==
   *
@@ -55,6 +61,29 @@ class PrecompileSpec extends AnyFlatSpec:
   private def hex(value: BigInt): String = Word(value).toBytes.toHex
 
   private def filling(size: Int): Bytes = Bytes.fromArray(new Array[Byte](size))
+
+  /** Priced as this fork prices it, so the figures below are the network's own
+    * rather than the fixture schedule's.
+    *
+    * The fixture schedule holds a divisor no network uses, which is what the
+    * last case here reads: an implementation dividing by a constant answers the
+    * same for both and this file would not notice.
+    */
+  private val modExp = Precompile.ModExp(BigInt(20))
+
+  /** The three declared lengths, as the input carries them: one word each, in
+    * the order the proposal lays them out.
+    */
+  private def declaring(baseLength: BigInt, exponentLength: BigInt, modulusLength: BigInt): String =
+    hex(baseLength) + hex(exponentLength) + hex(modulusLength)
+
+  private def modExpInput(
+      baseLength: BigInt,
+      exponentLength: BigInt,
+      modulusLength: BigInt,
+      operands: String
+  ): Bytes =
+    EvmFixtures.bytesOf(declaring(baseLength, exponentLength, modulusLength) + operands)
 
   // ── ecrecover: the assembled vector, then one field moved at a time ──────
 
@@ -129,3 +158,131 @@ class PrecompileSpec extends AnyFlatSpec:
 
   it should "charge only its base for an empty input" in
     assert(identity.gasFor(Bytes.Empty) == EvmFixtures.schedule.precompileIdentityBase, "no bytes is no words")
+
+  // ── Modular exponentiation ───────────────────────────────────────────────
+
+  "modexp" should "answer nothing at all where the base and the modulus are both declared empty" in
+    // The specification returns there before reading an operand, and this input
+    // is why that order matters: the exponent is declared wider than any buffer
+    // can hold, so an implementation reading the operands first would try to
+    // build it. `ethereum/execution-specs` @ `20f7f6271a`, modexp.py:48-50.
+    assert(
+      modExp.run(modExpInput(0, BigInt(2).pow(200), 0, "ff")).isEmpty,
+      "a pair of empty declared lengths is answered before anything is read"
+    )
+
+  it should "charge nothing for that input" in
+    // The same fact from the pricing side, and the reason the return above is
+    // reachable at all: the difficulty term is the square of the larger
+    // declared length, which is zero, so the whole product is zero however long
+    // the exponent claims to be.
+    assert(
+      modExp.gasFor(modExpInput(0, BigInt(2).pow(200), 0, "ff")) == BigInt(0),
+      "zero difficulty prices the call at zero"
+    )
+
+  it should "answer nothing for an input of no bytes at all" in
+    assert(modExp.run(Bytes.Empty).isEmpty, "three lengths read past the end are three zeroes")
+
+  it should "answer at the modulus's declared width where the value is narrower" in
+    // 7**2 mod 11 = 5 in a modulus declared four bytes wide.
+    assert(
+      modExp.run(modExpInput(1, 1, 4, "0702" + "0000000b")).toHex == "00000005",
+      "the answer is as wide as the modulus was declared, not as wide as the value"
+    )
+
+  it should "answer in zeroes at that width where the modulus is zero" in
+    // "if modulus == 0: evm.output = Bytes(b"\x00") * modulus_length",
+    // modexp.py:60-61.
+    assert(
+      modExp.run(modExpInput(1, 1, 3, "0702" + "000000")).toHex == "000000",
+      "a modulus of zero is answered in zeroes rather than refused"
+    )
+
+  it should "answer in zeroes at that width where the modulus is one" in
+    // Everything is congruent to zero modulo one, including a base raised to
+    // the power of nothing -- which is the arm an implementation shortcutting a
+    // zero exponent to one would answer 0x000001 for.
+    assert(
+      modExp.run(modExpInput(1, 0, 3, "07" + "000001")).toHex == "000000",
+      "a modulus of one leaves nothing behind, whatever the exponent is"
+    )
+
+  it should "read a modulus the data cuts short as one padded with zeroes" in
+    // The proposal's fifth worked example: "it attempts to grab 32 bytes for
+    // the modulus starting from 0x80 - but there is no further data, so it
+    // right-pads it with 31 zero bytes". `ethereum/EIPs` @ `9e393a79`,
+    // EIPS/eip-198.md.
+    assert(
+      modExp.run(modExpInput(1, 2, 32, "03" + "ffff" + "80")).toHex ==
+        "3b01b01ac41f2d6e917c6d6a221ce793802469026d9ab7578fa2e79e4da6aaab",
+      "a modulus shorter than its declared length is read as one padded on the right"
+    )
+
+  it should "answer the same where the data supplies those zeroes and one byte more" in
+    // The proposal's fourth example is the fifth with the padding written out
+    // and "the remaining 0x07 byte" after it, and it states the two parse
+    // alike. Asserted as an equality between the two rather than as a repeated
+    // figure, because what the document claims is that they agree.
+    assert(
+      modExp.run(modExpInput(1, 2, 32, "03" + "ffff" + "80" + "00" * 31 + "07")) ==
+        modExp.run(modExpInput(1, 2, 32, "03" + "ffff" + "80")),
+      "the padded form and the truncated form are the same call"
+    )
+
+  it should "charge the same for both of them" in
+    assert(
+      modExp.gasFor(modExpInput(1, 2, 32, "03" + "ffff" + "80" + "00" * 31 + "07")) ==
+        modExp.gasFor(modExpInput(1, 2, 32, "03" + "ffff" + "80")),
+      "bytes past the last operand reach neither the answer nor the price"
+    )
+
+  it should "charge under two hundred for a small call, and nothing at all for some" in
+    // The floor of two hundred belongs to the later proposal that also moves
+    // the divisor, and is not this fork's. Eleven published cases at this fork
+    // cost zero -- `ethereum/execution-specs-fixtures` release `tests@v20.0.1`,
+    // `state_tests/for_byzantium/byzantium/eip198_modexp_precompile` -- and a
+    // floor here would refuse every one of them at the price they were
+    // generated against.
+    assert(modExp.gasFor(modExpInput(0, 0, 1, "02")) == BigInt(0), "the smallest calls this fork admits are free")
+
+  it should "state a charge no 64-bit gas limit could meet, exactly rather than at a ceiling" in
+    // A base declared 2**42 bytes wide. The difficulty term squares it, so the
+    // product overruns every machine integer; the figure below is what the
+    // specification's arbitrary-precision arithmetic gives.
+    //
+    // `besu-eth/besu` @ `fdf1247c6d` answers 28928590731427686 for this input,
+    // which is what its `square()` gives once `clampedMultiply` has pinned the
+    // product at `Long.MAX_VALUE`. Both refuse the call at any gas a
+    // transaction can state, so the difference is not observable on a chain --
+    // and a build that adopted the ceiling would be asserting a number the
+    // specification does not have.
+    assert(
+      modExp.gasFor(modExpInput(BigInt(2).pow(42), 0, 0, "")) == BigInt("60446291086284574991820"),
+      "the charge was narrowed or saturated somewhere"
+    )
+
+  it should "take only the exponent's leading word into the price" in {
+    // Two calls whose exponents agree in their first word and differ past it.
+    // The price counts eight for every byte past that word and the position of
+    // the highest set bit within it, so it cannot see the difference -- while
+    // the answer can, and does.
+    val leading = "80" + "00" * 31
+    val quiet = modExpInput(1, 40, 1, "02" + leading + "00" * 8 + "05")
+    val loud = modExpInput(1, 40, 1, "02" + leading + "00" * 7 + "01" + "05")
+    assert(
+      modExp.gasFor(quiet) == modExp.gasFor(loud) && modExp.run(quiet) != modExp.run(loud),
+      "the two differ in the price, or agree in the answer"
+    )
+  }
+
+  it should "divide by the divisor it was built with rather than by a constant" in {
+    // The one property no published vector can establish, because every corpus
+    // was generated at this fork's own divisor. An entry reading a literal
+    // answers the same for both.
+    val input = modExpInput(1, 32, 32, "03" + "ff" * 32 + "ff" * 32)
+    assert(
+      Precompile.ModExp(BigInt(20)).gasFor(input) == Precompile.ModExp(BigInt(10)).gasFor(input) / 2,
+      "the divisor is not the one the entry was built with"
+    )
+  }

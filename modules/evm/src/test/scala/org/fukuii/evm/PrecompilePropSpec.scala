@@ -5,12 +5,20 @@ import org.fukuii.bytes.Bytes
 import org.scalatest.propspec.AnyPropSpec
 import org.scalatest.prop.TableDrivenPropertyChecks
 
-/** The four precompiles against other implementations' published vectors.
+/** The precompiles against other implementations' published vectors.
   *
   * The sibling [[PrecompileSpec]] covers each one's contract stated as a
   * behavior — what it charges, what it pads, what it does with an input that
-  * makes no sense. This file is the corpora, and its value is that none of the
-  * values in it were derived here.
+  * makes no sense. This file is the corpora, and its value is that almost none
+  * of the values in it were derived here.
+  *
+  * **Almost, because one table is derived and says so.** No published corpus
+  * reaches every combination of the three lengths modular exponentiation's
+  * input declares, and the combinations are where its two settled answers live,
+  * so [[lengthCombinations]] is worked out from the specification instead.
+  * Every row of it that a published case does reach is cross-checked against
+  * that case in the same table, which is what keeps the derivation from being
+  * the only thing that says it is right.
   *
   * ==Where each table comes from==
   *
@@ -31,6 +39,13 @@ import org.scalatest.prop.TableDrivenPropertyChecks
   *   - `sha256`: computed on this machine by `sha256sum` (GNU coreutils), and
   *     cross-checked in process against the JDK's provider by
   *     [[org.fukuii.crypto.Sha256PropSpec]].
+  *   - `modexp`: the `modexp-vectors.txt` resource, written by
+  *     `scripts/gen-modexp-vectors.py` from two corpora it names. Its own
+  *     header records that geth's and nethermind's published files are
+  *     IDENTICAL — same names, inputs, outputs and gas, in the same order — so
+  *     they are one corpus read once rather than two agreeing, and that four of
+  *     besu's five extra rows state besu's machine-integer ceiling rather than
+  *     the specification's figure and are left out for that reason.
   *
   * ==The three `InvalidHighV` rows are the ones that earn their place==
   *
@@ -192,6 +207,63 @@ class PrecompilePropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
   private val schedule = EvmFixtures.schedule
 
+  // ── Modular exponentiation ───────────────────────────────────────────────
+
+  /** Priced at this fork's own divisor, which is what every gas figure in the
+    * corpus was generated against.
+    */
+  private val modExp = Precompile.ModExp(BigInt(20))
+
+  /** One published case: what it charges and what it answers, either of which
+    * the corpus that supplied it may leave unstated.
+    */
+  private case class ModExpVector(input: Bytes, gas: Option[BigInt], answer: Option[Bytes], name: String)
+
+  private val modExpCorpus: Seq[ModExpVector] =
+    val stream = Option(getClass.getResourceAsStream("/modexp-vectors.txt"))
+    val source = stream.map(scala.io.Source.fromInputStream(_))
+    try
+      source.toSeq.flatMap(_.getLines()).filter(_.nonEmpty).map { line =>
+        val parts = line.split(' ')
+        ModExpVector(
+          bytes(parts(0)),
+          Option.when(parts(1) != "-")(BigInt(parts(1))),
+          Option.when(parts(2) != "-")(bytes(parts(2).drop(2))),
+          parts(3)
+        )
+      }
+    finally source.foreach(_.close())
+
+  /** The eight ways the three declared lengths can each be empty or not, with
+    * the answer the specification gives for each.
+    *
+    * Four of the eight are reached by a published case and carry its
+    * identifier; the other four are not published anywhere and are worked out
+    * from `ethereum/execution-specs` @ `20f7f6271a`,
+    * `forks/byzantium/vm/precompiled_contracts/modexp.py`.
+    *
+    * **Three rows answer nothing for the same rule and one for a different
+    * one**, which is why the combinations are worth enumerating rather than
+    * sampling. An empty base with an empty modulus is answered before any
+    * operand is read, whatever the exponent says; an empty modulus with a base
+    * that is not empty is not that case at all, and answers nothing only
+    * because a modulus read out of no bytes is zero and an answer is as wide as
+    * the modulus was declared.
+    */
+  private val lengthCombinations = Table(
+    ("baseLength", "exponentLength", "modulusLength", "operands", "answer", "published as"),
+    (0, 0, 0, "", "", "eest/base_0x-exponent_0x-modulus_0x"),
+    (0, 0, 1, "02", "01", "eest/base_0x-exponent_0x-modulus_0x02"),
+    (0, 1, 0, "03", "", "derived: both empty, answered before the exponent is read"),
+    (0, 1, 1, "0305", "00", "eest/base_0x-exponent_0x01-modulus_0x02 has this shape"),
+    (1, 0, 0, "07", "", "derived: a modulus of no bytes is zero, and zero bytes wide"),
+    (1, 0, 1, "0705", "01", "derived: anything to the power of nothing is one"),
+    (1, 1, 0, "0703", "", "derived: a modulus of no bytes is zero, and zero bytes wide"),
+    (1, 1, 1, "070305", "03", "derived: 7**3 mod 5")
+  )
+
+  private def declared(length: Int): String = Word(BigInt(length)).toBytes.toHex
+
   property("ecrecover answers what go-ethereum and besu publish") {
     forAll(recoveries) { (name: String, input: String, expectedHex: String) =>
       assert(of(PrecompileSet.EcRecover).run(bytes(input)).toHex == expectedHex, name)
@@ -252,5 +324,51 @@ class PrecompilePropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
           schedule.precompileIdentityBase + schedule.precompileIdentityPerWord * words,
         "identity over " + size + " bytes"
       )
+    }
+  }
+
+  property("the modexp corpus loaded, with both halves of it substantial") {
+    // `forAll` over an empty table SUCCEEDS, so a resource that failed to load
+    // would leave the three properties below checking nothing and reporting
+    // green. The counts are not asserted exactly -- the resource is
+    // regenerable and an exact figure would be a maintained value -- but a
+    // corpus that stopped stating gas, or stopped stating answers, has to show
+    // up as a failure rather than as a smaller pass.
+    val priced = modExpCorpus.count(_.gas.isDefined)
+    val answered = modExpCorpus.count(_.answer.isDefined)
+    assert(
+      priced > 10 && answered > 10,
+      "expected a substantial corpus of both kinds; got priced=" + priced.toString +
+        " answered=" + answered.toString
+    )
+  }
+
+  property("modexp charges what the corpus states") {
+    val priced = Table("vector", modExpCorpus.filter(_.gas.isDefined)*)
+    forAll(priced) { (vector: ModExpVector) =>
+      assert(modExp.gasFor(vector.input) == vector.gas.get, vector.name)
+    }
+  }
+
+  property("modexp answers what the corpus states") {
+    val answered = Table("vector", modExpCorpus.filter(_.answer.isDefined)*)
+    forAll(answered) { (vector: ModExpVector) =>
+      assert(modExp.run(vector.input) == vector.answer.get, vector.name)
+    }
+  }
+
+  property("modexp answers each combination of empty and non-empty declared lengths") {
+    forAll(lengthCombinations) {
+      (
+          baseLength: Int,
+          exponentLength: Int,
+          modulusLength: Int,
+          operands: String,
+          answer: String,
+          source: String
+      ) =>
+        val input =
+          bytes(declared(baseLength) + declared(exponentLength) + declared(modulusLength) + operands)
+        assert(modExp.run(input).toHex == answer, source)
     }
   }
