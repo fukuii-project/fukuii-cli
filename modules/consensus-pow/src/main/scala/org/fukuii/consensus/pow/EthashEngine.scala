@@ -177,34 +177,83 @@ final case class EthashEngine(
     * gap between the two blocks. So the algorithm chooses the multiplier and
     * [[org.fukuii.chainspec.DifficultyAdjustment]] enumerates exactly that.
     *
-    * ==The floor is applied to the adjustment and the bomb is added over it==
+    * ==The bomb is added to the adjustment and the floor is taken over the sum==
     *
-    * **This is a real divergence in the field and the published corpus cannot
-    * settle it**, so the order is stated rather than inherited.
-    * `ethereum/execution-specs` @ `ccaaaba58` adds the exponential term first
-    * and takes `max(difficulty, MINIMUM_DIFFICULTY)` over the sum, and its own
-    * comment records that *"some clients raise the difficulty to
-    * `MINIMUM_DIFFICULTY` prior to adding the bomb"* and that the difference
-    * *"does not matter because the difficulty is always much greater than
-    * `MINIMUM_DIFFICULTY` on Mainnet"*.
+    * **This is a real divergence in the field**, so the order is stated rather
+    * than inherited. Both formal statements of the rule take the order here.
+    * `ethereum/execution-specs` @ `ccaaaba58` adds the exponential term and
+    * then returns `Uint(max(difficulty, int(MINIMUM_DIFFICULTY)))`, in each of
+    * the thirteen fork modules that define the rule, and it calls the other
+    * order a defect in as many words: *"Some clients raise the difficulty to
+    * `MINIMUM_DIFFICULTY` prior to adding the bomb. This bug does not matter
+    * because the difficulty is always much greater than `MINIMUM_DIFFICULTY`
+    * on Mainnet."* Quoted whole, because the second sentence alone reads as
+    * neutral and the first is the specification's verdict.
+    * `ethereum/yellowpaper` @ `d01f0fda5` writes `D(H)` as one maximum of the
+    * floor against a sum already carrying the exponential term, so the term is
+    * inside the maximum there too. That is its last revision to define `D(H)`
+    * at all: `33ce541` removed the definition, and no later tree states it.
     *
-    * The order here is the other one, on three counts. Every surveyed
-    * implementation uses it, across three independent language lineages:
-    * `ethereum/go-ethereum-pow` @ `v1.10.26` floors with the comment
-    * *"minimum difficulty can ever be (before exponential factor)"*,
+    * `NethermindEth/nethermind` @ `c35ce1b1a` is the surveyed client stating
+    * it this way, taking `BigInteger.Max` of the floor against a sum of the
+    * parent difficulty, the adjustment and the term together.
+    *
+    * ==Three client lineages floor the adjustment instead==
+    *
+    * Recorded rather than followed, and the disagreement is with running code
+    * rather than with a reading of it. `ethereum/go-ethereum-pow` @ `v1.10.26`
+    * raises the adjustment under the comment *"minimum difficulty can ever be
+    * (before exponential factor)"* and `ethereumclassic/core-geth` @
+    * `4185df450` under *"after adjustment and before bomb"*;
+    * `erigontech/erigon` @ `7125aa1e8` restates the same step over its own
+    * `uint256` arithmetic rather than carrying the `big.Int` original forward.
     * `besu-eth/besu-etc` @ `eb4248c99` wraps the adjustment in
-    * `ensureMinimumDifficulty` before `adjustForPeriod`, and
+    * `ensureMinimumDifficulty` before `adjustForPeriod`.
     * `openethereum/openethereum` @ `v3.0.1` floors the target and then floors
-    * the sum again, which is the same value. EIP-2 states it in prose --
-    * *"The `minDifficulty` still defines the minimum difficulty allowed and no
-    * ADJUSTMENT may take it below this"*. And the first of those is the client
-    * that produced the chain this rule is read against.
+    * the sum again, which lands on the same value as flooring the adjustment
+    * alone -- the inner maximum has already raised the addend to the floor, so
+    * the outer one can never lower it back.
     *
-    * **The two orders agree on every case of the published corpus**, because
-    * they differ only where an adjusted difficulty falls below the floor while
-    * the exponential term is not yet zero -- which no mainnet block of either
-    * family reaches. A network launching near the floor and running past the
-    * term's first period is where the choice becomes observable.
+    * **EIP-2's prose does not decide it, and is not cited here as though it
+    * did.** It says *"The `minDifficulty` still defines the minimum difficulty
+    * allowed and no adjustment may take it below this"* -- but the formula
+    * that sentence closes defines `block_diff` as the parent, plus the
+    * timestamp term, plus `int(2**((block.number // 100000) - 2))`, and EIP-2
+    * names that last term *"the exponential difficulty adjustment component"*.
+    * So its "adjustment" cannot be read as excluding the bomb, and the
+    * sentence is as consistent with flooring the sum as with flooring the
+    * adjustment.
+    *
+    * ==Where the two part, and the cases that settle it==
+    *
+    * They differ exactly where an adjusted difficulty falls below the floor
+    * while the exponential term is not yet zero -- the region the quoted
+    * comment says Mainnet stays clear of, and one a network launching near the
+    * floor does not. `ethereum/tests` @ `v17.2` states 120 such cases in
+    * `BasicTests/difficultyCustomHomestead.json`, and the 90 whose parent
+    * difficulty is below the floor are exactly the 90 on which the two orders
+    * disagree. Every one of the 90 expects the sum floored. An adjustment of
+    * 1000 under a term of 128 is stated as 131072, which is the floor and not
+    * the 131200 that flooring the adjustment yields.
+    *
+    * ==Each lineage that floors the adjustment is untested over that region==
+    *
+    * `ethereum/go-ethereum-pow` @ `v1.10.26` skips that file by name in
+    * `tests/difficulty_test.go` and skips every remaining case on
+    * `test.ParentDifficulty.Cmp(params.MinimumDifficulty) < 0`, which in that
+    * file is those same 90. `ethereumclassic/core-geth` @ `4185df450` points
+    * its runner at `DifficultyTests` and reads no `BasicTests` file at all.
+    * `besu-eth/besu-etc` @ `eb4248c99` reads one, `difficultyMainNetwork.json`,
+    * whose 2,254 cases state no parent difficulty below the floor. So a
+    * divergence none of the three can reach is one none of them reports.
+    *
+    * **The larger of the two published tiers cannot reach the condition
+    * either.** `DifficultyCorpus` reads `ethereum/tests/DifficultyTests`,
+    * whose 17 files state 18,598 cases whose smallest parent difficulty is
+    * 99,191,501,402,103 -- some hundreds of millions of times the floor --
+    * and none below twice it. **A corpus that could not have disagreed is not
+    * evidence that it agrees.** `BasicTestsDifficultyCorpus` is the tier that
+    * reaches it, and the 90 are what it turns on.
     *
     * @param parentHasOmmers
     *   whether the parent block itself included any.
@@ -240,9 +289,9 @@ final case class EthashEngine(
       case DifficultyAdjustment.Eip100 =>
         val raised = if parentHasOmmers then BigInt(2) else BigInt(1)
         parentDifficulty + step * multiplier(raised, gap, EthashEngine.Eip100GapDivisor)
-    val floored = adjusted.max(EthashEngine.MinimumDifficulty)
+    val floored = (adjusted + bomb(parent.number.toBigInt + 1, rules)).max(EthashEngine.MinimumDifficulty)
     UInt256
-      .fromBigInt(floored + bomb(parent.number.toBigInt + 1, rules))
+      .fromBigInt(floored)
       .getOrElse(
         throw new IllegalStateException(
           "a difficulty above what a header can carry was computed for the block after " + parent.number.toString

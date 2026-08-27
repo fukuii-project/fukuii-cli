@@ -15,9 +15,10 @@ import org.fukuii.types.{BlockHeader, BlockNonce, Bloom, Seal}
   * them agrees. That is evidence about the arithmetic and it is silent on four
   * things: a boundary the corpus never lands on, an order two implementation
   * families disagree about, and two preconditions the corpus cannot state
-  * because it only contains cases a real chain produced. A rule certified
-  * against a tier and nowhere else is certified against whatever that tier
-  * happens to contain.
+  * because it only contains cases a real chain produced. A second published
+  * tier reaches the order -- `BasicTestsDifficultyCertificationSpec` -- and no
+  * published tier reaches the rest. A rule certified against a tier and nowhere
+  * else is certified against whatever that tier happens to contain.
   *
   * The amounts are small and exact so that a wrong ordering of a multiplication
   * and a division would still show.
@@ -334,26 +335,26 @@ class EthashDifficultySpec extends AnyFlatSpec:
       "removal is the outer branch in both clients that carry it, so a window under it is never reached"
     )
 
-  /** The order the floor and the exponential term are applied in, which the
-    * whole published corpus cannot distinguish.
+  /** The order the floor and the exponential term are applied in, at the
+    * smallest inputs that tell the two apart.
     *
-    * ==Both orders pass every one of the 18,598 published cases==
+    * ==One point, where a published tier states 81==
     *
-    * Measured before this case was written. They part only where an adjusted
-    * difficulty falls below the floor while the term is not yet nothing, and no
-    * block of either mainnet is anywhere near the floor -- which is what
-    * `ethereum/execution-specs` @ `ccaaaba58` means by its own comment that the
-    * difference *"does not matter"*.
-    *
-    * **So this case is the only thing in this repository that holds the order**,
-    * and a rule that adopted the specification's order instead would answer
-    * 131,072 here and pass certification unchanged.
+    * The two orders part only where an adjusted difficulty falls below the
+    * floor while the term is not yet nothing. This is that condition at its
+    * smallest: one step of adjustment below the floor, at the first height
+    * whose term is not zero, so the whole difference between the orders is two.
+    * `BasicTestsDifficultyCertificationSpec` runs the published cases that
+    * state the same condition, and `DifficultyCertificationSpec`'s 18,598 state
+    * it nowhere -- no block of either mainnet is anywhere near the floor, which
+    * is what `ethereum/execution-specs` @ `ccaaaba58` means by its own comment
+    * that the difference *"does not matter"*.
     */
-  "the minimum difficulty" should "floor the adjustment before the exponential term is added over it" in
+  "the minimum difficulty" should "be taken over the sum rather than over the adjustment alone" in
     assert(
       answered(DifficultyAdjustment.Original, minimumDifficulty, gap = 13, number = BigInt(300000)) ==
-        minimumDifficulty + 2,
-      "go-ethereum-pow, besu-etc and OpenEthereum all floor the adjustment and add the term over it"
+        minimumDifficulty,
+      "execution-specs and the yellow paper both put the exponential term inside the maximum"
     )
 
   it should "still floor an adjustment that falls below it where there is no term" in
