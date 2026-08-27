@@ -97,7 +97,7 @@ trait ConsensusEngine:
     * ==Why the block's own facts are on the neutral seam rather than on a
     * mechanism's leaf==
     *
-    * Because every surveyed client puts them on the seam every engine
+    * Because all three clients read here put them on the seam every engine
     * implements, rather than on the one mechanism that reads them.
     * `ethereum/go-ethereum-pow` @ `v1.10.26` declares
     * `Finalize(chain, header, state, txs, uncles)` on `consensus.Engine`
@@ -121,9 +121,10 @@ trait ConsensusEngine:
     * @param beneficiary
     *   whom the mechanism credits. It arrives as a parameter rather than being
     *   read from a header because which account it is, is the engine's answer
-    *   in every surveyed client -- besu asks a `MiningBeneficiaryCalculator` and
-    *   the go-ethereum line asks `Engine.Author` -- and a header field is only
-    *   the answer for the mechanisms that do not redirect it.
+    *   in both clients read for it -- `besu-eth/besu` @ `c2addd9424` asks a
+    *   `MiningBeneficiaryCalculator` and `ethereum/go-ethereum-pow` @
+    *   `v1.10.26` asks `Engine.Author` -- and a header field is only the answer
+    *   for the mechanisms that do not redirect it.
     * @param number
     *   the height of the block being settled. A height rather than a header,
     *   because the height is the whole of what an emission reads about the
@@ -132,10 +133,11 @@ trait ConsensusEngine:
     * @param ommers
     *   the headers this block included. Headers rather than a reduced pair,
     *   because the two facts an emission reads off one -- its height and the
-    *   account credited for it -- are read straight off the header in every
-    *   surveyed client. besu takes `ommerHeader.getCoinbase()`, the go-ethereum
-    *   line takes `uncle.Coinbase`, `openethereum/openethereum` @ `v3.0.1`
-    *   takes `u.author()`, and `ethereum/execution-specs` @ `ccaaaba58` takes
+    *   account credited for it -- are read straight off the header in all four
+    *   sources read here. `besu-eth/besu` @ `c2addd9424` takes
+    *   `ommerHeader.getCoinbase()`, `ethereum/go-ethereum-pow` @ `v1.10.26`
+    *   takes `uncle.Coinbase`, `openethereum/openethereum` @ `v3.0.1` takes
+    *   `u.author()`, and `ethereum/execution-specs` @ `ccaaaba58` takes
     *   `ommer.coinbase`. **An ommer's beneficiary is not redirected the way the
     *   block's own is**, which is why one of the two arrives as a parameter and
     *   the other does not.

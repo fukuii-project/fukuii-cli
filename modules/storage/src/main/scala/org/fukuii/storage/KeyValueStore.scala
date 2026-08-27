@@ -92,8 +92,8 @@ import org.fukuii.bytes.Bytes
   *
   * Chain data and state are separate seams and no operation spans them, so a
   * write touching both is two calls and nothing makes them one. Cross-seam
-  * atomicity is deliberately not attempted — no surveyed client provides it
-  * either — and what stands in for it is an ordering rule:
+  * atomicity is deliberately not attempted, and what stands in for it is an
+  * ordering rule:
   *
   * '''state is durably committed before the chain data that commits to it.'''
   *

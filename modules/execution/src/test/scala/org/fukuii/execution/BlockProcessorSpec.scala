@@ -426,8 +426,10 @@ class BlockProcessorSpec extends AnyFlatSpec:
     )
 
   it should "run on a block carrying no transactions at all" in
-    // Every surveyed client calls it unconditionally, and a mechanism with
-    // nothing to write supplies a change that writes nothing. A processor
+    // The specification calls it unconditionally -- apply_body reaches
+    // pay_rewards on every block, whatever the transaction count -- and a
+    // mechanism with nothing to write supplies a change that writes nothing. A
+    // processor
     // skipping it on an empty block would make "no reward" and "a reward of
     // zero" the same thing.
     assert(run(Seq.empty).coinbaseAtClose == BigInt(0), "the close runs on every block, including one that is empty")

@@ -40,8 +40,10 @@ import org.fukuii.types.Log
   *   transaction count moves.
   * @param to
   *   the recipient, absent when the transaction deploys. Absence is what makes
-  *   it a deployment -- there is no separate flag, in this type or in any
-  *   surveyed client.
+  *   it a deployment -- there is no separate flag, here or in the
+  *   specification, whose own transaction type declares
+  *   `to: Bytes0 | Address` (`ethereum/execution-specs` @ `ccaaaba58`,
+  *   `forks/frontier/transactions.py`).
   * @param intrinsicGas
   *   what the transaction is charged before any of it runs, as admission
   *   computed it.
@@ -103,11 +105,12 @@ final case class Settlement(
   *
   * ==Rules are a fork's; a processor is a network's==
   *
-  * [[ExecutionRules]] records why: no surveyed client makes a transaction
-  * processor a member of a fork-resolved specification except besu, whose own
-  * definitions set one seven times against twenty-three for the gas calculator,
-  * while `NethermindEth/nethermind` @ `c35ce1b1ab` carries a separate processor
-  * per network it serves and selects between them when a node is assembled.
+  * [[ExecutionRules]] records why: of the two clients read here only
+  * `besu-eth/besu` @ `c2addd9424` makes a transaction processor a member of a
+  * fork-resolved specification, and its own definitions set one seven times
+  * against twenty-three for the gas calculator, while
+  * `NethermindEth/nethermind` @ `c35ce1b1ab` carries a separate processor per
+  * network it serves and selects between them when a node is assembled.
   * This is one such processor, and what varies by fork reaches it as values.
   *
   * ==Everything here sits outside the machine, deliberately==

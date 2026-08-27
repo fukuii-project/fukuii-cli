@@ -41,7 +41,7 @@ class ActivationSpec extends AnyFlatSpec:
   "an upgrade a network will never take" should "not be equal to one it has not scheduled" in
     assert(
       Activation.Never != Activation.Unscheduled,
-      "a permanent refusal and a pending activation are different facts, and no client in the corpus can say so"
+      "a permanent refusal and a pending activation are different facts, and neither client read for this says so"
     )
 
   it should "still refuse comparison against one it has not scheduled" in

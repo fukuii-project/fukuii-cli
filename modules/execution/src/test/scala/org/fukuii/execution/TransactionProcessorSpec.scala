@@ -133,9 +133,10 @@ class TransactionProcessorSpec extends AnyFlatSpec:
   /** The same, from the height that deletes one. */
   private val clearing: ExecutionRules = notClearing.copy(touchedEmptyAccountsAreDeleted = true)
 
-  /** The address the RIPEMD-160 native answers at, which is the one address any
-    * surveyed network exempts from the rule that a reach is undone with the
-    * invocation that made it.
+  /** The address the RIPEMD-160 native answers at, which is the one address each
+    * of the four implementations read for
+    * `org.fukuii.evm.EvmRules.touchSurvivesFailure` exempts from the rule that a
+    * reach is undone with the invocation that made it.
     */
   private val exempt: Address = PrecompileSet.Ripemd160
 

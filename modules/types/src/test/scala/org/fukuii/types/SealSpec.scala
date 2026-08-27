@@ -159,6 +159,6 @@ class SealSpec extends AnyFlatSpec:
         Hex.encode(items(13) match
           case RlpItem.Bytes(p)    => p
           case _: RlpItem.Sequence => IArray.empty[Byte]) == hash(7).toHex,
-      "elements 13 and 14 are the header's own, so nesting them would be a header no client accepts"
+      "elements 13 and 14 are the header's own, so nesting them is not the flat header list the specification defines"
     )
   }

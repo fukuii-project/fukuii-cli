@@ -53,10 +53,12 @@ package org.fukuii.execution
   * ==What is absent, and the one constraint that absence carries==
   *
   * A block's reward is not here. Where it is computed differs by consensus
-  * mechanism rather than by fork, and the surveyed families disagree about it
-  * more than about anything else in this record: several have none at all, one
-  * redirects the beneficiary instead, and several compute it by calling a
-  * contract against world state at the parent block. **So whatever slot it
+  * mechanism rather than by fork, and that variation is wider than anything
+  * else in this record: [[org.fukuii.execution.BlockProcessor]] names the two
+  * clients read for it and the four shapes they carry between them, which
+  * already run from accumulating a reward against world state, through an empty
+  * body, to a mechanism crediting a beneficiary nothing -- and the last two are
+  * different state roots rather than a different number. **So whatever slot it
   * eventually takes must admit an unbounded algorithmic schedule, must admit
   * nothing at all, and must not be typed as a function returning a number** --
   * and this record is deliberately not that slot.

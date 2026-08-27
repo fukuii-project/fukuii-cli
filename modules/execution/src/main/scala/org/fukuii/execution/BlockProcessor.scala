@@ -118,8 +118,8 @@ final case class BlockRejection(index: Int, reason: Refusal)
   *
   * A block's reward is not computed here and no figure for one appears in this
   * module. Where it comes from differs by consensus mechanism rather than by
-  * fork, and the surveyed clients disagree about it more than about anything
-  * else in this record: `ethereumclassic/core-geth` @ `4185df450` has
+  * fork, and the two clients read here disagree about it more than about
+  * anything else in this record: `ethereumclassic/core-geth` @ `4185df450` has
   * `Ethash.Finalize` accumulate a reward against world state while its
   * `Clique.Finalize` is an empty body commented *"No block rewards in PoA, so
   * the state remains as is"*, and `NethermindEth/nethermind` @ `c35ce1b1ab`
@@ -143,8 +143,11 @@ object BlockProcessor:
     * The irregular state change first, where one is scheduled, so that a
     * transaction in this very block sees the state it left; then the
     * transactions, each seeing what the one before it wrote; then the consensus
-    * mechanism's own change, which every surveyed client applies after the last
-    * transaction and before anything reads the block's final root.
+    * mechanism's own change, after the last transaction and before anything
+    * reads the block's final root. That order is the specification's rather than
+    * a count of clients: `ethereum/execution-specs` @ `ccaaaba58`'s `apply_body`
+    * runs its `for i, tx in enumerate(transactions)` loop to completion and
+    * calls `pay_rewards(block_env, ommers)` on the next statement.
     *
     * ==`world` is written through, so a rejection leaves it part-way==
     *
