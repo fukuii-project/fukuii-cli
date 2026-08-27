@@ -12,6 +12,7 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip170,
   Eip2,
   Eip211,
+  Eip214,
   Eip649,
   Eip7
 }
@@ -299,11 +300,12 @@ object Upgrades:
   val spuriousDragon: UpgradeRules =
     tangerineWhistle.adopting(Eip155.component, Eip160.component, Eip161.component, Eip170.component)
 
-  /** [[spuriousDragon]] with EIP-100, EIP-649, EIP-140 and EIP-211 adopted.
+  /** [[spuriousDragon]] with EIP-100, EIP-649, EIP-140, EIP-211 and EIP-214
+    * adopted.
     *
-    * The order is the order the four compose in. It is immaterial -- two name
-    * what a block owes the mechanism that produced it, and two add operations
-    * at three bytes none of the others touches -- and it is stated because two
+    * The order is the order the five compose in. It is immaterial -- two name
+    * what a block owes the mechanism that produced it, and three add operations
+    * at four bytes none of the others touches -- and it is stated because two
     * deltas touching one field compose to whichever ran last.
     *
     * ==Two facets, and the pairing within each is the document's rather than
@@ -313,15 +315,22 @@ object Upgrades:
     * `org.fukuii.chainspec.proposals.eip.Eip100Spec` and
     * `org.fukuii.chainspec.proposals.eip.Eip649Spec` each assert the other
     * three facets survive as the same values rather than as equal copies.
-    * EIP-140 and EIP-211 write the machine, and they are adopted together
-    * because each document's own specification asserts something about the
-    * other's work: EIP-140 places its payload in a buffer EIP-211 defines, and
-    * EIP-211 names EIP-140 by number as the source of the failure data it
-    * carries.
+    * EIP-140, EIP-211 and EIP-214 write the machine. The first two are adopted
+    * together because each document's own specification asserts something about
+    * the other's work: EIP-140 places its payload in a buffer EIP-211 defines,
+    * and EIP-211 names EIP-140 by number as the source of the failure data it
+    * carries. The third is independent of both and is adopted here because this
+    * network took all three at one height.
     *
     * Which proposals of this network's upgrade are carried here is stated on
     * the schedule entry that resolves them, because that is where a reader asks
     * what a node validates at a height.
     */
   val byzantium: UpgradeRules =
-    spuriousDragon.adopting(Eip100.component, Eip649.component, Eip140.component, Eip211.component)
+    spuriousDragon.adopting(
+      Eip100.component,
+      Eip649.component,
+      Eip140.component,
+      Eip211.component,
+      Eip214.component
+    )
