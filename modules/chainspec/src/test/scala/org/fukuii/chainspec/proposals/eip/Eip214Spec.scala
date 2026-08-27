@@ -32,6 +32,11 @@ class Eip214Spec extends AnyFlatSpec:
   /** An account this spec's programs call into. */
   private val named: Address = EvmFixtures.address(0x33)
 
+  /** The account [[EvmFixtures.message]] runs as, which is the one the caller's
+    * own trailing store lands under.
+    */
+  private val runsAs: Address = EvmFixtures.address(0x22)
+
   private def push1(value: Int): Seq[Int] = Seq(0x60, value & 0xff)
 
   private def push2(value: Int): Seq[Int] = Seq(0x61, (value >> 8) & 0xff, value & 0xff)
@@ -41,15 +46,26 @@ class Eip214Spec extends AnyFlatSpec:
 
   private def codeOf(program: Seq[Int]): Bytes = Bytes.fromArray(program.map(_.toByte).toArray)
 
+  /** Writes one to the caller's own slot two.
+    *
+    * Run after the call, this is what separates "the callee's store was
+    * refused" from "the program never reached the call at all" -- a byte that
+    * runs nothing halts the caller, and a halted caller's writes are rolled back
+    * along with the callee's.
+    */
+  private val recordingThatItFinished: Seq[Int] = push1(0x01) ++ push1(0x02) ++ Seq(0x55, 0x00)
+
   /** Six operands and the operation the document introduces. */
   private val asking: Seq[Int] =
-    push1(0) ++ push1(0) ++ push1(0) ++ push1(0) ++ push20(named) ++ push2(40000) :+ 0xfa
+    push1(0) ++ push1(0) ++ push1(0) ++ push1(0) ++ push20(named) ++ push2(40000) ++
+      (0xfa +: recordingThatItFinished)
 
   /** The same call made ordinarily, which needs a seventh operand -- the value
     * this form does not take.
     */
   private val askingOrdinarily: Seq[Int] =
-    push1(0) ++ push1(0) ++ push1(0) ++ push1(0) ++ push1(0) ++ push20(named) ++ push2(40000) :+ 0xf1
+    push1(0) ++ push1(0) ++ push1(0) ++ push1(0) ++ push1(0) ++ push20(named) ++ push2(40000) ++
+      (0xf1 +: recordingThatItFinished)
 
   /** Writes 42 to slot one and stops. */
   private val storing: Seq[Int] = push1(0x2a) ++ push1(0x01) ++ Seq(0x55, 0x00)
@@ -146,6 +162,17 @@ class Eip214Spec extends AnyFlatSpec:
     assert(
       run(asking)._2.world.storageAt(named, Word.One) == Word.Zero,
       "the callee stored, so the flag this document introduces did not reach it"
+    )
+
+  it should "have run that program to its end, or the case above pins nothing" in
+    // The control the case above needs most, and it is not the one about the
+    // ordinary call: an unset slot at the named account is also what a caller
+    // that halted on an unknown byte leaves behind, since its own writes go back
+    // with the callee's. The caller's trailing store is what tells the two
+    // apart.
+    assert(
+      run(asking)._2.world.storageAt(runsAs, Word(BigInt(2))) == Word.One,
+      "the caller never reached the end of its program, so the unset slot above says nothing about the flag"
     )
 
   it should "have let the same callee store where an ordinary call made it" in
