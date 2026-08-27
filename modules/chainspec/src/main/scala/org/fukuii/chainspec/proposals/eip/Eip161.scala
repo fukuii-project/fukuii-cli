@@ -56,10 +56,18 @@ import org.fukuii.execution.ExecutionRules
   *
   * `ethereumclassic/core-geth` @ `4185df450` gates `(a)(b)(c)` on
   * `GetEIP161abcTransition` and `(d)` on `GetEIP161dTransition`, at runtime and
-  * at separate sites; `openethereum/openethereum` @ `v3.0.1` carries the same
-  * split as `no_empty` and `kill_empty` on its schedule. No configuration in
-  * this project's reference corpus activates the halves at different heights,
-  * so what the split evidences is that the document is not one rule.
+  * at separate sites -- the first from `core/vm`, the second from
+  * `core/state_processor.go` and each consensus engine's own finalize.
+  * `openethereum/openethereum` @ `v3.0.1` carries the same split as `no_empty`
+  * and `kill_empty` on its schedule.
+  *
+  * **No core-geth configuration can activate the halves at different heights,
+  * and that is structural rather than a survey result.** Both getters return one
+  * field at that ref: `EIP161FBlock` on `CoreGethChainConfig`, and
+  * `EIP158Block` on the go-ethereum-shaped `ChainConfig`. So a sweep of that
+  * client's configurations could not have disagreed, and what the split
+  * evidences is that the document is READ as two rules at two sites -- never
+  * that a network has separated them.
   */
 object Eip161:
 

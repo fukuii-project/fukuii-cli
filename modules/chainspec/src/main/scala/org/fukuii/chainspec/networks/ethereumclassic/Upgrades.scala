@@ -62,9 +62,10 @@ object Upgrades:
     * ==Writing these out rather than sharing them is a DEPARTURE from the
     * field==
     *
-    * Both surveyed implementations share this table across every chain they
-    * serve: core-geth keeps one `params/vars` package and selects behavior with
-    * per-proposal transitions, and `besu-eth/besu-etc` @ `eb4248c997` reaches
+    * Both implementations read here share this table across every chain they
+    * serve: `ethereumclassic/core-geth` @ `4185df450` keeps one `params/vars`
+    * package and selects behavior with per-proposal transitions, and
+    * `besu-eth/besu-etc` @ `eb4248c997` reaches
     * this network's later rules by inheriting from Ethereum mainnet's
     * definitions. Neither writes a second copy.
     *

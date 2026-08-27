@@ -90,10 +90,11 @@ import org.fukuii.bytes.UInt256
   *
   *   **The name is this project's and the shape is besu's, which is the
   *   distinction `.claude/rules/reference-first.md` draws.** besu spells it
-  *   `skipZeroBlockRewards`, whose true case means *do not credit*; a sweep of
-  *   the other surveyed clients finds no second name for it, because nethermind
-  *   expresses the choice as which class is registered and OpenEthereum as
-  *   whether a JSON key is present. With no field consensus to depart from, this
+  *   `skipZeroBlockRewards`, whose true case means *do not credit*; the two
+  *   other clients read here supply no second name for it, because
+  *   `NethermindEth/nethermind` @ `c35ce1b1ab` expresses the choice as which
+  *   class is registered and `openethereum/openethereum` @ `v3.0.1` as whether a
+  *   JSON key is present. With no field consensus to depart from, this
   *   states what happens rather than what is skipped, so that a reader does not
   *   have to negate the name to reach the behavior.
   * @param difficultyAdjustment
@@ -165,10 +166,11 @@ import org.fukuii.bytes.UInt256
   * @param difficultyBoundDivisor
   *   what the parent's difficulty is divided by to size one step of adjustment.
   *
-  *   A resolved parameter in two of the surveyed clients --
-  *   `IReleaseSpec.DifficultyBoundDivisor` in nethermind and
-  *   `EthashParams.difficulty_bound_divisor` in OpenEthereum -- and a package
-  *   constant in the rest. **No network in this project's scope varies it**, so
+  *   A resolved parameter in two of the clients read here --
+  *   `IReleaseSpec.DifficultyBoundDivisor` in `NethermindEth/nethermind` @
+  *   `c35ce1b1ab` and `EthashParams.difficulty_bound_divisor` in
+  *   `openethereum/openethereum` @ `v3.0.1` -- and a package constant in the
+  *   others read. **No network in this project's scope varies it**, so
   *   it is here for the reason nethermind puts it there and not because a fork
   *   has moved it.
   *

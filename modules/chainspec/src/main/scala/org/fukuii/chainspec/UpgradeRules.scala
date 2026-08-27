@@ -52,8 +52,8 @@ import org.fukuii.execution.{AdmissionRules, ExecutionRules}
   *
   * **A receipts facet was forecast here and is deliberately not being built.**
   * The one fork-varying thing a receipt carries is settled where the
-  * transaction is settled, and no surveyed client separates the two:
-  * `ethereum/go-ethereum` @ `6bb0588ad` chooses the shape inline in
+  * transaction is settled, and neither of the two clients read here separates
+  * them: `ethereum/go-ethereum` @ `6bb0588ad` chooses the shape inline in
   * `core/state_processor.go`, and `besu-eth/besu` @ `c2addd9424` carries its
   * receipt factory flat on the same specification as its transaction
   * processor. So the rule sits on the execution facet and a fourth facet

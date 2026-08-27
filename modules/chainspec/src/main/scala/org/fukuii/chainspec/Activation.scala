@@ -27,8 +27,9 @@ import org.fukuii.bytes.UInt64
   *
   * ==Two ways of not activating, and they are NOT the same fact==
   *
-  * This is a deliberate departure: no surveyed client separates them, and every
-  * one of them wants to. `scroll-tech/go-ethereum` at `33c4686619`
+  * This is a deliberate departure: neither of the two clients read here
+  * separates them, and in each the gap costs something visible.
+  * `scroll-tech/go-ethereum` at `33c4686619`
   * (`params/config.go`) is the demonstration, in one file with no comment
   * needed. Its alpha network's configuration carries eight `nil` activations;
   * its mainnet configuration carries the same eight fields, and five of them

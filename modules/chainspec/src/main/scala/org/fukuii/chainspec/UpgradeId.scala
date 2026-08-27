@@ -33,9 +33,9 @@ package org.fukuii.chainspec
   *
   * A network naming its upgrade with a word another network coined is that
   * network's name, used in its own specification documents, and is treated as
-  * any other name would be. No surveyed client models the provenance of a
-  * label, and modeling it would invite exactly the reading the first section
-  * forbids -- that two labels sharing an origin share something else.
+  * any other name would be. Nothing here records where a label came from, and
+  * modeling it would invite exactly the reading the first section forbids --
+  * that two labels sharing an origin share something else.
   *
   * The one distinction the type does draw is [[UpgradeId.Label.Synthesized]],
   * and it is not provenance: it is the case where the network supplied no name

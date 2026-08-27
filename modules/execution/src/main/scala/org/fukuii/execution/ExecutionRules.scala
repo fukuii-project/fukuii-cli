@@ -7,7 +7,8 @@ package org.fukuii.execution
   *
   * The obvious contents of a facet with this name are a transaction processor
   * and a block processor, and the field says otherwise. `besu-eth/besu` @
-  * `c2addd9424` is the only surveyed client modeling either as a member of a
+  * `c2addd9424` is, of the two clients read here, the only one modeling either
+  * as a member of a
   * fork-resolved specification at all, and its own definitions show how little
   * they vary: in `MainnetProtocolSpecs.java` the block-processor builder is set
   * three times against twenty-three for the gas calculator, and two of those
@@ -25,11 +26,12 @@ package org.fukuii.execution
   * ==Why a receipt's fork-varying content is here and not in a facet of its
   * own==
   *
-  * A receipt is what settling a transaction produces, and no surveyed client
-  * separates the two: `ethereum/go-ethereum` @ `6bb0588ad` decides the shape
-  * inline in the execution path (`core/state_processor.go`), and besu carries
-  * its receipt factory flat on the same specification as its transaction
-  * processor rather than under any further grouping. A facet holding one
+  * A receipt is what settling a transaction produces, and neither of the two
+  * clients read here separates them: `ethereum/go-ethereum` @ `6bb0588ad`
+  * decides the shape inline in the execution path (`core/state_processor.go`),
+  * and `besu-eth/besu` @ `c2addd9424` carries its receipt factory flat on the
+  * same specification as its transaction processor rather than under any
+  * further grouping. A facet holding one
   * boolean that only the settlement path reads would be a layer the field does
   * not draw.
   *
