@@ -425,10 +425,11 @@ read, and it is not sbt's.
 the scope you asked for.** Two ways of reaching less than you asked for have been
 observed here, and neither announces itself in the summary the checker reads:
 
-- **A suite that refused to register.** A duplicate test name takes the whole
-  class down rather than the one case. The log says `SUITE ABORTED`; the summary
-  says `failed: 0`, because an aborted suite's tests never ran and so failed
-  nothing. The `aborted` figure sits on the same `Suites: completed N, aborted M`
+- **A suite that refused to register.** Observed 2026-08-27: a duplicate test
+  name takes the whole class down rather than the one case. The log says
+  `SUITE ABORTED`; the summary says `failed: 0`, because an aborted suite's tests
+  never ran and so failed nothing. The `aborted` figure sits on the same
+  `Suites: completed N, aborted M`
   line `scripts/check-test-run.sh` already reads `completed` from, and it does
   not read it -- so the abort reaches the verdict only as a short count, and a
   short count reads as tests having been removed.
@@ -440,17 +441,14 @@ observed here, and neither announces itself in the summary the checker reads:
   `scripts/sbt-run.sh` writes a `## tasks:` header naming what was asked for, and
   the number of `Total number of tests run` blocks beneath it is what ran.
 
-**The abort is the more expensive of the two, and its cost is not paid in the run
-where it happens.** A short count invites the thought that the reference figure
-is stale, and the remedy for a stale figure is to regenerate
-`scripts/test-expected-total.txt` from a `testFull` run. Regenerate it from a run
-whose log carries an abort and the abort goes into the reference: every later run
-then reconciles against a total that already excludes the darkened class, so
-those cases stop being counted and nothing reports them missing again. **Read the
-log for an aborted suite before regenerating the total from it.** The count
-ratchet in `## Testing` does not catch this -- a regeneration that also carries
-added tests still shows the total rising, and a rise is what that ratchet is
-looking for.
+**The abort is the more expensive of the two, and it reaches
+`scripts/test-expected-total.txt` by the route the sticky heavy-set takes
+above** -- a run whose figures reconcile wrongly invites regenerating the
+reference from it, and the regeneration writes the defect in permanently. Same
+mechanism, second cause, same instruction: **read the log for an aborted suite
+before regenerating the total from it.** What differs is that this one also
+clears the count ratchet in `## Testing`, because a regeneration carrying added
+tests still shows the total rising, and a rise is what that ratchet looks for.
 
 **Read the expected total from a `testFull` run's own `Total number of tests
 run` line, not by counting from source.** `testFull` bypasses the cache, so its
