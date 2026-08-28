@@ -217,24 +217,31 @@ any non-zero exit cannot tell the seeded defect from an unrelated breakage. That
 shipped here as a placebo arm that passed on a path-resolution error while printing a conclusion about
 a mutation it never reached.
 
-### An instrument that only answers has no pass state to seed
+### An instrument that only answers is not always a search
 
 **Failure it prevents:** five instruments in one section, not one of them a
 check, each returning a measurement that was plausible, confident and wrong.
 Four different actors produced them.
 
-**What the paragraphs above already cover, said plainly, because they read as
-covering this too.** They calibrate an instrument that can FAIL — a pattern
-against a known positive for that pattern, a proof arm against the exact exit
-code its seeded defect must produce, a negative arm against an input it must
-pass. The recipe throughout is *seed the defect, and require the failure*.
+**What the paragraphs above already cover, said plainly, because the boundary
+is not where it first looks.** They state the recipe this subsection needs — a
+known positive and a known negative for the same pattern — and they state it
+about a **search pattern**. Title, failing shape, all three measured instances
+and the tell are search, and `grep -c` is itself an instrument that only answers:
+it returns a count for every input it will ever be handed. **The recipe
+generalizes; the recognition does not.** A reader holding a transcribed formula,
+a dictionary accessor or an in-place substitution does not see a pattern, so
+nothing above tells them the recipe is theirs. **This subsection adds an artifact
+class, not a technique.**
 
-**An instrument that only answers has no defect to seed.** A decoder, a
-classifier, an extractor, a formula, an in-place edit, a sweep that collects
-names: each takes an input and returns a number or a label, and returns one for
-every input it will ever be handed. There is no failure state to provoke, and a
-wrong answer is the same shape as a right one. Call what it produces **an
-uncalibrated answer**, so it can be named in a review comment.
+**The recognition property.** An instrument that only answers takes an input and
+returns a number or a label, and returns one for every input it will ever be
+handed. There is no state in which it declines, and a wrong answer is the same
+shape as a right one. A decoder, a classifier, an extractor, a formula, an
+in-place edit, a name-collecting sweep — and `grep -c`, which is why the
+subsection above is a special case of this one rather than a different subject.
+Call what any of them produces **an uncalibrated answer** until it has been
+calibrated, so the defect can be named in a review comment.
 
 **These fail toward a clean result, which is what they share with everything
 else in this file.** Five, measured here in one section:
@@ -270,12 +277,21 @@ matched nothing and another matched twice. `-H` keeps the key and costs nothing.
 **A count that reconciles is not evidence the rows are paired correctly**, and
 that is the one property a check on the total cannot reach.
 
-**The remedy: reproduce a known answer, in both directions, before trusting the
-instrument on an answer you do not know.** There is no defect to seed, so what
-takes its place is an input whose output you can state in advance — one the
-instrument must get right, and one it must get wrong. Both directions for the
-same reason the control subsection above gives: an instrument that returns the
-right answer for a case it could not have got wrong has told you nothing.
+**The remedy is the control subsection's, unchanged, and is deliberately not
+restated here: a known positive and a known negative, run before the instrument
+is trusted on an answer nobody knows.** What this subsection adds is knowing to
+reach for it when what you are holding is a formula rather than a pattern.
+
+**Both halves of this have established names, and reaching for them buys the
+literature.** Running a fixed input whose correct output is published, before the
+thing that computes it is used, is a **known-answer test** — the form
+cryptographic-module validation requires at initialization. The general
+difficulty, that deciding whether an output is correct is a separate problem from
+producing it, is the **test oracle problem** (Barr, Harman, McMinn, Shahbaz and
+Yoo, *The Oracle Problem in Software Testing: A Survey*, IEEE Transactions on
+Software Engineering 41(5), 2015). "An uncalibrated answer" stays as the local
+name for the defect, because it names what is wrong rather than what to do about
+it.
 
 **Where no known answer is available, state what the instrument cannot see.**
 That is the absence rule above arriving at a measurement rather than at a search.
