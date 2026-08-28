@@ -107,9 +107,17 @@ hit from a newline-aware match of the same words, while a phrase sitting on one
 line returned a hit both ways. **It has recurred four times, across four
 actors**, which makes it the most durable instance of the class section 3 names.
 
+**Two things that recipe has to get right, both measured.** The break can fall
+at *any* inter-word position, so `\s+` goes at every one of them — a pattern
+carrying it at a single guessed boundary returned zero against the real wrapped
+phrase while still matching its own unwrapped control, which is a pattern that
+works and is aimed one word wide. And section 2 requires a sweep of the tree,
+not of a file, so the newline-aware form needs the file list fed to it:
+
 ```bash
-git grep -n 'the exact old phrase'                   # line-based: necessary, not sufficient
-/bin/grep -Pzo 'the exact\s+old phrase' <file>       # newline-aware; \s+ spans the break
+git grep -n 'the exact old phrase'                     # line-based: necessary, not sufficient
+git ls-files -z | xargs -0 /bin/grep -Pzol \
+  'the\s+exact\s+old\s+phrase'                        # newline-aware, whole tree
 ```
 
 **Correcting in place beats appending a correction.** A note saying "this was
