@@ -421,6 +421,37 @@ exactly equal to the expected total. Measured here 2026-08-20: 908 executed plus
 that reason, so its own exit code carries both findings — **that** is the one to
 read, and it is not sbt's.
 
+**A summary describes the scope the run actually reached, and that is not always
+the scope you asked for.** Two ways of reaching less than you asked for have been
+observed here, and neither announces itself in the summary the checker reads:
+
+- **A suite that refused to register.** A duplicate test name takes the whole
+  class down rather than the one case. The log says `SUITE ABORTED`; the summary
+  says `failed: 0`, because an aborted suite's tests never ran and so failed
+  nothing. The `aborted` figure sits on the same `Suites: completed N, aborted M`
+  line `scripts/check-test-run.sh` already reads `completed` from, and it does
+  not read it -- so the abort reaches the verdict only as a short count, and a
+  short count reads as tests having been removed.
+- **A task list sbt stopped part-way through.** Tasks given in one invocation run
+  in sequence, and the sequence ends at the first failure -- so a wrapper call
+  naming two modules can report the first module's failures and never run the
+  second at all. **A module that reported no failures because it was never
+  reached is not a module that passed.** The log settles which happened:
+  `scripts/sbt-run.sh` writes a `## tasks:` header naming what was asked for, and
+  the number of `Total number of tests run` blocks beneath it is what ran.
+
+**The abort is the more expensive of the two, and its cost is not paid in the run
+where it happens.** A short count invites the thought that the reference figure
+is stale, and the remedy for a stale figure is to regenerate
+`scripts/test-expected-total.txt` from a `testFull` run. Regenerate it from a run
+whose log carries an abort and the abort goes into the reference: every later run
+then reconciles against a total that already excludes the darkened class, so
+those cases stop being counted and nothing reports them missing again. **Read the
+log for an aborted suite before regenerating the total from it.** The count
+ratchet in `## Testing` does not catch this -- a regeneration that also carries
+added tests still shows the total rising, and a rise is what that ratchet is
+looking for.
+
 **Read the expected total from a `testFull` run's own `Total number of tests
 run` line, not by counting from source.** `testFull` bypasses the cache, so its
 count is the one figure that cannot itself be a partial. Counting by hand is
