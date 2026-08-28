@@ -109,13 +109,15 @@ class UpgradesSpec extends AnyFlatSpec:
       "the genesis table already ran an operation a later proposal introduced"
     )
 
-  it should "pay five ether for a block at every height this build reaches" in
+  it should "hold five ether as the base its own ladder reduces, at every rule set this network composes" in
     // Two lineages that do not derive from one another: blockReward in
     // openethereum/openethereum @ v3.0.1 ethcore/res/ethereum/classic.json, and
     // MAX_BLOCK_REWARD = Wei.fromEth(5) in besu-eth/besu-etc @ eb4248c99
     // ClassicProtocolSpecs.java:60. It is the base ECIP-1017's ladder reduces
-    // rather than a figure that proposal replaces, and this build reaches no
-    // height at which the ladder has stepped.
+    // rather than a figure that proposal replaces, so a rule set holds the base
+    // and org.fukuii.consensus.pow.EthashEngine computes the step from an era
+    // length. Stating which heights this build reaches would go stale the next
+    // time a schedule grows, in a file that change would not touch.
     assert(
       composed.forall(rules =>
         rules.consensus.blockReward == UInt256.fromBigInt(BigInt(5) * BigInt(10).pow(18)).toOption.get

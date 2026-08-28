@@ -373,9 +373,10 @@ object Upgrades:
     * anything its delta returned.
     *
     * **That is not the same claim as the height changing nothing.** The
-    * emission does step down here, and every ommer's miner is paid under a
-    * different rule from this height onward; what does not move is any value a
-    * rule set holds. `org.fukuii.consensus.pow.EthashEngine` is where the step
+    * emission steps down inside the region this upgrade governs -- the first
+    * era ends at the era length, so the step lands on 5,000,001 rather than on
+    * this height -- and from there every ommer's miner is paid under a different
+    * rule; what does not move is any value a rule set holds. `org.fukuii.consensus.pow.EthashEngine` is where the step
     * is, and this network's own vectors certify it.
     */
   val gotham: UpgradeRules = dieHard.adopting(Ecip1017.component, Ecip1039.component)

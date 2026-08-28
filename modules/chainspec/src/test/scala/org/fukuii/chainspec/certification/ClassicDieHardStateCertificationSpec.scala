@@ -111,6 +111,16 @@ class ClassicDieHardStateCertificationSpec extends AnyFlatSpec:
     * broad coverage and decide one thing. So what the tier separates is
     * measured rather than assumed, and it separates Die Hard's rules from the
     * fork below by two cases and from the fork above the group by twenty-two.
+    *
+    * **Two is a ceiling this corpus imposes rather than a weak reading of a
+    * larger boundary**, which matters because the same boundary measured from
+    * the other direction moves fifty-one. The corpus re-signs each case per
+    * label: of the fifty-two filed under both this label and the fork below,
+    * fifty carry byte-different transaction bytes at the two labels with
+    * identical expectations, and a signature that predates the chain identifier
+    * stays valid under rules that merely permit one. So only two cases are able
+    * to disagree at all -- the deliberate refusal and the exponent repricing --
+    * and raising the figure needs new fixtures rather than a better assertion.
     */
   private val DivergingAtTheLabelBelow: Int = 2
   private val DivergingAtTheLabelAboveTheGroup: Int = 22
@@ -127,8 +137,17 @@ class ClassicDieHardStateCertificationSpec extends AnyFlatSpec:
     * either later name would agree everywhere.
     *
     * Stated as an assertion rather than left implicit, because the equality is
-    * the interesting claim: a build that wrote a state rule into either later
-    * upgrade would break it.
+    * the interesting claim.
+    *
+    * **What breaks it is a corpus that stops agreeing, NOT a build that writes a
+    * state rule into a later upgrade.** Every row here resolves at Die Hard's
+    * own height, and a schedule answers with the last rule set activated at or
+    * below the height it is asked about -- so what those later upgrades hold
+    * cannot reach this assertion at all. A state rule written into either of
+    * them is caught in `UpgradesSpec`, by the reference-equality tests over the
+    * facets and by the exact component list. Naming the wrong catcher here would
+    * be worse than naming none: it is the reasoning by which someone later
+    * deletes the test that actually catches it.
     */
   private val LabelsDieHardAlsoSatisfies: Vector[String] =
     Vector("ETC_Gotham", "ETC_DefuseDifficultyBomb")

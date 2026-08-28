@@ -64,9 +64,13 @@ import org.fukuii.chainspec.{Component, ProposalId}
   *
   * **Reversal trigger, checkable rather than rhetorical: a network configuring
   * an activation GREATER than its era length.** Above the era length and below
-  * the activation the two readings disagree outright -- an ungated engine has
-  * already stepped the reward down while a gated one still pays the base -- so
-  * the member becomes observable and is owed at that moment. A member carried
+  * the activation an ungated engine has already stepped the reward down while a
+  * gated one still pays the base, so the member becomes observable at or just
+  * above that point. **The trigger is one configuration tighter than the exact
+  * boundary, deliberately**: that boundary is an activation greater than the era
+  * length PLUS ONE, because at exactly one above, the region the two readings
+  * would disagree over is empty and they still agree everywhere. Firing early
+  * costs a re-reading; firing late ships a rule with no vector. A member carried
   * before then would be a rule no network in this project's scope can produce a
   * falsifying vector for.
   *

@@ -49,10 +49,16 @@ import org.fukuii.chainspec.{Component, ConsensusRules, ProposalId}
   * [[org.fukuii.chainspec.ConsensusRules.difficultyBoundDivisor]] at the value
   * it launched with, and the clamped quotient is EIP-2's graduated adjustment,
   * adopted 4,750,000 blocks earlier. **The restatement also drops the minimum
-  * difficulty every implementation of it applies**, which is what marks the
-  * line as a sketch of the whole rule rather than a statement of the change --
+  * difficulty all three implementations read here apply**, which is what marks
+  * the line as a sketch of the whole rule rather than a statement of the change.
   * `besu-eth/besu-etc` @ `eb4248c997` clamps at `MINIMUM_DIFFICULTY` inside the
-  * very calculator this document selects.
+  * very calculator this document selects; `openethereum/openethereum` @
+  * `v3.0.1` wraps every branch of its bomb clause in
+  * `cmp::max(min_difficulty, ...)`; and `ethereumclassic/core-geth` @
+  * `4185df450` clamps at `minimumDifficulty` in `consensus/ethash/difficulty.go`
+  * and again through `math.BigMax(out, vars.MinimumDifficulty)` in
+  * `consensus/ethash/consensus.go`. Three readings rather than one, because a
+  * claim about every implementation is worth only the implementations opened.
   *
   * ==Three lineages state it as a height, and one of them chooses a different
   * place to branch==
