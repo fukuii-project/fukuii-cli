@@ -267,15 +267,24 @@ else in this file.** Five, measured here in one section:
 - **A line-based sweep over prose that wraps.** Section 2's zero-hit check is
   exactly this shape, and states the remedy there.
 
-**And an answer can be arity-clean and still be wrongly keyed.** `grep -h` over
-several files discards the filename rather than the order — GNU grep emits
-argument order, measured — so what is lost is which file each line came from. A
-mapping built by zipping the file list against that output is correct only while
-every file contributes exactly one line. Measured here: four files, four matching
-lines, the two counts agreeing exactly, and the mapping wrong, because one file
-matched nothing and another matched twice. `-H` keeps the key and costs nothing.
-**A count that reconciles is not evidence the rows are paired correctly**, and
-that is the one property a check on the total cannot reach.
+**And an answer can be arity-clean and still be wrongly keyed.** `grep -h`
+suppresses the filename prefix, so what it costs is the key — which file each
+line came from — and a mapping built by zipping the file list against that output
+is correct only while every file contributes exactly one line. Measured here:
+four files, four matching lines, the two counts agreeing exactly, and the mapping
+wrong, because one file matched nothing and another matched twice. `-H` keeps the
+key and costs nothing. **A count that reconciles is not evidence the rows are
+paired correctly**, and that is the one property a check on the total cannot
+reach.
+
+**Order is a separate question, and the hazard above does not rest on it.**
+Stated narrowly because the obvious universal is false: argument order held 8 runs
+of 8 on GNU grep and on busybox, while ripgrep's `--no-filename` reordered in 5 of
+8 — it searches in parallel, and `--sort path` is its deterministic mode. POSIX
+specifies neither `-h` nor `-H` (Open Group Base Specifications Issue 8, `grep`,
+whose option set is `-E -F -c -e -f -i -l -n -q -s -v -x`). So do not rely on
+order from an implementation you have not measured. The conclusion above needs no
+order guarantee and holds more strongly where there is none.
 
 **The remedy is the control subsection's, unchanged, and is deliberately not
 restated here: a known positive and a known negative, run before the instrument
@@ -298,14 +307,24 @@ That is the absence rule above arriving at a measurement rather than at a search
 *"This collects the names matching `[A-Za-z]*Corpus`"* is a true and smaller
 claim than *"these are the coverage rows."*
 
-**Mechanized here in two places, and nowhere beyond them.**
-`scripts/gen-altbn128-vectors.py` is the worked case: a `calibrate()` that runs
-before the generator does any work, requires the classifier to admit the group's
-own generator, requires it to reject a point moved one step off the curve, and
-exits on either. Both directions, before the first real answer is produced. The
-tracked proof scripts and the hook mutation batteries do the same for the first
-case above — each refuses to score a mutation whose anchor moved rather than
-counting it as survived.
+**Mechanized here in the vector generators and the proof scripts. Read the set
+off `grep -l calibrat scripts/*.py`, never off a count** — this paragraph said
+"two places" and a third already existed when it was written, which is this
+subsection's own defect committed in the sentence describing it.
+`scripts/gen-trie-vectors.py` is the sharpest of them, because a root-hash
+derivation is purely answering: it returns a hash for any input and has no
+rejecting state at all. It runs an independent derivation against every published
+root it can reach and exits `CALIBRATION FAILED` before emitting a row, its own
+comment giving the reason — the authored rows it authorizes have no published
+root, so the derivation has to be *"a checked instrument rather than unvalidated
+code vouching for vectors nothing else can check."*
+`scripts/gen-altbn128-vectors.py` is the same discipline, calibrating against the
+group's own generator and against a point moved one step off the curve before it
+produces anything; its classifier has a rejecting answer, which makes it *look*
+like a pass-state instrument and is precisely the confusion this subsection
+exists to undo. The tracked proof scripts and the hook mutation batteries cover
+the first case above — each refuses to score a mutation whose anchor moved rather
+than counting it as survived.
 
 **Nothing mechanizes this for an instrument written for one question, and
 nothing here proposes to.** A number from a calibrated instrument and a number
