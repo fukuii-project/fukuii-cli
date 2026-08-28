@@ -649,12 +649,30 @@ final case class EthashEngine(
     *
     * ==One division at the end, not one per era==
     *
-    * `base * 4^era / 5^era` is what all three implementations compute, and
-    * besu-etc's source states the identity it rests on --
+    * **ECIP-1039 mandates it, and the client agreement is downstream of that
+    * rather than evidence for it.** That document exists to settle where the
+    * floor divisions in ECIP-1017's ladder fall, and states this one outright:
+    * *"Block winner reward calculation for a given era should be rounded down
+    * only once. This can be accomplished using exponentiation"*, written
+    * `eraBlockReward * 4^era / 5^era` (`ethereumclassic/ECIPs` @
+    * `e36ef7f10166769aa3ac469aaf27ba5b0cacb198`, `_specs/ecip-1039.md`, status
+    * Final).
+    *
+    * `base * 4^era / 5^era` is what all three implementations compute, and two
+    * of them carry one comment stating the identity it rests on --
     * *"MaxBlockReward _r_ * (4/5)**era == MaxBlockReward * (4**era) / (5**era)
-    * since (q/d)**n == q**n / d**n"*. **Stepping the reward down era by era is
-    * not the same arithmetic**: a base of three over three eras is one under a
-    * single division and zero under three, because each step floors.
+    * since (q/d)**n == q**n / d**n"*, in `ethereumclassic/core-geth` @
+    * `4185df450` at `params/mutations/rewards.go` and verbatim in
+    * `besu-eth/besu-etc` @ `eb4248c997` at `ClassicBlockProcessor`. Those two
+    * are one reading rather than two: the second tree carries the first's
+    * wording, so the agreement is a copy and the document is the source.
+    *
+    * **Stepping the reward down era by era is not the same arithmetic**: a base
+    * of three over three eras is one under a single division and zero under
+    * three, because each step floors. The proposal names where that first shows
+    * on this network's own emission -- *"the discrepency would begin in era 22,
+    * where a single rounding will yield 46116860184273879, and iterative
+    * rounding will yield 46116860184273878"*.
     *
     * ==The exponent is bounded, so a nonsense height cannot ask for a nonsense
     * power==

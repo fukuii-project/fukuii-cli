@@ -39,7 +39,8 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     ("Frontier Thawing", 200000L),
     ("Homestead", 1150000L),
     ("Gas Reprice", 2500000L),
-    ("Die Hard", 3000000L)
+    ("Die Hard", 3000000L),
+    ("Gotham", 5000000L)
   )
 
   /** The last height under the old rules and the first under the new, per
@@ -71,7 +72,9 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     (2674999L, Upgrades.gasReprice),
     (2675000L, Upgrades.gasReprice),
     (2999999L, Upgrades.gasReprice),
-    (3000000L, Upgrades.dieHard)
+    (3000000L, Upgrades.dieHard),
+    (4999999L, Upgrades.dieHard),
+    (5000000L, Upgrades.gotham)
   )
 
   property("every upgrade activates at the block its own citation states") {

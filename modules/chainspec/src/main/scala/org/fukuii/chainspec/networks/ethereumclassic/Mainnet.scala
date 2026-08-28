@@ -173,6 +173,31 @@ object Mainnet:
   private val dieHard: UpgradeSchedule.Entry =
     UpgradeSchedule.Entry(atBlock(3000000), upgrade("Die Hard"), Upgrade.RuleChange(Upgrades.dieHard))
 
+  /** Block 5,000,000.
+    *
+    * `ethereumclassic/core-geth` @ `4185df450` states it as
+    * `ECIP1017FBlock: big.NewInt(5000000)` in `params/config_classic.go`,
+    * beside the era length it pairs with. `besu-eth/besu-etc` @ `eb4248c997`
+    * states it as `"gothamBlock": 5000000` in
+    * `config/src/main/resources/classic.json`. ECIP-1066 at `e36ef7f1`
+    * tabulates `Gotham | 5000000`. Neither ECIP-1017 nor ECIP-1039 names a
+    * height itself, which is why the two implementations are the whole of the
+    * sourcing for this figure.
+    *
+    * **This entry changes no value any rule set holds, and is a rule change
+    * regardless.** [[Upgrades.gotham]] says why the values do not move. What
+    * moves is the emission, which
+    * `org.fukuii.consensus.pow.EthashEngine` computes rather than reads, so two
+    * nodes disagreeing across this height disagree about a block's validity --
+    * which is what [[Upgrade.RuleChange]] asserts and what
+    * [[Upgrade.Unenforced]] would deny. The network states the same thing at
+    * the peer layer: 5,000,000 is one of the twelve fork blocks its
+    * EIP-2124 identifier is a checksum over, and 200,000 -- the height this
+    * schedule records as enforcing nothing -- is not among them.
+    */
+  private val gotham: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(5000000), upgrade("Gotham"), Upgrade.RuleChange(Upgrades.gotham))
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -206,4 +231,4 @@ object Mainnet:
     * stop agreeing it is deleted with a reason rather than quietly left true.
     */
   val schedule: Either[UpgradeSchedule.Error, UpgradeSchedule] =
-    UpgradeSchedule.of(Vector(frontier, frontierThawing, homestead, gasReprice, dieHard))
+    UpgradeSchedule.of(Vector(frontier, frontierThawing, homestead, gasReprice, dieHard, gotham))

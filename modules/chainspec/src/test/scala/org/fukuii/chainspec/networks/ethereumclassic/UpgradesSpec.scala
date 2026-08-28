@@ -9,7 +9,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 class UpgradesSpec extends AnyFlatSpec:
 
   private val composed =
-    Vector(Upgrades.frontier, Upgrades.homestead, Upgrades.gasReprice, Upgrades.dieHard)
+    Vector(Upgrades.frontier, Upgrades.homestead, Upgrades.gasReprice, Upgrades.dieHard, Upgrades.gotham)
 
   /** What a table charges for `opcode` before it runs, where that is settled. */
   private def settledCost(table: OpcodeTable, opcode: Opcode): Option[BigInt] =
@@ -40,8 +40,35 @@ class UpgradesSpec extends AnyFlatSpec:
           ProposalId.Eip(155),
           ProposalId.Eip(160),
           ProposalId.Ecip(1010)
+        ) &&
+        Upgrades.gotham.components ==
+        Vector(
+          ProposalId.Eip(7),
+          ProposalId.Eip(2),
+          ProposalId.Eip(150),
+          ProposalId.Eip(155),
+          ProposalId.Eip(160),
+          ProposalId.Ecip(1010),
+          ProposalId.Ecip(1017),
+          ProposalId.Ecip(1039)
         ),
       "a composition's recorded components are not the ones it adopted"
+    )
+
+  it should "differ from the rules it was built on by the record alone, at the emission step" in
+    // The composition ECIP-1017 and ECIP-1039 produce: both deltas leave every
+    // facet as it was, so the two rule sets share all four by reference and are
+    // told apart only by what they record having adopted. Reference equality is
+    // what makes that testable -- a delta returning an equal copy would satisfy
+    // a value comparison and fail this, which is the direction that matters,
+    // because a copy is what a delta reaching a facet by accident produces.
+    assert(
+      (Upgrades.gotham.evm eq Upgrades.dieHard.evm) &&
+        (Upgrades.gotham.execution eq Upgrades.dieHard.execution) &&
+        (Upgrades.gotham.admission eq Upgrades.dieHard.admission) &&
+        (Upgrades.gotham.consensus eq Upgrades.dieHard.consensus) &&
+        Upgrades.gotham.components != Upgrades.dieHard.components,
+      "the emission step either moved a rule value or did not record itself, and it must do exactly the second"
     )
 
   it should "carry the rule's proposal series rather than the document this network adopted it by" in

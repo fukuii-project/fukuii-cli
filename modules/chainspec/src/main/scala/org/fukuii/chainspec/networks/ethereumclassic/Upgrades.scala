@@ -2,7 +2,7 @@ package org.fukuii.chainspec.networks.ethereumclassic
 
 import org.fukuii.bytes.{UInt256, UInt64}
 import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment, UpgradeRules}
-import org.fukuii.chainspec.proposals.ecip.Ecip1010
+import org.fukuii.chainspec.proposals.ecip.{Ecip1010, Ecip1017, Ecip1039}
 import org.fukuii.chainspec.proposals.eip.{Eip150, Eip155, Eip160, Eip2, Eip7}
 import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, NewAccountCharge, OpcodeTable, Precompile, PrecompileSet}
 import org.fukuii.execution.{AdmissionRules, ExecutionRules}
@@ -300,10 +300,11 @@ object Upgrades:
     * disagrees about one of them==
     *
     * ECIP-1066 -- `ethereumclassic/ECIPs` @
-    * `e36ef7f10166769aa3ac469aaf27ba5b0cacb198` (2026-07-05) -- tabulates this
-    * upgrade's specifications as exactly these three and no others. That row's
-    * notes column is empty, so the deferral below is sourced to the two
-    * implementations rather than to it.
+    * `e36ef7f10166769aa3ac469aaf27ba5b0cacb198` (2026-07-05) -- enumerates
+    * exactly these three under its `Incl EIPs` heading and no others. **Its
+    * remaining two cells for this row, `Specs` and `Blog`, are both empty**, so
+    * the deferral below is sourced to the two implementations rather than to
+    * that table.
     *
     * **EIP-155 and EIP-160** are stated at one height by two lineages that do
     * not derive from one another: `ethereumclassic/core-geth` @ `4185df450`
@@ -335,3 +336,46 @@ object Upgrades:
     * state it at all.
     */
   val dieHard: UpgradeRules = gasReprice.adopting(Eip155.component, Eip160.component, Ecip1010.component)
+
+  /** [[dieHard]] with ECIP-1017 and ECIP-1039 adopted.
+    *
+    * ==Both are sourced separately, and both are this network's own series==
+    *
+    * ECIP-1066 -- `ethereumclassic/ECIPs` @
+    * `e36ef7f10166769aa3ac469aaf27ba5b0cacb198` (2026-07-05) -- lists exactly
+    * these two against this upgrade and nothing else. It lists them in its
+    * included-proposals column rather than its specifications column, which is
+    * the same division the preceding upgrades are tabulated under: a proposal in
+    * the first column is a RULE the upgrade carries, and one in the second is
+    * the DOCUMENT by which this network resolved to adopt the upgrade. The gas
+    * reprice is the row that shows both at once, holding EIP-150 in the first
+    * and ECIP-1015 in the second, and [[gasReprice]] records only the former for
+    * that reason. Here the two columns say the same thing they say for
+    * [[dieHard]]: both entries are rules, and no separate adoption document is
+    * tabulated.
+    *
+    * **ECIP-1017** is [[Ecip1017]]'s, sourced there, and
+    * `ethereumclassic/core-geth` @ `4185df450` corroborates the pair as
+    * `ECIP1017FBlock` and `ECIP1017EraRounds` in `params/config_classic.go`.
+    * **ECIP-1039** is [[Ecip1039]]'s, sourced there; no chain configuration in
+    * either implementation names it, because what it settles is where a
+    * division falls rather than a figure a configuration could carry.
+    *
+    * ==Neither writes a rule, and the composition is still not [[dieHard]]==
+    *
+    * Both deltas leave every facet as it was, for the reasons their own
+    * documents give -- the era ladder is computed from an era length the engine
+    * carries, and the roundings are positions inside that computation. So this
+    * rule set and the one it is built from hold the same values and differ in
+    * what they record having adopted, which is the distinction
+    * [[org.fukuii.chainspec.UpgradeRules.adopting]] exists to keep:
+    * a component's id is recorded from the component passed rather than from
+    * anything its delta returned.
+    *
+    * **That is not the same claim as the height changing nothing.** The
+    * emission does step down here, and every ommer's miner is paid under a
+    * different rule from this height onward; what does not move is any value a
+    * rule set holds. `org.fukuii.consensus.pow.EthashEngine` is where the step
+    * is, and this network's own vectors certify it.
+    */
+  val gotham: UpgradeRules = dieHard.adopting(Ecip1017.component, Ecip1039.component)

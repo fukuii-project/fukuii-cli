@@ -33,7 +33,7 @@ class MainnetSpec extends AnyFlatSpec:
   "the schedule" should "carry this network's canonical enumeration in order" in
     assert(
       schedule.entries.map(label) ==
-        Vector("Frontier", "Frontier Thawing", "Homestead", "Gas Reprice", "Die Hard"),
+        Vector("Frontier", "Frontier Thawing", "Homestead", "Gas Reprice", "Die Hard", "Gotham"),
       "an enumeration missing an entry misnumbers every entry after it, which is silent rather than absent"
     )
 
@@ -61,7 +61,21 @@ class MainnetSpec extends AnyFlatSpec:
         Vector(
           Activation.AtBlock(UInt64.fromBits(1150000L)),
           Activation.AtBlock(UInt64.fromBits(2500000L)),
-          Activation.AtBlock(UInt64.fromBits(3000000L))
+          Activation.AtBlock(UInt64.fromBits(3000000L)),
+          Activation.AtBlock(UInt64.fromBits(5000000L))
         ),
       "genesis is excluded by EIP-2124 and thawing by enforcing nothing, leaving the ones that are neither"
+    )
+
+  "Gotham" should "be a fork point even though it moves no value a rule set holds" in
+    // The one entry so far whose rule change is entirely outside the rule set:
+    // both its components leave every facet as it was, and the emission it steps
+    // down is computed by the engine. Recording it as enforcing nothing would
+    // drop it from forkPoints, and the network states the opposite at the peer
+    // layer -- 5,000,000 is one of the blocks its EIP-2124 identifier is a
+    // checksum over, where 200,000 is not.
+    assert(
+      entryNamed("Gotham").upgrade == Upgrade.RuleChange(Upgrades.gotham) &&
+        schedule.forkPoints.contains(Activation.AtBlock(UInt64.fromBits(5000000L))),
+      "the height the emission steps down at is not one this schedule expects nodes to diverge across"
     )
