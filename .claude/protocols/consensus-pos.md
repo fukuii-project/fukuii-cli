@@ -59,6 +59,17 @@ network added later falls under this protocol without amending it.**
 family's axis, and it is the fact this file exists to put in front of you before
 a dispatch site is written.
 
+**A pre-merge fork on this family's own network is not on this family's axis.**
+Ethereum mainnet ran proof-of-work until the Merge, so a fork before it
+dispatches on the proof-of-work family's axis, a block number, not a
+timestamp. Byzantium is the checked instance — Ethereum mainnet at block
+4,370,000, per EIP-609 and this repository's own built dispatch entry, unlike
+the rest of this file's header disclaimer. The network's membership here is a
+fact about today; it says nothing about a fork's own era.
+`.claude/protocols/consensus-pow.md`'s Fork dispatch section states that axis
+in full; it is not restated here, and a dispatch site for anything before the
+Merge reads it instead of this one.
+
 **Do not carry the axis across families.** Another family's protocol states its
 own, and `.claude/agents/forge.md` § "Fork dispatch" carries the shared
 hazard: why the wrong axis is a consensus bug rather than a style problem, the
