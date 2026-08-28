@@ -98,6 +98,20 @@ git grep -n 'the exact old phrase'      # must return nothing
 This is a search, so section 3 applies to it: search for a phrase distinctive
 enough that a hit means what you think it means.
 
+**And that zero is a LINE-based zero, which wrapped prose defeats.** `git grep`
+matches within one line, and a corrected phrase in a paragraph that wraps
+routinely spans a newline — so the sweep returns the zero you were hoping for
+while the old wording sits whole in the file you just edited. Measured here with
+a control: a phrase present in a tracked file returned zero from `git grep` and a
+hit from a newline-aware match of the same words, while a phrase sitting on one
+line returned a hit both ways. **It has recurred four times, across four
+actors**, which makes it the most durable instance of the class section 3 names.
+
+```bash
+git grep -n 'the exact old phrase'                   # line-based: necessary, not sufficient
+/bin/grep -Pzo 'the exact\s+old phrase' <file>       # newline-aware; \s+ spans the break
+```
+
 **Correcting in place beats appending a correction.** A note saying "this was
 wrong, see below" leaves the wrong statement readable. Replace the claim, and
 where the error itself is instructive, state the correction as the new text
@@ -194,6 +208,83 @@ also weaker than what those scripts actually assert: arms distinguish exit 1 fro
 any non-zero exit cannot tell the seeded defect from an unrelated breakage. That looseness has already
 shipped here as a placebo arm that passed on a path-resolution error while printing a conclusion about
 a mutation it never reached.
+
+### An instrument that only answers has no pass state to seed
+
+**Failure it prevents:** five instruments in one section, not one of them a
+check, each returning a measurement that was plausible, confident and wrong.
+Four different actors produced them.
+
+**What the paragraphs above already cover, said plainly, because they read as
+covering this too.** They calibrate an instrument that can FAIL — a pattern
+against a known positive for that pattern, a proof arm against the exact exit
+code its seeded defect must produce, a negative arm against an input it must
+pass. The recipe throughout is *seed the defect, and require the failure*.
+
+**An instrument that only answers has no defect to seed.** A decoder, a
+classifier, an extractor, a formula, an in-place edit, a sweep that collects
+names: each takes an input and returns a number or a label, and returns one for
+every input it will ever be handed. There is no failure state to provoke, and a
+wrong answer is the same shape as a right one. Call what it produces **an
+uncalibrated answer**, so it can be named in a review comment.
+
+**These fail toward a clean result, which is what they share with everything
+else in this file.** Five, measured here in one section:
+
+- **An in-place edit that matched no line.** A mutation battery driven by a text
+  substitution whose anchor had moved: the substitution applied to nothing, the
+  battery ran against an unmutated copy, and it reported that nothing escaped.
+  **Its answer was "the defect you are hunting is caught by nothing" — the one
+  answer that ends an investigation rather than prompting the next step.** That
+  direction is why this case carries the rule.
+- **A character class that could not match what it was collecting.** A sweep
+  gathering type names was written `[A-Za-z]*` where some of those names carry
+  digits, so it returned a smaller set of coverage rows with nothing missing on
+  the face of them.
+- **A default that hid an absence.** A field read through a `get(name, default)`
+  accessor cannot tell a field stated as the default from a field that is not
+  there. The field was absent from every case in the corpus, and every case was
+  classified as stating it.
+- **A formula transcribed one exponent short.** A curve-point classifier
+  computed a doubling slope as `3x/2y` where the curve gives `3x²/2y`, so it
+  reported almost every point as outside the subgroup — including the subgroup's
+  own generator.
+- **A line-based sweep over prose that wraps.** Section 2's zero-hit check is
+  exactly this shape, and states the remedy there.
+
+**The remedy: reproduce a known answer, in both directions, before trusting the
+instrument on an answer you do not know.** There is no defect to seed, so what
+takes its place is an input whose output you can state in advance — one the
+instrument must get right, and one it must get wrong. Both directions for the
+same reason the control subsection above gives: an instrument that returns the
+right answer for a case it could not have got wrong has told you nothing.
+
+**Where no known answer is available, state what the instrument cannot see.**
+That is the absence rule above arriving at a measurement rather than at a search.
+*"This collects the names matching `[A-Za-z]*Corpus`"* is a true and smaller
+claim than *"these are the coverage rows."*
+
+**Mechanized here in two places, and nowhere beyond them.**
+`scripts/gen-altbn128-vectors.py` is the worked case: a `calibrate()` that runs
+before the generator does any work, requires the classifier to admit the group's
+own generator, requires it to reject a point moved one step off the curve, and
+exits on either. Both directions, before the first real answer is produced. The
+tracked proof scripts and the hook mutation batteries do the same for the first
+case above — each refuses to score a mutation whose anchor moved rather than
+counting it as survived.
+
+**Nothing mechanizes this for an instrument written for one question, and
+nothing here proposes to.** A number from a calibrated instrument and a number
+from a broken one are the same number, and that indistinguishability is the
+definition of the class rather than a gap a hook could close. What is available
+instead is placing the calibration in the script beside the answer, where a
+reader can see that it ran — and, where the instrument was a one-off, reporting
+what it was calibrated against alongside what it found.
+
+**Rule 5 is the sibling and not the same rule.** It governs a claim stated one
+step past a measurement. This governs the instrument that produced the
+measurement. Both run toward confidence, and neither is caught by re-reading
+what you wrote.
 
 ### A second pass, differently patterned, before "clean"
 
