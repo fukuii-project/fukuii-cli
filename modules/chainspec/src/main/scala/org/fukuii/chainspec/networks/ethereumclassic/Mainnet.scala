@@ -198,6 +198,39 @@ object Mainnet:
   private val gotham: UpgradeSchedule.Entry =
     UpgradeSchedule.Entry(atBlock(5000000), upgrade("Gotham"), Upgrade.RuleChange(Upgrades.gotham))
 
+  /** Block 5,900,000.
+    *
+    * `ethereumclassic/core-geth` @ `4185df450` states it as
+    * `DisposalBlock: big.NewInt(5900000)` in `params/config_classic.go`.
+    * `openethereum/openethereum` @ `v3.0.1` states it as
+    * `"bombDefuseTransition": "0x5a06e0"` under `engine.Ethash.params` in
+    * `ethcore/res/ethereum/classic.json`, and `besu-eth/besu-etc` @
+    * `eb4248c997` as `"ecip1041Block": 5900000` in
+    * `config/src/main/resources/classic.json`. **ECIP-1041 --
+    * `ethereumclassic/ECIPs` @ `8dda72c24`, Final -- names the height itself**,
+    * in its abstract and again where it settles on it between the two bounds
+    * it argues for. ECIP-1066 at `e36ef7f1` tabulates
+    * `Defuse Difficulty Bomb | 5900000`.
+    *
+    * So the figure is stated by the document that decided it as well as by the
+    * three implementations that took it, which is the second entry on this
+    * schedule of which that is true -- [[dieHard]]'s ECIP-1010 states its own
+    * `pause_block` the same way. [[gotham]] is the contrast and says so: no
+    * proposal names that height, so its implementations are the whole of its
+    * sourcing.
+    *
+    * **The label is stated twice and the two agree to the character.** It is
+    * ECIP-1066's `Version and Code Name` cell verbatim, which is where every
+    * other entry's label comes from, and it is also
+    * `DEFUSE_DIFFICULTY_BOMB(true, "Defuse Difficulty Bomb")` in
+    * `HardforkId.ClassicHardforkId` at `eb4248c997`. core-geth names no
+    * upgrade here at all -- it carries the field and nothing else -- which is
+    * why a label is documentary on this schedule rather than read off an
+    * implementation.
+    */
+  private val defuse: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(5900000), upgrade("Defuse Difficulty Bomb"), Upgrade.RuleChange(Upgrades.defuse))
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -231,4 +264,4 @@ object Mainnet:
     * stop agreeing it is deleted with a reason rather than quietly left true.
     */
   val schedule: Either[UpgradeSchedule.Error, UpgradeSchedule] =
-    UpgradeSchedule.of(Vector(frontier, frontierThawing, homestead, gasReprice, dieHard, gotham))
+    UpgradeSchedule.of(Vector(frontier, frontierThawing, homestead, gasReprice, dieHard, gotham, defuse))

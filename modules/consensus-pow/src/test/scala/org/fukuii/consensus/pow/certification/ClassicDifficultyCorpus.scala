@@ -66,9 +66,12 @@ import org.fukuii.consensus.pow.EthashEngine
   *
   * Stated here as literals for the reason [[DifficultyCorpus]] gives for its
   * own: a harness asking a schedule what a fork resolves to, and then checking
-  * the corpus against that answer, is true of any schedule whatsoever. This
-  * build's Ethereum Classic schedule stops below the first of these heights in
-  * any case, so there is nothing there to close the loop with yet.
+  * the corpus against that answer, is true of any schedule whatsoever. **That
+  * circularity is the whole of the reason and it does not weaken as the
+  * schedule grows**, so these stay literals however many of these heights the
+  * schedule comes to carry. A reader who takes the schedule's reach for the
+  * argument would let them be replaced by a lookup the moment it arrives, which
+  * is the one change that would make this harness unable to disagree.
   */
 object ClassicDifficultyCorpus:
 

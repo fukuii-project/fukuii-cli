@@ -2,7 +2,7 @@ package org.fukuii.chainspec.networks.ethereumclassic
 
 import org.fukuii.bytes.{UInt256, UInt64}
 import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment, UpgradeRules}
-import org.fukuii.chainspec.proposals.ecip.{Ecip1010, Ecip1017, Ecip1039}
+import org.fukuii.chainspec.proposals.ecip.{Ecip1010, Ecip1017, Ecip1039, Ecip1041}
 import org.fukuii.chainspec.proposals.eip.{Eip150, Eip155, Eip160, Eip2, Eip7}
 import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, NewAccountCharge, OpcodeTable, Precompile, PrecompileSet}
 import org.fukuii.execution.{AdmissionRules, ExecutionRules}
@@ -379,3 +379,44 @@ object Upgrades:
     * is, and this network's own vectors certify it.
     */
   val gotham: UpgradeRules = dieHard.adopting(Ecip1017.component, Ecip1039.component)
+
+  /** [[gotham]] with ECIP-1041 adopted.
+    *
+    * ==One proposal, and the sourcing is unusually short because of it==
+    *
+    * ECIP-1066 -- `ethereumclassic/ECIPs` @
+    * `e36ef7f10166769aa3ac469aaf27ba5b0cacb198` (2026-07-05) -- lists
+    * `ECIP-1041` alone under its `Incl EIPs` heading for this row and leaves
+    * both remaining cells, `Specs` and `Blog`, empty. **ECIP-1041** is
+    * [[Ecip1041]]'s, sourced there against three implementations that do not
+    * derive from one another.
+    *
+    * ==Adopting it keeps ECIP-1010 rather than superseding it==
+    *
+    * The two documents concern one term and it is easy to read the later as
+    * replacing the earlier. It does not: ECIP-1041's own implementation defers
+    * to `PREVIOUS_FORMULA` below its height, and its specification names that
+    * formula as ECIP-1010's window. So this rule set carries the removal AND
+    * the window AND the graduated adjustment EIP-2 introduced, and the
+    * distinction is reachable rather than notional -- seven of the sixteen
+    * heights this network's own difficulty vectors state under this upgrade
+    * answer differently with the window than without it.
+    *
+    * `besu-eth/besu-etc` @ `eb4248c997` reaches the same behavior by replacing
+    * rather than composing, and the two readings agree at every height:
+    * `ClassicProtocolSpecs.defuseDifficultyBombDefinition` builds on
+    * `gothamDefinition` and swaps its difficulty calculator for one with no
+    * exponential term, leaving the calculator carrying the window in force
+    * below the fork. [[Ecip1041]] records that divergence, because it is about
+    * where the branch is chosen rather than about what the branch answers.
+    *
+    * ==Nothing intervenes between this height and the one it builds on==
+    *
+    * `params/config_classic.go` at `4185df450` states no transition strictly
+    * between `ECIP1017FBlock` 5,000,000 and `DisposalBlock` 5,900,000, and its
+    * next one after that is 8,772,000. ECIP-1066's table at `e36ef7f1` orders
+    * its rows the same way, with this upgrade between `Gotham | 5000000` and
+    * `Atlantis | 8772000`. So the rules this composes over are [[gotham]]'s,
+    * from two sources rather than by position in this file.
+    */
+  val defuse: UpgradeRules = gotham.adopting(Ecip1041.component)
