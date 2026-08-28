@@ -252,6 +252,16 @@ else in this file.** Five, measured here in one section:
 - **A line-based sweep over prose that wraps.** Section 2's zero-hit check is
   exactly this shape, and states the remedy there.
 
+**And an answer can be arity-clean and still be wrongly keyed.** `grep -h` over
+several files discards the filename rather than the order — GNU grep emits
+argument order, measured — so what is lost is which file each line came from. A
+mapping built by zipping the file list against that output is correct only while
+every file contributes exactly one line. Measured here: four files, four matching
+lines, the two counts agreeing exactly, and the mapping wrong, because one file
+matched nothing and another matched twice. `-H` keeps the key and costs nothing.
+**A count that reconciles is not evidence the rows are paired correctly**, and
+that is the one property a check on the total cannot reach.
+
 **The remedy: reproduce a known answer, in both directions, before trusting the
 instrument on an answer you do not know.** There is no defect to seed, so what
 takes its place is an input whose output you can state in advance — one the
