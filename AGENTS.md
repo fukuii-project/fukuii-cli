@@ -47,12 +47,24 @@ production JVM one.
 
 **Naming the wider set costs the build almost nothing and constrains the shape a
 great deal, which is why it is here rather than deferred to the section that
-first needs it.** Measured across the reference corpus: an EVM-equivalent network
-varies the opcode table, the gas schedule and the precompile set, and touches the
-interpreter nowhere else. `ethereum-optimism/op-geth` carries chain-specific
+first needs it.** **Of the four EVM-equivalent clients read for this, each varies
+the opcode table, the gas schedule and the precompile set and touches the
+interpreter nowhere else.** `ethereum-optimism/op-geth` carries chain-specific
 tokens in exactly one file under `core/vm`, and that file is the precompile
 registry; `ava-labs/subnet-evm` carries none; `ronin/ronin`'s three are all added
-precompiles. **So the multi-network seam and the fork seam are one seam** — and the
+precompiles.
+
+**Read that as four clients and not as a survey of the field, because three of
+them are one codebase.** `op-geth`, `ronin/ronin` and `ethereumclassic/core-geth`
+share `go-ethereum`'s own root commit; only `ava-labs/subnet-evm` is
+independently rooted. So the evidence is one lineage read three times plus one
+other client, and the non-`go-ethereum` production clients — `besu`,
+`nethermind`, `erigon`, `reth` — were not read for this claim at all. **Widening
+it is unspent work, not a settled result.** The claim has held everywhere it has
+been tested since; that is a reason to keep the shape, never a reason to restate
+the evidence as broader than it is.
+
+**So the multi-network seam and the fork seam are one seam** — and the
 field's answer to both is a **baseline plus per-proposal deltas**, driven by a
 chain configuration rather than by per-named-fork branching.
 `ethereumclassic/core-geth` is the worked case: `core/vm/jump_table.go:73`
