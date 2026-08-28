@@ -9,7 +9,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 class UpgradesSpec extends AnyFlatSpec:
 
   private val composed =
-    Vector(Upgrades.frontier, Upgrades.homestead, Upgrades.gasReprice)
+    Vector(Upgrades.frontier, Upgrades.homestead, Upgrades.gasReprice, Upgrades.dieHard)
 
   /** What a table charges for `opcode` before it runs, where that is settled. */
   private def settledCost(table: OpcodeTable, opcode: Opcode): Option[BigInt] =
@@ -31,7 +31,16 @@ class UpgradesSpec extends AnyFlatSpec:
       Upgrades.frontier.components == Vector.empty &&
         Upgrades.homestead.components == Vector(ProposalId.Eip(7), ProposalId.Eip(2)) &&
         Upgrades.gasReprice.components ==
-        Vector(ProposalId.Eip(7), ProposalId.Eip(2), ProposalId.Eip(150)),
+        Vector(ProposalId.Eip(7), ProposalId.Eip(2), ProposalId.Eip(150)) &&
+        Upgrades.dieHard.components ==
+        Vector(
+          ProposalId.Eip(7),
+          ProposalId.Eip(2),
+          ProposalId.Eip(150),
+          ProposalId.Eip(155),
+          ProposalId.Eip(160),
+          ProposalId.Ecip(1010)
+        ),
       "a composition's recorded components are not the ones it adopted"
     )
 

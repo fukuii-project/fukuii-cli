@@ -145,6 +145,34 @@ object Mainnet:
   private val gasReprice: UpgradeSchedule.Entry =
     UpgradeSchedule.Entry(atBlock(2500000), upgrade("Gas Reprice"), Upgrade.RuleChange(Upgrades.gasReprice))
 
+  /** Block 3,000,000.
+    *
+    * `ethereumclassic/core-geth` @ `4185df450` states it as the three proposals
+    * rather than the fork name -- `EIP155Block`, `EIP160FBlock` and
+    * `ECIP1010PauseBlock`, all `big.NewInt(3000000)` and written as one group
+    * in `params/config_classic.go`. `openethereum/openethereum` @ `v3.0.1`
+    * states the same three in a different codebase and in two places:
+    * `eip155Transition` and `eip160Transition` `0x2dc6c0` under `params`, and
+    * `ecip1010PauseTransition` `0x2dc6c0` under `engine.Ethash.params`, both in
+    * `ethcore/res/ethereum/classic.json`. ECIP-1010 -- `ethereumclassic/ECIPs`
+    * @ `f398567f4`, Final -- names the height itself, as
+    * `pause_block = 3000000`. ECIP-1066 at `e36ef7f1` tabulates
+    * `Die Hard | 3000000`.
+    *
+    * **`besu-eth/besu-etc` @ `eb4248c997` agrees on the height and not on
+    * everything the height carries.** It names the figure
+    * `"dieHardBlock": 3000000` in `config/src/main/resources/classic.json`, so
+    * this activation is three lineages rather than two, and its
+    * `ClassicProtocolSpecs` definition for the upgrade installs the paused
+    * difficulty calculator and a gas calculator overriding the per-byte
+    * exponent charge alone. What it does not put here is the later signing
+    * scheme, which its preceding definition already admitted --
+    * [[Upgrades.dieHard]] records that divergence, because it is about which
+    * proposals this height carries rather than about where the height is.
+    */
+  private val dieHard: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(3000000), upgrade("Die Hard"), Upgrade.RuleChange(Upgrades.dieHard))
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -178,4 +206,4 @@ object Mainnet:
     * stop agreeing it is deleted with a reason rather than quietly left true.
     */
   val schedule: Either[UpgradeSchedule.Error, UpgradeSchedule] =
-    UpgradeSchedule.of(Vector(frontier, frontierThawing, homestead, gasReprice))
+    UpgradeSchedule.of(Vector(frontier, frontierThawing, homestead, gasReprice, dieHard))

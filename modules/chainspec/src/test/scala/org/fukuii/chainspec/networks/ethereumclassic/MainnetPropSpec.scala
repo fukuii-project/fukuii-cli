@@ -38,7 +38,8 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     ("Frontier", 0L),
     ("Frontier Thawing", 200000L),
     ("Homestead", 1150000L),
-    ("Gas Reprice", 2500000L)
+    ("Gas Reprice", 2500000L),
+    ("Die Hard", 3000000L)
   )
 
   /** The last height under the old rules and the first under the new, per
@@ -47,7 +48,12 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     *
     * The row at 2,462,999 and the one after it are this network's answer at the
     * other network's reprice block: still the earlier rules, for another 37,000
-    * blocks.
+    * blocks. The pair at 2,674,999 and 2,675,000 is the same reading one
+    * upgrade later, where the other network takes EIP-155 and EIP-160 and this
+    * one does not reach them for another 325,000. Neither pair is a boundary
+    * here; both are heights at which the other network moves and this one does
+    * not, which is a fact only a table holding both networks' figures can
+    * state.
     */
   private val boundaries = Table(
     ("height", "rules"),
@@ -61,7 +67,11 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     (2462999L, Upgrades.homestead),
     (2463000L, Upgrades.homestead),
     (2499999L, Upgrades.homestead),
-    (2500000L, Upgrades.gasReprice)
+    (2500000L, Upgrades.gasReprice),
+    (2674999L, Upgrades.gasReprice),
+    (2675000L, Upgrades.gasReprice),
+    (2999999L, Upgrades.gasReprice),
+    (3000000L, Upgrades.dieHard)
   )
 
   property("every upgrade activates at the block its own citation states") {

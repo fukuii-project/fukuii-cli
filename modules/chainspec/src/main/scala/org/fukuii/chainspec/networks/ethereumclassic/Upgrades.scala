@@ -2,7 +2,8 @@ package org.fukuii.chainspec.networks.ethereumclassic
 
 import org.fukuii.bytes.{UInt256, UInt64}
 import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment, UpgradeRules}
-import org.fukuii.chainspec.proposals.eip.{Eip150, Eip2, Eip7}
+import org.fukuii.chainspec.proposals.ecip.Ecip1010
+import org.fukuii.chainspec.proposals.eip.{Eip150, Eip155, Eip160, Eip2, Eip7}
 import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, NewAccountCharge, OpcodeTable, Precompile, PrecompileSet}
 import org.fukuii.execution.{AdmissionRules, ExecutionRules}
 import org.fukuii.types.TransactionType
@@ -286,3 +287,51 @@ object Upgrades:
     * and EIP-170 by nearly six million blocks.
     */
   val gasReprice: UpgradeRules = homestead.adopting(Eip150.component)
+
+  /** [[gasReprice]] with EIP-155, EIP-160 and ECIP-1010 adopted.
+    *
+    * The order is the order the three compose in. It is immaterial -- they
+    * write a member of the admission facet, a price in the machine's schedule
+    * and a member of the consensus facet, and no two of them name one field --
+    * and it is stated because two deltas touching one field compose to
+    * whichever ran last.
+    *
+    * ==Each of the three is sourced separately, and one of the three sources
+    * disagrees about one of them==
+    *
+    * ECIP-1066 -- `ethereumclassic/ECIPs` @
+    * `e36ef7f10166769aa3ac469aaf27ba5b0cacb198` (2026-07-05) -- tabulates this
+    * upgrade's specifications as exactly these three and no others. That row's
+    * notes column is empty, so the deferral below is sourced to the two
+    * implementations rather than to it.
+    *
+    * **EIP-155 and EIP-160** are stated at one height by two lineages that do
+    * not derive from one another: `ethereumclassic/core-geth` @ `4185df450`
+    * writes `EIP155Block` and `EIP160FBlock` in `params/config_classic.go`, and
+    * `openethereum/openethereum` @ `v3.0.1` writes `eip155Transition` and
+    * `eip160Transition` `0x2dc6c0` in `ethcore/res/ethereum/classic.json`.
+    * **`besu-eth/besu-etc` @ `eb4248c997` is not a third reading of EIP-155
+    * here and must not be cited as one**: its `ClassicProtocolSpecs`
+    * definition for the preceding upgrade already carries
+    * `.isReplayProtectionSupported(true)`, so that client admits the later
+    * signing scheme half a million blocks below where the other two put it. It
+    * corroborates EIP-160 -- its Die Hard definition installs a gas calculator
+    * overriding the per-byte exponent charge and nothing else -- and it
+    * corroborates ECIP-1010, whose calculator that same definition installs.
+    *
+    * **ECIP-1010** is [[Ecip1010]]'s, sourced there.
+    *
+    * ==What this network declined here is the difference between the two
+    * networks' Spurious Dragon==
+    *
+    * EIP-607 bundles four proposals and this composition takes two of them.
+    * `params/config_classic.go` at `4185df450` puts `EIP161FBlock` and
+    * `EIP170FBlock` 5,772,000 blocks higher than the two adopted here, and
+    * `openethereum/openethereum` @ `v3.0.1` puts `eip161abcTransition`,
+    * `eip161dTransition` and `maxCodeSizeTransition` at that same higher
+    * figure. So the two groups are separate rule sets on this network and one
+    * composition on the other. A rule set composed from proposals states that
+    * by adopting a different list; one derived from a fork's name could not
+    * state it at all.
+    */
+  val dieHard: UpgradeRules = gasReprice.adopting(Eip155.component, Eip160.component, Ecip1010.component)

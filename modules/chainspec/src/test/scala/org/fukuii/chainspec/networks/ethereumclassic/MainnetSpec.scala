@@ -33,7 +33,7 @@ class MainnetSpec extends AnyFlatSpec:
   "the schedule" should "carry this network's canonical enumeration in order" in
     assert(
       schedule.entries.map(label) ==
-        Vector("Frontier", "Frontier Thawing", "Homestead", "Gas Reprice"),
+        Vector("Frontier", "Frontier Thawing", "Homestead", "Gas Reprice", "Die Hard"),
       "an enumeration missing an entry misnumbers every entry after it, which is silent rather than absent"
     )
 
@@ -55,9 +55,13 @@ class MainnetSpec extends AnyFlatSpec:
       "this network inherited the entry with the history, and omitting it renumbers everything after it"
     )
 
-  "this network's fork points" should "be exactly the two upgrades that change what a node validates" in
+  "this network's fork points" should "be exactly the upgrades that change what a node validates" in
     assert(
       schedule.forkPoints ==
-        Vector(Activation.AtBlock(UInt64.fromBits(1150000L)), Activation.AtBlock(UInt64.fromBits(2500000L))),
-      "genesis is excluded by EIP-2124 and thawing by enforcing nothing, leaving the two that are neither"
+        Vector(
+          Activation.AtBlock(UInt64.fromBits(1150000L)),
+          Activation.AtBlock(UInt64.fromBits(2500000L)),
+          Activation.AtBlock(UInt64.fromBits(3000000L))
+        ),
+      "genesis is excluded by EIP-2124 and thawing by enforcing nothing, leaving the ones that are neither"
     )
