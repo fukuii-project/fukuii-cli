@@ -20,7 +20,16 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip658,
   Eip7
 }
-import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, NewAccountCharge, OpcodeTable, Precompile, PrecompileSet}
+import org.fukuii.evm.{
+  EvmRules,
+  GasForwarding,
+  GasSchedule,
+  NewAccountCharge,
+  OpcodeTable,
+  Precompile,
+  PrecompileSet,
+  StorageMetering
+}
 import org.fukuii.execution.{AdmissionRules, ExecutionRules}
 import org.fukuii.types.TransactionType
 
@@ -116,10 +125,18 @@ object Upgrades:
     blockHash = BigInt(20),
     balance = BigInt(20),
     externalBase = BigInt(20),
+    extCodeHash = BigInt(400),
     storageLoad = BigInt(50),
     storageSet = BigInt(20000),
     storageReset = BigInt(5000),
     refundStorageClear = BigInt(15000),
+    netStorageNoop = BigInt(200),
+    netStorageInit = BigInt(20000),
+    netStorageClean = BigInt(5000),
+    netStorageDirty = BigInt(200),
+    refundNetStorageClear = BigInt(15000),
+    refundNetStorageResetFromZero = BigInt(19800),
+    refundNetStorageReset = BigInt(4800),
     refundSelfDestruct = BigInt(24000),
     callBase = BigInt(40),
     callValue = BigInt(9000),
@@ -256,6 +273,7 @@ object Upgrades:
         maxCodeSize = None,
         createdAccountNonce = UInt64.Zero,
         newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent,
+        storageMetering = StorageMetering.Legacy,
         touchSurvivesFailure = Set.empty
       ),
       execution = ExecutionRules(

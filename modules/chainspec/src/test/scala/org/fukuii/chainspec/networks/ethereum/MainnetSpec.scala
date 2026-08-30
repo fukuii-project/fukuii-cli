@@ -52,7 +52,13 @@ class MainnetSpec extends AnyFlatSpec:
           "DAO Fork",
           "Tangerine Whistle",
           "Spurious Dragon",
-          "Byzantium"
+          "Byzantium",
+          // TWO entries at one height, and the ORDER of these two is the thing
+          // this enumeration pins that nothing else does: swapping them leaves
+          // every other assertion in this file passing while the network runs
+          // EIP-1283 for ever.
+          "Constantinople",
+          "Petersburg"
         ),
       "an enumeration missing an entry misnumbers every entry after it, which is silent rather than absent"
     )
@@ -111,7 +117,75 @@ class MainnetSpec extends AnyFlatSpec:
         Activation.AtBlock(UInt64.fromBits(1920000L)),
         Activation.AtBlock(UInt64.fromBits(2463000L)),
         Activation.AtBlock(UInt64.fromBits(2675000L)),
-        Activation.AtBlock(UInt64.fromBits(4370000L))
+        Activation.AtBlock(UInt64.fromBits(4370000L)),
+        // ONCE, not twice. Two entries activate at this height and EIP-2124
+        // must see one point; four production clients de-duplicate at the same
+        // place and the wrong answer is silent -- the checksum is still a
+        // number, and every peer rejects it as unrelated network trouble.
+        Activation.AtBlock(UInt64.fromBits(7280000L))
       ),
       "genesis is excluded by EIP-2124 and thawing by enforcing nothing, leaving the ones that are neither"
     )
+
+  // ── The two entries that share a height ───────────────────────────────────
+
+  "the pair at 7,280,000" should "leave Byzantium's rules in force one block below" in
+    assert(
+      schedule.at(UInt64.fromBits(7279999L), UInt64.Zero) == Upgrades.byzantium,
+      "the block before the fork point runs the fork below it"
+    )
+
+  it should "resolve to PETERSBURG at the height itself, not to Constantinople" in
+    // The entry written SECOND is the one in force, which is EIP-1716's rule:
+    // "If Petersburg and Constantinople are applied at the same block,
+    // Petersburg takes precedence: with the net effect of EIP-1283 being
+    // disabled."
+    assert(
+      schedule.at(UInt64.fromBits(7280000L), UInt64.Zero) == Upgrades.petersburg,
+      "the height resolves to the rule set that still carries EIP-1283"
+    )
+
+  it should "never resolve to Constantinople's rules at ANY height" in {
+    // The property that makes the specified-but-never-run rule set safe to
+    // hold. Sampled across the whole schedule rather than at the fork point
+    // alone, so an entry inserted later that exposed it would fail here.
+    val sampled = Seq(0L, 1L, 1150000L, 1920000L, 2463000L, 2675000L, 4370000L, 7279999L, 7280000L, 7280001L, 20000000L)
+    assert(
+      sampled.forall(height => schedule.at(UInt64.fromBits(height), UInt64.Zero) != Upgrades.constantinople),
+      "a height resolves to rules Ethereum mainnet never ran"
+    )
+  }
+
+  it should "be ORDER-DEPENDENT, which is why the entries are written the way they are" in {
+    // THE ASSERTION THIS FILE EXISTS FOR. The two entries above differ only in
+    // which is written first, and swapping them is silent: both rule sets are
+    // valid, the schedule still builds, the fork identifier is unchanged, and
+    // the network runs EIP-1283 for ever.
+    //
+    // Built here as the REVERSED schedule and shown to resolve the other way,
+    // so this fails if `at` ever stops being last-wins -- which would make the
+    // real schedule above wrong without touching it.
+    val reversed = UpgradeSchedule.of(
+      Vector(
+        UpgradeSchedule.Entry(
+          Activation.AtBlock(UInt64.Zero),
+          UpgradeId.named(Mainnet.network, "Frontier"),
+          Upgrade.RuleChange(Upgrades.frontier)
+        ),
+        UpgradeSchedule.Entry(
+          Activation.AtBlock(UInt64.fromBits(7280000L)),
+          UpgradeId.named(Mainnet.network, "Petersburg"),
+          Upgrade.RuleChange(Upgrades.petersburg)
+        ),
+        UpgradeSchedule.Entry(
+          Activation.AtBlock(UInt64.fromBits(7280000L)),
+          UpgradeId.named(Mainnet.network, "Constantinople"),
+          Upgrade.RuleChange(Upgrades.constantinople)
+        )
+      )
+    )
+    assert(
+      reversed.map(_.at(UInt64.fromBits(7280000L), UInt64.Zero)) == Right(Upgrades.constantinople),
+      "writing the two entries the other way round does NOT change what resolves, so the real schedule's order is unpinned"
+    )
+  }

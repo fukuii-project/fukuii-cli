@@ -306,6 +306,64 @@ object Mainnet:
   private val byzantium: UpgradeSchedule.Entry =
     UpgradeSchedule.Entry(atBlock(4370000), upgrade("Byzantium"), Upgrade.RuleChange(Upgrades.byzantium))
 
+  /** Constantinople, at 7,280,000 -- and PETERSBURG IS AT THE SAME BLOCK.
+    *
+    * ==Two entries, one height, and the order below is load-bearing==
+    *
+    * `UpgradeSchedule.at` folds over the entries that have activated and keeps
+    * the last rule change, so at 7,280,000 both of these have activated and
+    * **the one written second is the one in force**. That is EIP-1716's own
+    * rule -- *"If `Petersburg` and `Constantinople` are applied at the same
+    * block, `Petersburg` takes precedence: with the net effect of EIP-1283
+    * being disabled"* (`ethereum/EIPs` @ `dbfa6bee`, `EIPS/eip-1716.md`,
+    * Final).
+    *
+    * **Reversing these two lines would leave this network running EIP-1283 for
+    * ever, and nothing about either rule set would look wrong.** `MainnetSpec`
+    * pins the order in both directions, because a schedule is the only place
+    * that mistake is visible.
+    *
+    * ==Both heights, from clients that state them separately==
+    *
+    * `ethereum/go-ethereum` @ `e9e35a42f8` sets `ConstantinopleBlock:
+    * big.NewInt(7_280_000)` and `PetersburgBlock: big.NewInt(7_280_000)` on
+    * consecutive lines of `params/config.go`. `erigontech/erigon` @
+    * `776a380b1a` carries the same pair in
+    * `execution/chain/spec/chainspecs/mainnet.json`.
+    *
+    * **Three of six independent lineages model ONE fork here instead**, and
+    * that is a real disagreement rather than an oversight: besu's shipped
+    * `mainnet.json` carries `petersburgBlock` and no `constantinopleBlock` at
+    * all, nethermind resolves its Constantinople block to null, and
+    * `ethereum/execution-specs` has no `petersburg` fork package and says in
+    * prose that it *"omits the whole awkward situation"*. This schedule follows
+    * the clients that shipped the two forks in sequence, which is also what
+    * keeps the specified-but-never-run rule set expressible.
+    *
+    * ==One fork point, not two==
+    *
+    * `UpgradeSchedule.forkPoints` de-duplicates, so EIP-2124 sees 7,280,000
+    * once. Four production clients de-duplicate at the same place for the same
+    * reason -- go-ethereum, erigon, besu and reth all do it explicitly -- and
+    * getting it wrong is silent: the checksum is still a number and every peer
+    * rejects it.
+    */
+  private val constantinople: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(7280000), upgrade("Constantinople"), Upgrade.RuleChange(Upgrades.constantinople))
+
+  /** Petersburg, at the same 7,280,000, removing EIP-1283 before it ever ran.
+    *
+    * **This entry must stay BELOW [[constantinople]]** -- see that entry's note
+    * for why, and `MainnetSpec` for the assertion that holds it there.
+    *
+    * The label is the codename EIP-1716 gives itself and the field name five
+    * clients use. It is deliberately NOT the conformance corpora's spelling,
+    * which is `ConstantinopleFix`; `UpgradeId` is this network's word for the
+    * upgrade and a corpus label is a different thing.
+    */
+  private val petersburg: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(7280000), upgrade("Petersburg"), Upgrade.RuleChange(Upgrades.petersburg))
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -330,5 +388,15 @@ object Mainnet:
     */
   val schedule: Either[UpgradeSchedule.Error, UpgradeSchedule] =
     UpgradeSchedule.of(
-      Vector(frontier, frontierThawing, homestead, daoFork, tangerineWhistle, spuriousDragon, byzantium)
+      Vector(
+        frontier,
+        frontierThawing,
+        homestead,
+        daoFork,
+        tangerineWhistle,
+        spuriousDragon,
+        byzantium,
+        constantinople,
+        petersburg
+      )
     )

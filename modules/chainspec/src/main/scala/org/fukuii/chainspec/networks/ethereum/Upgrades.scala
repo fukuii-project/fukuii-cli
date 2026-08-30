@@ -4,7 +4,13 @@ import org.fukuii.bytes.{UInt256, UInt64}
 import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment, UpgradeRules}
 import org.fukuii.chainspec.proposals.eip.{
   Eip100,
+  Eip1014,
+  Eip1052,
+  Eip1234,
+  Eip1283,
   Eip140,
+  Eip145,
+  Eip1716,
   Eip150,
   Eip155,
   Eip160,
@@ -20,7 +26,16 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip658,
   Eip7
 }
-import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, NewAccountCharge, OpcodeTable, Precompile, PrecompileSet}
+import org.fukuii.evm.{
+  EvmRules,
+  GasForwarding,
+  GasSchedule,
+  NewAccountCharge,
+  OpcodeTable,
+  Precompile,
+  PrecompileSet,
+  StorageMetering
+}
 import org.fukuii.execution.{AdmissionRules, ExecutionRules}
 import org.fukuii.types.TransactionType
 
@@ -90,10 +105,18 @@ object Upgrades:
     blockHash = BigInt(20),
     balance = BigInt(20),
     externalBase = BigInt(20),
+    extCodeHash = BigInt(400),
     storageLoad = BigInt(50),
     storageSet = BigInt(20000),
     storageReset = BigInt(5000),
     refundStorageClear = BigInt(15000),
+    netStorageNoop = BigInt(200),
+    netStorageInit = BigInt(20000),
+    netStorageClean = BigInt(5000),
+    netStorageDirty = BigInt(200),
+    refundNetStorageClear = BigInt(15000),
+    refundNetStorageResetFromZero = BigInt(19800),
+    refundNetStorageReset = BigInt(4800),
     refundSelfDestruct = BigInt(24000),
     callBase = BigInt(40),
     callValue = BigInt(9000),
@@ -233,6 +256,7 @@ object Upgrades:
         maxCodeSize = None,
         createdAccountNonce = UInt64.Zero,
         newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent,
+        storageMetering = StorageMetering.Legacy,
         touchSurvivesFailure = Set.empty
       ),
       execution = ExecutionRules(
@@ -370,3 +394,67 @@ object Upgrades:
       Eip196.component,
       Eip197.component
     )
+
+  /** The rules EIP-1013 specifies, which this network never ran.
+    *
+    * ==All five of the document's Included EIPs, EIP-1283 among them==
+    *
+    * EIP-1013 lists EIP-145, EIP-1014, EIP-1052, EIP-1234 and EIP-1283
+    * (`ethereum/EIPs` @ `dbfa6bee`, `EIPS/eip-1013.md`, Final), and this
+    * composition adopts every one.
+    *
+    * ==NO HEIGHT OF THIS NETWORK RESOLVES TO THIS VALUE, and that is not a
+    * defect==
+    *
+    * `Mainnet` schedules this and [[petersburg]] at the SAME block, and a
+    * schedule answers with the last entry that has activated -- so from
+    * 7,280,000 onward this network runs [[petersburg]], and below it
+    * [[byzantium]]. This value is what the fork was SPECIFIED to be.
+    *
+    * **It is built rather than skipped for three reasons, none of them
+    * academic.** Other networks ran it: Ropsten for 709,394 blocks, Kovan for
+    * 1,055,201, Rinkeby for 660,571, and Gnosis turned it on, off and on again.
+    * The published legacy conformance corpus states expectations under a
+    * `Constantinople` label that are these rules and not [[petersburg]]'s. And
+    * a schedule that could not express an adoption followed by a withdrawal
+    * would have to model the pair as one fork, which is what
+    * `ethereum/execution-specs` does and what two production clients decline to
+    * do.
+    *
+    * The alternative -- four proposals and no withdrawal -- was surveyed and
+    * declined: `ethereum/go-ethereum` @ `e9e35a42f8` and `besu-eth/besu` @
+    * `fdf1247c6d` each shipped this fork first and added the removal months
+    * later, so the two-value shape is what a client that lived through the
+    * sequence carries.
+    */
+  val constantinople: UpgradeRules =
+    byzantium.adopting(
+      Eip145.component,
+      Eip1014.component,
+      Eip1052.component,
+      Eip1234.component,
+      Eip1283.component
+    )
+
+  /** The rules this network actually runs from 7,280,000: Constantinople with
+    * EIP-1283 taken back out.
+    *
+    * ==Reached by withdrawing rather than by composing four proposals==
+    *
+    * The two routes produce the same MACHINE -- `Eip1716Spec` asserts that
+    * withdrawing leaves the rules exactly where they were before the
+    * adoption -- and a different RECORD. [[UpgradeRules.components]] is an
+    * ordered journal of what was applied, so this one states that EIP-1283 was
+    * adopted and then removed, which is what happened and what a four-proposal
+    * composition could not say.
+    *
+    * ==The name==
+    *
+    * `Petersburg` is EIP-1716's codename and is what five clients call the
+    * field. **It is not what any conformance corpus calls the fork**: the
+    * generated tier publishes `for_constantinoplefix` and no
+    * `for_constantinople` at all, and the legacy tier carries `Constantinople`
+    * and `ConstantinopleFix` and uses `Petersburg` zero times. Anything
+    * matching a corpus label wants `ConstantinopleFix`.
+    */
+  val petersburg: UpgradeRules = constantinople.adopting(Eip1716.component)
