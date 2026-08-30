@@ -23,22 +23,36 @@ import org.fukuii.types.{BlockHeader, BlockNonce, Bloom, Seal}
   * **So both of them pass with
   * `org.fukuii.chainspec.networks.ethereumclassic.Upgrades` wrong, and that is
   * measured rather than argued.** With ECIP-1041's delta seeded to clear
-  * ECIP-1010's window as well as write the removal -- the one defect this
-  * upgrade is most exposed to -- those two suites ran 51 cases between them,
-  * including all 384 of this network's published difficulty cases, and every
-  * one agreed. This suite is the third position: the engine, asked by the
-  * composed rule set, at heights chosen so that each member of the composition
+  * ECIP-1010's window as well as write the removal -- the one defect the rule
+  * set adopting it is most exposed to -- those two suites ran 51 cases between
+  * them, including all 384 of this network's published difficulty cases, and
+  * every one agreed. This suite is the third position: the engine, asked by the
+  * composed rule sets, at heights chosen so that each member of the composition
   * decides the answer alone.
   *
   * ==Every expectation is derivable without the corpus, and agrees with it==
   *
   * The inputs and answers below are the ones this network's own vectors state
-  * under `ETC_DefuseDifficultyBomb` -- `bomb_pause_and_removal.json` and
-  * `block_interval_adjustment.json`, whose oracles are three implementations
-  * sharing no commit, named in that certification suite. They are restated
-  * here rather than read, so this suite runs whether or not the corpus is on
-  * the machine, and each is written with the arithmetic that produces it so a
-  * reader can check it against neither.
+  * under `ETC_DefuseDifficultyBomb` and `ETC_Atlantis`, across the three files
+  * that certification suite reads. They are restated here rather than read, so
+  * this suite runs whether or not the corpus is on the machine, and each is
+  * written with the arithmetic that produces it so a reader can check it
+  * against neither.
+  *
+  * **The three files do not carry one oracle between them, and reading them as
+  * though they did overstates two of the three.**
+  * `bomb_pause_and_removal.json` is the one naming three implementations
+  * sharing no commit; `block_interval_adjustment.json` and
+  * `uncle_adjustment.json` name one client and a re-derivation from EIP-2 and
+  * EIP-100 that took no client as its source. That certification suite carries
+  * the three apart and is the authority for which is which.
+  *
+  * **Two kinds of case below restate nothing and must not be read as agreeing
+  * with anything.** Every seeded control states an answer for rules this
+  * network never ran, which no vector could carry. And no vector is published
+  * at 8,772,000: what `ETC_Atlantis` publishes either side of it at the same
+  * gap -- 5,900,000 and 10,000,000 -- is the answer stated for that height
+  * below, so the case there interpolates the corpus rather than restating it.
   *
   * A parent difficulty of 13,107,200 makes one step of adjustment
   * 13,107,200 / 2,048 = 6,400, which is a whole number, so no case below is
@@ -52,6 +66,11 @@ class ClassicUpgradeDifficultySpec extends AnyFlatSpec:
     * step, which is what the schedule resolves from block 5,900,000.
     */
   private val defuse: ConsensusRules = Upgrades.defuse.consensus
+
+  /** The rules this network reached by adopting ten proposals over [[defuse]],
+    * which is what the schedule resolves from block 8,772,000.
+    */
+  private val atlantis: ConsensusRules = Upgrades.atlantis.consensus
 
   /** One step of adjustment at the parent difficulty every case uses. */
   private val step: BigInt = BigInt(6400)
@@ -78,16 +97,35 @@ class ClassicUpgradeDifficultySpec extends AnyFlatSpec:
 
   /** What `rules` answer for the block at `number`, `gap` seconds after its
     * parent.
+    *
+    * @param parentHasOmmers
+    *   whether that parent carried any, which only the ommer-aware rule reads.
+    *   It defaults to the reading every rule below EIP-100 is indifferent to,
+    *   so a case naming it is a case about EIP-100.
     */
-  private def answered(rules: ConsensusRules, number: BigInt, gap: Long): BigInt =
-    engine.difficulty(rules, parent(number), parentHasOmmers = false, UInt64.fromBits(gap)).toBigInt
+  private def answered(
+      rules: ConsensusRules,
+      number: BigInt,
+      gap: Long,
+      parentHasOmmers: Boolean = false
+  ): BigInt =
+    engine.difficulty(rules, parent(number), parentHasOmmers, UInt64.fromBits(gap)).toBigInt
 
-  /** A gap short enough that both adjustment rules raise by one step, so a case
+  /** A gap at which no adjustment rule this suite drives moves the target by
+    * more than one step -- one step up under the two that predate EIP-100, and
+    * nothing at all under EIP-100 itself, whose divisor it equals. So a case
     * about the exponential term is not also a case about the adjustment.
     */
   private val shortGap: Long = 9
 
-  /** The three seedings, each removing exactly one member of the composition.
+  /** A gap shorter than either divisor, so the quotient is nothing and the
+    * multiplier is the numerator alone -- which is the half of EIP-100 the
+    * parent's ommers move.
+    */
+  private val numeratorGap: Long = 1
+
+  /** The seedings, each removing or replacing exactly one member of a
+    * composition.
     *
     * They are applied to the composed rules rather than to rules built here,
     * so a seeding measures the departure from what this network states rather
@@ -101,6 +139,9 @@ class ClassicUpgradeDifficultySpec extends AnyFlatSpec:
 
   private def withoutTheGraduatedRule(rules: ConsensusRules): ConsensusRules =
     rules.copy(difficultyAdjustment = DifficultyAdjustment.Original)
+
+  private def withoutTheOmmerAwareRule(rules: ConsensusRules): ConsensusRules =
+    rules.copy(difficultyAdjustment = DifficultyAdjustment.Eip2)
 
   "the rules this network runs from block 5,900,000" should "still read ECIP-1010's window below that height" in
     // 13,113,600 + 2^28. The window freezes the term's reference point at
@@ -157,4 +198,73 @@ class ClassicUpgradeDifficultySpec extends AnyFlatSpec:
     assert(
       answered(withoutTheGraduatedRule(defuse), BigInt(150000), gap = 30) == parentDifficulty - step,
       "the two adjustment rules agree at this gap, so the case above does not discriminate them"
+    )
+
+  "the rules this network runs from block 8,772,000" should "answer under EIP-100's divisor" in
+    // 13,107,200, unmoved. This height is above ECIP-1041's removal so there is
+    // no term to add, and EIP-100's divisor is the gap itself, so the
+    // multiplier is 1 - 9 / 9 = 0.
+    assert(
+      answered(atlantis, BigInt(8772000), gap = shortGap) == parentDifficulty,
+      "the rule set that adopted EIP-100 answers under the divisor EIP-100 replaced"
+    )
+
+  it should "answer differently there under the rule EIP-100 replaced" in
+    // The control the case above needs for its adjustment. EIP-2 divides by
+    // ten, so the same gap gives 1 - 9 / 10 = 1 and the target rises a step.
+    assert(
+      answered(withoutTheOmmerAwareRule(atlantis), BigInt(8772000), gap = shortGap) ==
+        parentDifficulty + step,
+      "the two adjustment rules agree at this gap, so the case above does not discriminate them"
+    )
+
+  it should "answer differently there with the removal dropped" in
+    // The second control that case needs, because its answer is an adjustment
+    // of nothing AND a term of nothing, and only this separates them. Ten
+    // proposals compose over ECIP-1041 here; with the removal gone and the
+    // window still in force the exponent is
+    // 8,772,000 / 100,000 - 20 - 2 = 65, the 20 being the window's own span in
+    // periods.
+    assert(
+      answered(withoutTheRemoval(atlantis), BigInt(8772000), gap = shortGap) ==
+        parentDifficulty + BigInt(2).pow(65),
+      "the rule set that composes ten proposals over ECIP-1041 no longer carries the removal"
+    )
+
+  it should "raise by a further step where the parent carried ommers" in
+    // 13,120,000. The gap is under both divisors, so the multiplier is the
+    // numerator alone -- two rather than one, which is the whole of what
+    // EIP-100 reads the parent's ommers for.
+    assert(
+      answered(atlantis, BigInt(150000), gap = numeratorGap, parentHasOmmers = true) ==
+        parentDifficulty + step * 2,
+      "the parent's ommers reach no rule this network composed here"
+    )
+
+  it should "answer differently there where the parent carried none" in
+    // The control for the case above: 13,113,600, one step rather than two.
+    // These vectors are published in both readings for this reason, and every
+    // label below EIP-100 publishes the pair equal.
+    assert(
+      answered(atlantis, BigInt(150000), gap = numeratorGap, parentHasOmmers = false) ==
+        parentDifficulty + step,
+      "the two ommer readings agree here, so the case above measures nothing"
+    )
+
+  it should "still read ECIP-1010's window below the removal" in
+    // 281,542,656 -- 13,107,200 and 2^28, with no adjustment between them. The
+    // window freezes the term's reference point at 3,000,000, so the exponent
+    // is 3,000,000 / 100,000 - 2 = 28 at every height inside it.
+    assert(
+      answered(atlantis, BigInt(4000000), gap = shortGap) == parentDifficulty + BigInt(2).pow(28),
+      "adopting ten proposals over the removal disturbed the window underneath it"
+    )
+
+  it should "answer differently there with the window dropped" in
+    // The control for the case above. Without the window the exponent is
+    // 4,000,000 / 100,000 - 2 = 38.
+    assert(
+      answered(withoutTheWindow(atlantis), BigInt(4000000), gap = shortGap) ==
+        parentDifficulty + BigInt(2).pow(38),
+      "dropping ECIP-1010 from these rules changed no answer, so carrying it here asserts nothing"
     )
