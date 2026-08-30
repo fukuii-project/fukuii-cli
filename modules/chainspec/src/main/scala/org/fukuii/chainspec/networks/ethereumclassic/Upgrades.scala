@@ -3,7 +3,23 @@ package org.fukuii.chainspec.networks.ethereumclassic
 import org.fukuii.bytes.{UInt256, UInt64}
 import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment, UpgradeRules}
 import org.fukuii.chainspec.proposals.ecip.{Ecip1010, Ecip1017, Ecip1039, Ecip1041}
-import org.fukuii.chainspec.proposals.eip.{Eip150, Eip155, Eip160, Eip2, Eip7}
+import org.fukuii.chainspec.proposals.eip.{
+  Eip100,
+  Eip140,
+  Eip150,
+  Eip155,
+  Eip160,
+  Eip161,
+  Eip170,
+  Eip196,
+  Eip197,
+  Eip198,
+  Eip2,
+  Eip211,
+  Eip214,
+  Eip658,
+  Eip7
+}
 import org.fukuii.evm.{EvmRules, GasForwarding, GasSchedule, NewAccountCharge, OpcodeTable, Precompile, PrecompileSet}
 import org.fukuii.execution.{AdmissionRules, ExecutionRules}
 import org.fukuii.types.TransactionType
@@ -421,3 +437,112 @@ object Upgrades:
     * from two sources rather than by position in this file.
     */
   val defuse: UpgradeRules = gotham.adopting(Ecip1041.component)
+
+  /** [[defuse]] with EIP-161, EIP-170, EIP-100, EIP-140, EIP-211, EIP-214,
+    * EIP-658, EIP-198, EIP-196 and EIP-197 adopted.
+    *
+    * The order is the order the ten compose in. It is immaterial -- two settle
+    * what the machine does with an account and how much code it will take, one
+    * names what a block owes the mechanism that produced it, three add
+    * operations at four bytes none of the others touches, one settles what a
+    * receipt's first field holds, and three place natives at four addresses
+    * none of them reaches -- and it is stated because two deltas touching one
+    * field compose to whichever ran last.
+    *
+    * **That is a claim about KEYS, and not the stronger one about fields that
+    * [[homestead]] and [[dieHard]] each make.** This composition cannot make
+    * it: EIP-140, EIP-211 and EIP-214 all write the operation table, and
+    * EIP-198, EIP-196 and EIP-197 all write the precompile set. Both are keyed
+    * collections, each insert lands on a key no other delta here reaches --
+    * `0x3d`, `0x3e`, `0xfa` and `0xfd` in the table, `0x05` through `0x08` in
+    * the set -- and inserts at distinct keys commute where a field assignment
+    * would not. The three natives read their prices out of the machine's
+    * schedule, which no delta here writes, so what they read does not depend
+    * on when they run.
+    *
+    * ==Ten, in two groups, and both sources state them as two==
+    *
+    * `ethereumclassic/core-geth` @ `4185df450` carries exactly ten transitions
+    * at this height in `params/config_classic.go:56-67`, under two section
+    * comments of its own: `// EIP158~` over `EIP161FBlock` and `EIP170FBlock`,
+    * and `// Byzantium eq` over the remaining eight. ECIP-1054 --
+    * `ethereumclassic/ECIPs` @ `f4ed3315e23427180b7437235667b6911255ab9d`,
+    * Final, Meta -- draws the same division, opening on the two upgrades of the
+    * other network these are taken from and tagging its first two abstract
+    * items *Spurious Dragon*. Its specification section lists these ten and no
+    * others.
+    *
+    * **The first group is what [[dieHard]] deferred**, arriving 5,772,000
+    * blocks after the two proposals of that bundle this network did take.
+    * `openethereum/openethereum` @ `v3.0.1` reads both groups at one height in
+    * `ethcore/res/ethereum/classic.json`: `eip161abcTransition`,
+    * `eip161dTransition` and `maxCodeSizeTransition` for the first group, five
+    * further transitions for five of the second, and the four native prices the
+    * remaining three settle -- every one of them at `0x85d9a0`.
+    *
+    * **What this composition contains is settled by ECIP-1054 and the
+    * implementations, and not by a tabulation of them.** ECIP-1066 gives this
+    * network's upgrades a row apiece and is cited above for this row's height
+    * and label; its `Specs` cell points at ECIP-1054, which is the document that
+    * enumerates the ten and the one to read for membership.
+    *
+    * **The division is worth stating because a tabulation and a specification
+    * fail differently.** A specification is what a network resolved to adopt; a
+    * table restates that in a second place, and a second place can lag or
+    * disagree without the first having changed. So a row is a sound source for
+    * where an upgrade sits and what it is called, and the wrong source for what
+    * it carries -- whichever way any particular row happens to read.
+    *
+    * ==The second group is eight of nine==
+    *
+    * EIP-609 enumerates Byzantium's nine, and this composition takes all but
+    * EIP-649. That proposal delays the difficulty bomb and cuts the block
+    * reward; this network had removed the bomb outright at [[defuse]] and
+    * replaced the emission with ECIP-1017's era ladder at [[gotham]], so
+    * neither half of it has anything here to act on.
+    *
+    * **The exclusion is attested rather than merely unmentioned.**
+    * `EIP649FBlock` is a field core-geth's own configuration type declares and
+    * `params/config_classic.go` sets nowhere, and OpenEthereum carries no
+    * `difficultyBombDelays` key in this network's specification while carrying
+    * one in the specification it ships for the network this one parted from.
+    *
+    * **An aggregate fork setting could not have said that.** core-geth's other
+    * configuration type reaches both proposals through one field --
+    * `GetEthashEIP100BTransition` and `GetEthashEIP649Transition` in
+    * `params/types/goethereum/goethereum_configurator.go` each return
+    * `c.ByzantiumBlock` -- so taking the one this network wanted would take the
+    * one it declined. Eight of nine is expressible at this grain and not that
+    * one, which is why a component list rather than a fork name is what settles
+    * the rules.
+    *
+    * ==What besu-etc corroborates, and the one thing it does not==
+    *
+    * `besu-eth/besu-etc` @ `eb4248c997` reaches the same membership by
+    * replacement rather than by composition:
+    * `ClassicProtocolSpecs.atlantisDefinition` installs the Byzantium operation
+    * set at `:198`, the Byzantium precompile registry at `:203`,
+    * `ClassicDifficultyCalculators.EIP100` at `:204`, the Byzantium receipt
+    * factory at `:205-206`, a `MaxCodeSizeRule` at `:210` and
+    * `clearEmptyAccounts(true)` at `:222`.
+    *
+    * **It is not a reading of what EIP-198 costs.** That same definition
+    * installs `SpuriousDragonGasCalculator`, which does not override
+    * `modExpGasCost`, and the interface default returns zero -- so modular
+    * exponentiation is free in that client for this whole window. The divisor
+    * of 20 in [[genesisPrices]] is OpenEthereum's and besu's own
+    * `ByzantiumGasCalculator.GQUADDIVISOR`, never that definition's.
+    */
+  val atlantis: UpgradeRules =
+    defuse.adopting(
+      Eip161.component,
+      Eip170.component,
+      Eip100.component,
+      Eip140.component,
+      Eip211.component,
+      Eip214.component,
+      Eip658.component,
+      Eip198.component,
+      Eip196.component,
+      Eip197.component
+    )

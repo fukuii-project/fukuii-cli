@@ -231,6 +231,43 @@ object Mainnet:
   private val defuse: UpgradeSchedule.Entry =
     UpgradeSchedule.Entry(atBlock(5900000), upgrade("Defuse Difficulty Bomb"), Upgrade.RuleChange(Upgrades.defuse))
 
+  /** Block 8,772,000.
+    *
+    * `ethereumclassic/core-geth` @ `4185df450` states it as ten per-proposal
+    * transitions rather than a fork name, every one of them
+    * `big.NewInt(8772000)` in `params/config_classic.go:56-67`.
+    * `besu-eth/besu-etc` @ `eb4248c997` states it as `"atlantisBlock": 8772000`
+    * in `config/src/main/resources/classic.json`, and
+    * `openethereum/openethereum` @ `v3.0.1` as `0x85d9a0`, written across the
+    * eight transitions and the four native prices it sets in
+    * `ethcore/res/ethereum/classic.json`. So this activation is three lineages,
+    * as [[dieHard]]'s is.
+    *
+    * **ECIP-1054 -- `ethereumclassic/ECIPs` @
+    * `f4ed3315e23427180b7437235667b6911255ab9d`, Final -- names the height
+    * itself**, in the same abstract that names the three test networks it
+    * proposes for. ECIP-1066 at `e36ef7f1` tabulates `8772000`.
+    *
+    * **The label is that table's `Version and Code Name` cell less the
+    * subscripted counterpart it carries.** The cell reads
+    * `Atlantis <sub>Byzantium</sub>`, and the subscript is how that table names
+    * the counterpart upgrade on the network this one parted from -- the rows
+    * for upgrades this network took alone, [[gotham]] and [[defuse]] among
+    * them, carry no subscript at all. `besu-eth/besu-etc` @ `eb4248c997` states
+    * the label without it, as `ATLANTIS(true, "Atlantis")` in
+    * `HardforkId.ClassicHardforkId`, and the two agree on the part this entry
+    * takes.
+    *
+    * **What that subscript records is where the two networks' machines
+    * realign, and not that the networks become the same.** The irregular state
+    * change one of them applied at 1,920,000 is not expressible as a rule-set
+    * member at all, this network's own consensus series has no counterpart
+    * there, and [[Upgrades.atlantis]] states which Byzantium proposal it
+    * declined.
+    */
+  private val atlantis: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(8772000), upgrade("Atlantis"), Upgrade.RuleChange(Upgrades.atlantis))
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -264,4 +301,4 @@ object Mainnet:
     * stop agreeing it is deleted with a reason rather than quietly left true.
     */
   val schedule: Either[UpgradeSchedule.Error, UpgradeSchedule] =
-    UpgradeSchedule.of(Vector(frontier, frontierThawing, homestead, gasReprice, dieHard, gotham, defuse))
+    UpgradeSchedule.of(Vector(frontier, frontierThawing, homestead, gasReprice, dieHard, gotham, defuse, atlantis))

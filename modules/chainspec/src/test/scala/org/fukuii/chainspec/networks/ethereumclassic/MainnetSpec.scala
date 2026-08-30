@@ -40,7 +40,8 @@ class MainnetSpec extends AnyFlatSpec:
           "Gas Reprice",
           "Die Hard",
           "Gotham",
-          "Defuse Difficulty Bomb"
+          "Defuse Difficulty Bomb",
+          "Atlantis"
         ),
       "an enumeration missing an entry misnumbers every entry after it, which is silent rather than absent"
     )
@@ -71,7 +72,8 @@ class MainnetSpec extends AnyFlatSpec:
           Activation.AtBlock(UInt64.fromBits(2500000L)),
           Activation.AtBlock(UInt64.fromBits(3000000L)),
           Activation.AtBlock(UInt64.fromBits(5000000L)),
-          Activation.AtBlock(UInt64.fromBits(5900000L))
+          Activation.AtBlock(UInt64.fromBits(5900000L)),
+          Activation.AtBlock(UInt64.fromBits(8772000L))
         ),
       "genesis is excluded by EIP-2124 and thawing by enforcing nothing, leaving the ones that are neither"
     )
