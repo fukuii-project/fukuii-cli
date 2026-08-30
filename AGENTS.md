@@ -364,9 +364,35 @@ what the tag is for and what the field does.
 
 **A SECTION CLOSES WITH A HEAVY RUN.** That is the whole of the discipline the
 tag depends on, and it is stated here rather than left to the tag's own file
-because this is where a closer looks. Run the fourth command above, check the log
-against the heavy total rather than the default one, and run `sbt shutdown`
-before the next ordinary run.
+because this is where a closer looks. Check the log against the heavy total
+rather than the default one, and clear the sticky `set` afterwards.
+
+**Run it so that it survives its caller, because it outlasts what some callers
+can wait for.** Any detaching form does -- `nohup`, `tmux`, a background shell.
+What matters is that the invocation not be killed part-way, and the reason is
+that killing it kills the CLIENT and not the sbt SERVER.
+
+**Three things follow from that split, and none of them announces itself.** The
+wrapper's footer is never written, so the log is indistinguishable from a failed
+run and the absence this file tells you to read stops meaning anything. The next
+invocation queues behind the surviving task and fails with a disconnection that
+says nothing about the tree. And the sticky `set` is never cleared, so it governs
+every later invocation that server answers -- the hollow-run family, entered
+through the door of a run that merely looked slow.
+
+**Measured here rather than reasoned.** A foreground attempt was cut off at its
+caller's limit with ten of eleven blocks done: it wrote no footer, went quiet,
+and left the override live in a server nothing had shut down. A detached attempt
+completed the same work in 14:21 and its shutdown ran.
+
+**A live JVM proves nothing about whether a run is still going**, because an sbt
+server outlives its client by design. What distinguishes a finished run is the
+footer; what distinguishes a killed one is the footer's absence while no wrapper
+process remains. Check both rather than looking for a process.
+
+**Confirm the clear by effect either way**, in both directions: a plain run
+afterwards must report the DEFAULT total and must FAIL when checked against the
+heavy one.
 
 **What the tag holds back is no longer one mechanism, which is why the
 obligation is worth writing down.** It began as a dataset generation that costs

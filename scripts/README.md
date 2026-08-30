@@ -13,7 +13,7 @@ they are decided before any script exists.
 reviewer, and calibrated. A file lands here when it has **already proven
 reusable**, not when it is merely scriptable.
 
-**Two kinds of file live here and they are held to different standards.** A
+**Three kinds of file live here and they are held to different standards.** A
 **checker** asserts a property of this repository, and everything under "Why
 every checker ships with a proof" binds it. A **vector generator** asserts
 nothing: it reads an external corpus and writes a test resource, and its output
@@ -21,20 +21,30 @@ is checked by the suite that consumes it rather than by a proof of its own.
 Reading the second kind as the first is how a generator acquires a demand for a
 known-bad fixture it has no way to satisfy.
 
-**What a generator owes instead, and this is not a lighter bar:**
+A **runner** is the third and does neither: it invokes the build and shapes how
+its output is observed. `sbt-run.sh` is the one that lives here.
 
-1. **Take the corpus directory and the output path as arguments.** A committed
-   file may not name a local clone — the same rule the root-resolution contract
-   below states, arriving from the other side.
-2. **Record its source in the file it writes** — the corpus, the release or ref,
-   and which rows came from where. A vector whose provenance lives only in the
-   generator is a vector nobody can re-derive.
-3. **Declare any cap, with the count dropped.** A partial harvest that does not
-   say so reads as full coverage.
-4. **Verify before emitting, where the corpus makes it possible** — re-encode
-   the fixture's separately-decoded fields with an implementation independent of
-   the one under test and require agreement. That is what separates a certified
-   row from a transcribed one.
+**A runner earns a place in this directory only if its REASON TO EXIST is a
+property of this repository.** That test separates two things a single grep
+cannot: `sbt-run.sh` cites an agent incident as the origin of its file-logging
+rule, and is still repository infrastructure, because logging build output rather
+than streaming it -- and refusing to report a success sbt did not earn -- is
+useful to anyone who builds this project. A runner written because *one
+particular caller* cannot wait long enough is not: nothing about this repository
+produces that limit, a reader who clones does not have it, and shipping the
+script would put text in a public tree that its reader cannot act on.
+
+**That distinction created a third home**, below.
+
+**`.local/scripts/` — maintained, and machine-local.** Gitignored. Tooling that
+has earned upkeep -- a proof of its own, a documented contract -- but whose
+reason to exist belongs to the environment running the build rather than to the
+build. A detaching runner written around one caller's time limit is the worked
+case: it is not a one-off, and it is not repository infrastructure either.
+
+**This is a real third answer and not a softer `scripts/`.** The test is not
+quality. A file here can be better made than one in `scripts/` and still belong
+here, because what decides placement is whose problem it solves.
 
 **`.local/scratch/<slug>.sh` — a one-off.** Gitignored, written for one
 investigation, deleted or forgotten afterwards. This is the correct home for a
