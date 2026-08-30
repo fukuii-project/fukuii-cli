@@ -88,6 +88,15 @@ final class StateTrieWorldState(state: StateTrie) extends WorldState:
             value => Word(value.toBigInt)
           )
 
+  /** The same read, because this state holds no pending writes.
+    *
+    * Everything here is already committed -- a caller wanting an uncommitted
+    * view wraps this in a `JournaledWorldState` -- so the transaction-start
+    * value and the current one are the same value, not merely equal. Stated
+    * rather than left to look like an unfinished override.
+    */
+  def committedStorageAt(address: Address, slot: Word): Word = storageAt(address, slot)
+
   def setStorage(address: Address, slot: Word, value: Word): Unit =
     if value.isZero then state.deleteStorage(address, quantity(slot))
     else state.putStorage(address, quantity(slot), Bytes.fromIArray(RlpCodec.encodeTo(quantity(value))))

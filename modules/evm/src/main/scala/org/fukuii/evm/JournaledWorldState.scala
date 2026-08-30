@@ -60,6 +60,18 @@ final class JournaledWorldState(base: WorldState) extends WorldState:
   def storageAt(address: Address, slot: Word): Word =
     storage.getOrElse((address, slot), base.storageAt(address, slot))
 
+  /** Delegated rather than read off [[base]] directly.
+    *
+    * `base.storageAt` would be the transaction-start value only while this is
+    * the outermost journal; `base.committedStorageAt` is right however many
+    * layers sit below. Nothing nests journals today -- `BlockProcessor` builds
+    * one per transaction and nested frames snapshot on it -- so the two agree
+    * at present, which is exactly why writing the fragile one would never
+    * fail.
+    */
+  def committedStorageAt(address: Address, slot: Word): Word =
+    base.committedStorageAt(address, slot)
+
   def setStorage(address: Address, slot: Word, value: Word): Unit =
     storage((address, slot)) = value
 

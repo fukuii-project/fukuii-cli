@@ -65,6 +65,11 @@ object EvmFixtures:
 
     def storageAt(address: Address, slot: Word): Word = slots.getOrElse((address, slot), Word.Zero)
 
+    /** The same read: this state holds no pending writes, so a caller wanting
+      * an uncommitted view wraps it in a `JournaledWorldState`.
+      */
+    def committedStorageAt(address: Address, slot: Word): Word = storageAt(address, slot)
+
     def setStorage(address: Address, slot: Word, value: Word): Unit = slots((address, slot)) = value
 
     def setBalance(address: Address, value: Word): Unit = balances(address) = value
@@ -160,10 +165,18 @@ object EvmFixtures:
     blockHash = BigInt(22),
     balance = BigInt(24),
     externalBase = BigInt(26),
+    extCodeHash = BigInt(28),
     storageLoad = BigInt(52),
     storageSet = BigInt(20002),
     storageReset = BigInt(5002),
     refundStorageClear = BigInt(15002),
+    netStorageNoop = BigInt(203),
+    netStorageInit = BigInt(20003),
+    netStorageClean = BigInt(5003),
+    netStorageDirty = BigInt(205),
+    refundNetStorageClear = BigInt(15003),
+    refundNetStorageResetFromZero = BigInt(19803),
+    refundNetStorageReset = BigInt(4803),
     refundSelfDestruct = BigInt(24002),
     callBase = BigInt(42),
     callValue = BigInt(9002),
@@ -233,6 +246,7 @@ object EvmFixtures:
     maxCodeSize = None,
     createdAccountNonce = UInt64.Zero,
     newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent,
+    storageMetering = StorageMetering.Legacy,
     touchSurvivesFailure = Set.empty
   )
 

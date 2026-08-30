@@ -190,6 +190,58 @@ object Word:
 
     def not: Word = wrap(~self)
 
+    /** Logical left shift. A shift at or beyond the width answers zero.
+      *
+      * ==The out-of-range answer is a VALUE, not a fault, and it is stated==
+      *
+      * `ethereum/execution-specs` @ `20f7f6271a`,
+      * `forks/constantinople/vm/instructions/bitwise.py:178-181`, branches on
+      * `shift < Uint(256)` and pushes `U256(0)` otherwise. Nothing raises. The
+      * branch is not an optimization: without it the shift would be attempted
+      * at an arbitrary width, and `shift` is a full word whose value reaches
+      * 2^256 - 1.
+      *
+      * **The guard has to precede the narrowing**, because the narrowing is
+      * what cannot survive a large operand -- which is why this is written as a
+      * comparison against [[Bits]] and not as a bound on the result.
+      */
+    def shiftLeft(shift: Word): Word =
+      if shift >= BigInt(Bits) then Word.Zero else wrap(self << shift.toInt)
+
+    /** Logical right shift, zero-filling from the top. A shift at or beyond the
+      * width answers zero.
+      *
+      * Zero-filling rather than sign-filling is what distinguishes this from
+      * [[shiftRightArithmetic]]: the representation here is unsigned, so
+      * `BigInt`'s own `>>` on a non-negative value already fills with zero and
+      * no masking is needed above the shifted value.
+      */
+    def shiftRight(shift: Word): Word =
+      if shift >= BigInt(Bits) then Word.Zero else wrap(self >> shift.toInt)
+
+    /** Arithmetic right shift, sign-filling from the top.
+      *
+      * ==The saturating answer differs by sign, and that is the whole of what
+      * makes this operation not a special case of [[shiftRight]]==
+      *
+      * At or beyond the width the result is every bit of the sign: zero for a
+      * non-negative value and [[Word.MaxValue]] for a negative one --
+      * `ethereum/execution-specs` @ `20f7f6271a`,
+      * `forks/constantinople/vm/instructions/bitwise.py:238-243`, which
+      * branches `shift < 256`, then `signed_value >= 0`, then
+      * `U256.MAX_VALUE`. A single zero answer would be right for half the
+      * inputs and silently wrong for the other half.
+      *
+      * **`BigInt`'s `>>` is already arithmetic on a negative value** -- it
+      * floors rather than truncating -- so the in-range case is the signed
+      * value shifted and re-wrapped, matching the specification's
+      * `U256.from_signed(signed_value >> shift)` without a sign-extension step
+      * of its own.
+      */
+    def shiftRightArithmetic(shift: Word): Word =
+      if shift >= BigInt(Bits) then (if self.signed >= 0 then Word.Zero else Word.MaxValue)
+      else wrap(self.signed >> shift.toInt)
+
     /** The byte at `index` counted from the most significant, as a word. An
       * index at or beyond the width answers zero, which the machine defines as
       * a value rather than a fault.

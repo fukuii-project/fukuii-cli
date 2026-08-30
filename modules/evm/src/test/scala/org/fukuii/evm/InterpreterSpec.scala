@@ -12,6 +12,16 @@ import org.scalatest.flatspec.AnyFlatSpec
   */
 class InterpreterSpec extends AnyFlatSpec:
 
+  // Held ABOVE every test registration deliberately: Scala 3's initialization
+  // checker treats a val declared below one as read-before-init, and reports it
+  // against the first test in the class rather than against the val.
+  private val constantinopleTable: OpcodeTable =
+    EvmFixtures.rules.table
+      .adding(Operation(Opcode.Shl, Cost.Fixed(EvmFixtures.schedule.veryLow)))
+      .adding(Operation(Opcode.Shr, Cost.Fixed(EvmFixtures.schedule.veryLow)))
+      .adding(Operation(Opcode.Sar, Cost.Fixed(EvmFixtures.schedule.veryLow)))
+      .adding(Operation(Opcode.ExtCodeHash, Cost.Fixed(EvmFixtures.schedule.extCodeHash)))
+
   private val schedule = EvmFixtures.schedule
   private val table = OpcodeTable.original(schedule)
 
@@ -1002,3 +1012,91 @@ class InterpreterSpec extends AnyFlatSpec:
       "the bound was tested on a sum taken at a width the operands do not fit"
     )
   }
+
+  // ── Constantinople's additions ────────────────────────────────────────────
+  //
+  // These operations are held out of `OpcodeTable.original`, so a spec running
+  // the fixture table cannot reach them. The table each of these runs is the
+  // original with the one entry under test added, which is also what a network
+  // adopting the document ends up with.
+
+  "SHL" should "shift the lower stack item by the top one" in {
+    // PUSH1 1 (value), PUSH1 1 (shift), SHL. The shift is pushed last so it is
+    // on top, which is the operand order the specification pops in.
+    val (frame, _) = execIn(EvmFixtures.environment(withTable = constantinopleTable), 100, 0x60, 0x01, 0x60, 0x01, 0x1b)
+    assert(frame.stack.peek(0) == Right(w(2)), "one shifted left by one is two")
+  }
+
+  "SHR" should "shift the lower stack item right, filling with zero" in {
+    val (frame, _) = execIn(EvmFixtures.environment(withTable = constantinopleTable), 100, 0x60, 0x02, 0x60, 0x01, 0x1c)
+    assert(frame.stack.peek(0) == Right(Word.One), "two shifted right by one is one")
+  }
+
+  "SAR" should "fill from the top with the sign rather than with zero" in {
+    // PUSH32 all-ones (-1 signed), PUSH1 1, SAR. The logical shift would answer
+    // 2^255 - 1 here, so this is the case that separates the two operations.
+    val program = (0x7f +: Seq.fill(32)(0xff)) ++ Seq(0x60, 0x01, 0x1d)
+    val (frame, _) = execIn(EvmFixtures.environment(withTable = constantinopleTable), 100, program*)
+    assert(frame.stack.peek(0) == Right(Word.MaxValue), "-1 shifted arithmetically right stays -1")
+  }
+
+  "EXTCODEHASH" should "answer the keccak256 of another account's code" in {
+    val world = new EvmFixtures.MapWorldState
+    world.codes(EvmFixtures.address(0x05)) = EvmFixtures.bytesOf("6001")
+    val expected = Word.fromBytes(
+      Bytes.fromIArray(org.fukuii.crypto.Keccak256.hash(EvmFixtures.bytesOf("6001").toIArray).toBytes)
+    )
+    val (frame, _) = execIn(
+      EvmFixtures.environment(world, withTable = constantinopleTable),
+      100,
+      (0x73 +: Seq.fill(20)(0x05)) :+ 0x3f*
+    )
+    assert(frame.stack.peek(0) == Right(expected), "an account with code answers the digest of that code")
+  }
+
+  it should "answer ZERO for an account that does not exist" in {
+    // EIP-1052's own test case 2. Distinct from the case below: this account has
+    // nothing at all, so the specification's EMPTY_ACCOUNT test catches it.
+    val (frame, _) = execIn(
+      EvmFixtures.environment(withTable = constantinopleTable),
+      100,
+      (0x73 +: Seq.fill(20)(0x05)) :+ 0x3f*
+    )
+    assert(frame.stack.peek(0) == Right(Word.Zero), "an absent account answers zero, not the hash of empty code")
+  }
+
+  it should "answer the hash of EMPTY CODE for a codeless account that is not empty" in {
+    // THE CASE THAT SEPARATES THE TWO ANSWERS, and the reason the emptiness test
+    // is EIP-161's rather than "has no code". This account carries a balance, so
+    // it is not EMPTY_ACCOUNT, and the specification therefore answers its real
+    // code hash -- which for no code is the digest of the empty string, the
+    // constant EIP-1052 writes out in full.
+    val world = new EvmFixtures.MapWorldState
+    world.balances(EvmFixtures.address(0x05)) = w(1)
+    world.present += EvmFixtures.address(0x05)
+    val (frame, _) = execIn(
+      EvmFixtures.environment(world, withTable = constantinopleTable),
+      100,
+      (0x73 +: Seq.fill(20)(0x05)) :+ 0x3f*
+    )
+    val emptyHash =
+      Word.fromBytes(EvmFixtures.bytesOf("c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"))
+    assert(frame.stack.peek(0) == Right(emptyHash), "a funded codeless account has a real code hash and it is not zero")
+  }
+
+  it should "mask an operand wider than an address" in
+    // EIP-1052's own test case 4: EXTCODEHASH of A + 2^160 equals EXTCODEHASH of A.
+    {
+      val world = new EvmFixtures.MapWorldState
+      world.codes(EvmFixtures.address(0x05)) = EvmFixtures.bytesOf("6001")
+      val wide = Seq.fill(12)(0x01) ++ Seq.fill(20)(0x05)
+      val (frame, _) = execIn(
+        EvmFixtures.environment(world, withTable = constantinopleTable),
+        100,
+        (0x7f +: wide) :+ 0x3f*
+      )
+      val expected = Word.fromBytes(
+        Bytes.fromIArray(org.fukuii.crypto.Keccak256.hash(EvmFixtures.bytesOf("6001").toIArray).toBytes)
+      )
+      assert(frame.stack.peek(0) == Right(expected), "the high bits above an address are masked rather than refused")
+    }

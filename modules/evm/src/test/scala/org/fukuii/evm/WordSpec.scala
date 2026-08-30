@@ -99,3 +99,95 @@ class WordSpec extends AnyFlatSpec:
 
   "fromBytes" should "read big-endian" in
     assert(Word.fromBytes(Bytes.fromIArray(IArray[Byte](1, 0))) == w(256), "the first byte is the most significant")
+
+  // ── The shifts EIP-145 introduced ─────────────────────────────────────────
+  //
+  // The in-range cases are the ordinary ones and are asserted once each. The
+  // OUT-OF-RANGE cases carry the weight: all three saturate, two of them to
+  // zero and one of them to a value that depends on the sign of its operand, so
+  // an implementation that treated the three alike would be right twice and
+  // silently wrong on the third.
+
+  "shiftLeft" should "move bits toward the most significant end" in
+    assert(Word.One.shiftLeft(w(1)) == w(2), "shifting one left by one is two")
+
+  it should "discard bits carried past the top rather than widening" in
+    assert(
+      Word.MaxValue.shiftLeft(w(1)) == Word.MaxValue.sub(Word.One),
+      "all-ones shifted left loses the top bit and gains a zero at the bottom"
+    )
+
+  it should "answer zero for a shift at the width" in
+    assert(Word.MaxValue.shiftLeft(w(256)) == Word.Zero, "a shift of the full width is a defined zero, not a fault")
+
+  it should "answer zero for a shift far beyond any representable width" in
+    assert(Word.One.shiftLeft(Word.MaxValue) == Word.Zero, "a shift of 2^256-1 must answer zero rather than narrow")
+
+  it should "answer zero for an out-of-range shift whose LOW BITS are in range" in
+    // THE ONLY SHL CASE THAT DISCRIMINATES, and it was found by mutation after
+    // two that do not. `shift.toInt` truncates to the low 32 bits, so 2^32
+    // narrows to 0 and an unguarded shift would answer the operand unchanged
+    // where the correct answer is zero.
+    //
+    // The two neighbours above are EQUIVALENT MUTANTS and are kept as
+    // documentation rather than as catchers: at exactly the width, `wrap`
+    // already reduces `MaxValue << 256` to zero, and at 2^256-1 the truncation
+    // lands on -1, which BigInt shifts the other way to the same zero. Removing
+    // the guard entirely leaves both passing. Do not read either as evidence
+    // the bound is enforced.
+    assert(
+      Word.One.shiftLeft(w(BigInt(1) << 32)) == Word.Zero,
+      "a shift of 2^32 narrows to 0 and would answer the operand unchanged"
+    )
+
+  "shiftRight" should "move bits toward the least significant end" in
+    assert(w(2).shiftRight(w(1)) == Word.One, "shifting two right by one is one")
+
+  it should "fill from the top with zero rather than with the sign" in
+    // This is the whole difference from the arithmetic shift, asserted on the
+    // one operand where the two disagree most loudly.
+    assert(
+      Word.MaxValue.shiftRight(w(255)) == Word.One,
+      "all-ones is -1 signed, and a LOGICAL shift must not carry that sign down"
+    )
+
+  it should "answer zero for a shift at the width" in
+    assert(Word.MaxValue.shiftRight(w(256)) == Word.Zero, "a shift of the full width is a defined zero, not a fault")
+
+  it should "answer zero for an out-of-range shift whose LOW BITS are in range" in
+    // The SHL note above applies here for the same reason: this is the case
+    // that catches a missing guard, and the at-the-width one does not.
+    assert(
+      Word.MaxValue.shiftRight(w(BigInt(1) << 32)) == Word.Zero,
+      "a shift of 2^32 narrows to 0 and would answer the operand unchanged"
+    )
+
+  "shiftRightArithmetic" should "fill from the top with the sign bit" in
+    assert(
+      Word.MaxValue.shiftRightArithmetic(w(255)) == Word.MaxValue,
+      "all-ones is -1 signed, and -1 shifted arithmetically stays -1"
+    )
+
+  it should "behave as a logical shift on a non-negative value" in
+    assert(w(2).shiftRightArithmetic(w(1)) == Word.One, "a positive operand has no sign bits to carry down")
+
+  it should "saturate a NEGATIVE operand to all ones, not to zero" in
+    // The case that separates this from the other two shifts. A single zero
+    // answer for every out-of-range shift is right for a positive operand and
+    // wrong here.
+    assert(
+      Word.MaxValue.shiftRightArithmetic(w(256)) == Word.MaxValue,
+      "-1 shifted right by any amount is -1, so saturating to zero is wrong"
+    )
+
+  it should "saturate a NON-NEGATIVE operand to zero" in
+    assert(
+      Word.One.shiftRightArithmetic(w(256)) == Word.Zero,
+      "a positive operand saturates to zero, which is the other half of the branch"
+    )
+
+  it should "saturate on a shift far beyond any representable width" in
+    assert(
+      Word.MaxValue.shiftRightArithmetic(Word.MaxValue) == Word.MaxValue,
+      "the guard must precede the narrowing here too"
+    )

@@ -255,6 +255,14 @@ object Interpreter:
       case Opcode.Not  => unary(frame, operation)(x => x.not)
       case Opcode.Byte => binary(frame, operation)((index, word) => word.byte(index))
 
+      // The shift distance is on top for all three, so it is taken first and is
+      // the argument rather than the receiver -- the same inversion
+      // `SIGNEXTEND` above already has, and the reason both read backwards
+      // against their own names.
+      case Opcode.Shl => binary(frame, operation)((shift, value) => value.shiftLeft(shift))
+      case Opcode.Shr => binary(frame, operation)((shift, value) => value.shiftRight(shift))
+      case Opcode.Sar => binary(frame, operation)((shift, value) => value.shiftRightArithmetic(shift))
+
       case Opcode.Pop =>
         priced(operation) { gas =>
           for
@@ -458,6 +466,32 @@ object Interpreter:
           yield advance(frame)
         }
 
+      // An EMPTY account answers zero rather than the hash of empty code, and
+      // the two are different answers to different questions: the hash of no
+      // code is a real digest that a codeless-but-funded account genuinely
+      // has. `ethereum/execution-specs` @ `20f7f6271a`,
+      // `forks/constantinople/vm/instructions/environment.py`, tests
+      // `account == EMPTY_ACCOUNT` and pushes `U256(0)` only there.
+      //
+      // [[deadAt]] is that test and NOT [[deployableAt]]: emptiness here is
+      // EIP-161's -- no count, no code, no balance -- and the sibling scaladoc
+      // records why substituting one for the other is wrong on exactly the
+      // addresses each was written for. A non-existent account satisfies it
+      // too, which is what makes the specification's absent-account case fall
+      // out rather than needing a branch of its own.
+      case Opcode.ExtCodeHash =>
+        priced(operation) { gas =>
+          for
+            operand <- frame.stack.pop()
+            _ <- frame.charge(gas)
+            address = addressOf(operand)
+            _ <- frame.stack.push(
+              if deadAt(environment.world, address) then Word.Zero
+              else Word.fromBytes(Bytes.fromIArray(Keccak256.hash(environment.world.codeOf(address).toIArray).toBytes))
+            )
+          yield advance(frame)
+        }
+
       // The account is taken before the three operands every copying operation
       // shares, so it is popped here and the rest is the shared shape. Its code
       // is read inside that shape, which is after the charge -- the order the
@@ -484,21 +518,35 @@ object Interpreter:
           yield advance(frame)
         }
 
-      // Priced from what the slot already holds, so the read comes before the
-      // charge and the charge before the write. Setting a slot that held
-      // nothing is the expensive case; every other combination, including
-      // clearing one, is the cheaper one.
+      // The read comes before the charge and the charge before the write,
+      // under either scheme.
+      //
+      // WHICH scheme is a fork's answer rather than the machine's, so what the
+      // charge depends on is not fixed here: the legacy one reads only what the
+      // slot holds now, and EIP-1283's also reads what it held when the
+      // transaction began. The two helpers carry a case each, and this comment
+      // deliberately states neither one's rule -- it said the legacy one's
+      // outright until net metering landed, which made it a correct-looking
+      // description of half the behavior.
       case Opcode.SStore =>
         exceptional(
           for
             slot <- frame.stack.pop()
             value <- frame.stack.pop()
-            held = environment.world.storageAt(frame.message.currentTarget, slot)
-            _ = refundIfCleared(frame, schedule, held, value)
-            _ <- frame.charge(if held.isZero && !value.isZero then schedule.storageSet else schedule.storageReset)
+            target = frame.message.currentTarget
+            held = environment.world.storageAt(target, slot)
+            // Both schemes apply their refunds before the charge, which is the
+            // ordering that was already here. It is unobservable either way: a
+            // frame that cannot afford the charge halts, and a halted frame's
+            // refunds are discarded rather than merged.
+            settled = environment.rules.storageMetering match
+              case StorageMetering.Legacy => legacyStorageCharge(frame, schedule, held, value)
+              case StorageMetering.Net    =>
+                netStorageCharge(frame, schedule, environment.world.committedStorageAt(target, slot), held, value)
+            _ <- frame.charge(settled)
             _ <- mayChangeState(frame)
           yield
-            environment.world.setStorage(frame.message.currentTarget, slot, value)
+            environment.world.setStorage(target, slot, value)
             advance(frame)
         )
 
@@ -649,7 +697,8 @@ object Interpreter:
 
       // ── Invocations this one starts ────────────────────────────────────────
 
-      case Opcode.Create   => create(frame, environment)
+      case Opcode.Create   => create(frame, environment, salted = false)
+      case Opcode.Create2  => create(frame, environment, salted = true)
       case Opcode.Call     => messageCall(frame, environment, CallForm.ToTheAccountNamed)
       case Opcode.CallCode =>
         messageCall(frame, environment, CallForm.WithTheNamedAccountsCode)
@@ -902,7 +951,8 @@ object Interpreter:
     */
   private def create(
       frame: Frame,
-      environment: Environment
+      environment: Environment,
+      salted: Boolean
   ): Either[Fault, Unit] =
     val schedule = environment.schedule
     val world = environment.world
@@ -911,7 +961,17 @@ object Interpreter:
         endowment <- frame.stack.pop()
         offset <- frame.stack.pop()
         size <- frame.stack.pop()
-        _ <- reach(frame, schedule.createBase, (offset, size))
+        // Fourth and last, which is where the specification pops it -- below the
+        // region operands rather than above them. Popped before the charge, so
+        // a creation that cannot afford itself has still consumed the same
+        // operands as one that can.
+        salt <- if salted then frame.stack.pop().map(Some(_)) else Right(None)
+        // EIP-1014 charges the initialization code's hashing on top of the base,
+        // at the per-word rate KECCAK256 itself uses, because the address
+        // derivation hashes that code. CREATE derives from a count and hashes
+        // nothing, so it pays nothing here.
+        hashing = if salted then schedule.keccak256PerWord * wholeWords(size) else BigInt(0)
+        _ <- reach(frame, schedule.createBase + hashing, (offset, size))
         // A creation asks for nothing, so what it may be given is decided
         // against everything the creator holds. Whatever the rules keep back
         // stays with the creator while the deployment runs, on top of whatever
@@ -929,18 +989,25 @@ object Interpreter:
         // unaffordable there by construction.
         _ <- frame.charge(forwarded)
         _ <- mayChangeState(frame)
-      yield (endowment, regionOf(frame, offset, size), forwarded)
+      yield (endowment, regionOf(frame, offset, size), forwarded, salt)
 
     taken match
-      case Left(halt)                              => Left(Fault.Exceptional(halt))
-      case Right((endowment, initCode, forwarded)) =>
+      case Left(halt)                                    => Left(Fault.Exceptional(halt))
+      case Right((endowment, initCode, forwarded, salt)) =>
         // Cleared before any of the three refusals below, which is where the
         // specification clears it: none of them instantiates a frame, so none
         // of them may leave the previous invocation's payload readable.
         frame.returnData = Bytes.Empty
         val creator = frame.message.currentTarget
         val count = world.nonceOf(creator)
-        val target = ContractAddress.of(creator, count)
+        // THE COUNT IS STILL READ AND STILL INCREMENTED BELOW on both paths.
+        // What the salted form changes is only what the address is derived
+        // FROM -- so a salted creation consumes the creator's next ordinary
+        // address exactly as an unsalted one does, which is the specification's
+        // behavior and not an artifact of sharing this code.
+        val target = salt match
+          case Some(value) => ContractAddress.create2(creator, value, initCode)
+          case None        => ContractAddress.of(creator, count)
         if world.balanceOf(creator).toBigInt < endowment.toBigInt ||
           count == UInt64.MaxValue ||
           frame.message.depth + 1 > Stack.Limit
@@ -1539,8 +1606,65 @@ object Interpreter:
   /** How far back a block hash can be read. */
   private val BlockHashReach: BigInt = BigInt(256)
 
-  private def refundIfCleared(frame: Frame, schedule: GasSchedule, held: Word, value: Word): Unit =
+  /** The charge for a store under the scheme that reads only what the slot
+    * holds now, applying its one refund on the way.
+    *
+    * Setting a slot that held nothing is the expensive case; every other
+    * combination, including clearing one, is the cheaper one.
+    */
+  private def legacyStorageCharge(frame: Frame, schedule: GasSchedule, held: Word, value: Word): BigInt =
     if value.isZero && !held.isZero then frame.refundCounter += schedule.refundStorageClear
+    if held.isZero && !value.isZero then schedule.storageSet else schedule.storageReset
+
+  /** The charge for a store under EIP-1283's net metering, applying its refunds
+    * on the way.
+    *
+    * ==Three cases, named by the document==
+    *
+    * *No-op* when the slot already holds what is being written. *Fresh* when it
+    * has not been touched in this transaction, which is what `original ==
+    * held` means. *Dirty* otherwise -- and the dirty case applies BOTH of its
+    * clauses, which is the document's own wording and not an optimization to
+    * collapse: a store can both cancel an earlier clear's refund and earn a
+    * reset refund in one operation.
+    *
+    * ==The counter is DECREMENTED here, and that is the document's own design
+    * for this codebase's shape==
+    *
+    * *"If an implementation uses 'execution-frame level' refund counter ...
+    * then the refund counter needs to be changed to signed -- at internal
+    * calls, a child refund can go below zero"* (`ethereum/EIPs` @ `dbfa6bee`,
+    * `EIPS/eip-1283.md`, Final). [[Frame.refundCounter]] is exactly that shape,
+    * so a negative value here is correct rather than a fault to guard against.
+    * The guarantee the document does make is at TRANSACTION level, and that is
+    * where it is worth checking.
+    *
+    * **`ethereum/go-ethereum` @ `e9e35a42f8` panics on a negative counter**
+    * (`core/state/statedb.go:317-319`) and is right to, because its counter is
+    * transaction-level and unsigned. Transplanting that assertion here would
+    * raise on a valid execution.
+    */
+  private def netStorageCharge(
+      frame: Frame,
+      schedule: GasSchedule,
+      original: Word,
+      held: Word,
+      value: Word
+  ): BigInt =
+    if held == value then schedule.netStorageNoop
+    else if original == held then
+      if original.isZero then schedule.netStorageInit
+      else
+        if value.isZero then frame.refundCounter += schedule.refundNetStorageClear
+        schedule.netStorageClean
+    else
+      if !original.isZero then
+        if held.isZero then frame.refundCounter -= schedule.refundNetStorageClear
+        else if value.isZero then frame.refundCounter += schedule.refundNetStorageClear
+      if original == value then
+        if original.isZero then frame.refundCounter += schedule.refundNetStorageResetFromZero
+        else frame.refundCounter += schedule.refundNetStorageReset
+      schedule.netStorageDirty
 
   /** Nothing, or the refusal every state-changing operation owes an invocation
     * that was asked not to change state.

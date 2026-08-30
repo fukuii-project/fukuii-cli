@@ -80,15 +80,31 @@ package org.fukuii.evm
   * **Which field is in which class is deliberately not listed here.** It is a
   * property of where the machine happens to read each price today and it moves
   * whenever an operation is rewritten, so a list would rot without anyone
-  * touching this file. Re-derive it: for a field `f`, count `schedule.f` in
-  * `OpcodeTable.scala` and `PrecompileSet.scala` against `schedule.f` in
-  * `Interpreter.scala`. **Calibrate before believing it** -- [[externalBase]] is
-  * read in both and [[callBase]] only at spend time, so an instrument reporting
-  * those two alike is measuring something other than what it claims.
+  * touching this file.
   *
-  * A fourth group is read in neither, being the intrinsic prices charged by the
-  * layer that settles a transaction around an invocation. That layer is not in
-  * this module yet, which is why they read as unused rather than as spend-time.
+  * Re-derive it, and **match on the FIELD NAME rather than on `schedule.f`.**
+  * The qualifier is not always `schedule`, so a pattern anchored to it
+  * under-reaches without failing: each network's `Upgrades.scala` reads these
+  * through `genesisPrices.f` when it builds its precompile set, so `schedule.f`
+  * finds no build-time home for any precompile price and reports every one of
+  * them as read nowhere at all.
+  *
+  * The build-time homes are [[OpcodeTable.original]], the precompile
+  * constructions in each network's `Upgrades.scala`, and every proposal that
+  * bakes an entry or a precompile of its own rather than going through the
+  * table -- EIP-150 and EIP-211 for table entries, EIP-196, EIP-197 and EIP-198
+  * for precompile prices. The spend-time homes are `Interpreter.scala` and, for
+  * the intrinsic prices, `IntrinsicGas.scala` in the layer that settles a
+  * transaction around an invocation.
+  *
+  * **`PrecompileSet.scala` is not a home and never was.** It reads no field of
+  * this record. A recipe naming it -- as this one did, until an attempt to
+  * follow it measured the file and found nothing -- sends the reader to an
+  * empty file and returns a zero that reads as an answer.
+  *
+  * **Calibrate before believing any of it** -- [[externalBase]] is read in both
+  * and [[callBase]] only at spend time, so an instrument reporting those two
+  * alike is measuring something other than what it claims.
   *
   * A proposal in the second or third class has to reach the table or the
   * precompile set as well, which is what [[OpcodeTable.adding]] exists for.
@@ -115,10 +131,18 @@ final case class GasSchedule(
     blockHash: BigInt,
     balance: BigInt,
     externalBase: BigInt,
+    extCodeHash: BigInt,
     storageLoad: BigInt,
     storageSet: BigInt,
     storageReset: BigInt,
     refundStorageClear: BigInt,
+    netStorageNoop: BigInt,
+    netStorageInit: BigInt,
+    netStorageClean: BigInt,
+    netStorageDirty: BigInt,
+    refundNetStorageClear: BigInt,
+    refundNetStorageResetFromZero: BigInt,
+    refundNetStorageReset: BigInt,
     refundSelfDestruct: BigInt,
     callBase: BigInt,
     callValue: BigInt,

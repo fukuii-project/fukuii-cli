@@ -485,6 +485,24 @@ class InvocationSpec extends AnyFlatSpec:
 
   // ── What an invocation is given, and what it leaves behind ───────────────
 
+  /** The Frontier table with EIP-1014's entry added, since `CREATE2` is held out
+    * of `OpcodeTable.original` and a spec running the fixture table cannot
+    * reach it.
+    */
+  private val withCreate2: OpcodeTable =
+    EvmFixtures.rules.table.adding(Operation(Opcode.Create2, Cost.Computed))
+
+  /** Places `hex` at the start of memory and creates from it WITH A SALT.
+    *
+    * The salt is pushed first because `CREATE2` takes it last -- endowment,
+    * offset, size, then salt -- so it has to sit deepest. Getting that order
+    * wrong is the easy mistake and it does not fail loudly: the operation still
+    * runs, at an address derived from whatever happened to be on the stack.
+    */
+  private def creating2(hex: String, salt: String, endowment: Int = 0): Seq[Int] =
+    push32(hex) ++ push1(0x00) ++ Seq(0x52) ++
+      push32(salt) ++ push1(hex.length / 2) ++ push1(0x00) ++ push1(endowment) :+ 0xf5
+
   "an invocation" should "bring the account it runs as into being" in {
     val environment = EvmFixtures.environment()
     val _ = runIn(environment, 100, stopping)
@@ -2149,5 +2167,87 @@ class InvocationSpec extends AnyFlatSpec:
     assert(
       frame.gasLeft == BigInt(100000) - schedule.veryLow * 7 - schedule.callBase - schedule.newAccount,
       "these rules charge nothing for an absent destination, so the case above is not about the surcharge"
+    )
+  }
+
+  // ── EIP-1014's CREATE2 ────────────────────────────────────────────────────
+
+  "CREATE2" should "deploy at the address named by its creator, salt and code" in {
+    val environment = EvmFixtures.environment(withTable = withCreate2)
+    val salt = "cafebabe"
+    val _ = runIn(environment, 200000, creating2(deploying, salt))
+    val expected = ContractAddress.create2(
+      runner,
+      Word.fromBytes(EvmFixtures.bytesOf(salt + "0" * (64 - salt.length))),
+      codeOf(deploying)
+    )
+    assert(
+      environment.world.codeOf(expected) == codeOf("2a"),
+      "the deployment landed somewhere other than the salted address"
+    )
+  }
+
+  it should "answer with the address it deployed at" in {
+    val salt = "cafebabe"
+    val (frame, _) = runIn(EvmFixtures.environment(withTable = withCreate2), 200000, creating2(deploying, salt))
+    val expected = ContractAddress.create2(
+      runner,
+      Word.fromBytes(EvmFixtures.bytesOf(salt + "0" * (64 - salt.length))),
+      codeOf(deploying)
+    )
+    assert(
+      frame.stack.peek(0) == Right(Word.fromBytes(Bytes.fromIArray(expected.toBytes))),
+      "the answer is the salted address"
+    )
+  }
+
+  it should "land somewhere DIFFERENT from what CREATE would have chosen" in {
+    // The assertion that fails if the salted path quietly fell back to the
+    // count-derived derivation -- which every other test here would still pass,
+    // because they compare against whichever derivation the implementation used.
+    val environment = EvmFixtures.environment(withTable = withCreate2)
+    val _ = runIn(environment, 200000, creating2(deploying, "cafebabe"))
+    assert(
+      environment.world.codeOf(ContractAddress.of(runner, UInt64.Zero)).isEmpty,
+      "the deployment landed at the address CREATE would have used, so the salt reached nothing"
+    )
+  }
+
+  it should "still raise the creator's count" in {
+    // The count does not decide the address here, and it is still consumed.
+    // Reading "the salt replaces the nonce" as "the nonce is untouched" is the
+    // permissive misreading, and this is what refuses it.
+    val environment = EvmFixtures.environment(withTable = withCreate2)
+    val _ = runIn(environment, 200000, creating2(deploying, "cafebabe"))
+    assert(
+      environment.world.nonceOf(runner) == UInt64.fromBits(1L),
+      "a salted creation consumes the creator's next address too"
+    )
+  }
+
+  it should "charge the hashing term on top of what CREATE costs" in {
+    // EIP-1014: "an extra hashcost of GSHA3WORD * ceil(len(init_code) / 32)".
+    // Measured as a DIFFERENCE between the two operations over the same body,
+    // so memory expansion and the creation base cancel.
+    //
+    // THE RESIDUE IS TWO TERMS, NOT ONE, and saying so is the honest form. The
+    // salted program has to put a salt on the stack, so it carries one PUSH32
+    // the unsalted one does not, and that push is charged at the verylow tier
+    // like any other. Writing the expectation as the hashing term alone would
+    // have been wrong by exactly that push -- which is how this assertion first
+    // failed, at 13 against 8.
+    //
+    // It still discriminates: with the hashing term removed the difference is
+    // the push alone, which is not this figure.
+    val plain = EvmFixtures.environment()
+    val salted = EvmFixtures.environment(withTable = withCreate2)
+    val (unsaltedFrame, _) = runIn(plain, 200000, creating(deploying))
+    val (saltedFrame, _) = runIn(salted, 200000, creating2(deploying, "cafebabe"))
+    val extra = unsaltedFrame.gasLeft - saltedFrame.gasLeft
+    // The body is 10 bytes, so one word, so one unit of the per-word rate.
+    val expected = EvmFixtures.schedule.keccak256PerWord + EvmFixtures.schedule.veryLow
+    assert(
+      extra == expected,
+      s"expected one word of hashing plus the salt's own PUSH32; the difference was ${extra.toString}"
     )
   }

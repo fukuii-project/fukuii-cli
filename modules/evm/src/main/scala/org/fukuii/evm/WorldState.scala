@@ -99,6 +99,34 @@ trait WorldState:
     */
   def storageAt(address: Address, slot: Word): Word
 
+  /** The value at `slot` of `address`'s storage as it stood before this
+    * transaction ran, and zero where none was written.
+    *
+    * ==Why a second read rather than a parameter on the first==
+    *
+    * EIP-1283 prices a store against three values -- what the slot holds now,
+    * what it is being set to, and what it held at the START OF THE
+    * TRANSACTION -- and only the third is unavailable from the ordinary read.
+    * `ethereum/go-ethereum` @ `e9e35a42f8` reaches it the same way, as a second
+    * accessor (`GetStateAndCommittedState`); `besu-eth/besu` @ `fdf1247c6d`
+    * threads it into the gas calculator as a `Supplier<UInt256>` instead. The
+    * accessor is the closer fit here, because the interpreter already holds a
+    * `WorldState` and reads every other value through it -- a supplier would put
+    * one value on a different route from all the rest.
+    *
+    * ==For a state with no pending writes this is the ordinary read==
+    *
+    * An implementation that holds no overlay answers both identically, and
+    * says so rather than being suspected of a stub.
+    *
+    * **A layered implementation must DELEGATE rather than reading its own
+    * base's current value.** `base.storageAt` is the transaction-start value
+    * only while exactly one layer exists; `base.committedStorageAt` is right at
+    * any depth. The distinction costs nothing and is the difference between a
+    * correct answer and one that happens to be correct today.
+    */
+  def committedStorageAt(address: Address, slot: Word): Word
+
   /** Writes `value` to `slot` of `address`'s storage.
     *
     * A zero `value` is passed through as a zero rather than being turned into a

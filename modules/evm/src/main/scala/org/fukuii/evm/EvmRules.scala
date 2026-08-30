@@ -129,6 +129,42 @@ enum GasForwarding:
   * keeps the machine free of a quantity a caller could get wrong: neither case
   * below carries a number, so the surcharge itself stays the schedule's.
   */
+/** How a store to a storage slot is priced.
+  *
+  * ==Two cases, and the second one was adopted and withdrawn at a single
+  * height on the network that specified it==
+  *
+  * EIP-1283 replaces the whole `SSTORE` charge with a scheme that reads what
+  * the slot held at the start of the transaction, so that repeated writes to
+  * one slot are not repeatedly charged as though each were the first. EIP-1716
+  * removes it again.
+  *
+  * **On Ethereum mainnet the two activate at the same block**, so the net
+  * scheme was never in force there. It WAS in force on Ropsten, Kovan and
+  * Rinkeby for hundreds of thousands of blocks each, and on Gnosis it was
+  * turned on, off, and on again. So this is a rule networks genuinely differ
+  * on, not a rule with one live value and a historical footnote.
+  *
+  * ==Why a case on the rules rather than a table entry==
+  *
+  * `SSTORE` is priced from its operands and carries `Cost.Computed`, so there
+  * is no entry to swap. `ethereum/go-ethereum` @ `e9e35a42f8` reaches the same
+  * shape by a runtime predicate (`core/vm/gas_table.go:109`), and
+  * `besu-eth/besu` @ `fdf1247c6d` by swapping a whole gas calculator. A
+  * two-case value on the rules is the smallest thing that expresses either.
+  */
+enum StorageMetering:
+
+  /** Priced from what the slot holds now: setting a slot that held nothing is
+    * the expensive case, and every other combination is the cheaper one.
+    */
+  case Legacy
+
+  /** Priced from what the slot held at the START OF THE TRANSACTION as well as
+    * what it holds now -- EIP-1283's no-op, fresh and dirty cases.
+    */
+  case Net
+
 enum NewAccountCharge:
 
   /** The destination is an account this state has never held.
@@ -392,6 +428,7 @@ final case class EvmRules(
     maxCodeSize: Option[Int],
     createdAccountNonce: UInt64,
     newAccountCharge: NewAccountCharge,
+    storageMetering: StorageMetering,
     touchSurvivesFailure: Set[Address]
 ):
 
