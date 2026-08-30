@@ -204,6 +204,52 @@ object CertificationCorpora:
     */
   val GeneratedByzantiumCorpus: String = "execution-specs-fixtures state_tests/for_byzantium"
 
+  /** The generated tier at the fork above Byzantium, under the ONLY name that
+    * tier gives it.
+    *
+    * ==There is no `for_constantinople` directory, and that is the corpus
+    * agreeing with the network rather than an omission==
+    *
+    * The release publishes sixteen `state_tests/for_*` directories and
+    * `for_constantinople` is not among them, while `for_constantinoplefix` is.
+    * Ethereum mainnet activated Constantinople and Petersburg at one block, so
+    * the rules the generator can fill for are the ones with EIP-1283 removed --
+    * which is what `ConstantinopleFix` names.
+    *
+    * **So this tier cannot reach EIP-1283 at all, in either direction.** It
+    * certifies the four proposals that survived, and the fifth is certified
+    * against its own document's published table instead.
+    */
+  val GeneratedConstantinopleFixCorpus: String = "execution-specs-fixtures state_tests/for_constantinoplefix"
+
+  /** The legacy tier at the same fork, which unlike the generated one publishes
+    * BOTH labels.
+    *
+    * `Constantinople` and `ConstantinopleFix` are separate post-state keys in
+    * the same files, and the two are not synonyms: the first states what the
+    * fork was specified to be, EIP-1283 included, and the second what mainnet
+    * ran. **The tier uses `Petersburg` zero times**, which is why nothing here
+    * is registered under that name however the schedule spells the upgrade.
+    */
+  val LegacyConstantinopleFixStateCorpus: String = "legacytests Constantinople/GeneralStateTests at ConstantinopleFix"
+
+  /** The same files at the OTHER label -- the rules Ethereum mainnet never ran.
+    *
+    * ==The one tier in this harness that certifies a rule set no height
+    * resolves to==
+    *
+    * `Upgrades.constantinople` is unreachable through the schedule by
+    * construction, so it is passed here directly rather than through `rulesAt`.
+    * That is deliberate and is the point: this corpus is the reason holding
+    * that value is worth anything. Without it the specified-but-never-run rule
+    * set would be a composition nothing could falsify.
+    *
+    * **It is also the only tier here that exercises EIP-1283**, since the
+    * generated release does not fill for it and no other network in this build
+    * adopts it.
+    */
+  val LegacyConstantinopleStateCorpus: String = "legacytests Constantinople/GeneralStateTests at Constantinople"
+
   /** The same directory as the Tangerine Whistle tier, resolved through the
     * other network's schedule instead.
     *
@@ -268,6 +314,8 @@ object CertificationCorpora:
   private[certification] val EthereumTangerineWhistleStarts: Long = 2463000L
   private[certification] val EthereumSpuriousDragonStarts: Long = 2675000L
   private[certification] val EthereumByzantiumStarts: Long = 4370000L
+
+  private[certification] val EthereumConstantinopleStarts: Long = 7280000L
   private[certification] val ClassicGasRepriceStarts: Long = 2500000L
 
   /** Every network-and-height pair the corpora above are resolved at.
@@ -341,6 +389,17 @@ object CertificationCorpora:
 
     val byzantium = rulesAt(ethereumSchedule, EthereumByzantiumStarts)
 
+    // Resolves to PETERSBURG's rules, because two entries share that height and
+    // a schedule answers with the last one to activate. That is what this
+    // network runs there, and it is what both `ConstantinopleFix` tiers are
+    // filled against.
+    val constantinopleFix = rulesAt(ethereumSchedule, EthereumConstantinopleStarts)
+
+    // NOT from the schedule, and it cannot be: no height resolves to it. The
+    // composition is named directly so the legacy tier's other label has
+    // something to run against.
+    val constantinople = ethereum.Upgrades.constantinople
+
     val gasReprice = rulesAt(classicSchedule, ClassicGasRepriceStarts)
 
     // Taken from the same schedule the rules are taken from, so the pair cannot
@@ -411,6 +470,27 @@ object CertificationCorpora:
         "Byzantium",
         ethereumChain,
         byzantium
+      ),
+      StateCorpus(
+        GeneratedConstantinopleFixCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_constantinoplefix"),
+        "ConstantinopleFix",
+        ethereumChain,
+        constantinopleFix
+      ),
+      StateCorpus(
+        LegacyConstantinopleFixStateCorpus,
+        FixtureCorpus.legacy(root).resolve("GeneralStateTests"),
+        "ConstantinopleFix",
+        ethereumChain,
+        constantinopleFix
+      ),
+      StateCorpus(
+        LegacyConstantinopleStateCorpus,
+        FixtureCorpus.legacy(root).resolve("GeneralStateTests"),
+        "Constantinople",
+        ethereumChain,
+        constantinople
       ),
       StateCorpus(
         ClassicTangerineWhistleCorpus,

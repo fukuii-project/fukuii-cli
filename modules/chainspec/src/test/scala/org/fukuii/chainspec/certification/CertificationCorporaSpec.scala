@@ -4,7 +4,7 @@ import org.fukuii.bytes.UInt64
 import org.fukuii.chainspec.networks.{KnownNetworks, ethereum}
 import org.fukuii.chainspec.{Activation, DifficultyAdjustment, Network, Registry, UpgradeRules}
 import org.fukuii.evm.fixtures.*
-import org.fukuii.evm.{Opcode, PrecompileSet}
+import org.fukuii.evm.{StorageMetering, Opcode, PrecompileSet}
 
 import org.scalatest.prop.{TableDrivenPropertyChecks, TableFor3}
 import org.scalatest.propspec.AnyPropSpec
@@ -83,7 +83,10 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     // schedule at that network's own activation. The figures are identical
     // because the corpus is: what differs is which schedule was asked, and at
     // what height.
-    CertificationCorpora.ClassicTangerineWhistleCorpus -> CorpusCensus(files = 33, cases = 536, skipped = 0)
+    CertificationCorpora.ClassicTangerineWhistleCorpus -> CorpusCensus(files = 33, cases = 536, skipped = 0),
+    CertificationCorpora.GeneratedConstantinopleFixCorpus -> CorpusCensus(files = 98, cases = 1963, skipped = 0),
+    CertificationCorpora.LegacyConstantinopleFixStateCorpus -> CorpusCensus(files = 2394, cases = 10596, skipped = 27),
+    CertificationCorpora.LegacyConstantinopleStateCorpus -> CorpusCensus(files = 2394, cases = 10598, skipped = 21)
   )
 
   /** Every censused corpus, as the rows the four properties below drive.
@@ -155,7 +158,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     assert(names == census.keySet, s"assembled ${names.toString} against a census of ${census.keySet.toString}")
   }
 
-  property("the census covers eleven corpora, counted") {
+  property("the census covers fourteen corpora, counted") {
     // THE REMOVAL CASE, which the pairing cannot see. Dropping a corpus from the
     // census AND from what the harness assembles leaves those two agreeing with
     // each other, leaves the same six properties registered, and leaves the
@@ -173,7 +176,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     // and Byzantium, and Tangerine Whistle read a second time through the other
     // network's schedule. Raising this is adding a corpus. Lowering it is
     // dropping certified cases, and that is a decision rather than a tidy-up.
-    assert(census.size == 11, s"the census covers ${census.size.toString} corpora rather than eleven")
+    assert(census.size == 14, s"the census covers ${census.size.toString} corpora rather than fourteen")
   }
 
   property("every censused corpus holds the files the census records") {
@@ -292,6 +295,33 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
       rules.copy(evm =
         rules.evm.copy(table = rules.evm.table.removing(Opcode.ReturnDataSize).removing(Opcode.ReturnDataCopy))
       )
+
+  /** All three shifting instructions taken out together, because the document
+    * adds them together and a machine holding one of them is a state no fork
+    * ever shipped.
+    */
+  private val withoutTheShifts: UpgradeRules => UpgradeRules =
+    rules =>
+      rules.copy(evm =
+        rules.evm.copy(table = rules.evm.table.removing(Opcode.Shl).removing(Opcode.Shr).removing(Opcode.Sar))
+      )
+
+  /** The code-hash operation taken out. */
+  private val withoutExtCodeHash: UpgradeRules => UpgradeRules =
+    rules => rules.copy(evm = rules.evm.copy(table = rules.evm.table.removing(Opcode.ExtCodeHash)))
+
+  /** The salted creation taken out. */
+  private val withoutSaltedCreation: UpgradeRules => UpgradeRules =
+    rules => rules.copy(evm = rules.evm.copy(table = rules.evm.table.removing(Opcode.Create2)))
+
+  /** Storage priced the way every fork below this one priced it.
+    *
+    * **Not a removal of an operation but of a SCHEME**, which is why it reaches
+    * a rules member rather than the table: the operation is priced from its
+    * operands and has no entry to take out.
+    */
+  private val withoutNetMetering: UpgradeRules => UpgradeRules =
+    rules => rules.copy(evm = rules.evm.copy(storageMetering = StorageMetering.Legacy))
 
   /** The static call operation taken out. */
   private val withoutStaticCall: UpgradeRules => UpgradeRules =
@@ -415,6 +445,10 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
       ("EIP-197", CertificationCorpora.GeneratedByzantiumCorpus, withoutThePairingCheck, 199),
       ("EIP-197", CertificationCorpora.LegacyByzantiumStateCorpus, withoutThePairingCheck, 141),
       ("EIP-198", CertificationCorpora.GeneratedByzantiumCorpus, withoutModularExponentiation, 44),
+      ("EIP-145", CertificationCorpora.GeneratedConstantinopleFixCorpus, withoutTheShifts, 7),
+      ("EIP-1052", CertificationCorpora.GeneratedConstantinopleFixCorpus, withoutExtCodeHash, 77),
+      ("EIP-1014", CertificationCorpora.GeneratedConstantinopleFixCorpus, withoutSaltedCreation, 42),
+      ("EIP-1283", CertificationCorpora.LegacyConstantinopleStateCorpus, withoutNetMetering, 6543),
       ("EIP-198", CertificationCorpora.LegacyByzantiumStateCorpus, withoutModularExponentiation, 340),
       ("EIP-211", CertificationCorpora.GeneratedByzantiumCorpus, withoutTheReturnDataBuffer, 410),
       ("EIP-211", CertificationCorpora.LegacyByzantiumStateCorpus, withoutTheReturnDataBuffer, 47),
@@ -500,7 +534,11 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     * the quiet direction.
     */
   private val corporaRerunInMinutes: Set[String] =
-    Set(CertificationCorpora.LegacyByzantiumStateCorpus)
+    Set(
+      CertificationCorpora.LegacyByzantiumStateCorpus,
+      CertificationCorpora.LegacyConstantinopleStateCorpus,
+      CertificationCorpora.LegacyConstantinopleFixStateCorpus
+    )
 
   /** The rows every run asserts, and the rows only a heavy run does.
     *
