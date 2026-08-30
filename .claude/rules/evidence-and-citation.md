@@ -107,18 +107,36 @@ hit from a newline-aware match of the same words, while a phrase sitting on one
 line returned a hit both ways. **It has recurred four times, across four
 actors**, which makes it the most durable instance of the class section 3 names.
 
-**Two things that recipe has to get right, both measured.** The break can fall
-at *any* inter-word position, so `\s+` goes at every one of them — a pattern
-carrying it at a single guessed boundary returned zero against the real wrapped
-phrase while still matching its own unwrapped control, which is a pattern that
-works and is aimed one word wide. And section 2 requires a sweep of the tree,
-not of a file, so the newline-aware form needs the file list fed to it:
+**Three things that recipe has to get right, all measured.** The break can fall
+at *any* inter-word position, so the separator goes at every one of them — a
+pattern carrying it at a single guessed boundary returned zero against the real
+wrapped phrase while still matching its own unwrapped control, which is a pattern
+that works and is aimed one word wide. Section 2 requires a sweep of the tree,
+not of a file, so the newline-aware form needs the file list fed to it. And **the
+separator is `[\s/*]+` and not `\s+`**, which is the one that gets missed:
 
 ```bash
-git grep -n 'the exact old phrase'                     # line-based: necessary, not sufficient
+git grep -n 'the exact old phrase'                       # line-based: necessary, not sufficient
 git ls-files -z | xargs -0 /bin/grep -Pzol \
-  'the\s+exact\s+old\s+phrase'                        # newline-aware, whole tree
+  'the[\s/*]+exact[\s/*]+old[\s/*]+phrase'               # newline-aware, whole tree
 ```
+
+**`\s+` is wrong wherever the prose is a COMMENT, which in a Scala tree is most
+of it.** A wrapped comment does not continue with whitespace; it continues with
+`  // ` or `    * `, and neither is matched by `\s`. So the pattern cannot span
+the line break in exactly the place this project keeps its reasoning — and it
+fails the way everything in this file fails, by returning a clean zero.
+
+**Measured, with a control, and the control is what failed.** A phrase known
+present and wrapped inside a scaladoc block: `a\s+correct-looking\s+description`
+found **nothing**, while `a[\s/*]+correct-looking[\s/*]+description` found the
+file. The sweep for the OLD wording returned its zero on the same run and would
+have been believed.
+
+**That is section 3's control discipline catching a defect in section 2's own
+recipe**, which is the strongest available argument for never running either
+sweep without a known-positive that spans a break the same way the real phrase
+does.
 
 **Correcting in place beats appending a correction.** A note saying "this was
 wrong, see below" leaves the wrong statement readable. Replace the claim, and
