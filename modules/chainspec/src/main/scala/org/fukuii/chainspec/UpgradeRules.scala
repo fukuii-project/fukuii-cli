@@ -8,7 +8,7 @@ import org.fukuii.execution.{AdmissionRules, ExecutionRules}
   * ==Why an enclosing type rather than the machine's rules alone==
   *
   * An upgrade is not confined to a layer. ECIP-1054 adopts ten Ethereum
-  * proposals at once, and they land in four different places: six of them
+  * proposals at once, and they land in four different places: seven of them
   * change the machine, one changes how difficulty is targeted, one changes when
   * state is cleared, and one changes what a receipt contains. A schedule whose
   * entries resolved directly to [[org.fukuii.evm.EvmRules]] would be correct

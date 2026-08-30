@@ -1,7 +1,7 @@
 package org.fukuii.chainspec.networks
 
 import org.fukuii.bytes.UInt64
-import org.fukuii.chainspec.{Activation, Upgrade, UpgradeRules, UpgradeSchedule}
+import org.fukuii.chainspec.{Activation, ProposalId, Upgrade, UpgradeRules, UpgradeSchedule}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Ethereum mainnet and Ethereum Classic mainnet run the same rules through
@@ -65,6 +65,37 @@ import org.scalatest.flatspec.AnyFlatSpec
   * identifier is where it is visible, and the assertion over it is the only
   * thing in this build that fails if either network's entry moves to the other.
   *
+  * ==The mirror: the machines realign, and the two networks do not become
+  * one==
+  *
+  * Each network later reaches a rule set whose machine, settlement and
+  * admission rules are the other's again, at a different height and by a
+  * different list of proposals. That is a claim about the four facets a rule
+  * set holds, and it is asserted over three of them, because the fourth is
+  * where the two networks stay apart.
+  *
+  * **It is a claim about the two rule sets it names and not a standing claim
+  * about the networks**, which is why each side is resolved at a stated height
+  * rather than at whatever either schedule most recently reached. The EIP-150
+  * case below records the failure the other reading produces.
+  *
+  * Three things the agreement excludes, and only two of them are expressible
+  * here:
+  *
+  *   - **The irregular state change.** The network that applied it built
+  *     different state from 1,920,000 under rules that stayed equal, and
+  *     nothing a rule set holds records that. No assertion below can see it;
+  *     the fork-identifier case above is the one projection in this build that
+  *     can, and it is where that divergence stays visible.
+  *   - **The consensus proposals one network adopted alone.** ECIP-1010,
+  *     ECIP-1017, ECIP-1039 and ECIP-1041 have no counterpart on the other
+  *     network, and two of them settle no rule-set value at all -- the emission
+  *     they step is computed by the engine, so the component list is the only
+  *     place they appear.
+  *   - **EIP-649.** The one proposal of the other network's upgrade that
+  *     Ethereum Classic declined, and the reason its consensus facet still pays
+  *     the launch amount where the other network's does not.
+  *
   * `ethereumclassic/core-geth` @
   * `4185df450364973bbf99efa3923791f5ba40b351` carries it as
   * `// DAOForkBlock: big.NewInt(1920000),` in `params/config_classic.go`,
@@ -90,6 +121,16 @@ class SharedHistorySpec extends AnyFlatSpec:
     */
   private val partingBlock: Activation = Activation.AtBlock(UInt64.fromBits(1920000L))
 
+  /** The height at which Ethereum mainnet reached the machine both networks
+    * then ran, sourced on the entry that carries it in [[ethereum.Mainnet]].
+    */
+  private val ethereumRealignmentBlock: Long = 4370000L
+
+  /** The same for Ethereum Classic, 4,402,000 blocks later, sourced on the
+    * entry that carries it in [[ethereumclassic.Mainnet]].
+    */
+  private val classicRealignmentBlock: Long = 8772000L
+
   private def ethereumAt(height: Long) = ethereumSchedule.at(UInt64.fromBits(height), UInt64.Zero)
   private def classicAt(height: Long) = classicSchedule.at(UInt64.fromBits(height), UInt64.Zero)
 
@@ -110,10 +151,19 @@ class SharedHistorySpec extends AnyFlatSpec:
     // Everything below compares by value, and value comparison cannot tell a
     // genuine agreement from a shared reference. This is the only test here
     // that can, and without it the rest are satisfied by construction.
+    //
+    // The facets are checked as well as the rule sets, because the cases that
+    // compare the two machines compare a facet at a time: a rule set built by
+    // copying the other network's would be a distinct value holding the very
+    // fields those cases read, and the reference check on the enclosing value
+    // would pass while every agreement below reported the sharing.
     assert(
       (ethereumclassic.Upgrades.frontier ne ethereum.Upgrades.frontier) &&
         (ethereumclassic.Upgrades.homestead ne ethereum.Upgrades.homestead) &&
-        (ethereumclassic.Upgrades.gasReprice ne ethereum.Upgrades.tangerineWhistle),
+        (ethereumclassic.Upgrades.gasReprice ne ethereum.Upgrades.tangerineWhistle) &&
+        (ethereumclassic.Upgrades.atlantis.evm ne ethereum.Upgrades.byzantium.evm) &&
+        (ethereumclassic.Upgrades.atlantis.execution ne ethereum.Upgrades.byzantium.execution) &&
+        (ethereumclassic.Upgrades.atlantis.admission ne ethereum.Upgrades.byzantium.admission),
       "one network's configuration is the other's, so every agreement asserted here is a tautology"
     )
 
@@ -182,4 +232,65 @@ class SharedHistorySpec extends AnyFlatSpec:
     assert(
       ethereumAt(0L).components.isEmpty && classicAt(0L).components.isEmpty,
       "a genesis configuration records an adopted proposal, which is not what a launch configuration is"
+    )
+
+  "the two networks' machines" should "be one machine again, reached on each schedule at its own height" in
+    // The mirror of the parting. It is asserted over three facets rather than
+    // over the rule sets because the fourth is where the two networks stay
+    // apart, and a comparison of the whole value would report that difference
+    // and say nothing about the agreement this is about.
+    //
+    // The heights are carried in one case with the agreement, as the EIP-150
+    // case below carries its own, because the agreement is only interesting
+    // while the two are apart. The last conjunct is what would state that, and
+    // it is the weakest thing here: the two activations CANNOT coincide while
+    // both schedules are ordered, since this network's previous entry is above
+    // every entry the other network's schedule holds, so that comparison could
+    // not have failed for the reason it names. What it does refute is either
+    // rule set having no entry carrying it at all, which `activationCarrying`
+    // reports and a height literal cannot.
+    assert(
+      classicAt(classicRealignmentBlock).evm == ethereumAt(ethereumRealignmentBlock).evm &&
+        classicAt(classicRealignmentBlock).execution == ethereumAt(ethereumRealignmentBlock).execution &&
+        classicAt(classicRealignmentBlock).admission == ethereumAt(ethereumRealignmentBlock).admission &&
+        activationCarrying(classicSchedule, ethereumclassic.Upgrades.atlantis) !=
+        activationCarrying(ethereumSchedule, ethereum.Upgrades.byzantium),
+      "the two networks run different machine, settlement or admission rules at the heights their machines realign"
+    )
+
+  "the machines agreeing" should "not extend to what a block owes the mechanism that produced it" in
+    // Where the reconvergence stops, stated member by member rather than as an
+    // inequality over the facet, so that it says WHICH rules stayed apart. The
+    // first conjunct is the one consensus proposal both networks took from that
+    // fork; the rest are the emission one of them declined to cut and the three
+    // bomb rules only one of them has ever set.
+    assert(
+      classicAt(classicRealignmentBlock).consensus.difficultyAdjustment ==
+        ethereumAt(ethereumRealignmentBlock).consensus.difficultyAdjustment &&
+        classicAt(classicRealignmentBlock).consensus.blockReward !=
+        ethereumAt(ethereumRealignmentBlock).consensus.blockReward &&
+        classicAt(classicRealignmentBlock).consensus.difficultyBombDelay !=
+        ethereumAt(ethereumRealignmentBlock).consensus.difficultyBombDelay &&
+        classicAt(classicRealignmentBlock).consensus.difficultyBombPause !=
+        ethereumAt(ethereumRealignmentBlock).consensus.difficultyBombPause &&
+        classicAt(classicRealignmentBlock).consensus.difficultyBombRemovedFrom !=
+        ethereumAt(ethereumRealignmentBlock).consensus.difficultyBombRemovedFrom,
+      "the two networks agree about an emission or a bomb rule only one of them adopted, or differ about the one they shared"
+    )
+
+  it should "leave the two records differing by exactly the proposal one declined and the four the other took alone" in
+    // The record's side of the same boundary, and it is independent of the
+    // values above: a delta is an arbitrary function, so the two can disagree.
+    // Asserted as the difference in each direction rather than as membership,
+    // because a list stating that a proposal is absent is what an empty list
+    // also states.
+    //
+    // The launch caveat above is why this is read as a difference between two
+    // populated records rather than as a claim about either one alone.
+    assert(
+      ethereumAt(ethereumRealignmentBlock).components.diff(classicAt(classicRealignmentBlock).components) ==
+        Vector(ProposalId.Eip(649)) &&
+        classicAt(classicRealignmentBlock).components.diff(ethereumAt(ethereumRealignmentBlock).components) ==
+        Vector(ProposalId.Ecip(1010), ProposalId.Ecip(1017), ProposalId.Ecip(1039), ProposalId.Ecip(1041)),
+      "the two records differ by some other set of proposals than the one declined and the four taken alone"
     )

@@ -1,11 +1,16 @@
 package org.fukuii.chainspec.networks.ethereumclassic
 
 import org.fukuii.bytes.UInt256
-import org.fukuii.chainspec.ProposalId
+import org.fukuii.chainspec.{DifficultyAdjustment, ProposalId}
 import org.fukuii.evm.{Cost, Opcode, OpcodeTable, Operation}
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** Properties every rule set this network composed has to hold. */
+/** Properties every rule set this network composed has to hold.
+  *
+  * What each proposal of one upgrade settles is a matrix over that upgrade's
+  * component list, and lives in [[UpgradesPropSpec]]; this holds the facts that
+  * are about a composition as a whole.
+  */
 class UpgradesSpec extends AnyFlatSpec:
 
   private val composed =
@@ -15,7 +20,8 @@ class UpgradesSpec extends AnyFlatSpec:
       Upgrades.gasReprice,
       Upgrades.dieHard,
       Upgrades.gotham,
-      Upgrades.defuse
+      Upgrades.defuse,
+      Upgrades.atlantis
     )
 
   /** What a table charges for `opcode` before it runs, where that is settled. */
@@ -70,6 +76,28 @@ class UpgradesSpec extends AnyFlatSpec:
           ProposalId.Ecip(1017),
           ProposalId.Ecip(1039),
           ProposalId.Ecip(1041)
+        ) &&
+        Upgrades.atlantis.components ==
+        Vector(
+          ProposalId.Eip(7),
+          ProposalId.Eip(2),
+          ProposalId.Eip(150),
+          ProposalId.Eip(155),
+          ProposalId.Eip(160),
+          ProposalId.Ecip(1010),
+          ProposalId.Ecip(1017),
+          ProposalId.Ecip(1039),
+          ProposalId.Ecip(1041),
+          ProposalId.Eip(161),
+          ProposalId.Eip(170),
+          ProposalId.Eip(100),
+          ProposalId.Eip(140),
+          ProposalId.Eip(211),
+          ProposalId.Eip(214),
+          ProposalId.Eip(658),
+          ProposalId.Eip(198),
+          ProposalId.Eip(196),
+          ProposalId.Eip(197)
         ),
       "a composition's recorded components are not the ones it adopted"
     )
@@ -132,4 +160,21 @@ class UpgradesSpec extends AnyFlatSpec:
     assert(
       composed.forall(rules => rules.consensus.zeroRewardCreditsBeneficiary),
       "declining to credit before empty accounts are deleted would leave a leaf out of the state trie"
+    )
+
+  it should "decline EIP-649 while carrying the other consensus proposal of that fork" in
+    // The record's silence is the enumeration above. This is the rules' side,
+    // and the two are independent: a component's delta is an arbitrary
+    // function, so a list can be right while the values it claims to have
+    // produced are not. Four members in one case on purpose -- the document is
+    // a reduced amount and a delayed term, the first two members are what it
+    // would have moved, and the fourth is why neither half has anything here to
+    // act on.
+    assert(
+      Upgrades.atlantis.consensus.difficultyAdjustment == DifficultyAdjustment.Eip100 &&
+        Upgrades.atlantis.consensus.blockReward ==
+        UInt256.fromBigInt(BigInt(5) * BigInt(10).pow(18)).toOption.get &&
+        Upgrades.atlantis.consensus.difficultyBombDelay == BigInt(0) &&
+        Upgrades.atlantis.consensus.difficultyBombRemovedFrom.contains(BigInt(5900000)),
+      "the upgrade taking eight of that fork's nine proposals carries a value only the ninth sets"
     )

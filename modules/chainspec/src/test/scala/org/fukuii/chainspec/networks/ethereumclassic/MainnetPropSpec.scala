@@ -41,7 +41,8 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     ("Gas Reprice", 2500000L),
     ("Die Hard", 3000000L),
     ("Gotham", 5000000L),
-    ("Defuse Difficulty Bomb", 5900000L)
+    ("Defuse Difficulty Bomb", 5900000L),
+    ("Atlantis", 8772000L)
   )
 
   /** The last height under the old rules and the first under the new, per
@@ -57,11 +58,9 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     * not, which is a fact only a table holding both networks' figures can
     * state.
     *
-    * The last row is not a boundary either. It is the height below the next
-    * transition `params/config_classic.go` at `4185df450` states -- 8,772,000,
-    * where several proposals arrive together -- so it asserts that this
-    * schedule ends where that configuration says nothing happens, rather than
-    * ending because nothing has been written yet.
+    * The last pair is a boundary like the others: 8,771,999 under the rules
+    * reached by removing the bomb, and 8,772,000 under the ten proposals that
+    * `params/config_classic.go` at `4185df450` places together at that height.
     */
   private val boundaries = Table(
     ("height", "rules"),
@@ -84,7 +83,8 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     (5000000L, Upgrades.gotham),
     (5899999L, Upgrades.gotham),
     (5900000L, Upgrades.defuse),
-    (8771999L, Upgrades.defuse)
+    (8771999L, Upgrades.defuse),
+    (8772000L, Upgrades.atlantis)
   )
 
   property("every upgrade activates at the block its own citation states") {
