@@ -31,6 +31,32 @@ package org.fukuii.chainspec
   * `ECIP1010PauseBlock` with `ECIP1010Length` -- deriving the continue height
   * where it needs one.
   *
+  * ==The derived form is not merely less direct: it makes one axis untestable==
+  *
+  * This is the reason to keep the pair, and it is stronger than a preference
+  * because it was measured rather than argued.
+  *
+  * Under a height-and-duration statement the continue point is the sum, so
+  * moving the pause moves the end of the window with it while the span stays
+  * put. The post-window reference never shifts, and the rule computes the same
+  * difficulty at **every** height -- an equivalent mutant, which no vector at
+  * any height can catch, in any corpus, ever. A client storing that form cannot
+  * be tested on where its window begins.
+  *
+  * Under the pair, the same one-block shift shortens the window and is
+  * observable. Measured here by seeding `pausedFrom` one block higher and
+  * running the proof-of-work module: it fails, and the catchers are the cases
+  * that compute the term *through* the window, where a shifted pause moves the
+  * exponent.
+  *
+  * **Do not generalize that into "a sub-period error is invisible."** It is
+  * not. What makes the shift unobservable *inside* the window under either
+  * statement is that this network's pause height is itself a multiple of the
+  * hundred-thousand period, so the height and the height plus one floor to the
+  * same period. A pause at 3,099,999 would be observable in-window. **The
+  * discriminator is the representation; the period alignment is a local
+  * coincidence of this network's numbers.**
+  *
   * ==A record rather than two members, because neither height means anything
   * alone==
   *
