@@ -25,10 +25,17 @@ import java.nio.file.{Files, Path, Paths}
   *
   * The published corpora are evidence from outside this project. These fixtures
   * are not: they are authored here, so agreement between them and this build is
-  * only worth what the fixture's own oracle is worth. Every consumer records
-  * the `_info.oracle` its expectations rest on, and a fixture whose oracle names
-  * only the specification this build was written from is a weaker cross-check
-  * than one naming an independent implementation or the chain itself.
+  * only worth what the fixture's own provenance is worth. A fixture naming only
+  * the specification this build was written from is a weaker cross-check than
+  * one naming an independent implementation or the chain itself.
+  *
+  * **Read that provenance as the UNION of the `_info` provenance keys, not off
+  * `oracle` alone.** That key reads as a complete statement and is not one: a
+  * file may carry a second, independent pass beside it under another name, and
+  * reading the headline alone classifies such a file as single-source when it is
+  * the strongest kind there is. Measured rather than supposed -- two fixtures
+  * this build consumes were misread exactly that way, by two projects, on one
+  * day. A consumer records every provenance key its expectations rest on.
   */
 object NetworkFixtureCorpus:
 

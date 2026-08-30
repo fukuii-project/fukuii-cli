@@ -218,6 +218,28 @@ object CertificationCorpora:
     * **This is the only corpus whose passing depends on Ethereum Classic's
     * activation being right.** Move that block and every case here is resolved
     * under the rules of the fork before it.
+    *
+    * ==The substitution stops at EIP-155, and what stops it is in the published
+    * bytes rather than in the rules==
+    *
+    * Resolving a corpus through a second network is sound only while nothing in
+    * it names a chain, and from the fork that admits a chain identifier into a
+    * signature the generated tier's own cases name one. Every published
+    * transaction is decoded here and its scheme read: of this directory's 536
+    * cases 533 sign unprotected and the remaining three are refused for their
+    * format or their signature before any chain is asked about, which is why the
+    * substitution costs nothing. Of the 1845 cases in the directory filled two
+    * forks later, 1807 sign for chain 1 -- so the same substitution there
+    * refuses nearly the whole corpus as signed for another chain, and every one
+    * of those refusals is the harness disagreeing with itself rather than a
+    * divergence.
+    *
+    * **The legacy tier does not have this bound**, for the reason its own
+    * EIP-155 coverage row already gives: it publishes no signed bytes for any
+    * case at any fork, so a stated sender stands and nothing ever asks which
+    * chain a signature names. That makes it substitutable at any fork and, by
+    * the same property, unable to say anything about a chain identifier at any
+    * fork either.
     */
   val ClassicTangerineWhistleCorpus: String =
     "execution-specs-fixtures state_tests/for_tangerinewhistle through Ethereum Classic"

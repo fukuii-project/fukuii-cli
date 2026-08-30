@@ -15,8 +15,14 @@ import org.fukuii.evm.fixtures.{CorpusReport, NetworkFixtureCorpus}
   * `networks/ethereumclassic/mainnet/state`. Every file states an oracle: a
   * modernized `core-geth` build, run through that client's `t8n` at each
   * upgrade's rules, and re-run through that client's own `statetest` runner as
-  * a second pass. That is an implementation this project does not maintain,
-  * answering independently of it.
+  * a second pass.
+  *
+  * **That build is the modernized fork, `white-b0x/core-geth`, which is a
+  * client this project has worked on** -- not `ethereumclassic/core-geth`,
+  * whose newest tag is `v1.12.20`. So the oracle is not independent of this
+  * project, and a pass here says this implementation and that one agree rather
+  * than that either is right. The second pass is a second RUNNER on one build
+  * and does not close that.
   *
   * **The second pass does not reach the cases asserting a refusal**, which the
   * corpus records rather than leaves to be discovered: a geth-family state-test

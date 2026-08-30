@@ -24,18 +24,31 @@ import org.fukuii.chainspec.networks.{KnownNetworks, ethereumclassic}
   * ==What a fixture here is worth, which is not what a published one is worth==
   *
   * The published corpora are evidence from outside this project. These are
-  * authored, so agreement is worth what the fixture's own oracle is worth. Both
-  * files this section was opened for name `core-geth` at a stated build, run
-  * through that client's `t8n` at each upgrade's rules, and record a second
-  * pass through that client's own `statetest` runner. That is an implementation
-  * this project does not maintain answering independently of it, which is what
-  * makes agreement a cross-check rather than one reading repeated.
+  * authored, so agreement is worth what the fixture's own oracle is worth.
+  * Every file here names `core-geth` at a stated build as that oracle -- **the
+  * modernized fork, `white-b0x/core-geth`, a client this project has worked
+  * on, rather than `ethereumclassic/core-geth`, whose newest tag is
+  * `v1.12.20` and which carries no such version.** So agreement is between two
+  * implementations that are not independent of one another, and the tree
+  * states TWO oracle chains rather than one, so the strength is uneven and a
+  * reader has to know which chain a case sits on.
   *
-  * **The second pass does not reach every case, and the corpus says so.** A
-  * geth-family state-test runner builds its message from the `transaction`
-  * object's stated sender and never validates a signature, so it cannot express
-  * a transaction being refused. Every case asserting a refusal rests on the
-  * first oracle alone.
+  * **Thirty-seven of the forty-five are filled through that client's `t8n` at
+  * each upgrade's rules and record a second pass through its own `statetest`
+  * runner. The remaining eight are filled through `statetest` directly, and
+  * seven of those record no second pass at all** -- correctly, because for them
+  * the filling instrument and the verifying instrument would be the same one.
+  *
+  * **Both chains name one build, so a second pass is a second RUNNER and never
+  * a second implementation.** What the pair rules out is a fault in either
+  * runner's own accounting; what it cannot rule out is a rule that build reads
+  * wrongly, which both runners would then read wrongly together.
+  *
+  * **The second pass does not reach every case for a second reason, and the
+  * corpus says so.** A geth-family state-test runner builds its message from
+  * the `transaction` object's stated sender and never validates a signature, so
+  * it cannot express a transaction being refused. Every case asserting a
+  * refusal rests on the first oracle alone.
   *
   * ==A label names a rule set; the height is what resolves it==
   *
@@ -120,6 +133,40 @@ object ClassicStateCorpus:
   /** Die Hard's rules over this tree, as the run every count is read from. */
   lazy val dieHard: Option[CorpusReport] =
     reportAt(DieHardCorpus, DieHardFork, DieHardStarts, identity)
+
+  /** The label Atlantis's expectations are filed under.
+    *
+    * The corpus's own spelling, for [[DieHardFork]]'s reason: a name this
+    * chain's fixtures do not use would find nothing and report every file as
+    * stating no expectation, which is a silence indistinguishable from
+    * agreement.
+    */
+  val AtlantisFork: String = "ETC_Atlantis"
+
+  /** The name a report of Atlantis's rules over this tree carries. */
+  val AtlantisCorpus: String = "fukuii-tests ethereumclassic/mainnet state at Atlantis"
+
+  /** The height this harness believes Atlantis begins at.
+    *
+    * `ethereumclassic/core-geth` @ `4185df450` carries this network's ten
+    * transitions for that upgrade at `big.NewInt(8772000)` in
+    * `params/config_classic.go:56-67`, and `besu-eth/besu-etc` @ `eb4248c997`
+    * states it as `"atlantisBlock": 8772000`. Stated as a literal for the
+    * reason above.
+    */
+  private[certification] val AtlantisStarts: Long = 8772000L
+
+  /** The height the fork before it begins at, carried so a control can resolve
+    * Atlantis's expectations under the previous fork's rules.
+    *
+    * `DisposalBlock: big.NewInt(5900000)` in the same file. It is a control
+    * input rather than a corpus of its own, for [[GasRepriceStarts]]'s reason.
+    */
+  private[certification] val DefuseStarts: Long = 5900000L
+
+  /** Atlantis's rules over this tree, as the run every count is read from. */
+  lazy val atlantis: Option[CorpusReport] =
+    reportAt(AtlantisCorpus, AtlantisFork, AtlantisStarts, identity)
 
   private def assemble(
       name: String,
