@@ -330,21 +330,37 @@ commits later, while `scripts/test-expected-total.txt` was right throughout.
 plus the number of tagged cases -- then **confirm it with a real run**, because
 the derivation assumes the tag is the only thing the fourth command changes.
 
-**Counting those cases takes an instrument that reaches BOTH syntaxes, and the
-obvious one reaches only the first.** ScalaTest spells the tag one way in a
-`FlatSpec` and another in a `PropSpec`, so `git grep -n 'taggedAs Heavy'` --
-which this file recommended until it went wrong -- silently omits every tagged
-property and returns a number that looks like an answer. Sweep for the tag's own
-name and read the hits, which is a search returning candidates rather than a
-count:
+**Counting those cases takes an instrument that reaches EVERY syntax, and an
+instrument that enumerates syntaxes cannot be one.** ScalaTest spells the tag
+differently in a `FlatSpec` and a `PropSpec`, and a spec that cannot import the
+tag object applies it by its string instead -- three shapes today, and the count
+is not the point. **Sweep for the tag's own name**, which every shape must
+contain, and read the hits: this is a search returning candidates, never a
+count.
 
 ```
-git grep -nE 'taggedAs Heavy|, Heavy\)' -- '*.scala'
+git grep -nE 'Heavy' -- '*.scala'
 ```
 
-**Calibrate it before believing a total derived from it:** the sweep must return
-at least one hit of each shape, and a run's own summary line is what settles the
-figure either way.
+**An enumerated-shape pattern is what to avoid, and it fails in the one way this
+file keeps warning about.** `git grep -n 'taggedAs Heavy'` was recommended here
+until it silently omitted every tagged property; the two-shape pattern that
+replaced it, `'taggedAs Heavy|, Heavy\)'`, then silently omitted a case written
+`Tag("org.fukuii.Heavy")` -- and **passed its own calibration while doing so**,
+because a calibration proving each of two shapes reachable says nothing about a
+third. **Do not "improve" the sweep above by enumerating the shapes it currently
+finds.** The next one will not be on the list either.
+
+**Read the hits rather than counting the lines.** The sweep returns the tag's
+own definition and any import of it alongside the real applications, so the
+number it prints is not the answer; opening each hit is. **Then confirm the
+derived total against a run's own summary line**, which settles it either way.
+
+**A spec outside `modules/evm` applies the tag by its string of necessity, not
+by preference.** The `Heavy` object lives in that module's test tree, and a
+module `evm` already depends on cannot import it without a cycle -- so
+`Tag("org.fukuii.Heavy")` is the only form available there. The build excludes
+the tag's **name**, so both forms reach the exclusion identically.
 
 **And the fourth command is STICKY, which is a hollow-run shape this file did not
 previously carry.** `set` mutates the running sbt server's session, so every
