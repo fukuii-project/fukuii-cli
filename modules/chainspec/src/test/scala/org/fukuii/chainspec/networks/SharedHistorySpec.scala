@@ -131,6 +131,16 @@ class SharedHistorySpec extends AnyFlatSpec:
     */
   private val classicRealignmentBlock: Long = 8772000L
 
+  /** The next height at which the two machines realign, on each schedule.
+    *
+    * The other network reaches these rules by two entries at one block and this
+    * one by a single entry, which is why the pair is stated as two heights
+    * rather than derived from either schedule.
+    */
+  private val ethereumSecondRealignmentBlock: Long = 7280000L
+
+  private val classicSecondRealignmentBlock: Long = 9573000L
+
   private def ethereumAt(height: Long) = ethereumSchedule.at(UInt64.fromBits(height), UInt64.Zero)
   private def classicAt(height: Long) = classicSchedule.at(UInt64.fromBits(height), UInt64.Zero)
 
@@ -163,7 +173,10 @@ class SharedHistorySpec extends AnyFlatSpec:
         (ethereumclassic.Upgrades.gasReprice ne ethereum.Upgrades.tangerineWhistle) &&
         (ethereumclassic.Upgrades.atlantis.evm ne ethereum.Upgrades.byzantium.evm) &&
         (ethereumclassic.Upgrades.atlantis.execution ne ethereum.Upgrades.byzantium.execution) &&
-        (ethereumclassic.Upgrades.atlantis.admission ne ethereum.Upgrades.byzantium.admission),
+        (ethereumclassic.Upgrades.atlantis.admission ne ethereum.Upgrades.byzantium.admission) &&
+        (ethereumclassic.Upgrades.agharta.evm ne ethereum.Upgrades.petersburg.evm) &&
+        (ethereumclassic.Upgrades.agharta.execution ne ethereum.Upgrades.petersburg.execution) &&
+        (ethereumclassic.Upgrades.agharta.admission ne ethereum.Upgrades.petersburg.admission),
       "one network's configuration is the other's, so every agreement asserted here is a tautology"
     )
 
@@ -293,4 +306,36 @@ class SharedHistorySpec extends AnyFlatSpec:
         classicAt(classicRealignmentBlock).components.diff(ethereumAt(ethereumRealignmentBlock).components) ==
         Vector(ProposalId.Ecip(1010), ProposalId.Ecip(1017), ProposalId.Ecip(1039), ProposalId.Ecip(1041)),
       "the two records differ by some other set of proposals than the one declined and the four taken alone"
+    )
+
+  "the machines realigning" should "happen again one upgrade later, and still not make the two networks one" in
+    // The same claim at the next height either network moves, and it is asserted
+    // as a PAIR because either half alone misstates the relation. The equality
+    // says the two machines are one machine again; the inequality says that is a
+    // fact about three facets and not about the networks. Read alone, the first
+    // overstates and the second understates.
+    //
+    // The delta arriving here is the same three proposals on both schedules.
+    // What differs is what surrounds it: the other network takes two more of
+    // that fork's five and then withdraws one of them, and this one takes
+    // neither -- so the machines agree while the records and the consensus rules
+    // do not. `ethereumclassic.Upgrades.agharta` carries the evidence for both
+    // halves.
+    //
+    // The inequality is the weaker half and is worth reading as such: more than
+    // one member of that facet differs here, so it would go on holding even if
+    // this network adopted the emission cut it declines. What makes THAT
+    // refutable is the assertion over the values themselves, in
+    // `ethereumclassic.UpgradesSpec`. This says only that the two facets are not
+    // one, which is what a reader concluding "these are the same rules" from the
+    // three equalities above would have got wrong.
+    assert(
+      classicAt(classicSecondRealignmentBlock).evm == ethereumAt(ethereumSecondRealignmentBlock).evm &&
+        classicAt(classicSecondRealignmentBlock).execution ==
+        ethereumAt(ethereumSecondRealignmentBlock).execution &&
+        classicAt(classicSecondRealignmentBlock).admission ==
+        ethereumAt(ethereumSecondRealignmentBlock).admission &&
+        classicAt(classicSecondRealignmentBlock).consensus !=
+        ethereumAt(ethereumSecondRealignmentBlock).consensus,
+      "the two networks' machines parted at the upgrade above their reconvergence, or their consensus rules became one"
     )

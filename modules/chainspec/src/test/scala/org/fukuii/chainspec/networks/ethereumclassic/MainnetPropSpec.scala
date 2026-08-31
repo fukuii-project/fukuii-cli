@@ -42,7 +42,8 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     ("Die Hard", 3000000L),
     ("Gotham", 5000000L),
     ("Defuse Difficulty Bomb", 5900000L),
-    ("Atlantis", 8772000L)
+    ("Atlantis", 8772000L),
+    ("Agharta", 9573000L)
   )
 
   /** The last height under the old rules and the first under the new, per
@@ -58,9 +59,21 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     * not, which is a fact only a table holding both networks' figures can
     * state.
     *
-    * The last pair is a boundary like the others: 8,771,999 under the rules
-    * reached by removing the bomb, and 8,772,000 under the ten proposals that
-    * `params/config_classic.go` at `4185df450` places together at that height.
+    * The pair at 8,771,999 and 8,772,000 is a boundary like the others: the
+    * first under the rules reached by removing the bomb, the second under the
+    * ten proposals that `params/config_classic.go` at `4185df450` places
+    * together at that height.
+    *
+    * ==The last two rows are not a boundary, and they are here to refute one==
+    *
+    * 9,582,999 and 9,583,000 both resolve to the rules that activate ten
+    * thousand blocks below them. That is the figure published ECIP-1066 gives
+    * this network's Agharta row, which `Mainnet`'s entry for that upgrade cites
+    * as wrong and sources against four readings that agree on 9,573,000. A
+    * schedule built from the table's figure instead would resolve the first of
+    * these two to the rules below, and nothing else in this build would report
+    * it: the certification tiers that run this network's fixtures never straddle
+    * either height.
     */
   private val boundaries = Table(
     ("height", "rules"),
@@ -84,7 +97,11 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     (5899999L, Upgrades.gotham),
     (5900000L, Upgrades.defuse),
     (8771999L, Upgrades.defuse),
-    (8772000L, Upgrades.atlantis)
+    (8772000L, Upgrades.atlantis),
+    (9572999L, Upgrades.atlantis),
+    (9573000L, Upgrades.agharta),
+    (9582999L, Upgrades.agharta),
+    (9583000L, Upgrades.agharta)
   )
 
   property("every upgrade activates at the block its own citation states") {

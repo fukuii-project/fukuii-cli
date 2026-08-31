@@ -168,6 +168,34 @@ object ClassicStateCorpus:
   lazy val atlantis: Option[CorpusReport] =
     reportAt(AtlantisCorpus, AtlantisFork, AtlantisStarts, identity)
 
+  /** The label Agharta's expectations are filed under.
+    *
+    * The corpus's own spelling, for [[DieHardFork]]'s reason: a name this
+    * chain's fixtures do not use would find nothing and report every file as
+    * stating no expectation, which is a silence indistinguishable from
+    * agreement.
+    */
+  val AghartaFork: String = "ETC_Agharta"
+
+  /** The name a report of Agharta's rules over this tree carries. */
+  val AghartaCorpus: String = "fukuii-tests ethereumclassic/mainnet state at Agharta"
+
+  /** The height this harness believes Agharta begins at.
+    *
+    * `ethereumclassic/core-geth` @ `4185df450` sets this network's three
+    * transitions for that upgrade at `big.NewInt(9573000)` in
+    * `params/config_classic.go:70-72`, and ECIP-1056 names the height itself.
+    * `org.fukuii.chainspec.networks.ethereumclassic.Mainnet` carries the full
+    * sourcing, including why one tabulation of this network's schedule states
+    * a figure ten thousand blocks higher and is not a source for it. Stated as
+    * a literal for the reason above.
+    */
+  private[certification] val AghartaStarts: Long = 9573000L
+
+  /** Agharta's rules over this tree, as the run every count is read from. */
+  lazy val agharta: Option[CorpusReport] =
+    reportAt(AghartaCorpus, AghartaFork, AghartaStarts, identity)
+
   private def assemble(
       name: String,
       under: Path,

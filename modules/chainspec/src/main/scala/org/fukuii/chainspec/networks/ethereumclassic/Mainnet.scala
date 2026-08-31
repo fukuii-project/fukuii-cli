@@ -268,6 +268,77 @@ object Mainnet:
   private val atlantis: UpgradeSchedule.Entry =
     UpgradeSchedule.Entry(atBlock(8772000), upgrade("Atlantis"), Upgrade.RuleChange(Upgrades.atlantis))
 
+  /** Block 9,573,000.
+    *
+    * **ECIP-1056 -- `ethereumclassic/ECIPs` @
+    * `7558f1ea4061f33bc21c8b93bbdd0c4796d61f17`, Final -- names the height
+    * itself**, listing `9_573_000` for this network among the four it proposes
+    * across the mainnet and the three test networks.
+    *
+    * `ethereumclassic/core-geth` @ `4185df450` states it as three per-proposal
+    * transitions rather than a fork name, every one of them
+    * `big.NewInt(9573000)` in `params/config_classic.go:70-72`. The same tree
+    * states it a second time in the form the peer layer consumes:
+    * `core/forkid/forkid_test.go:483` lists 9,573,000 among the twelve fork
+    * blocks this network's EIP-2124 identifier is a checksum over, seventh of
+    * the twelve and directly above [[atlantis]]'s.
+    *
+    * Two further lineages that derive from neither that tree nor each other
+    * agree. `besu-eth/besu-etc` @ `eb4248c997` states it as
+    * `"aghartaBlock": 9573000` in `config/src/main/resources/classic.json`, and
+    * `openethereum/openethereum` @ `v3.0.1` as `0x921288`, written across the
+    * three transitions it sets in `ethcore/res/ethereum/classic.json`. So this
+    * activation is three lineages, as [[dieHard]]'s and [[atlantis]]'s are.
+    *
+    * ==THE COMMIT CITED BELOW CARRIED A WRONG FIGURE HERE, AND HAS SINCE BEEN
+    * CORRECTED UPSTREAM==
+    *
+    * At `e36ef7f10166769aa3ac469aaf27ba5b0cacb198` (2026-07-05) -- **the same
+    * commit [[atlantis]] cites for its own height and label, where it is
+    * correct** -- that table gave this row `9583000`. That figure had no
+    * support anywhere: a sweep for it across the client trees in this project's
+    * reference corpus returns nothing, while the same sweep shape finds
+    * 9,573,000 in each of the three cited above. **`ethereumclassic/ECIPs`
+    * master now carries 9,573,000**, so this is a statement about one commit
+    * and not about ECIP-1066.
+    *
+    * **The reason to record it survives the correction, and it is why the
+    * height above is sourced to implementations rather than to a tabulation.**
+    * A citation names a ref that cannot move, which is what makes it
+    * checkable -- and the same property makes it carry that ref's errors
+    * forward indefinitely after the document is fixed. A reader who took the
+    * figure from the cited commit rather than from the four sources above would
+    * move every case in this network's certification tiers ten thousand blocks
+    * across a boundary those tiers never straddle, which no run would report.
+    *
+    * **[[Upgrades.atlantis]] states the neighbouring rule** -- that a table
+    * restating a specification is a sound source for where an upgrade sits and
+    * what it is called, and the wrong source for what it carries. That same
+    * commit's Atlantis row is the corroborating instance, listing eight
+    * proposals and omitting EIP-161 and EIP-170, which
+    * `params/config_classic.go:56-57` sets at that height; it has since been
+    * corrected upstream too. **Neither observation is a reason to restate
+    * [[atlantis]]'s sourcing**, which already reads membership off the
+    * specification.
+    *
+    * ==The label==
+    *
+    * That table's `Version and Code Name` cell less the subscripted counterpart
+    * it carries, which is where every other label on this schedule comes from.
+    * The cell reads `Agharta <sub>Constantinople+Petersburg</sub>`, and the
+    * subscript names both of the other network's upgrades because
+    * [[Upgrades.agharta]]'s rules are that pair's net effect on the parts this
+    * network took. `besu-eth/besu-etc` @ `eb4248c997` states the label without
+    * it, as `AGHARTA(true, "Agharta")` in `HardforkId.ClassicHardforkId`, and
+    * the two agree to the character.
+    *
+    * **A label is documentary and the figure beside it is not**, which is why
+    * the two halves of that cell are taken from it and the height in the next
+    * column is not.
+    */
+  private val agharta: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(9573000), upgrade("Agharta"), Upgrade.RuleChange(Upgrades.agharta))
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -301,4 +372,6 @@ object Mainnet:
     * stop agreeing it is deleted with a reason rather than quietly left true.
     */
   val schedule: Either[UpgradeSchedule.Error, UpgradeSchedule] =
-    UpgradeSchedule.of(Vector(frontier, frontierThawing, homestead, gasReprice, dieHard, gotham, defuse, atlantis))
+    UpgradeSchedule.of(
+      Vector(frontier, frontierThawing, homestead, gasReprice, dieHard, gotham, defuse, atlantis, agharta)
+    )

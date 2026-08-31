@@ -5,7 +5,10 @@ import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment, UpgradeRules}
 import org.fukuii.chainspec.proposals.ecip.{Ecip1010, Ecip1017, Ecip1039, Ecip1041}
 import org.fukuii.chainspec.proposals.eip.{
   Eip100,
+  Eip1014,
+  Eip1052,
   Eip140,
+  Eip145,
   Eip150,
   Eip155,
   Eip160,
@@ -564,3 +567,126 @@ object Upgrades:
       Eip196.component,
       Eip197.component
     )
+
+  /** [[atlantis]] with EIP-145, EIP-1014 and EIP-1052 adopted.
+    *
+    * The order is the order the three compose in. It is immaterial -- and the
+    * claim is [[atlantis]]'s about KEYS rather than the stronger one about
+    * fields, because all three write the operation table: the inserts land on
+    * `0x1b` through `0x1d`, on `0xf5` and on `0x3f`, and inserts at distinct
+    * keys commute where a field assignment would not. The two priced entries
+    * read the machine's schedule, which no delta here writes, so what they read
+    * does not depend on when they run.
+    *
+    * ==Three proposals, and three lineages that do not derive from one another
+    * state the same three==
+    *
+    * **ECIP-1056** -- `ethereumclassic/ECIPs` @
+    * `7558f1ea4061f33bc21c8b93bbdd0c4796d61f17` (2020-01-12), Final, Meta -- is
+    * the document by which this network adopted them, and its Specification
+    * section enumerates *"EIP 145 (Bitwise shifting instructions)"*,
+    * *"EIP 1014 (Skinny `CREATE2` opcode)"* and *"EIP 1052 (`EXTCODEHASH`
+    * opcode)"* and nothing else.
+    *
+    * `ethereumclassic/core-geth` @ `4185df450` states them as three per-proposal
+    * transitions rather than as a fork name -- `EIP145FBlock`, `EIP1014FBlock`
+    * and `EIP1052FBlock` in `params/config_classic.go:70-72`.
+    * `openethereum/openethereum` @ `v3.0.1` states the same three in a different
+    * shape, as `eip145Transition`, `eip1014Transition` and `eip1052Transition`
+    * in `ethcore/res/ethereum/classic.json`; a walk over every key of that
+    * document finds those three holding this upgrade's height and no fourth,
+    * against nine keys holding [[atlantis]]'s.
+    *
+    * `besu-eth/besu-etc` @ `eb4248c997` reaches the same membership by
+    * replacement: `ClassicProtocolSpecs.aghartaDefinition` builds on
+    * `atlantisDefinition` and swaps in `MainnetEVMs::constantinople`, whose
+    * `registerConstantinopleOperations` puts exactly five operations over
+    * Byzantium's -- `Create2Operation`, `SarOperation`, `ShlOperation`,
+    * `ShrOperation` and `ExtCodeHashOperation`. That is the first document's
+    * three plus the second's one plus the third's one, and nothing else.
+    *
+    * ==What this network declines here is what makes the upgrade three rather
+    * than five==
+    *
+    * EIP-1013 bundles Constantinople's five and this composition takes three.
+    * Both of the others are proposals this build carries and could adopt, so
+    * their absence is a choice this composition makes rather than one it
+    * inherits from a vocabulary that lacks them.
+    *
+    * **EIP-1234** has nothing here to act on, for the reason [[atlantis]] gives
+    * for declining EIP-649: it delays the difficulty bomb and cuts the block
+    * reward, and this network removed the bomb outright at [[defuse]] and
+    * replaced the emission with an era ladder at [[gotham]]. The exclusion is
+    * attested rather than merely unmentioned -- `EIP1234FBlock` is declared
+    * `json:"-"` in core-geth's own configuration type at `4185df450`
+    * (`params/types/coregeth/chain_config.go:131-132`) and inferred from a bomb
+    * delay and a reward schedule that `ClassicChainConfig` sets neither of, so
+    * the inference yields nothing at any height.
+    *
+    * **EIP-1283** is what would make this upgrade Petersburg under another name
+    * rather than Constantinople minus one proposal, and it is the more
+    * interesting of the two:
+    *
+    * ==This network reaches legacy storage metering by never leaving it==
+    *
+    * `params/config_classic.go:73-74` at `4185df450` carries
+    * `EIP1283FBlock` and `PetersburgBlock` at this height **commented out**, and
+    * the two spellings name one rule set. `PetersburgBlock` is not a fork field
+    * in that client: `chain_config_configurator.go:331-333` defines
+    * `GetEIP1283DisableTransition` as returning it and nothing else reads it, so
+    * uncommenting it would disable something this network never enabled.
+    * EIP-1716 -- `ethereum/EIPs` @ `dbfa6bee`, Final -- licenses the second
+    * spelling directly: *"If `Petersburg` and `Constantinople` are applied at
+    * the same block, `Petersburg` takes precedence: with the net effect of
+    * EIP-1283 being disabled"*.
+    *
+    * `openethereum/openethereum` @ `v3.0.1` proves the identity by taking the
+    * opposite route to the same behavior. Its `classic.json` carries
+    * `eip1283Transition: 0x0` **and** `eip1283DisableTransition: 0x0` -- enabled
+    * at genesis and disabled at genesis -- with
+    * `ethcore/types/src/engines/params.rs:177-180` computing the flag as
+    * enabled-and-not-disabled, or re-enabled. So one implementation never
+    * enables it and another enables and disables it in the same block, and both
+    * charge the legacy metering here.
+    *
+    * **Same value, different journal**, which is what
+    * [[org.fukuii.chainspec.UpgradeRules.components]] exists to keep. The other
+    * network reaches `org.fukuii.evm.StorageMetering.Legacy` at its own
+    * counterpart upgrade by a round trip -- adopting EIP-1283 and then EIP-1716
+    * -- and its record says so. This one never adopted either, and its record
+    * says that instead.
+    *
+    * ==So these rules are NOT the other network's, though the machine's delta is
+    * the same three==
+    *
+    * The two partings are independent of one another. **EIP-1234 is in the other
+    * network's composition and in no rule set here at any height**, so the
+    * consensus facets differ in what a block is paid and in the bomb terms. And
+    * the bases differ: that composition descends from the other network's
+    * Byzantium, this one from [[atlantis]], which carries ECIP-1010, ECIP-1017,
+    * ECIP-1039 and ECIP-1041 and takes EIP-161 and EIP-170 at the same block as
+    * the Byzantium set rather than millions of blocks earlier.
+    *
+    * `org.fukuii.chainspec.networks.SharedHistorySpec` asserts both halves at
+    * once -- the machine, settlement and admission facets equal, and the
+    * consensus facet not -- because either half alone misstates the relation.
+    *
+    * ==What besu-etc corroborates here, and the one thing it must not be cited
+    * for==
+    *
+    * It is a reading of the operation set, above, and of the gas calculator:
+    * `PetersburgGasCalculator extends ConstantinopleGasCalculator` and is
+    * documented *"Rollback EIP-1283"*, which is that client's way of writing
+    * Constantinople minus that one proposal.
+    *
+    * **It is not a reading of this window's precompile set.**
+    * `aghartaDefinition` installs
+    * `MainnetPrecompiledContractRegistries::istanbul` where
+    * `atlantisDefinition` had `byzantium`, which reprices the alt_bn128 natives
+    * and places one at a ninth address -- EIP-1108 and EIP-152, both of them
+    * proposals `params/config_classic.go:78-79` puts at 10,500,839, which is
+    * 927,839 blocks above this height. Its own `phoenixDefinition` installs that
+    * same registry again. So the natives here are [[atlantis]]'s, unchanged, and
+    * this composition adopts nothing that touches them.
+    */
+  val agharta: UpgradeRules = atlantis.adopting(Eip145.component, Eip1014.component, Eip1052.component)

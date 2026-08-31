@@ -1,8 +1,9 @@
 package org.fukuii.chainspec.networks.ethereumclassic
 
 import org.fukuii.bytes.UInt256
+import org.fukuii.chainspec.proposals.eip.{Eip1234, Eip1283}
 import org.fukuii.chainspec.{DifficultyAdjustment, ProposalId}
-import org.fukuii.evm.{Cost, Opcode, OpcodeTable, Operation}
+import org.fukuii.evm.{Cost, Opcode, OpcodeTable, Operation, StorageMetering}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Properties every rule set this network composed has to hold.
@@ -21,7 +22,8 @@ class UpgradesSpec extends AnyFlatSpec:
       Upgrades.dieHard,
       Upgrades.gotham,
       Upgrades.defuse,
-      Upgrades.atlantis
+      Upgrades.atlantis,
+      Upgrades.agharta
     )
 
   /** What a table charges for `opcode` before it runs, where that is settled. */
@@ -98,7 +100,9 @@ class UpgradesSpec extends AnyFlatSpec:
           ProposalId.Eip(198),
           ProposalId.Eip(196),
           ProposalId.Eip(197)
-        ),
+        ) &&
+        Upgrades.agharta.components == Upgrades.atlantis.components ++
+        Vector(ProposalId.Eip(145), ProposalId.Eip(1014), ProposalId.Eip(1052)),
       "a composition's recorded components are not the ones it adopted"
     )
 
@@ -177,4 +181,58 @@ class UpgradesSpec extends AnyFlatSpec:
         Upgrades.atlantis.consensus.difficultyBombDelay == BigInt(0) &&
         Upgrades.atlantis.consensus.difficultyBombRemovedFrom.contains(BigInt(5900000)),
       "the upgrade taking eight of that fork's nine proposals carries a value only the ninth sets"
+    )
+
+  "the upgrade above it" should "decline EIP-1283 and EIP-1234, and be moved by each if it did not" in
+    // The rules' side of a decline, and the second clause of each pair is what
+    // makes it an assertion rather than a coincidence. Without it, the first
+    // clause is equally satisfied by a component whose delta does nothing, and
+    // the test could not tell a decline from a broken proposal.
+    //
+    // Both components are built and adoptable, so what is asserted here is a
+    // choice this composition makes rather than a gap in the vocabulary. The
+    // enumeration above constrains the RECORD; this constrains the VALUES, and
+    // the two are independent because a delta is an arbitrary function.
+    assert(
+      Upgrades.agharta.evm.storageMetering == StorageMetering.Legacy &&
+        Upgrades.agharta.adopting(Eip1283.component).evm.storageMetering == StorageMetering.Net &&
+        Upgrades.agharta.consensus.difficultyBombDelay == BigInt(0) &&
+        Upgrades.agharta.adopting(Eip1234.component).consensus.difficultyBombDelay == BigInt(5000000) &&
+        Upgrades.agharta.consensus.blockReward ==
+        UInt256.fromBigInt(BigInt(5) * BigInt(10).pow(18)).toOption.get &&
+        Upgrades.agharta.adopting(Eip1234.component).consensus.blockReward ==
+        UInt256.fromBigInt(BigInt(2) * BigInt(10).pow(18)).toOption.get,
+      "a proposal this upgrade declines is either in force at it or would not have changed it"
+    )
+
+  it should "price the three operations it adds from this network's own schedule" in
+    // The figures, read off the adopted table rather than off the schedule,
+    // because a fixed-price entry is settled at the moment of adoption and a
+    // later edit to the schedule alone would not reach it.
+    //
+    // Stated as literals on THIS network's base. The proposal specs assert the
+    // same two documents against the other network's, and
+    // org.fukuii.chainspec.networks.SharedHistorySpec asserts the two machines
+    // equal -- neither of which can see a repricing that moves both networks
+    // together, and neither of which is a reading of what this network charges.
+    //
+    // CREATE2 is absent from this list because it works out its own price, which
+    // is asserted where the operations that must NOT be settled are.
+    assert(
+      settledCost(Upgrades.agharta.evm.table, Opcode.Shl).contains(BigInt(3)) &&
+        settledCost(Upgrades.agharta.evm.table, Opcode.Shr).contains(BigInt(3)) &&
+        settledCost(Upgrades.agharta.evm.table, Opcode.Sar).contains(BigInt(3)) &&
+        settledCost(Upgrades.agharta.evm.table, Opcode.ExtCodeHash).contains(BigInt(400)),
+      "an operation this upgrade adds charges something other than the figure its own document publishes"
+    )
+
+  it should "leave CREATE2 working out its own price" in
+    // The one of the three additions that carries no fixed figure: its charge is
+    // a base plus a word-count term over the initialisation code, so a settled
+    // price would be charged instead of the computation and the machine's own
+    // unpriced-operation guard cannot see the difference.
+    assert(
+      Upgrades.agharta.evm.table.contains(Opcode.Create2) &&
+        settledCost(Upgrades.agharta.evm.table, Opcode.Create2).isEmpty,
+      "the operation whose charge depends on its operands was given a fixed one"
     )

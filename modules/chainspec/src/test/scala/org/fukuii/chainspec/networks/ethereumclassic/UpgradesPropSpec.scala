@@ -87,6 +87,36 @@ class UpgradesPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     )
   )
 
+  /** Every observable the three proposals of [[Upgrades.agharta]] settle, keyed
+    * to the document that settles it.
+    *
+    * A second table rather than rows added to the one above, because the two are
+    * read against different upgrades and different controls. Folding them into
+    * one would make each row's control the wrong upgrade for half the rows.
+    *
+    * All five are table entries, so each row is a byte rather than a field. What
+    * the two priced ones COST is asserted in [[UpgradesSpec]] against this
+    * network's own schedule; presence and price are separate claims, and a row
+    * here would report the first while saying nothing about the second.
+    */
+  private val aghartaObservables = Table(
+    ("proposal, and what it settles", "in force"),
+    ("EIP-145: the machine can shift left", (rules: UpgradeRules) => rules.evm.table.contains(Opcode.Shl)),
+    ("EIP-145: the machine can shift right", (rules: UpgradeRules) => rules.evm.table.contains(Opcode.Shr)),
+    (
+      "EIP-145: the machine can shift right keeping the sign",
+      (rules: UpgradeRules) => rules.evm.table.contains(Opcode.Sar)
+    ),
+    (
+      "EIP-1014: a contract can be created at a derived address",
+      (rules: UpgradeRules) => rules.evm.table.contains(Opcode.Create2)
+    ),
+    (
+      "EIP-1052: another account's code has a hash",
+      (rules: UpgradeRules) => rules.evm.table.contains(Opcode.ExtCodeHash)
+    )
+  )
+
   property("every proposal the reconvergence adopts settles what its own document settles") {
     forAll(observables) { (observable: String, inForce: UpgradeRules => Boolean) =>
       assert(inForce(Upgrades.atlantis), observable + " -- not in force at the upgrade that adopts it")
@@ -96,5 +126,17 @@ class UpgradesPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
   property("none of it was settled at the rule set below that upgrade") {
     forAll(observables) { (observable: String, inForce: UpgradeRules => Boolean) =>
       assert(!inForce(Upgrades.defuse), observable + " -- already in force before the upgrade that adopts it")
+    }
+  }
+
+  property("every proposal the upgrade above the reconvergence adopts settles what its own document settles") {
+    forAll(aghartaObservables) { (observable: String, inForce: UpgradeRules => Boolean) =>
+      assert(inForce(Upgrades.agharta), observable + " -- not in force at the upgrade that adopts it")
+    }
+  }
+
+  property("none of that was settled at the rule set below it either") {
+    forAll(aghartaObservables) { (observable: String, inForce: UpgradeRules => Boolean) =>
+      assert(!inForce(Upgrades.atlantis), observable + " -- already in force before the upgrade that adopts it")
     }
   }
