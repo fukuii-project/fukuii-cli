@@ -250,6 +250,45 @@ object CertificationCorpora:
     */
   val LegacyConstantinopleStateCorpus: String = "legacytests Constantinople/GeneralStateTests at Constantinople"
 
+  /** The generated tier filled for the fork above that one.
+    *
+    * ==Three of its six proposals are named by no directory here, and the
+    * differential reaches them anyway==
+    *
+    * Only three subdirectories carry this fork's name: the chain-identifier
+    * operation with 1 case, the compression native with 73, and net gas
+    * metering with 774. Nothing here is named for the curve repricing, the
+    * trie-size repricing or the calldata repricing -- and the coverage matrix
+    * in `CertificationCorporaSpec` decides all three anyway, at 191, 83 and
+    * 1382 cases. Taken together those three rows draw on families named for
+    * three earlier forks, on this fork's own two largest directories, and on
+    * one directory named for no fork at all. That is the same reading the
+    * matrix already records at the fork below: a corpus reaches a rule wherever
+    * its cases happen to exercise it, which no reading of a directory listing
+    * recovers.
+    *
+    * ==What the repricings reach is not what the additions reach==
+    *
+    * Four of the six move a price rather than adding an operation, so their
+    * rows count cases that merely SPEND the figure, not cases that mention a
+    * new one. The calldata repricing is the extreme of it: it is read once per
+    * transaction, before any code runs, so no property of a case's code bounds
+    * it. What bounds it is the envelope -- 1436 of the 2075 cases carry a
+    * non-zero calldata byte, and the row is 1382, the shortfall being cases
+    * whose verdict some other rule had already settled.
+    *
+    * ==Every case here signs, and nearly all of them name a chain==
+    *
+    * Of the 2075 cases, 2004 sign for chain 1 and 67 sign unprotected; the
+    * remaining four are one signature naming another chain, one malformed `v`,
+    * and two typed envelopes this fork does not admit. So the substitution the
+    * Tangerine Whistle tier below performs is unavailable here for the reason
+    * that tier's own note gives -- through another network nearly the whole
+    * corpus would be refused as signed for chain 1, and the refusals would be
+    * the harness disagreeing with itself rather than a divergence.
+    */
+  val GeneratedIstanbulCorpus: String = "execution-specs-fixtures state_tests/for_istanbul"
+
   /** The same directory as the Tangerine Whistle tier, resolved through the
     * other network's schedule instead.
     *
@@ -316,15 +355,23 @@ object CertificationCorpora:
   private[certification] val EthereumByzantiumStarts: Long = 4370000L
 
   private[certification] val EthereumConstantinopleStarts: Long = 7280000L
+  private[certification] val EthereumIstanbulStarts: Long = 9069000L
   private[certification] val ClassicGasRepriceStarts: Long = 2500000L
 
   /** Every network-and-height pair the corpora above are resolved at.
     *
-    * Built from the same four constants [[assemble]] uses, so a figure moved
-    * for one is moved for both -- which is the intent, because the figure is
-    * the thing under test. What this does NOT close is a corpus added later at
-    * a fifth height and never listed here; the count property beside the census
-    * is what makes adding a corpus a visible act.
+    * Built from the same constants [[assemble]] uses, so a figure moved for one
+    * is moved for both -- which is the intent, because the figure is the thing
+    * under test. No count is stated here: it rises whenever a corpus is
+    * resolved at a height none of the others uses, and a figure would rot on
+    * that commit rather than on this one.
+    *
+    * What this does NOT close is a corpus added later at a height never listed
+    * here; the count property beside the census is what makes adding a corpus a
+    * visible act. **That gap was live rather than hypothetical**: the three
+    * corpora filled at this network's Constantinople-era label were resolved at
+    * a height this vector did not carry, so nothing checked that an activation
+    * was there at all.
     */
   private[certification] val resolutionPoints: Vector[(Network, Long)] =
     Vector(
@@ -333,6 +380,8 @@ object CertificationCorpora:
       ethereum.Mainnet.network -> EthereumTangerineWhistleStarts,
       ethereum.Mainnet.network -> EthereumSpuriousDragonStarts,
       ethereum.Mainnet.network -> EthereumByzantiumStarts,
+      ethereum.Mainnet.network -> EthereumConstantinopleStarts,
+      ethereum.Mainnet.network -> EthereumIstanbulStarts,
       ethereumclassic.Mainnet.network -> ClassicGasRepriceStarts
     )
 
@@ -399,6 +448,8 @@ object CertificationCorpora:
     // composition is named directly so the legacy tier's other label has
     // something to run against.
     val constantinople = ethereum.Upgrades.constantinople
+
+    val istanbul = rulesAt(ethereumSchedule, EthereumIstanbulStarts)
 
     val gasReprice = rulesAt(classicSchedule, ClassicGasRepriceStarts)
 
@@ -491,6 +542,13 @@ object CertificationCorpora:
         "Constantinople",
         ethereumChain,
         constantinople
+      ),
+      StateCorpus(
+        GeneratedIstanbulCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_istanbul"),
+        "Istanbul",
+        ethereumChain,
+        istanbul
       ),
       StateCorpus(
         ClassicTangerineWhistleCorpus,

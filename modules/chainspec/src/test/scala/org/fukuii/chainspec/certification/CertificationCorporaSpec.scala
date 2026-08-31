@@ -4,7 +4,7 @@ import org.fukuii.bytes.UInt64
 import org.fukuii.chainspec.networks.{KnownNetworks, ethereum}
 import org.fukuii.chainspec.{Activation, DifficultyAdjustment, Network, Registry, UpgradeRules}
 import org.fukuii.evm.fixtures.*
-import org.fukuii.evm.{StorageMetering, Opcode, PrecompileSet}
+import org.fukuii.evm.{Cost, Operation, Precompile, PrecompileSet, StorageMetering, Opcode}
 
 import org.scalatest.prop.{TableDrivenPropertyChecks, TableFor3}
 import org.scalatest.propspec.AnyPropSpec
@@ -86,7 +86,14 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     CertificationCorpora.ClassicTangerineWhistleCorpus -> CorpusCensus(files = 33, cases = 536, skipped = 0),
     CertificationCorpora.GeneratedConstantinopleFixCorpus -> CorpusCensus(files = 98, cases = 1963, skipped = 0),
     CertificationCorpora.LegacyConstantinopleFixStateCorpus -> CorpusCensus(files = 2394, cases = 10596, skipped = 27),
-    CertificationCorpora.LegacyConstantinopleStateCorpus -> CorpusCensus(files = 2394, cases = 10598, skipped = 21)
+    CertificationCorpora.LegacyConstantinopleStateCorpus -> CorpusCensus(files = 2394, cases = 10598, skipped = 21),
+    // Every case carries a section under this fork's key, so nothing is skipped
+    // for want of an expectation -- the same shape as the generated tier at the
+    // two forks below and unlike either legacy row above. The two typed
+    // envelopes in the directory are not skipped either: a format this fork
+    // does not admit is REFUSED, which is a verdict, and the fixtures expect
+    // exactly that refusal.
+    CertificationCorpora.GeneratedIstanbulCorpus -> CorpusCensus(files = 104, cases = 2075, skipped = 0)
   )
 
   /** Every censused corpus, as the rows the four properties below drive.
@@ -158,7 +165,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     assert(names == census.keySet, s"assembled ${names.toString} against a census of ${census.keySet.toString}")
   }
 
-  property("the census covers fourteen corpora, counted") {
+  property("the census covers fifteen corpora, counted") {
     // THE REMOVAL CASE, which the pairing cannot see. Dropping a corpus from the
     // census AND from what the harness assembles leaves those two agreeing with
     // each other, leaves the same six properties registered, and leaves the
@@ -170,13 +177,15 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     // available to whoever needs a red build green after an upstream corpus
     // moves, which is exactly the moment a ratchet earns its keep.
     //
-    // Eleven: the interpreter tier, the state tier read for Frontier, again for
-    // EIP-150, again for EIP-158 and again for Byzantium, the generated state
-    // tier filled for Frontier, Homestead, Tangerine Whistle, Spurious Dragon
-    // and Byzantium, and Tangerine Whistle read a second time through the other
-    // network's schedule. Raising this is adding a corpus. Lowering it is
-    // dropping certified cases, and that is a decision rather than a tidy-up.
-    assert(census.size == 14, s"the census covers ${census.size.toString} corpora rather than fourteen")
+    // Deliberately a bare count and not an enumeration. A list here restates
+    // the census immediately above it, and a second copy of a membership goes
+    // stale on the commit that adds a corpus rather than on the one that
+    // rewrites it -- which is what happened to the list this replaced, left
+    // naming eleven tiers while the assertion beside it counted fourteen.
+    //
+    // Raising this is adding a corpus. Lowering it is dropping certified cases,
+    // and that is a decision rather than a tidy-up.
+    assert(census.size == 15, s"the census covers ${census.size.toString} corpora rather than fifteen")
   }
 
   property("every censused corpus holds the files the census records") {
@@ -368,6 +377,112 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
         rules.consensus.copy(blockReward = ethereum.Upgrades.launchReward, difficultyBombDelay = BigInt(0))
       )
 
+  /** The native answering at the compression address taken out, so that address
+    * is an ordinary account again.
+    */
+  private val withoutBlake2fCompression: UpgradeRules => UpgradeRules =
+    rules => rules.copy(evm = rules.evm.copy(precompiles = rules.evm.precompiles.removing(PrecompileSet.Blake2f)))
+
+  /** All three curve natives back at the prices the fork below charged.
+    *
+    * **The precompiles are rebuilt and not only the schedule**, because each
+    * carries its own price from the moment it is placed and reads the schedule
+    * never again. A revision that moved the four figures alone would leave
+    * three natives still charging the new prices, and the row would report this
+    * corpus blind to a repricing it exercises several hundred times.
+    */
+  private val withoutTheCurveReprice: UpgradeRules => UpgradeRules =
+    rules =>
+      val priced = rules.evm.schedule.copy(
+        precompileAltBn128Add = BigInt(500),
+        precompileAltBn128Mul = BigInt(40000),
+        precompileAltBn128PairingBase = BigInt(100000),
+        precompileAltBn128PairingPerPoint = BigInt(80000)
+      )
+      rules.copy(evm =
+        rules.evm.copy(
+          schedule = priced,
+          precompiles = rules.evm.precompiles
+            .adding(PrecompileSet.AltBn128Add, Precompile.AltBn128Add(priced.precompileAltBn128Add))
+            .adding(PrecompileSet.AltBn128Mul, Precompile.AltBn128Mul(priced.precompileAltBn128Mul))
+            .adding(
+              PrecompileSet.AltBn128PairingCheck,
+              Precompile.AltBn128PairingCheck(
+                priced.precompileAltBn128PairingBase,
+                priced.precompileAltBn128PairingPerPoint
+              )
+            )
+        )
+      )
+
+  /** The operation naming the chain taken out. */
+  private val withoutTheChainIdOpcode: UpgradeRules => UpgradeRules =
+    rules => rules.copy(evm = rules.evm.copy(table = rules.evm.table.removing(Opcode.ChainId)))
+
+  /** The three trie-reading operations back at the prices the fork below
+    * charged, and the balance-of-self operation taken out with them.
+    *
+    * Both halves together, because one document does both and a machine holding
+    * one of them is a state no fork ever shipped -- the same reading the
+    * return-data and shift rows above already take.
+    *
+    * **The table is rebuilt for the same reason the curve row rebuilds the
+    * precompiles**: an entry copies its cost when it is placed, so moving the
+    * schedule alone leaves all three operations charging the new figures.
+    */
+  private val withoutTheTrieSizeReprice: UpgradeRules => UpgradeRules =
+    rules =>
+      val priced = rules.evm.schedule.copy(
+        storageLoad = BigInt(200),
+        balance = BigInt(400),
+        extCodeHash = BigInt(400)
+      )
+      rules.copy(evm =
+        rules.evm.copy(
+          schedule = priced,
+          table = rules.evm.table
+            .adding(Operation(Opcode.SLoad, Cost.Fixed(priced.storageLoad)))
+            .adding(Operation(Opcode.Balance, Cost.Fixed(priced.balance)))
+            .adding(Operation(Opcode.ExtCodeHash, Cost.Fixed(priced.extCodeHash)))
+            .removing(Opcode.SelfBalance)
+        )
+      )
+
+  /** A non-zero calldata byte back at the price the fork below charged.
+    *
+    * **The schedule alone is the whole of it here**, unlike the two rows above:
+    * this figure is read once per transaction by the intrinsic charge and is
+    * copied into no table entry and no precompile.
+    */
+  private val withoutTheCallDataReprice: UpgradeRules => UpgradeRules =
+    rules =>
+      rules.copy(evm = rules.evm.copy(schedule = rules.evm.schedule.copy(transactionDataPerNonZeroByte = BigInt(68))))
+
+  /** Storage metered and priced the way the fork below metered and priced it.
+    *
+    * The scheme and the four figures together: the document rebalances the
+    * clauses and moves what they charge in one act, and a machine metering by
+    * one and charging by the other is a state no fork ever shipped.
+    *
+    * **`Legacy` and not `Net` is what the fork below ran.** The scheme this
+    * reverts to is the one that was in force after EIP-1283 was withdrawn,
+    * which is the same target the EIP-1283 row above reverts to from the other
+    * side.
+    */
+  private val withoutTheStorageSentry: UpgradeRules => UpgradeRules =
+    rules =>
+      rules.copy(evm =
+        rules.evm.copy(
+          storageMetering = StorageMetering.Legacy,
+          schedule = rules.evm.schedule.copy(
+            netStorageNoop = BigInt(200),
+            netStorageDirty = BigInt(200),
+            refundNetStorageResetFromZero = BigInt(19800),
+            refundNetStorageReset = BigInt(4800)
+          )
+        )
+      )
+
   /** How many cases each censused tier decides on each proposal of the two
     * forks either tier is read at, measured by removing the proposal and
     * rerunning.
@@ -425,6 +540,38 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     * is ever recovered and nothing ever asks which chain it names; EIP-658 is
     * unreachable there because that tier publishes no receipt for any case at
     * any fork, so there is nothing for a status byte to differ in.
+    *
+    * ==At the highest fork here, no row is bounded by the directory named for
+    * its proposal, and three rows have no such directory at all==
+    *
+    * The rows for that fork were each PREDICTED from the corpus's own directory
+    * listing before being measured, and all six predictions were wrong. Grouping
+    * the cases each row moves by the directory they come from says why, and the
+    * answer is not a refinement of the file-name reading but its refutation:
+    *
+    *   - Three of the six proposals -- the curve repricing, the trie-size
+    *     repricing and the calldata repricing -- are named by NO directory in
+    *     the tier, and their rows are 191, 83 and 1382. For the first two every
+    *     deciding case sits under a family named for an earlier fork. For the
+    *     third the bulk sits under families named for OTHER proposals of this
+    *     same fork, because what it charges is spent by any case carrying
+    *     calldata whatever that case was written to test.
+    *   - The trie-size row is the sharpest of those: 76 of its 83 cases come
+    *     from the directory named for the code-hash proposal two forks below,
+    *     because repricing that operation from 400 to 700 moves every case that
+    *     spends it.
+    *   - Where a directory IS named for the proposal it does not bound the row
+    *     either. The compression native's 73 cases are joined by 5 from the
+    *     static-call family, which parameterizes over precompile addresses and
+    *     reaches this one among them; and the chain-identifier row takes 2 of
+    *     its 3 cases from the opcode family named for the FIRST fork, leaving
+    *     the directory carrying that proposal's own name contributing one.
+    *
+    * **So a per-proposal row is a claim about what the corpus SPENDS, not about
+    * what it is filed under.** A repricing is spent by every case that executes
+    * the operation at all, which is why the four repricings here draw on
+    * between three and twelve directories each while the two additions draw on
+    * two apiece.
     */
   private val coverageRows: Vector[(String, String, UpgradeRules => UpgradeRules, Int)] =
     Vector(
@@ -457,7 +604,13 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
       ("EIP-649", CertificationCorpora.GeneratedByzantiumCorpus, withoutTheRewardReduction, 0),
       ("EIP-649", CertificationCorpora.LegacyByzantiumStateCorpus, withoutTheRewardReduction, 0),
       ("EIP-658", CertificationCorpora.GeneratedByzantiumCorpus, withoutTheStatusByte, 1834),
-      ("EIP-658", CertificationCorpora.LegacyByzantiumStateCorpus, withoutTheStatusByte, 0)
+      ("EIP-658", CertificationCorpora.LegacyByzantiumStateCorpus, withoutTheStatusByte, 0),
+      ("EIP-152", CertificationCorpora.GeneratedIstanbulCorpus, withoutBlake2fCompression, 78),
+      ("EIP-1108", CertificationCorpora.GeneratedIstanbulCorpus, withoutTheCurveReprice, 191),
+      ("EIP-1344", CertificationCorpora.GeneratedIstanbulCorpus, withoutTheChainIdOpcode, 3),
+      ("EIP-1884", CertificationCorpora.GeneratedIstanbulCorpus, withoutTheTrieSizeReprice, 83),
+      ("EIP-2028", CertificationCorpora.GeneratedIstanbulCorpus, withoutTheCallDataReprice, 1382),
+      ("EIP-2200", CertificationCorpora.GeneratedIstanbulCorpus, withoutTheStorageSentry, 1070)
     )
 
   /** One group of the rows above rerun, once each, keyed by the proposal and
@@ -634,6 +787,25 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     assert(
       moved == Vector("codesizeOOGInvalidSize[d0g0v0]"),
       s"the bound decides these cases: ${moved.mkString(", ")}"
+    )
+  }
+
+  property("the height the Istanbul tier is resolved at holds that fork's rules and not its neighbours'") {
+    // The property below establishes that this height is SOME activation on
+    // this network. That is not the same claim as its being the right one, and
+    // a corpus filled for one fork and resolved under the neighbouring fork's
+    // rules is precisely the failure the heights in `CertificationCorpora` are
+    // duplicated to catch. Two entries already share a height on this schedule,
+    // so "an activation is here" is demonstrably weaker than "this activation
+    // is here".
+    val schedule = registry
+      .at(ethereum.Mainnet.network.chainId)
+      .getOrElse(fail("no schedule for " + ethereum.Mainnet.network.name))
+    assert(
+      schedule.at(UInt64.fromBits(CertificationCorpora.EthereumIstanbulStarts), UInt64.Zero) ==
+        ethereum.Upgrades.istanbul,
+      "the Istanbul tier is resolved at block " + CertificationCorpora.EthereumIstanbulStarts.toString +
+        ", which does not hold this network's Istanbul rules"
     )
   }
 
