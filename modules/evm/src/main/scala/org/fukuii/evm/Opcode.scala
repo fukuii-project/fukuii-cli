@@ -75,6 +75,8 @@ enum Opcode(val code: Int):
   case Number extends Opcode(0x43)
   case Difficulty extends Opcode(0x44)
   case GasLimit extends Opcode(0x45)
+  case ChainId extends Opcode(0x46)
+  case SelfBalance extends Opcode(0x47)
   case Pop extends Opcode(0x50)
   case MLoad extends Opcode(0x51)
   case MStore extends Opcode(0x52)

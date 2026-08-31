@@ -6,22 +6,28 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip100,
   Eip1014,
   Eip1052,
+  Eip1108,
   Eip1234,
   Eip1283,
+  Eip1344,
   Eip140,
   Eip145,
+  Eip152,
   Eip1716,
   Eip150,
   Eip155,
   Eip160,
   Eip161,
   Eip170,
+  Eip1884,
   Eip196,
   Eip197,
   Eip198,
   Eip2,
+  Eip2028,
   Eip211,
   Eip214,
+  Eip2200,
   Eip649,
   Eip658,
   Eip7
@@ -144,6 +150,7 @@ object Upgrades:
     precompileAltBn128Mul = BigInt(40000),
     precompileAltBn128PairingBase = BigInt(100000),
     precompileAltBn128PairingPerPoint = BigInt(80000),
+    precompileBlake2fPerRound = BigInt(1),
     transactionBase = BigInt(21000),
     transactionDataPerZeroByte = BigInt(4),
     transactionDataPerNonZeroByte = BigInt(68),
@@ -458,3 +465,70 @@ object Upgrades:
     * matching a corpus label wants `ConstantinopleFix`.
     */
   val petersburg: UpgradeRules = constantinople.adopting(Eip1716.component)
+
+  /** [[petersburg]] with EIP-152, EIP-1108, EIP-1344, EIP-1884, EIP-2028 and
+    * EIP-2200 adopted.
+    *
+    * The order is the order the six compose in. It is immaterial -- one places
+    * a native at an address none of the others reaches, one reprices three
+    * natives none of the others touches, two add operations at two bytes and
+    * reprice three more that no other names, one moves a price only a
+    * transaction's intrinsic charge reads, and one settles which storage scheme
+    * is in force -- and it is stated because two deltas touching one field
+    * compose to whichever ran last.
+    *
+    * ==This composition is the whole of what this network calls Istanbul==
+    *
+    * `ethereum/EIPs` @ `dbfa6bee`, EIP-1679 *Hardfork Meta: Istanbul* (Final)
+    * lists exactly these six under *Included EIPs*, and
+    * `ethereum/execution-specs` @ `20f7f6271a` reaches the same six
+    * independently in `forks/istanbul/`. So the caveat [[homestead]] carries --
+    * an entry naming a network upgrade whose rule set is only part of it -- is
+    * not one this composition needs, which is the standing [[spuriousDragon]]
+    * and [[byzantium]] already have.
+    *
+    * **Read the document's *Included EIPs* section and not its frontmatter.**
+    * `requires:` lists SEVEN, the extra being EIP-1716, which is Petersburg's
+    * own meta proposal and is adopted at [[petersburg]] above. A membership
+    * taken from the header would adopt it twice.
+    *
+    * ==Every facet but the machine's is untouched, and that is unusual here==
+    *
+    * All six are `evm` deltas: none writes the consensus, settlement or
+    * admission facets. `ethereum/go-ethereum-pow` @ `v1.10.26` -- geth while it
+    * still ran proof-of-work, so the tree where a consensus rule would be --
+    * mentions this upgrade in `consensus/` zero times, against Constantinople
+    * 8, Byzantium 11 and Homestead 11. So no block reward moves, no difficulty
+    * rule changes and no header rule arrives; [[byzantium]] is the nearest
+    * upgrade above that did all three.
+    *
+    * ==Two proposals move a figure the same document calls `SLOAD_GAS`, and
+    * they are different fields==
+    *
+    * EIP-1884 takes `org.fukuii.evm.GasSchedule.storageLoad` from 200 to 800,
+    * which is what the `SLOAD` OPERATION costs. EIP-2200 takes
+    * `netStorageNoop` and `netStorageDirty` from 200 to 800, which is what the
+    * same quantity is worth INSIDE the storage-write calculation. Both are
+    * "`SLOAD_GAS` becomes 800" in their own documents and neither field is the
+    * other; moving one set and not the other leaves a schedule that is
+    * internally inconsistent, compiles, and passes anything that does not
+    * execute a store.
+    *
+    * ==Two of the six reach past the schedule, and one of them is a first==
+    *
+    * EIP-1884 rebuilds three table entries and EIP-1108 rebuilds three
+    * precompiles, because every figure those two move is copied when an entry
+    * is built and read nowhere at the moment it is spent.
+    * `org.fukuii.evm.GasSchedule` states that classification and how to
+    * re-derive it. EIP-1108 is the first proposal in this build to reach the
+    * precompile set at all.
+    */
+  val istanbul: UpgradeRules =
+    petersburg.adopting(
+      Eip152.component,
+      Eip1108.component,
+      Eip1344.component,
+      Eip1884.component,
+      Eip2028.component,
+      Eip2200.component
+    )

@@ -2,7 +2,7 @@ package org.fukuii.evm.fixtures
 
 import io.circe.Json
 
-import org.fukuii.bytes.{Address, Bytes, Hash}
+import org.fukuii.bytes.{Address, Bytes, Hash, UInt64}
 import org.fukuii.crypto.Keccak256
 import org.fukuii.evm.*
 import org.fukuii.rlp.RlpCodec
@@ -186,6 +186,7 @@ object VmFixtureRunner:
         blockHashAt = VmFixtureRunner.blockHashOf,
         block = fixture.block,
         transaction = TransactionContext(invocation.origin, invocation.gasPrice),
+        chainId = chainId,
         rules = rules
       )
       val frame = new Frame(
@@ -210,6 +211,20 @@ object VmFixtureRunner:
     * against that convention, so a node's real answer would disagree with every
     * fixture that reads one.
     */
+  /** Which network these fixtures run as.
+    *
+    * **This corpus states no chain identifier**: a fixture here is a single
+    * invocation described by its code, its gas and its stack, with no
+    * transaction and no signature for one to sit in. So the value is the
+    * harness's own and answers a question the corpus never asks -- which is why
+    * it is arbitrary, and why it is [[EvmFixtures.chainId]]'s value rather than
+    * either network's.
+    *
+    * A fixture whose expectation depended on it would be a fixture this corpus
+    * cannot state, and there is nothing to keep in step as a result.
+    */
+  val chainId: UInt64 = UInt64.fromBits(0x5eedL)
+
   def blockHashOf(number: BigInt): Hash = Keccak256.hash(IArray.unsafeFromArray(number.toString.getBytes("US-ASCII")))
 
   def freshTrie(): StateTrie =

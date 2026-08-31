@@ -176,6 +176,7 @@ object TransactionProcessor:
       destroyAccount: Address => Unit,
       block: BlockContext,
       blockHashAt: BigInt => Hash,
+      chainId: UInt64,
       rules: EvmRules,
       execution: ExecutionRules
   ): Settlement =
@@ -188,6 +189,7 @@ object TransactionProcessor:
       blockHashAt = blockHashAt,
       block = block,
       transaction = TransactionContext(sender, transaction.gasPrice),
+      chainId = chainId,
       rules = rules
     )
     val available = transaction.gasLimit - transaction.intrinsicGas

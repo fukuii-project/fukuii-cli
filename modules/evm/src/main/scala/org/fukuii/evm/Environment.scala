@@ -1,6 +1,6 @@
 package org.fukuii.evm
 
-import org.fukuii.bytes.{Address, Hash}
+import org.fukuii.bytes.{Address, Hash, UInt64}
 
 /** The block an invocation is running inside, as the values it can read.
   *
@@ -56,12 +56,34 @@ final case class TransactionContext(origin: Address, gasPrice: BigInt)
   *   operation has already found to be inside the window the fork allows, so it
   *   is total: answering an arbitrary number is not something a caller has to
   *   arrange. go-ethereum's lookup carries the same contract.
+  * @param chainId
+  *   which network this is, for the one operation that reads it.
+  *
+  * ==Neither a fork's answer nor an invocation's, which is why it is here==
+  *
+  * [[EvmRules]] is what a fork decides and a chain id is invariant across every
+  * fork of a network, so it does not belong there -- and putting it there would
+  * cost something specific: [[EvmRules]] exists so that two networks running
+  * the same rules can be asserted equal, and a chain id inside it would make
+  * every network's rules differ from every other's at every height, by
+  * construction. [[BlockContext]] is the other near miss: its five members are
+  * all read off a header, and no header carries a chain id.
+  *
+  * **No surveyed client puts it on the fork-resolved rules.**
+  * `ethereum/go-ethereum` @ `e9e35a42f8` holds it on `chainConfig`, a member of
+  * its machine distinct from `chainRules`; `NethermindEth/nethermind` @
+  * `b92e2a4719` splits the two axes by name, taking the value from
+  * `specProvider.ChainId` and the fork's decision from
+  * `spec.ChainIdOpcodeEnabled`. `ethereum/execution-specs` @ `20f7f6271a` puts
+  * `chain_id` on the record that also holds the state and the block hashes,
+  * which here is this class rather than [[BlockContext]].
   */
 final class Environment(
     val world: JournaledWorldState,
     val blockHashAt: BigInt => Hash,
     val block: BlockContext,
     val transaction: TransactionContext,
+    val chainId: UInt64,
     // THE CHAIN CONFIGURATION, as one value rather than as the loose operations,
     // prices and precompiles it used to be. A behavior that varies by fork is
     // what forced the bundle: a table cannot hold one and a schedule cannot

@@ -364,6 +364,60 @@ object Mainnet:
   private val petersburg: UpgradeSchedule.Entry =
     UpgradeSchedule.Entry(atBlock(7280000), upgrade("Petersburg"), Upgrade.RuleChange(Upgrades.petersburg))
 
+  /** Block 9,069,000.
+    *
+    * `ethereum/EIPs` @ `dbfa6bee8329650969b95080f23f7059c015c2ba` (2026-08-26),
+    * EIP-1679 *Hardfork Meta: Istanbul* (Final), § *Activation*: *"`Block >=
+    * 9,069,000` on the Ethereum Mainnet"*. `ethereum/execution-specs` @
+    * `20f7f6271a720091e5fea0a82e7bc802866ae36a` (2026-08-26) states it
+    * executably as `ByBlockNumber(9069000)` in
+    * `src/ethereum/forks/istanbul/__init__.py`, where its neighbours declare
+    * their own documented activations -- 7,280,000 below it and 9,200,000 above
+    * -- so the figure is not a criterion offset by a constant. Two clients from
+    * different language families implement it: `ethereum/go-ethereum` @
+    * `e9e35a42f8213235da1fde4f9ac8f3e9ff666b87` (2026-08-26) as
+    * `IstanbulBlock: big.NewInt(9_069_000)` in `params/config.go`, and
+    * `besu-eth/besu` @ `fdf1247c6d6431f0325a123ada37086ded17ce7e` (2026-08-26)
+    * as `"istanbulBlock": 9069000` in
+    * `config/src/main/resources/mainnet.json`.
+    *
+    * ==This entry carries all six proposals the upgrade names==
+    *
+    * EIP-1679 § *Included EIPs* lists EIP-152, EIP-1108, EIP-1344, EIP-1884,
+    * EIP-2028 and EIP-2200, and [[Upgrades.istanbul]] adopts every one of them
+    * and records all six in its component list. So the caveat [[homestead]]
+    * carries -- an entry naming a network upgrade whose rule set is only part
+    * of it -- is not one this entry needs either.
+    *
+    * **That is a statement about what the composition adopts, and not a
+    * conformance claim.** Which proposals a rule set is built from is checkable
+    * from this file; whether each is implemented correctly is what the
+    * published corpora answer, read at this network's own activation.
+    *
+    * ==The proposal's header names a seventh, and adopting it here would be
+    * adopting it twice==
+    *
+    * The frontmatter reads `requires: 152, 1108, 1344, 1716, 1884, 2028, 2200`.
+    * EIP-1716 is [[petersburg]]'s own meta proposal, already adopted at the
+    * entry above. *Included EIPs* is the membership statement and `requires:`
+    * is a dependency list, which is a distinction this document makes and a
+    * reader is not obliged to notice.
+    *
+    * ==Another network took all six together too, at its own height and under
+    * its own name==
+    *
+    * `ethereumclassic/core-geth` @
+    * `4185df450364973bbf99efa3923791f5ba40b351` (2025-01-23) sets all six
+    * transitions at 10,500,839 in `params/config_classic.go`, under a comment
+    * naming ECIP-1088. That is a different number and a different label for the
+    * same six documents, which is what keeps an activation a network's own fact
+    * rather than a property of the rule set -- and it is why
+    * [[org.fukuii.chainspec.networks.ethereumclassic.Upgrades]] would reach
+    * these rules by composing the same proposals rather than by naming this.
+    */
+  private val istanbul: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(9069000), upgrade("Istanbul"), Upgrade.RuleChange(Upgrades.istanbul))
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -397,6 +451,7 @@ object Mainnet:
         spuriousDragon,
         byzantium,
         constantinople,
-        petersburg
+        petersburg,
+        istanbul
       )
     )

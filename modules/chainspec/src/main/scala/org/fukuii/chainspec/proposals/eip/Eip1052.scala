@@ -38,9 +38,10 @@ import org.fukuii.evm.{Cost, Opcode, Operation, Proposal}
   * **The field is read only where the table is built**, so a later repricing
   * has to reach the table as well and moving the schedule alone is a silent
   * no-op. `GasSchedule`'s own scaladoc carries the classification and how to
-  * re-derive it. EIP-1884 is the repricing that will need it, taking this
-  * figure from 400 to 700 at Istanbul -- so the field arrives already inside
-  * that hazard rather than acquiring it later.
+  * re-derive it. [[Eip1884]] is the repricing that needs it, taking this figure
+  * from 400 to 700 -- so the field arrived already inside that hazard rather
+  * than acquiring it later, and that proposal reprices the table entry as well
+  * as the record.
   *
   * ==What the operation answers for an EMPTY account is the machine's, and it
   * is not the hash of empty code==

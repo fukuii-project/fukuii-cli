@@ -204,6 +204,7 @@ object EvmFixtures:
     precompileAltBn128Mul = BigInt(40002),
     precompileAltBn128PairingBase = BigInt(100002),
     precompileAltBn128PairingPerPoint = BigInt(80002),
+    precompileBlake2fPerRound = BigInt(3),
     transactionBase = BigInt(21002),
     transactionDataPerZeroByte = BigInt(19),
     transactionDataPerNonZeroByte = BigInt(70),
@@ -260,6 +261,17 @@ object EvmFixtures:
 
   val transaction: TransactionContext = TransactionContext(origin = address(0x99), gasPrice = BigInt(7))
 
+  /** Which network the machine is running as, for the one operation that asks.
+    *
+    * **Neither identifier this build serves**, which are 1 and 61 and are
+    * stated in the two networks' own `Mainnet` objects. A fixture carrying one
+    * of those would let a spec assert the machine returns that network's value
+    * and read as though it had checked a chain configuration, when what it
+    * checked was this constant. What the number is beyond that is not this
+    * fixture's claim to make.
+    */
+  val chainId: UInt64 = UInt64.fromBits(0x5eedL)
+
   /** A block hash that is a function of the number it is asked for, so a test
     * can name the answer it expects without carrying a table of hashes.
     */
@@ -288,6 +300,7 @@ object EvmFixtures:
       blockHashAt,
       inBlock,
       ofTransaction,
+      chainId,
       rules.copy(table = withTable, schedule = withSchedule, precompiles = withPrecompiles)
     )
 
@@ -301,4 +314,4 @@ object EvmFixtures:
     * caller means.
     */
   def environmentUnder(rules: EvmRules, world: WorldState = new MapWorldState): Environment =
-    new Environment(new JournaledWorldState(world), blockHashAt, block, transaction, rules)
+    new Environment(new JournaledWorldState(world), blockHashAt, block, transaction, chainId, rules)

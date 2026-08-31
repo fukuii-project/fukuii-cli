@@ -2,20 +2,52 @@ package org.fukuii.chainspec.networks.ethereum
 
 import org.fukuii.bytes.{UInt256, UInt64}
 import org.fukuii.chainspec.{DifficultyAdjustment, ProposalId}
-import org.fukuii.evm.{Cost, NewAccountCharge, Opcode, OpcodeTable, Operation, Precompile, PrecompileSet}
+import org.fukuii.evm.{
+  Cost,
+  NewAccountCharge,
+  Opcode,
+  OpcodeTable,
+  Operation,
+  Precompile,
+  PrecompileSet,
+  StorageMetering
+}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Properties every rule set this network composed has to hold. */
 class UpgradesSpec extends AnyFlatSpec:
 
+  /** Every rule set this network composes, in the order it reaches them.
+    *
+    * **All of them, which is what makes a property asserted over this one a
+    * property of the network rather than of its early history.** A vector that
+    * stopped partway would exempt the compositions above it silently: the case
+    * would pass, name no omission, and go on passing as further upgrades were
+    * added below its own ceiling.
+    */
   private val composed =
     Vector(
       Upgrades.frontier,
       Upgrades.homestead,
       Upgrades.tangerineWhistle,
       Upgrades.spuriousDragon,
-      Upgrades.byzantium
+      Upgrades.byzantium,
+      Upgrades.constantinople,
+      Upgrades.petersburg,
+      Upgrades.istanbul
     )
+
+  /** The compositions below the one that adopts EIP-658.
+    *
+    * Named rather than derived by removing [[Upgrades.byzantium]] from
+    * [[composed]]. Those two were the same vector only while [[composed]]
+    * stopped at that upgrade, so a filter expressing "below" would have quietly
+    * begun including everything above it the moment a later composition was
+    * added -- and the case that reads this asserts a property that is false
+    * above.
+    */
+  private val belowTheStatusByte =
+    Vector(Upgrades.frontier, Upgrades.homestead, Upgrades.tangerineWhistle, Upgrades.spuriousDragon)
 
   /** Every rule set this network composed below the one that reduces the
     * amount, which is what the launch figure is asserted over.
@@ -29,6 +61,25 @@ class UpgradesSpec extends AnyFlatSpec:
   /** What a table charges for `opcode` before it runs, where that is settled. */
   private def settledCost(table: OpcodeTable, opcode: Opcode): Option[BigInt] =
     table.operationAt(opcode.code).collect { case Operation(_, Cost.Fixed(gas)) => gas }
+
+  /** The six proposals this network's Istanbul is composed from, in the order
+    * [[Upgrades.istanbul]] adopts them.
+    *
+    * Held here rather than written into each case so that the membership and
+    * the order are stated once. `ethereum/EIPs` @ `dbfa6bee`, EIP-1679
+    * *Hardfork Meta: Istanbul* (Final) lists exactly these under *Included
+    * EIPs*; its `requires:` frontmatter lists a seventh, EIP-1716, which is
+    * Petersburg's own meta proposal and is adopted at the upgrade below.
+    */
+  private val istanbulProposals =
+    Vector(
+      ProposalId.Eip(152),
+      ProposalId.Eip(1108),
+      ProposalId.Eip(1344),
+      ProposalId.Eip(1884),
+      ProposalId.Eip(2028),
+      ProposalId.Eip(2200)
+    )
 
   "every rule set this network composes" should "leave SELFDESTRUCT working out its own price" in {
     // The mirror of the two-homes hazard, in the direction the schedule's own
@@ -236,7 +287,7 @@ class UpgradesSpec extends AnyFlatSpec:
     // the chain of compositions would make the case above hold for a network
     // that never adopted the document -- and only the whole chain can say so.
     assert(
-      composed.filter(_ != Upgrades.byzantium).forall(!_.execution.receiptCarriesStatus),
+      belowTheStatusByte.forall(!_.execution.receiptCarriesStatus),
       "a rule set below the upgrade that adopts EIP-658 already carries a status"
     )
 
@@ -255,4 +306,187 @@ class UpgradesSpec extends AnyFlatSpec:
     assert(
       composed.forall(rules => rules.consensus.zeroRewardCreditsBeneficiary),
       "declining to credit before empty accounts are deleted would leave a leaf out of the state trie"
+    )
+
+  "the composition this network calls Istanbul" should "record exactly the six proposals it adopted, in order" in
+    // Stated relative to the upgrade below rather than as the whole journal, so
+    // a failure names what this composition did rather than restating every
+    // proposal adopted since genesis. Equality rather than a suffix check: a
+    // seventh proposal adopted here, or one of the six dropped, has to fail.
+    assert(
+      Upgrades.istanbul.components == Upgrades.petersburg.components ++ istanbulProposals,
+      "this composition's recorded components are not the six it adopted, or are not in the order it adopted them"
+    )
+
+  it should "write the machine's facet and no other" in
+    // The structural claim of this upgrade, asserted as IDENTITY rather than as
+    // equality: all six components are built through the constructor that
+    // cannot reach past the machine, so the other three facets must arrive here
+    // as the very values the upgrade below holds. An equal copy would pass a
+    // value comparison and would mean a delta had rebuilt a facet it does not
+    // name.
+    //
+    // Measured rather than assumed: ethereum/go-ethereum-pow @ v1.10.26 --
+    // geth while it still ran proof-of-work, so the tree where a consensus rule
+    // would be -- names this upgrade in no non-test source under consensus/,
+    // against Constantinople 8, Byzantium 11 and Homestead 11.
+    assert(
+      (Upgrades.istanbul.consensus eq Upgrades.petersburg.consensus) &&
+        (Upgrades.istanbul.execution eq Upgrades.petersburg.execution) &&
+        (Upgrades.istanbul.admission eq Upgrades.petersburg.admission),
+      "an upgrade whose every component is confined to the machine rebuilt a facet outside it"
+    )
+
+  it should "pay two ether for a block, which is the amount it inherits rather than one it sets" in
+    // The identity case above already says this facet arrives unchanged, and a
+    // comparison against the upgrade below would say no more than that a second
+    // time. What this adds is the FIGURE, because an assertion that two rule
+    // sets agree goes on agreeing with a mutation that moves both.
+    //
+    // Two ether is EIP-1234's, adopted at Constantinople; this upgrade adopts
+    // no consensus proposal and leaves it alone. Byzantium is the nearest
+    // upgrade that moved it, from five to three, and this figure is neither.
+    assert(
+      Upgrades.istanbul.consensus.blockReward == ether(2),
+      "an upgrade that names no consensus proposal changed what a block pays its producer"
+    )
+
+  it should "answer natively at the compression address from this upgrade" in
+    // Asserted at the NETWORK rather than at the component: EIP-152's own spec
+    // certifies the delta and would pass with the component adopted by nothing,
+    // which for a native means every height on this network running an empty
+    // account's code where the network is meant to answer.
+    assert(
+      Upgrades.istanbul.evm.precompiles
+        .at(PrecompileSet.Blake2f)
+        .contains(Precompile.Blake2f(Upgrades.istanbul.evm.schedule.precompileBlake2fPerRound)),
+      "the upgrade that adopts EIP-152 does not place its native, or places it at another price"
+    )
+
+  it should "have answered at no compression address at the upgrade before it" in
+    assert(
+      Upgrades.petersburg.evm.precompiles.at(PrecompileSet.Blake2f).isEmpty,
+      "an upgrade below the one adopting EIP-152 already answered at that address"
+    )
+
+  it should "run nine natives here, having run eight at the upgrade below" in
+    // The count rather than the membership. What it adds is that nothing ELSE
+    // arrived and nothing left: EIP-1108 reprices three natives in place, so a
+    // delta that added rather than replaced would leave the membership cases
+    // passing and this one failing.
+    assert(
+      Upgrades.istanbul.evm.precompiles.size == 9 && Upgrades.petersburg.evm.precompiles.size == 8,
+      "this network runs some other number of natives at the upgrade that completes Istanbul"
+    )
+
+  it should "charge this network's own reduced prices at the three curve addresses" in
+    // The remedy for a blindness a cross-network comparison cannot cover. Every
+    // figure EIP-1108 moves from is stated identically by both networks this
+    // repository configures, so an assertion that the two agree would go on
+    // agreeing with a mutation that moved both. These are this network's
+    // literals, read from the document's own Specification table.
+    assert(
+      Upgrades.istanbul.evm.precompiles.at(PrecompileSet.AltBn128Add).contains(Precompile.AltBn128Add(BigInt(150))) &&
+        Upgrades.istanbul.evm.precompiles
+          .at(PrecompileSet.AltBn128Mul)
+          .contains(Precompile.AltBn128Mul(BigInt(6000))) &&
+        Upgrades.istanbul.evm.precompiles
+          .at(PrecompileSet.AltBn128PairingCheck)
+          .contains(Precompile.AltBn128PairingCheck(BigInt(45000), BigInt(34000))),
+      "a curve native at this upgrade charges something other than the figure this network states"
+    )
+
+  it should "run the two operations this upgrade introduces, at this network's own prices" in
+    // Both are priced from a tier rather than from a figure of their own, and
+    // this network states the base tier at 2 and the low tier at 5. Asserted as
+    // literals for the reason the case above gives: the tiers are shared, so
+    // only a figure says what a node here charges.
+    assert(
+      settledCost(Upgrades.istanbul.evm.table, Opcode.ChainId).contains(BigInt(2)) &&
+        settledCost(Upgrades.istanbul.evm.table, Opcode.SelfBalance).contains(BigInt(5)),
+      "an operation this upgrade introduces is absent, or is charged something other than its tier's value here"
+    )
+
+  it should "have run neither of those two at the upgrade before it" in
+    // The control. Without it the case above holds for a network that ran both
+    // all along, and an operation present below the document that introduces it
+    // would make that document's delta unobservable.
+    assert(
+      !Upgrades.petersburg.evm.table.contains(Opcode.ChainId) &&
+        !Upgrades.petersburg.evm.table.contains(Opcode.SelfBalance),
+      "an upgrade below the one that introduces these operations already ran one of them"
+    )
+
+  it should "charge this network's own raised prices for the three trie-size operations" in
+    // EIP-1884's half, as literals rather than as a comparison. Two of the
+    // three are read only where the table is built, so these are the entries a
+    // record-only repricing would leave behind.
+    assert(
+      settledCost(Upgrades.istanbul.evm.table, Opcode.SLoad).contains(BigInt(800)) &&
+        settledCost(Upgrades.istanbul.evm.table, Opcode.Balance).contains(BigInt(700)) &&
+        settledCost(Upgrades.istanbul.evm.table, Opcode.ExtCodeHash).contains(BigInt(700)),
+      "an operation EIP-1884 reprices charges something other than the figure this network states"
+    )
+
+  it should "state the raised SLOAD price on its record as well as in its entry" in
+    // The record and the entry are two homes for one figure and only one of
+    // them is read at spend time, so agreeing here is the property that keeps a
+    // storage read priced the same whichever way it is reached.
+    assert(
+      Upgrades.istanbul.evm.schedule.storageLoad == BigInt(800),
+      "the record disagrees with the entry built from it about what a storage read costs"
+    )
+
+  it should "carry both halves of the figure two documents here call SLOAD_GAS" in
+    // The composition-level statement of the split each of the two documents
+    // asserts on its own. EIP-1884 moves the operation's price and EIP-2200
+    // moves the two members carrying the same quantity inside the storage-write
+    // calculation; adopting one and not the other leaves a schedule that
+    // compiles and charges a storage read one price through SLOAD and another
+    // through SSTORE, which nothing else compares.
+    assert(
+      Upgrades.istanbul.evm.schedule.storageLoad == BigInt(800) &&
+        Upgrades.istanbul.evm.schedule.netStorageNoop == BigInt(800) &&
+        Upgrades.istanbul.evm.schedule.netStorageDirty == BigInt(800),
+      "one of the three fields this upgrade's two documents move to 800 was left behind"
+    )
+
+  it should "price storage with the sentry in front of the net scheme" in
+    assert(
+      Upgrades.istanbul.evm.storageMetering == StorageMetering.NetWithSentry,
+      "the upgrade that adopts EIP-2200 does not put its scheme in force"
+    )
+
+  it should "have priced storage the legacy way at the upgrade before it" in
+    // The control, and the specific earlier case rather than "not
+    // NetWithSentry": this network reached that state by adopting the net
+    // scheme at Constantinople and withdrawing it at Petersburg.
+    assert(
+      Upgrades.petersburg.evm.storageMetering == StorageMetering.Legacy,
+      "the upgrade below the one adopting EIP-2200 was already metering storage some other way"
+    )
+
+  it should "carry the two refunds EIP-2200 derives from the moved variable" in
+    assert(
+      Upgrades.istanbul.evm.schedule.refundNetStorageResetFromZero == BigInt(19200) &&
+        Upgrades.istanbul.evm.schedule.refundNetStorageReset == BigInt(4200),
+      "a refund EIP-2200 defines as a difference from the moved variable did not move with it"
+    )
+
+  it should "charge sixteen for a non-zero byte of transaction data and four for a zero one" in
+    // Both figures in one case on purpose: the document changes the RATIO
+    // between them, so a rule set carrying the reduction without the price it
+    // is a reduction against would claim a document it has half of.
+    assert(
+      Upgrades.istanbul.evm.schedule.transactionDataPerNonZeroByte == BigInt(16) &&
+        Upgrades.istanbul.evm.schedule.transactionDataPerZeroByte == BigInt(4),
+      "this upgrade charges something other than the two figures EIP-2028 leaves this network with"
+    )
+
+  it should "have charged sixty-eight for a non-zero byte at the upgrade before it" in
+    // The control. Without it the case above holds for a network that stated
+    // the reduced price all along, and no proposal below this one moves it.
+    assert(
+      Upgrades.petersburg.evm.schedule.transactionDataPerNonZeroByte == BigInt(68),
+      "an upgrade below the one adopting EIP-2028 already charged its reduced figure"
     )

@@ -58,7 +58,8 @@ class MainnetSpec extends AnyFlatSpec:
           // every other assertion in this file passing while the network runs
           // EIP-1283 for ever.
           "Constantinople",
-          "Petersburg"
+          "Petersburg",
+          "Istanbul"
         ),
       "an enumeration missing an entry misnumbers every entry after it, which is silent rather than absent"
     )
@@ -122,7 +123,8 @@ class MainnetSpec extends AnyFlatSpec:
         // must see one point; four production clients de-duplicate at the same
         // place and the wrong answer is silent -- the checksum is still a
         // number, and every peer rejects it as unrelated network trouble.
-        Activation.AtBlock(UInt64.fromBits(7280000L))
+        Activation.AtBlock(UInt64.fromBits(7280000L)),
+        Activation.AtBlock(UInt64.fromBits(9069000L))
       ),
       "genesis is excluded by EIP-2124 and thawing by enforcing nothing, leaving the ones that are neither"
     )

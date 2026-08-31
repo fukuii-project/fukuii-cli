@@ -108,9 +108,11 @@ package org.fukuii.evm
   *
   * A proposal in the second or third class has to reach the table or the
   * precompile set as well, which is what [[OpcodeTable.adding]] exists for.
-  * EIP-150's state-read repricing is the worked instance, and it covers the
-  * table only -- no proposal has yet had to reach a precompile price. The
-  * proposals themselves are a chain configuration's and are not in this module.
+  * There is a worked instance of each: EIP-150's state-read repricing covers
+  * the table, and EIP-1108's curve repricing covers the precompile set, where
+  * all four figures are read at build time and nowhere else -- so a proposal
+  * editing that record alone would move nothing at all. The proposals
+  * themselves are a chain configuration's and are not in this module.
   *
   * ==A precompile's price is a price, and belongs here rather than with it==
   *
@@ -183,6 +185,11 @@ final case class GasSchedule(
     // counts.
     precompileAltBn128PairingBase: BigInt,
     precompileAltBn128PairingPerPoint: BigInt,
+    // What one round of BLAKE2b's compression costs. The only precompile price
+    // here that multiplies a figure the CALLER supplies rather than one derived
+    // from the input's length, which is what makes the round count worth
+    // reading carefully where it is read.
+    precompileBlake2fPerRound: BigInt,
     // THE TRANSACTION-INTRINSIC PRICES. They belong here and not beside the
     // caller that charges them, because both authorities keep them in the same
     // repriceable record as everything above -- and because EIP-2028 is exactly

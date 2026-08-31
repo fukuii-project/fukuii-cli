@@ -111,6 +111,88 @@ enum GasForwarding:
     case Whole                => requested
     case AllButOneSixtyFourth => requested.min(remaining - remaining / 64)
 
+/** How a store to a storage slot is priced.
+  *
+  * ==Three cases, and one network's history reaches all three==
+  *
+  * EIP-1283 replaces the whole `SSTORE` charge with a scheme that reads what
+  * the slot held at the start of the transaction, so that repeated writes to
+  * one slot are not repeatedly charged as though each were the first. EIP-1716
+  * removes it again. EIP-2200 restores it with one rule added, and that rule is
+  * what [[NetWithSentry]] carries.
+  *
+  * **On Ethereum mainnet the first two activate at the same block**, so the net
+  * scheme was never in force there. It WAS in force on Ropsten, Kovan and
+  * Rinkeby for hundreds of thousands of blocks each. **Gnosis reaches every one
+  * of the three**: `gnosischain/configs` @ `2dd5746`, `mainnet/genesis.json`
+  * sets `eip1283Transition` at 1,604,400, `eip1283DisableTransition` at
+  * 2,508,800, and `eip1283ReenableTransition` beside `eip1706Transition` at
+  * 7,298,030. So this is a rule networks genuinely differ on, and the third
+  * case is not Ethereum's alone.
+  *
+  * ==Why a case on the rules rather than a table entry==
+  *
+  * `SSTORE` is priced from its operands and carries `Cost.Computed`, so there
+  * is no entry to swap. `ethereum/go-ethereum` @ `e9e35a42f8` reaches the same
+  * shape by a runtime predicate (`core/vm/gas_table.go:109`), and
+  * `besu-eth/besu` @ `fdf1247c6d` by swapping a whole gas calculator. A value
+  * on the rules is the smallest thing that expresses either.
+  *
+  * ==Why three cases and not two fields==
+  *
+  * The sentry could be a second, orthogonal member -- a scheme beside a
+  * threshold. That would make four states representable, and one of them,
+  * legacy pricing with a sentry, is run by no network and is expressible by no
+  * surveyed client: `ethereumclassic/core-geth` @ `4185df450` places its
+  * `eip1706Transition` after the legacy early return, so it cannot be reached
+  * there either. An enum admits exactly the three that exist.
+  *
+  * A threshold on this value would also be a number in a slot that already has
+  * an owner. Every figure the three cases need is [[GasSchedule]]'s, the
+  * sentry's included -- see [[NetWithSentry]].
+  */
+enum StorageMetering:
+
+  /** Priced from what the slot holds now: setting a slot that held nothing is
+    * the expensive case, and every other combination is the cheaper one.
+    */
+  case Legacy
+
+  /** Priced from what the slot held at the START OF THE TRANSACTION as well as
+    * what it holds now -- EIP-1283's no-op, fresh and dirty cases.
+    */
+  case Net
+
+  /** [[Net]]'s clauses, refused outright when the invocation has too little gas
+    * left to be worth entering.
+    *
+    * ==One rule, and everything else is the schedule's==
+    *
+    * EIP-2200 § *Specification*: *"If gasleft is less than or equal to gas
+    * stipend, fail the current call frame with 'out of gas' exception"*
+    * (`ethereum/EIPs` @ `dbfa6bee`, `EIPS/eip-2200.md`, Final). That is a new
+    * failure condition reading an operand -- what the frame has left -- that
+    * [[Net]]'s clauses never read. The nine clauses below it are EIP-1283's,
+    * unchanged in structure, which is why both cases charge through one helper.
+    *
+    * **The threshold is [[GasSchedule.callStipend]] and not a figure of its
+    * own.** EIP-2200 does not list the stipend among the four variables it
+    * defines, naming it instead as *"the gas stipend given to
+    * 'transfer'/'send'"* -- the amount a paid call is guaranteed. Both networks
+    * here already set it to 2,300, and four of six surveyed lineages encode the
+    * sentry as that same constant rather than minting a second one.
+    *
+    * ==A network reaches this without adopting EIP-2200==
+    *
+    * EIP-2200 is a combination -- of EIP-1283, EIP-1706 and a repricing -- and
+    * this case carries only the first two. Gnosis composes it from the parts,
+    * turning EIP-1283 back on at the block it adds EIP-1706 and naming EIP-2200
+    * nowhere; the repricing that document also carries is separately the
+    * schedule's. So the case is what a network switched on, never which
+    * document it read.
+    */
+  case NetWithSentry
+
 /** When an operation pays the surcharge for bringing its destination into
   * being.
   *
@@ -129,42 +211,6 @@ enum GasForwarding:
   * keeps the machine free of a quantity a caller could get wrong: neither case
   * below carries a number, so the surcharge itself stays the schedule's.
   */
-/** How a store to a storage slot is priced.
-  *
-  * ==Two cases, and the second one was adopted and withdrawn at a single
-  * height on the network that specified it==
-  *
-  * EIP-1283 replaces the whole `SSTORE` charge with a scheme that reads what
-  * the slot held at the start of the transaction, so that repeated writes to
-  * one slot are not repeatedly charged as though each were the first. EIP-1716
-  * removes it again.
-  *
-  * **On Ethereum mainnet the two activate at the same block**, so the net
-  * scheme was never in force there. It WAS in force on Ropsten, Kovan and
-  * Rinkeby for hundreds of thousands of blocks each, and on Gnosis it was
-  * turned on, off, and on again. So this is a rule networks genuinely differ
-  * on, not a rule with one live value and a historical footnote.
-  *
-  * ==Why a case on the rules rather than a table entry==
-  *
-  * `SSTORE` is priced from its operands and carries `Cost.Computed`, so there
-  * is no entry to swap. `ethereum/go-ethereum` @ `e9e35a42f8` reaches the same
-  * shape by a runtime predicate (`core/vm/gas_table.go:109`), and
-  * `besu-eth/besu` @ `fdf1247c6d` by swapping a whole gas calculator. A
-  * two-case value on the rules is the smallest thing that expresses either.
-  */
-enum StorageMetering:
-
-  /** Priced from what the slot holds now: setting a slot that held nothing is
-    * the expensive case, and every other combination is the cheaper one.
-    */
-  case Legacy
-
-  /** Priced from what the slot held at the START OF THE TRANSACTION as well as
-    * what it holds now -- EIP-1283's no-op, fresh and dirty cases.
-    */
-  case Net
-
 enum NewAccountCharge:
 
   /** The destination is an account this state has never held.

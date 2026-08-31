@@ -125,6 +125,11 @@ object PrecompileSet:
   /** Whether a list of point pairs of `alt_bn128` pairs to one. */
   val AltBn128PairingCheck: Address = addressOf(0x08)
 
+  /** BLAKE2b's compression function, run for a number of rounds the caller
+    * names.
+    */
+  val Blake2f: Address = addressOf(0x09)
+
   /** The address a low number names, which is how the field writes these: a
     * precompile sits at the low end of the space and everything above it is
     * zero.

@@ -159,11 +159,12 @@ object StateFixtureRunner:
       signerOf(fixture.transaction, chainId, rules) match
         case Signer.Unreadable(detail) => Verdict.Skipped(SkipReason.Undecodable(detail))
         case Signer.Refused(reason)    => judge(fixture, base, trie, rules, Left(reason))
-        case Signer.Settled(sender)    => executeSigned(fixture, sender, rules, trie, base)
+        case Signer.Settled(sender)    => executeSigned(fixture, sender, chainId, rules, trie, base)
 
   private def executeSigned(
       fixture: StateFixture,
       sender: Address,
+      chainId: UInt64,
       rules: UpgradeRules,
       trie: StateTrie,
       base: StateTrieWorldState
@@ -186,6 +187,7 @@ object StateFixtureRunner:
           trie.destroyAccount,
           fixture.block,
           VmFixtureRunner.blockHashOf,
+          chainId,
           rules.evm,
           rules.execution
         )

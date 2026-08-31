@@ -203,6 +203,7 @@ class TransactionProcessorSpec extends AnyFlatSpec:
       record,
       block,
       EvmFixtures.blockHashAt,
+      EvmFixtures.chainId,
       rules,
       execution
     )
@@ -322,6 +323,7 @@ class TransactionProcessorSpec extends AnyFlatSpec:
         (_: Address) => (),
         block,
         EvmFixtures.blockHashAt,
+        EvmFixtures.chainId,
         EvmFixtures.rules,
         notClearing
       )
@@ -625,6 +627,7 @@ class TransactionProcessorSpec extends AnyFlatSpec:
       trie.destroyAccount,
       block.copy(coinbase = beneficiary),
       EvmFixtures.blockHashAt,
+      EvmFixtures.chainId,
       EvmFixtures.rules,
       execution
     )

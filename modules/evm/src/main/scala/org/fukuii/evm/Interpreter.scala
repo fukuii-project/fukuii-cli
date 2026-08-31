@@ -374,8 +374,19 @@ object Interpreter:
       case Opcode.Caller    => pushing(frame, operation)(wordOf(frame.message.caller))
       case Opcode.CallValue => pushing(frame, operation)(frame.message.value)
 
+      // Reading its own balance takes no operand, which is the whole reason the
+      // proposal that adds it prices it three tiers below the one that reads
+      // another account's: there is no address to resolve and no account to
+      // reach for that the invocation is not already inside.
+      case Opcode.SelfBalance =>
+        pushing(frame, operation)(environment.world.balanceOf(frame.message.currentTarget))
+
       // ── What the transaction and the block are ─────────────────────────────
 
+      // The one operation that reads which network this is. It is not a block
+      // value and not a transaction value, so it comes from the environment
+      // directly rather than through either context.
+      case Opcode.ChainId    => pushing(frame, operation)(Word(environment.chainId.toBigInt))
       case Opcode.Origin     => pushing(frame, operation)(wordOf(environment.transaction.origin))
       case Opcode.GasPrice   => pushing(frame, operation)(Word(environment.transaction.gasPrice))
       case Opcode.Coinbase   => pushing(frame, operation)(wordOf(environment.block.coinbase))
@@ -519,29 +530,33 @@ object Interpreter:
         }
 
       // The read comes before the charge and the charge before the write,
-      // under either scheme.
+      // under every scheme.
       //
       // WHICH scheme is a fork's answer rather than the machine's, so what the
       // charge depends on is not fixed here: the legacy one reads only what the
-      // slot holds now, and EIP-1283's also reads what it held when the
-      // transaction began. The two helpers carry a case each, and this comment
-      // deliberately states neither one's rule -- it said the legacy one's
-      // outright until net metering landed, which made it a correct-looking
-      // description of half the behavior.
+      // slot holds now, and the two net ones also read what it held when the
+      // transaction began. The two helpers carry the clauses and this comment
+      // deliberately states none of them -- it said the legacy one's outright
+      // until net metering landed, which made it a correct-looking description
+      // of half the behavior.
+      //
+      // Three cases and two helpers, because the third differs from the second
+      // by a refusal rather than by a clause.
       case Opcode.SStore =>
         exceptional(
           for
             slot <- frame.stack.pop()
             value <- frame.stack.pop()
+            _ <- storageSentry(frame, schedule, environment.rules.storageMetering)
             target = frame.message.currentTarget
             held = environment.world.storageAt(target, slot)
-            // Both schemes apply their refunds before the charge, which is the
+            // Every scheme applies its refunds before the charge, which is the
             // ordering that was already here. It is unobservable either way: a
             // frame that cannot afford the charge halts, and a halted frame's
             // refunds are discarded rather than merged.
             settled = environment.rules.storageMetering match
               case StorageMetering.Legacy => legacyStorageCharge(frame, schedule, held, value)
-              case StorageMetering.Net    =>
+              case StorageMetering.Net | StorageMetering.NetWithSentry =>
                 netStorageCharge(frame, schedule, environment.world.committedStorageAt(target, slot), held, value)
             _ <- frame.charge(settled)
             _ <- mayChangeState(frame)
@@ -1605,6 +1620,38 @@ object Interpreter:
 
   /** How far back a block hash can be read. */
   private val BlockHashReach: BigInt = BigInt(256)
+
+  /** Nothing, or the refusal a store owes an invocation with too little gas
+    * left to be worth entering.
+    *
+    * ==Its own step, before the operands are read for anything else==
+    *
+    * EIP-2200 § *Specification* puts it first: *"If gasleft is less than or
+    * equal to gas stipend, fail the current call frame with 'out of gas'
+    * exception"* (`ethereum/EIPs` @ `dbfa6bee`, `EIPS/eip-2200.md`, Final).
+    * `ethereum/execution-specs` @ `20f7f6271a` places it after the two pops and
+    * before everything else in `forks/istanbul/vm/instructions/storage.py`,
+    * which is where the caller puts it.
+    *
+    * **The ordering is observable and is not a detail.** Both charging helpers
+    * move [[Frame.refundCounter]] as they go, so a sentry applied after one of
+    * them would leave a refund earned by a store that never happened.
+    *
+    * ==The threshold is the schedule's, not a constant here==
+    *
+    * [[GasSchedule.callStipend]] is the amount the document names -- *"the gas
+    * stipend given to 'transfer'/'send'"* -- rather than a figure of its own,
+    * and a network sets it. Reading it here is what keeps this refusal free of
+    * a number the machine would own.
+    */
+  private def storageSentry(
+      frame: Frame,
+      schedule: GasSchedule,
+      metering: StorageMetering
+  ): Either[Halt, Unit] =
+    metering match
+      case StorageMetering.NetWithSentry if frame.gasLeft <= schedule.callStipend => Left(Halt.OutOfGas)
+      case _                                                                      => Right(())
 
   /** The charge for a store under the scheme that reads only what the slot
     * holds now, applying its one refund on the way.

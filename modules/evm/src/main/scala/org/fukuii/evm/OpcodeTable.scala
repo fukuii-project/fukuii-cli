@@ -245,7 +245,9 @@ object OpcodeTable:
       Opcode.Shr,
       Opcode.Sar,
       Opcode.ExtCodeHash,
-      Opcode.Create2
+      Opcode.Create2,
+      Opcode.ChainId,
+      Opcode.SelfBalance
     )
 
   /** The three families whose members differ only in a count, and which are

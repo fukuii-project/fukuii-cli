@@ -7,6 +7,7 @@ import org.fukuii.bytes.{Address, Bytes, Hash}
 // alias names what each object is rather than renaming it: a digest.
 import org.fukuii.crypto.{
   AltBn128,
+  Blake2b,
   Keccak256,
   Ripemd160 as Ripemd160Digest,
   Secp256k1,
@@ -288,6 +289,50 @@ object Precompile:
         .pairingIsOne(input.toIArray)
         .map(held => Word(if held then BigInt(1) else BigInt(0)).toBytes)
         .toRight(Halt.InvalidParameter)
+
+  /** BLAKE2b's compression function over EIP-152's packed argument.
+    *
+    * ==Priced per round, by a count the CALLER supplies==
+    *
+    * *"Each operation will cost `GFROUND * rounds` gas, where `GFROUND = 1`"*
+    * (`ethereum/EIPs` @ `dbfa6bee`, `EIPS/eip-152.md`, Final). So this is the
+    * one native here whose price is unbounded in its input's CONTENT rather
+    * than its length: four bytes name up to 2^32-1 rounds, and a caller pays
+    * for every one it asked for. `org.fukuii.crypto.Blake2b.rounds` reads the
+    * count without ever narrowing it to an `Int`, which is where that would
+    * otherwise go wrong.
+    *
+    * ==A malformed argument is charged nothing and then refused==
+    *
+    * The specification checks the width BEFORE charging and the final-block
+    * byte AFTER (`ethereum/execution-specs` @ `20f7f6271a`,
+    * `forks/istanbul/vm/precompiled_contracts/blake2f.py`), which this seam
+    * cannot reproduce exactly: [[Precompile.gasFor]] settles a charge before
+    * [[Precompile.run]] is reached and has no way to refuse.
+    *
+    * **BOTH refusals are priced at nothing here, and only one of them is
+    * ordered as the specification orders it.** A width this native cannot read
+    * is refused before the count could be believed, which is the specification's
+    * own order. A final-block byte outside its two admitted values is refused
+    * having been charged nothing, where the specification charges the rounds
+    * first -- so this is the case where the two orders genuinely differ, and it
+    * is worth naming rather than folding into the width.
+    *
+    * **They are indistinguishable to a caller even so, and that is a property
+    * of what a refusal costs rather than an assumption.** Every [[Halt]] is an
+    * exceptional halt, so a refused invocation keeps nothing whichever charge
+    * preceded it -- charging zero and refusing, and charging the rounds and
+    * refusing, both end with the caller having spent everything.
+    * `Blake2fPrecompileSpec` asserts that equivalence by effect rather than
+    * leaving it argued, which is what makes the divergence above safe to have
+    * rather than merely explained.
+    */
+  final case class Blake2f(perRound: BigInt) extends Precompile:
+    def gasFor(input: Bytes): BigInt =
+      Blake2b.rounds(input.toIArray).fold(BigInt(0))(count => perRound * BigInt(count))
+
+    def run(input: Bytes): Either[Halt, Bytes] =
+      Blake2b.compressPacked(input.toIArray).map(Bytes.fromIArray).toRight(Halt.InvalidParameter)
 
   /** An answer the curve produced, or the halt its absence means.
     *
