@@ -275,8 +275,21 @@ lazy val scalacheckBridgeVersion = "3.2.20.0"
 // Need-first, and the need is specific: the EVM digest (Keccak with the legacy
 // 0x01 padding, which is NOT the JDK's SHA-3 — different padding, different
 // output for the same input), secp256k1 ECDSA with RFC-6979 deterministic
-// nonces and low-S canonicalization, secp256r1, BLAKE2F, and a constant-time
-// comparison primitive. The JDK supplies none of the first four.
+// nonces and low-S canonicalization, secp256r1, and a constant-time comparison
+// primitive. The JDK supplies none of the first three.
+//
+// It does NOT supply BLAKE2F, and this list said it did until the fork that
+// needed it was built. `Blake2bDigest` is a streaming digest only: `compress`
+// is private and its round count is a hardcoded field (`bcgit/bc-java` @
+// `r1rv85`, Blake2bDigest.java:488 and :75), so the public surface —
+// `update`/`doFinal`/`reset` — can be asked for a hash and cannot be asked for
+// one application of `F` at a caller-supplied round count over a
+// caller-supplied state, which is what EIP-152's precompile needs. `F` is
+// hand-rolled instead, in
+// `modules/crypto/src/main/scala/org/fukuii/crypto/Blake2b.scala`, where it is
+// still cross-checked against this provider's own digest at the fixed round
+// count that provider can reach. The claim is recorded rather than deleted so
+// the dead end is not re-investigated.
 //
 // 1.85 is separately a security release; that selects the VERSION, not the
 // dependency. Its published POM declares NO dependencies at all, so it arrives
@@ -286,7 +299,7 @@ lazy val scalacheckBridgeVersion = "3.2.20.0"
 //
 // 1.85.2 exists and is deliberately not taken: it is inside the release-age
 // cooldown, and a commit-by-commit read of the interval found nothing touching
-// keccak, secp256k1, secp256r1 or BLAKE2F. Revisit on ordinary currency.
+// keccak, secp256k1 or secp256r1. Revisit on ordinary currency.
 lazy val bouncyCastleVersion = "1.85"
 
 // circe -- JSON, TEST SCOPE ONLY, and only where a test actually reads JSON.
