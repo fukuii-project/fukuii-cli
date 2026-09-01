@@ -196,6 +196,33 @@ object ClassicStateCorpus:
   lazy val agharta: Option[CorpusReport] =
     reportAt(AghartaCorpus, AghartaFork, AghartaStarts, identity)
 
+  /** The label Phoenix's expectations are filed under.
+    *
+    * The corpus's own spelling, for [[DieHardFork]]'s reason: a name this
+    * chain's fixtures do not use would find nothing and report every file as
+    * stating no expectation, which is a silence indistinguishable from
+    * agreement.
+    */
+  val PhoenixFork: String = "ETC_Phoenix"
+
+  /** The name a report of Phoenix's rules over this tree carries. */
+  val PhoenixCorpus: String = "fukuii-tests ethereumclassic/mainnet state at Phoenix"
+
+  /** The height this harness believes Phoenix begins at.
+    *
+    * `ethereumclassic/core-geth` @ `4185df450` states this network's six
+    * transitions for that upgrade at `big.NewInt(10_500_839)` in
+    * `params/config_classic.go:78-83`, and `besu-eth/besu-etc` @ `eb4248c997`
+    * states it as `"phoenixBlock": 10500839`. ECIP-1088 names the figure
+    * itself, and `org.fukuii.chainspec.networks.ethereumclassic.Mainnet`
+    * carries the full sourcing. Stated as a literal for the reason above.
+    */
+  private[certification] val PhoenixStarts: Long = 10500839L
+
+  /** Phoenix's rules over this tree, as the run every count is read from. */
+  lazy val phoenix: Option[CorpusReport] =
+    reportAt(PhoenixCorpus, PhoenixFork, PhoenixStarts, identity)
+
   private def assemble(
       name: String,
       under: Path,
