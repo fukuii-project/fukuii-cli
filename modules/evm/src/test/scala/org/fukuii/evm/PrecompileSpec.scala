@@ -69,7 +69,7 @@ class PrecompileSpec extends AnyFlatSpec:
     * last case here reads: an implementation dividing by a constant answers the
     * same for both and this file would not notice.
     */
-  private val modExp = Precompile.ModExp(BigInt(20))
+  private val modExp = Precompile.ModExp(BigInt(20), BigInt(0), Precompile.ModExpComplexity.Piecewise)
 
   /** The three declared lengths, as the input carries them: one word each, in
     * the order the proposal lays them out.
@@ -359,7 +359,9 @@ class PrecompileSpec extends AnyFlatSpec:
     // answers the same for both.
     val input = modExpInput(1, 32, 32, "03" + "ff" * 32 + "ff" * 32)
     assert(
-      Precompile.ModExp(BigInt(20)).gasFor(input) == Precompile.ModExp(BigInt(10)).gasFor(input) / 2,
+      Precompile.ModExp(BigInt(20), BigInt(0), Precompile.ModExpComplexity.Piecewise).gasFor(input) == Precompile
+        .ModExp(BigInt(10), BigInt(0), Precompile.ModExpComplexity.Piecewise)
+        .gasFor(input) / 2,
       "the divisor is not the one the entry was built with"
     )
   }

@@ -2,6 +2,7 @@ package org.fukuii.execution
 
 import org.fukuii.bytes.Bytes
 import org.fukuii.evm.GasSchedule
+import org.fukuii.types.AccessTuple
 
 /** What a transaction is charged before any of it runs.
   *
@@ -31,7 +32,7 @@ import org.fukuii.evm.GasSchedule
   */
 object IntrinsicGas:
 
-  /** The charge for a transaction carrying `data`.
+  /** The charge for a transaction carrying `data` and declaring `accessList`.
     *
     * `deploys` is the recipient being absent rather than a property of the data.
     * A transaction that deploys states no recipient, and the surcharge it pays
@@ -42,15 +43,38 @@ object IntrinsicGas:
     * once at one price or once at the other. The zero bytes are counted and the
     * rest taken as the difference, rather than counting both, because a
     * partition counted twice can disagree with itself.
+    *
+    * ==THE DECLARATION IS COUNTED AS ENCODED, DUPLICATES AND ALL==
+    *
+    * A format carrying no such declaration passes an empty sequence, which is
+    * charged nothing at prices held at zero, so the term is the same arithmetic
+    * at every fork rather than a case. Where a fork does price it, the count is
+    * over the sequence and never over a set: *"non-unique addresses and storage
+    * keys are not disallowed, though they will be charged for multiple times"*
+    * (`ethereum/EIPs` @ `dbfa6bee8`, `EIPS/eip-2930.md`, Final).
+    * `ethereum/execution-specs` @ `20f7f6271` counts the same way, looping the
+    * sequence at `forks/berlin/transactions.py:285-291`, and `besu-eth/besu` @
+    * `fdf1247c6` sums `entries.size()` and each entry's `storageKeys().size()`
+    * without distinguishing.
+    *
+    * **The same declaration ALSO seeds a set**, of what the transaction may then
+    * reach at the reduced price, and that one does deduplicate. So a reader
+    * reaching for `.distinct` here has confused the two halves of one field, and
+    * the result undercharges every transaction that repeats an entry -- a state
+    * root apart, on a transaction anyone can construct.
     */
-  def of(schedule: GasSchedule, data: Bytes, deploys: Boolean): BigInt =
+  def of(schedule: GasSchedule, data: Bytes, deploys: Boolean, accessList: Seq[AccessTuple]): BigInt =
     val raw = data.toIArray
     var zeros = 0
     var index = 0
     while index < raw.length do
       if raw(index) == 0.toByte then zeros += 1
       index += 1
+    val declared =
+      schedule.transactionAccessListAddress * accessList.length +
+        schedule.transactionAccessListStorageKey * accessList.map(_.storageKeys.length).sum
     schedule.transactionBase +
       schedule.transactionDataPerZeroByte * zeros +
       schedule.transactionDataPerNonZeroByte * (raw.length - zeros) +
-      (if deploys then schedule.transactionCreate else BigInt(0))
+      (if deploys then schedule.transactionCreate else BigInt(0)) +
+      declared

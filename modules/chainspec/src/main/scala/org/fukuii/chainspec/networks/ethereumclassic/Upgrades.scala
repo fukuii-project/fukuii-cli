@@ -37,6 +37,7 @@ import org.fukuii.evm.{
   OpcodeTable,
   Precompile,
   PrecompileSet,
+  StateAccessMetering,
   StorageMetering
 }
 import org.fukuii.execution.{AdmissionRules, ExecutionRules}
@@ -136,6 +137,9 @@ object Upgrades:
     externalBase = BigInt(20),
     extCodeHash = BigInt(400),
     storageLoad = BigInt(50),
+    warmAccess = BigInt(0),
+    coldAccountAccess = BigInt(0),
+    coldStorageAccess = BigInt(0),
     storageSet = BigInt(20000),
     storageReset = BigInt(5000),
     refundStorageClear = BigInt(15000),
@@ -169,6 +173,7 @@ object Upgrades:
     precompileIdentityBase = BigInt(15),
     precompileIdentityPerWord = BigInt(3),
     precompileModExpDivisor = BigInt(20),
+    precompileModExpFloor = BigInt(0),
     precompileAltBn128Add = BigInt(500),
     precompileAltBn128Mul = BigInt(40000),
     precompileAltBn128PairingBase = BigInt(100000),
@@ -178,6 +183,8 @@ object Upgrades:
     transactionDataPerZeroByte = BigInt(4),
     transactionDataPerNonZeroByte = BigInt(68),
     transactionCreate = BigInt(0),
+    transactionAccessListAddress = BigInt(0),
+    transactionAccessListStorageKey = BigInt(0),
     selfDestruct = BigInt(0),
     selfDestructNewAccount = BigInt(0)
   )
@@ -284,6 +291,7 @@ object Upgrades:
         createdAccountNonce = UInt64.Zero,
         newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent,
         storageMetering = StorageMetering.Legacy,
+        stateAccessMetering = StateAccessMetering.Settled,
         touchSurvivesFailure = Set.empty
       ),
       execution = ExecutionRules(

@@ -121,7 +121,8 @@ class TransactionProcessorSpec extends AnyFlatSpec:
       to,
       value,
       data,
-      IntrinsicGas.of(schedule, data, to.isEmpty)
+      Seq.empty,
+      IntrinsicGas.of(schedule, data, to.isEmpty, Seq.empty)
     )
 
   /** Settlement at every height before an account reached and left holding

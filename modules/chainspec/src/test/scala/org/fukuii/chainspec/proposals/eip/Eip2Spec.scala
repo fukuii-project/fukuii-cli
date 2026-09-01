@@ -37,7 +37,7 @@ class Eip2Spec extends AnyFlatSpec:
     * before it runs, which is the figure the document states directly.
     */
   private def creationCharge(rules: UpgradeRules): BigInt =
-    IntrinsicGas.of(rules.evm.schedule, Bytes.Empty, deploys = true)
+    IntrinsicGas.of(rules.evm.schedule, Bytes.Empty, deploys = true, Seq.empty)
 
   "adopting EIP-2" should "refuse a signature whose s is above half the curve order" in
     // The document's one rule outside the machine, and the delta whose wiring

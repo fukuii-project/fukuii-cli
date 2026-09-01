@@ -193,6 +193,85 @@ enum StorageMetering:
     */
   case NetWithSentry
 
+/** How reaching an account, or a storage slot, is priced.
+  *
+  * ==Why a case on the rules, when four of the eleven operations could have
+  * carried it in the table==
+  *
+  * `BALANCE`, `EXTCODESIZE`, `EXTCODEHASH` and `SLOAD` are priced from a
+  * [[Cost.Fixed]] entry under [[Settled]] and work out their own charge under
+  * [[WarmCold]], so for those four the table entry could say which scheme is in
+  * force. **The other seven cannot**: `EXTCODECOPY`, the four call forms,
+  * `SELFDESTRUCT` and `SSTORE` already carry [[Cost.Computed]] under both
+  * schemes, and a constructor carrying no operand cannot distinguish two ways of
+  * computing. A rule read by all eleven is the smallest thing that reaches every
+  * one of them.
+  *
+  * **The four entries move to [[Cost.Computed]] anyway**, and that is not a
+  * second switch. [[Cost.Fixed]] means the charge *"depend[s] on nothing but
+  * which operation it is"*, which under [[WarmCold]] is false -- so leaving a
+  * figure there would be exactly the *"figure standing where a computation
+  * belongs"* [[Cost]] exists to make impossible. The entry states what the table
+  * knows; this states how the operation works it out.
+  *
+  * ==What varies is only the charge, never what the operation does==
+  *
+  * Both cases push the same value and read the same state. That is what keeps
+  * this a price rather than a behavior, and it is why the sets the second case
+  * reads live on [[Frame]] and not here: a mutable per-transaction set on a
+  * record whose whole purpose is value comparison would make two identical
+  * configurations compare unequal.
+  */
+enum StateAccessMetering:
+
+  /** Every reach costs the same, whether or not this transaction has made it
+    * before.
+    *
+    * The account-reading operations are priced from their table entries and the
+    * call family from [[GasSchedule.callBase]], so nothing about what the
+    * transaction has already touched is read at all.
+    */
+  case Settled
+
+  /** The first reach at an account or a slot within one transaction costs more
+    * than every later reach at the same one.
+    *
+    * ==The three figures are the schedule's and the two sets are the frame's==
+    *
+    * [[GasSchedule.warmAccess]], [[GasSchedule.coldAccountAccess]] and
+    * [[GasSchedule.coldStorageAccess]] are what this case spends;
+    * [[Frame.accessedAddresses]] and [[Frame.accessedStorageKeys]] are what it
+    * asks. Neither is here, for the reason the type's own note gives.
+    *
+    * ==The eleven operations do not all read it the same way, and two are
+    * exceptions the document states==
+    *
+    * `SELFDESTRUCT` adds the cold figure where its beneficiary is cold and adds
+    * NOTHING where it is warm, rather than paying the warm figure -- *"`SELFDESTRUCT`
+    * does not charge a `WARM_STORAGE_READ_COST` in case the recipient is already
+    * warm, which differs from how the other call-variants work"* (`ethereum/EIPs`
+    * @ `dbfa6bee8`, `EIPS/eip-2929.md`, Final). `SSTORE` likewise adds the cold
+    * storage figure as a prefix to a charge it computes by its own scheme,
+    * rather than replacing it.
+    *
+    * The call family REPLACES [[GasSchedule.callBase]] rather than adding to it,
+    * and the substitution happens before the forwarded request is worked out:
+    * *"the `100`/`2600` cost is applied immediately (exactly like how `700` was
+    * charged before this EIP), i.e: before calculating the `63/64ths` available
+    * for entering the call"* (same document). An implementation that added the
+    * two, or that substituted after the split, would forward a different figure
+    * and reach a different state root.
+    *
+    * ==`CREATE` and `CREATE2` pay nothing here and still write to the set==
+    *
+    * *"gas costs of `CREATE` and `CREATE2` are unchanged"*, and the address
+    * being created is added *"immediately (ie. before checks are done to
+    * determine whether or not the address is unclaimed)"*. So a creation that
+    * fails leaves its own address warm, which is the one place the set outlives
+    * the invocation that wrote it.
+    */
+  case WarmCold
+
 /** When an operation pays the surcharge for bringing its destination into
   * being.
   *
@@ -427,6 +506,11 @@ enum NewAccountCharge:
   *   that levy it pay stays [[GasSchedule.newAccount]]'s and
   *   [[GasSchedule.selfDestructNewAccount]]'s, and a network moving one of those
   *   is a repricing that leaves this alone.
+  * @param stateAccessMetering
+  *   how reaching an account or a storage slot is priced. It settles which
+  *   figures the eleven operations that reach state read, never what any of
+  *   them costs: both cases spend [[GasSchedule]] fields and neither carries a
+  *   number of its own.
   * @param touchSurvivesFailure
   *   the addresses whose reaching by an invocation is NOT undone when that
   *   invocation fails. Everywhere else the rule is that it is:
@@ -475,6 +559,7 @@ final case class EvmRules(
     createdAccountNonce: UInt64,
     newAccountCharge: NewAccountCharge,
     storageMetering: StorageMetering,
+    stateAccessMetering: StateAccessMetering,
     touchSurvivesFailure: Set[Address]
 ):
 

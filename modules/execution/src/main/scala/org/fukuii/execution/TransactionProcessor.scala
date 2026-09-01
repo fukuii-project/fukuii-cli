@@ -2,7 +2,7 @@ package org.fukuii.execution
 
 import org.fukuii.bytes.{Address, Bytes, Hash, UInt64}
 import org.fukuii.evm.*
-import org.fukuii.types.Log
+import org.fukuii.types.{AccessTuple, Log}
 
 /** One transaction, as the values settling it spends.
   *
@@ -49,12 +49,24 @@ import org.fukuii.types.Log
   *   computed it.
   *
   *   **It is carried rather than recomputed, because it is one number.** The
-  *   charge is priced from fields this record does not carry the moment a fork
-  *   prices it from anything but the input and the recipient -- EIP-2930
-  *   charges per access-list entry -- so a second computation over these fields
-  *   alone would answer a different figure, and the two would disagree with
-  *   nothing to say which of them the chain charged. [[IntrinsicGas]] states
-  *   the same rule from the side that owns the number.
+  *   figure admission compared against the limit is the figure settlement
+  *   spends, and a second computation is a second definition of it --
+  *   [[IntrinsicGas]] states the same rule from the side that owns the number.
+  *
+  *   **That [[accessList]] now sits beside it does not make recomputing safe.**
+  *   The fields a fork prices the charge from are the fork's to choose, and this
+  *   record is not obliged to grow with them; it carries the declaration because
+  *   settlement has its own use for it, not so that the charge could be worked
+  *   out again here.
+  * @param accessList
+  *   the accounts and slots the transaction declared ahead of running, empty for
+  *   every format that carries no such declaration.
+  *
+  *   **Settlement needs it for a second reason, which is why it is here and not
+  *   only on the record admission built.** What it seeds is the set of things
+  *   the machine may then reach at the reduced price, and that seeding happens
+  *   at the outermost invocation -- the one place a caller could not supply it
+  *   from anywhere else.
   */
 final case class AdmittedTransaction(
     sender: Address,
@@ -64,6 +76,7 @@ final case class AdmittedTransaction(
     to: Option[Address],
     value: BigInt,
     data: Bytes,
+    accessList: Seq[AccessTuple],
     intrinsicGas: BigInt
 )
 
@@ -233,7 +246,9 @@ object TransactionProcessor:
             isStatic = false
           ),
           Code(world.codeOf(recipient)),
-          available
+          available,
+          reachedBeforeEntry = warmAtEntry(transaction, environment, recipient),
+          slotsReachedBeforeEntry = warmSlotsAtEntry(transaction, environment)
         )
         (called, Interpreter.run(called, environment))
       case None =>
@@ -249,12 +264,73 @@ object TransactionProcessor:
             isStatic = false
           ),
           Code(transaction.data),
-          available
+          available,
+          reachedBeforeEntry = warmAtEntry(transaction, environment, target),
+          slotsReachedBeforeEntry = warmSlotsAtEntry(transaction, environment)
         )
         val ran =
           if Interpreter.deployableAt(world, target) then Interpreter.deploy(deploying, environment)
           else Right(Outcome.Halted(Halt.AddressCollision))
         (deploying, ran)
+
+  /** What the outermost invocation may reach at the reduced price before it has
+    * reached anything.
+    *
+    * ==Four members, and the fifth a reader will look for is NOT here==
+    *
+    * The sender, the account being called or the address being deployed at,
+    * every precompile, and whatever the transaction declared. *"`accessed_addresses`
+    * is initialized to include the `tx.sender`, `tx.to` (or the address being
+    * created if it is a contract creation transaction) and the set of all
+    * precompiles"* (`ethereum/EIPs` @ `dbfa6bee8`, `EIPS/eip-2929.md`, Final),
+    * with EIP-2930's declaration added by its own document.
+    *
+    * **THE BLOCK'S BENEFICIARY IS NOT WARM HERE**, and putting it in is a
+    * consensus divergence on every block whose transactions reach that account
+    * -- a `BALANCE` or a `CALL` to it would be charged the reduced figure a fork
+    * early. It becomes warm at a later proposal, EIP-3651, and
+    * `ethereum/go-ethereum` @ `e9e35a42f` shows how easily the two are
+    * conflated: its `StateDB.Prepare` takes the beneficiary in its signature and
+    * warms it under `if rules.IsShanghai`, with the Berlin members listed
+    * unguarded above it.
+    *
+    * ==A set, where the same declaration is counted as a sequence for the
+    * charge==
+    *
+    * `ethereum/execution-specs` @ `20f7f6271` opens
+    * `forks/berlin/utils/message.py` with `accessed_addresses = set()` and adds
+    * into it, while the intrinsic charge beside it loops the sequence. Reaching
+    * for one shape at both sites is wrong in one direction or the other.
+    */
+  private def warmAtEntry(
+      transaction: AdmittedTransaction,
+      environment: Environment,
+      target: Address
+  ): Set[Address] =
+    environment.rules.stateAccessMetering match
+      case StateAccessMetering.Settled  => Set.empty
+      case StateAccessMetering.WarmCold =>
+        environment.rules.precompiles.addresses +
+          transaction.sender +
+          target ++
+          transaction.accessList.map(_.address)
+
+  /** The slots the same declaration names, keyed by the account each belongs to.
+    *
+    * Empty but for the declaration: nothing else about a transaction names a
+    * slot, so this has no counterpart to the three members [[warmAtEntry]] adds
+    * beside the declaration.
+    */
+  private def warmSlotsAtEntry(
+      transaction: AdmittedTransaction,
+      environment: Environment
+  ): Set[(Address, Word)] =
+    environment.rules.stateAccessMetering match
+      case StateAccessMetering.Settled  => Set.empty
+      case StateAccessMetering.WarmCold =>
+        transaction.accessList.flatMap { entry =>
+          entry.storageKeys.map(key => (entry.address, Word.fromBytes(Bytes.fromIArray(key.toBytes))))
+        }.toSet
 
   /** Settles what the invocation left: the refund, the fee, and the accounts it
     * registered.

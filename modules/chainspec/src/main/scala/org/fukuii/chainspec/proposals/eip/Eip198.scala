@@ -55,13 +55,27 @@ import org.fukuii.evm.{Precompile, PrecompileSet, Proposal}
   */
 object Eip198:
 
-  /** The native joins the set at the address the document names, priced from
-    * the divisor the rules already state.
+  /** The native joins the set at the address the document names, priced by the
+    * scheme this document defines and from the two figures the rules already
+    * state.
+    *
+    * The floor is read from the record rather than written as a zero here, for
+    * the reason the divisor is: a network states its own prices, and this
+    * document places the native rather than pricing it. A network holding that
+    * floor above zero at its genesis would be one this document has nothing to
+    * say about, which is what reading it rather than asserting it preserves.
     */
   val modExp: Proposal =
     rules =>
       rules.copy(precompiles =
-        rules.precompiles.adding(PrecompileSet.ModExp, Precompile.ModExp(rules.schedule.precompileModExpDivisor))
+        rules.precompiles.adding(
+          PrecompileSet.ModExp,
+          Precompile.ModExp(
+            rules.schedule.precompileModExpDivisor,
+            rules.schedule.precompileModExpFloor,
+            Precompile.ModExpComplexity.Piecewise
+          )
+        )
       )
 
   /** Adopting the document, which is adopting its one delta. */

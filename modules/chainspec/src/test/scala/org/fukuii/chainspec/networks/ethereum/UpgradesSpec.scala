@@ -10,8 +10,10 @@ import org.fukuii.evm.{
   Operation,
   Precompile,
   PrecompileSet,
+  StateAccessMetering,
   StorageMetering
 }
+import org.fukuii.types.TransactionType
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Properties every rule set this network composed has to hold. */
@@ -35,7 +37,8 @@ class UpgradesSpec extends AnyFlatSpec:
       Upgrades.constantinople,
       Upgrades.petersburg,
       Upgrades.istanbul,
-      Upgrades.muirGlacier
+      Upgrades.muirGlacier,
+      Upgrades.berlin
     )
 
   /** The compositions below the one that adopts EIP-658.
@@ -81,6 +84,19 @@ class UpgradesSpec extends AnyFlatSpec:
       ProposalId.Eip(2028),
       ProposalId.Eip(2200)
     )
+
+  /** The four proposals this network's Berlin is composed from, in the order
+    * [[Upgrades.berlin]] adopts them.
+    *
+    * Held here rather than written into each case so that the membership and the
+    * order are stated once. **No document lists them**: the two metas naming this
+    * upgrade delegate to a file in `ethereum/execution-specs` that reads only at
+    * the commit the Final one cites, so the membership was established from five
+    * client and specification readings rather than from a section a reader can
+    * open at that repository's head.
+    */
+  private val berlinProposals =
+    Vector(ProposalId.Eip(2565), ProposalId.Eip(2718), ProposalId.Eip(2929), ProposalId.Eip(2930))
 
   "every rule set this network composes" should "leave SELFDESTRUCT working out its own price" in {
     // The mirror of the two-homes hazard, in the direction the schedule's own
@@ -207,7 +223,13 @@ class UpgradesSpec extends AnyFlatSpec:
     assert(
       Upgrades.byzantium.evm.precompiles
         .at(PrecompileSet.ModExp)
-        .contains(Precompile.ModExp(Upgrades.byzantium.evm.schedule.precompileModExpDivisor)),
+        .contains(
+          Precompile.ModExp(
+            Upgrades.byzantium.evm.schedule.precompileModExpDivisor,
+            Upgrades.byzantium.evm.schedule.precompileModExpFloor,
+            Precompile.ModExpComplexity.Piecewise
+          )
+        ),
       "the upgrade that adopts EIP-198 does not place its native, or places it at another price"
     )
 
@@ -551,4 +573,113 @@ class UpgradesSpec extends AnyFlatSpec:
     assert(
       Upgrades.muirGlacier.consensus.blockReward == ether(2),
       "an upgrade whose one document states no reward changed what a block pays its producer"
+    )
+
+  "the composition this network calls Berlin" should "record exactly the four proposals it adopted" in
+    // Stated relative to the upgrade below rather than as the whole journal, so
+    // a failure names what this composition did. A FIFTH was in this upgrade and
+    // was taken out forty days before it ran -- EIP-2315, removed in
+    // `ethereum/execution-specs` @ `7d3d203a8` -- and it never activated
+    // anywhere, so unlike EIP-1283 at Constantinople there is no adoption to
+    // record and no second rule set withdrawing it.
+    assert(
+      Upgrades.berlin.components == Upgrades.muirGlacier.components ++ berlinProposals,
+      "this composition's recorded components are not the four it adopted"
+    )
+
+  it should "price reaching state by whether this transaction has reached it" in
+    // THE CASE THIS SECTION EXISTS FOR. `Eip2929Spec` certifies the delta and
+    // passes with the component adopted by nothing; only a case reading the
+    // composition can tell a correct wiring from a component that was written
+    // and never adopted.
+    assert(
+      Upgrades.berlin.evm.stateAccessMetering == StateAccessMetering.WarmCold,
+      "the upgrade that adopts EIP-2929 does not carry its rule"
+    )
+
+  it should "have priced every reach alike at the upgrade before it" in
+    assert(
+      Upgrades.muirGlacier.evm.stateAccessMetering == StateAccessMetering.Settled,
+      "an upgrade below the one adopting EIP-2929 already ran its scheme"
+    )
+
+  it should "carry the three figures that scheme spends" in
+    // Stated as literals at the composition, because the delta and its own spec
+    // could agree on three wrong numbers and this is the reading a node makes.
+    assert(
+      Upgrades.berlin.evm.schedule.warmAccess == BigInt(100) &&
+        Upgrades.berlin.evm.schedule.coldAccountAccess == BigInt(2600) &&
+        Upgrades.berlin.evm.schedule.coldStorageAccess == BigInt(2100),
+      "the upgrade carries a figure other than the document's"
+    )
+
+  it should "carry the five figures of the storage scheme that document re-derives" in
+    // The composite-definition hazard EIP-2929 states about itself, read at the
+    // composition. Four of the five are EIP-2200's settled literals and the
+    // fifth is what SSTORE_RESET_GAS becomes; a delta applying the new constants
+    // without re-running the derivations leaves this upgrade internally
+    // inconsistent and passes everything that does not execute a store.
+    assert(
+      Upgrades.berlin.evm.schedule.netStorageNoop == BigInt(100) &&
+        Upgrades.berlin.evm.schedule.netStorageDirty == BigInt(100) &&
+        Upgrades.berlin.evm.schedule.netStorageClean == BigInt(2900) &&
+        Upgrades.berlin.evm.schedule.refundNetStorageResetFromZero == BigInt(19900) &&
+        Upgrades.berlin.evm.schedule.refundNetStorageReset == BigInt(2800),
+      "a derivation that reads SLOAD_GAS was not re-run against this document's terms"
+    )
+
+  it should "let a block carry the declaring transaction format" in
+    // The second case only the composition can make, and the sharper of the two:
+    // EIP-2930's component is the first here to reach two facets, so a component
+    // built from the machine-scoped constructor would apply its prices and admit
+    // nothing -- which every case in `Eip2930Spec` would catch and no case
+    // reading only the machine would.
+    assert(
+      Upgrades.berlin.admission.admittedTypes == Set(TransactionType.Legacy, TransactionType.AccessList),
+      "the upgrade that adopts EIP-2930 does not admit the format it defines"
+    )
+
+  it should "have carried only the untagged format at the upgrade before it" in
+    assert(
+      Upgrades.muirGlacier.admission.admittedTypes == Set(TransactionType.Legacy),
+      "an upgrade below the one adopting EIP-2930 already carried its format"
+    )
+
+  it should "charge modular exponentiation under this document's own scheme" in
+    // The entry rather than the record, because a precompile's price is copied
+    // into its entry when the entry is built: an upgrade stating 3 and charging
+    // 20 is what reading only the schedule here would miss.
+    assert(
+      Upgrades.berlin.evm.precompiles
+        .at(PrecompileSet.ModExp)
+        .contains(Precompile.ModExp(BigInt(3), BigInt(200), Precompile.ModExpComplexity.SquaredWordCount)),
+      "the upgrade that adopts EIP-2565 charges the entry it inherited"
+    )
+
+  it should "hold the exponential term back by the nine million blocks it inherits" in
+    // NOT restated by any of this upgrade's four documents, and carried from the
+    // upgrade below. `ethereum/execution-specs` @ `20f7f6271` declares
+    // `BOMB_DELAY_BLOCKS = 9000000` in `forks/berlin/fork.py:70` as well as in
+    // `forks/muir_glacier/fork.py:65`, so a composition reaching past that
+    // upgrade would run 5,000,000 here -- which compiles, and which no state
+    // tier can see.
+    assert(
+      Upgrades.berlin.consensus.difficultyBombDelay == BigInt(9000000),
+      "this composition was built from an upgrade below the one that set the delay"
+    )
+
+  it should "write the machine's rules and admission's, and no other facet" in
+    // Three of the four are confined to the machine and the fourth also reaches
+    // admission. Nothing here touches consensus or settlement, so those two
+    // survive as the SAME values rather than as equal copies.
+    assert(
+      (Upgrades.berlin.consensus eq Upgrades.muirGlacier.consensus) &&
+        (Upgrades.berlin.execution eq Upgrades.muirGlacier.execution),
+      "an upgrade whose components name the machine and admission rebuilt a third facet"
+    )
+
+  it should "pay two ether for a block, which is the amount it inherits rather than one it sets" in
+    assert(
+      Upgrades.berlin.consensus.blockReward == ether(2),
+      "an upgrade whose four documents state no reward changed what a block pays its producer"
     )

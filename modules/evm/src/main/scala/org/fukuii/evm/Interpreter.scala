@@ -460,20 +460,18 @@ object Interpreter:
       // ── Another account ────────────────────────────────────────────────────
 
       case Opcode.Balance =>
-        priced(operation) { gas =>
+        reachingAnAccount(frame, operation, environment.rules) { (address, gas) =>
           for
-            operand <- frame.stack.pop()
             _ <- frame.charge(gas)
-            _ <- frame.stack.push(environment.world.balanceOf(addressOf(operand)))
+            _ <- frame.stack.push(environment.world.balanceOf(address))
           yield advance(frame)
         }
 
       case Opcode.ExtCodeSize =>
-        priced(operation) { gas =>
+        reachingAnAccount(frame, operation, environment.rules) { (address, gas) =>
           for
-            operand <- frame.stack.pop()
             _ <- frame.charge(gas)
-            _ <- frame.stack.push(Word(BigInt(environment.world.codeOf(addressOf(operand)).length)))
+            _ <- frame.stack.push(Word(BigInt(environment.world.codeOf(address).length)))
           yield advance(frame)
         }
 
@@ -491,11 +489,9 @@ object Interpreter:
       // too, which is what makes the specification's absent-account case fall
       // out rather than needing a branch of its own.
       case Opcode.ExtCodeHash =>
-        priced(operation) { gas =>
+        reachingAnAccount(frame, operation, environment.rules) { (address, gas) =>
           for
-            operand <- frame.stack.pop()
             _ <- frame.charge(gas)
-            address = addressOf(operand)
             _ <- frame.stack.push(
               if deadAt(environment.world, address) then Word.Zero
               else Word.fromBytes(Bytes.fromIArray(Keccak256.hash(environment.world.codeOf(address).toIArray).toBytes))
@@ -512,8 +508,13 @@ object Interpreter:
         exceptional(
           for
             operand <- frame.stack.pop()
-            copied <- copyInto(frame, schedule.externalBase, schedule)(
-              environment.world.codeOf(addressOf(operand))
+            address = addressOf(operand)
+            copied <- copyInto(
+              frame,
+              costOfReaching(frame, environment.rules, schedule.externalBase, address),
+              schedule
+            )(
+              environment.world.codeOf(address)
             )
           yield copied
         )
@@ -521,9 +522,8 @@ object Interpreter:
       // ── Storage ────────────────────────────────────────────────────────────
 
       case Opcode.SLoad =>
-        priced(operation) { gas =>
+        reachingASlot(frame, operation, environment.rules) { (slot, gas) =>
           for
-            slot <- frame.stack.pop()
             _ <- frame.charge(gas)
             _ <- frame.stack.push(environment.world.storageAt(frame.message.currentTarget, slot))
           yield advance(frame)
@@ -554,11 +554,25 @@ object Interpreter:
             // ordering that was already here. It is unobservable either way: a
             // frame that cannot afford the charge halts, and a halted frame's
             // refunds are discarded rather than merged.
+            // A PREFIX RATHER THAN A REPLACEMENT, and the scheme below is
+            // untouched: EIP-2929 charges "an additional `COLD_SLOAD_COST`" for
+            // a slot this transaction has not reached, over whatever the
+            // metering scheme works out, and moves five of that scheme's figures
+            // rather than any of its clauses. So the two are orthogonal here as
+            // they are in the document -- a network can run either scheme under
+            // either of these.
+            firstReach = environment.rules.stateAccessMetering match
+              case StateAccessMetering.Settled  => BigInt(0)
+              case StateAccessMetering.WarmCold =>
+                if frame.accessedStorageKeys.contains((target, slot)) then BigInt(0)
+                else
+                  frame.accessedStorageKeys = frame.accessedStorageKeys + ((target, slot))
+                  schedule.coldStorageAccess
             settled = environment.rules.storageMetering match
               case StorageMetering.Legacy => legacyStorageCharge(frame, schedule, held, value)
               case StorageMetering.Net | StorageMetering.NetWithSentry =>
                 netStorageCharge(frame, schedule, environment.world.committedStorageAt(target, slot), held, value)
-            _ <- frame.charge(settled)
+            _ <- frame.charge(firstReach + settled)
             _ <- mayChangeState(frame)
           yield
             environment.world.setStorage(target, slot, value)
@@ -682,8 +696,20 @@ object Interpreter:
             // ENDING, so that balance is what answers whether it moves value at
             // all, and it is read here rather than below because a price is
             // settled before it is paid.
+            // THE ONE OPERATION THAT PAYS FOR A FIRST REACH AND NOTHING FOR A
+            // REPEAT, where the four call forms pay the reduced figure for a
+            // repeat. The document states the exception and its reason --
+            // "`SELFDESTRUCT` does not charge a `WARM_STORAGE_READ_COST` in case
+            // the recipient is already warm, which differs from how the other
+            // call-variants work ... a `SELFDESTRUCT` already costs `5K` and is
+            // a no-op if invoked more than once" (`ethereum/EIPs` @ `dbfa6bee8`,
+            // `EIPS/eip-2929.md`, Final) -- so this is a surcharge added to what
+            // the operation already pays rather than a figure replacing it, and
+            // reusing the call family's helper here would overcharge every
+            // destruction to an account this transaction had already reached.
             _ <- frame.charge(
               schedule.selfDestruct +
+                firstReachSurcharge(frame, environment.rules, beneficiary) +
                 newAccountSurcharge(
                   environment.rules,
                   environment.world,
@@ -866,7 +892,20 @@ object Interpreter:
         // The two borrowing forms keep the term, whose scaladoc argues why a
         // chain never levies it on them. That argument does not reach this form,
         // because this one's destination is not the account already running.
-        ownPrice = schedule.callBase +
+        // THE ACCOUNT NAMED IS WHAT IS REACHED, in every one of the four forms:
+        // two of them run as that account and two borrow its code, and both
+        // authorities warm the operand either way. It is deliberately not
+        // `runsAs`, which for the two borrowing forms is the account already
+        // running and would leave the code being borrowed reached for free.
+        //
+        // WHERE THIS TERM SITS IS OBSERVABLE, and it sits where the settled base
+        // sat: "the `100`/`2600` cost is applied immediately (exactly like how
+        // `700` was charged before this EIP), i.e: before calculating the
+        // `63/64ths` available for entering the call" (`ethereum/EIPs` @
+        // `dbfa6bee8`, `EIPS/eip-2929.md`, Final). It is part of `ownPrice`,
+        // which `spare` subtracts before the grant is worked out, so a cold call
+        // forwards less than a warm one and both differ from the settled scheme.
+        ownPrice = costOfReaching(frame, environment.rules, schedule.callBase, codeAddress) +
           (if forbidsChangingState then BigInt(0)
            else newAccountSurcharge(environment.rules, world, runsAs, sends, schedule.newAccount)) +
           (if sends then schedule.callValue else BigInt(0))
@@ -920,7 +959,9 @@ object Interpreter:
             ),
             Code(world.codeOf(codeAddress)),
             forwarded,
-            frame.registeredSoFar
+            frame.registeredSoFar,
+            frame.accessedAddresses,
+            frame.accessedStorageKeys
           )
           run(nested, environment) match
             case Left(unsupported) => Left(Fault.NotBuilt(unsupported.opcode))
@@ -1023,10 +1064,29 @@ object Interpreter:
         val target = salt match
           case Some(value) => ContractAddress.create2(creator, value, initCode)
           case None        => ContractAddress.of(creator, count)
-        if world.balanceOf(creator).toBigInt < endowment.toBigInt ||
-          count == UInt64.MaxValue ||
-          frame.message.depth + 1 > Stack.Limit
-        then
+        val cannotBeAttempted =
+          world.balanceOf(creator).toBigInt < endowment.toBigInt ||
+            count == UInt64.MaxValue ||
+            frame.message.depth + 1 > Stack.Limit
+        // REACHED BY THE CREATOR AND NOT BY THE CREATION, which is what makes a
+        // failed deployment leave its own address warm: the write is to this
+        // frame's set, and the child built below is handed a copy of it.
+        // "Immediately (ie. before checks are done to determine whether or not
+        // the address is unclaimed) add the address being created to
+        // `accessed_addresses`, but gas costs of `CREATE` and `CREATE2` are
+        // unchanged" (`ethereum/EIPs` @ `dbfa6bee8`, `EIPS/eip-2929.md`, Final)
+        // -- so nothing is charged here, and where it sits is the whole rule.
+        //
+        // BELOW the three refusals above and ABOVE the deployability check,
+        // which is where `ethereum/execution-specs` @ `20f7f6271` puts it
+        // (`forks/berlin/vm/instructions/system.py:91`). The document's "before
+        // checks are done to determine whether or not the address is unclaimed"
+        // names that one check and not these three: a creation refused for a
+        // balance, a count or a depth pushes zero without its address ever being
+        // reached, and warming one there would differ from every client.
+        if !cannotBeAttempted && environment.rules.stateAccessMetering == StateAccessMetering.WarmCold then
+          frame.accessedAddresses = frame.accessedAddresses + target
+        if cannotBeAttempted then
           frame.gasLeft += forwarded
           exceptional(frame.stack.push(Word.Zero).map(_ => advance(frame)))
         else if !deployableAt(world, target) then
@@ -1054,7 +1114,9 @@ object Interpreter:
             ),
             Code(initCode),
             forwarded,
-            frame.registeredSoFar
+            frame.registeredSoFar,
+            frame.accessedAddresses,
+            frame.accessedStorageKeys
           )
           deploy(nested, environment) match
             case Left(unsupported) => Left(Fault.NotBuilt(unsupported.opcode))
@@ -1399,6 +1461,127 @@ object Interpreter:
   def deadAt(world: WorldState, address: Address): Boolean =
     world.nonceOf(address) == UInt64.Zero && world.codeOf(address).isEmpty && world.balanceOf(address).isZero
 
+  /** What reaching `address` costs under a warm-and-cold scheme, recording that
+    * it has now been reached.
+    *
+    * ==The record is written before the charge is paid, and the order is the
+    * specification's==
+    *
+    * `ethereum/execution-specs` @ `20f7f6271` adds to the set and then calls
+    * `charge_gas` in every one of the operations that reach an account
+    * (`forks/berlin/vm/instructions/environment.py:69-73` is the shortest of
+    * them). Nothing observable rests on it -- an invocation that cannot pay
+    * halts, and a halted invocation's set is discarded with everything else it
+    * accumulated -- so this is the two agreeing rather than a rule either could
+    * state alone.
+    *
+    * **Only the warm-and-cold scheme reaches this.** Under the settled scheme
+    * the sets are never read, so nothing calls it and the reach goes unrecorded.
+    */
+  private def warmingAccount(frame: Frame, schedule: GasSchedule, address: Address): BigInt =
+    if frame.accessedAddresses.contains(address) then schedule.warmAccess
+    else
+      frame.accessedAddresses = frame.accessedAddresses + address
+      schedule.coldAccountAccess
+
+  /** What reaching `address` costs under whichever scheme is in force, where the
+    * operation has a settled figure to fall back on rather than a table entry.
+    *
+    * `EXTCODECOPY` and the four call forms work out their own price under both
+    * schemes, so neither can express the difference in its entry and each names
+    * the figure it would otherwise have used. The warm-and-cold scheme REPLACES
+    * that figure rather than adding to it, which is what both authorities do:
+    * `ethereum/execution-specs` @ `20f7f6271` substitutes `access_gas_cost` for
+    * `GasCosts.OPCODE_CALL_BASE` in each call form's `extra_gas`
+    * (`forks/berlin/vm/instructions/system.py`), leaving the surcharge and the
+    * transfer terms beside it untouched.
+    */
+  private def costOfReaching(frame: Frame, rules: EvmRules, settled: BigInt, address: Address): BigInt =
+    rules.stateAccessMetering match
+      case StateAccessMetering.Settled  => settled
+      case StateAccessMetering.WarmCold => warmingAccount(frame, rules.schedule, address)
+
+  /** What a first reach at `address` adds to an operation that pays for a repeat
+    * reach separately, or nothing.
+    *
+    * The shape `SELFDESTRUCT` alone takes, and it is not
+    * [[costOfReaching]] with a zero settled figure: that would charge the
+    * reduced figure for a repeat, where this charges nothing at all. See the
+    * quotation at the site.
+    */
+  private def firstReachSurcharge(frame: Frame, rules: EvmRules, address: Address): BigInt =
+    rules.stateAccessMetering match
+      case StateAccessMetering.Settled  => BigInt(0)
+      case StateAccessMetering.WarmCold =>
+        if frame.accessedAddresses.contains(address) then BigInt(0)
+        else
+          frame.accessedAddresses = frame.accessedAddresses + address
+          rules.schedule.coldAccountAccess
+
+  /** The same for one account's storage slot, which is keyed by the pair. */
+  private def warmingSlot(frame: Frame, schedule: GasSchedule, address: Address, slot: Word): BigInt =
+    if frame.accessedStorageKeys.contains((address, slot)) then schedule.warmAccess
+    else
+      frame.accessedStorageKeys = frame.accessedStorageKeys + ((address, slot))
+      schedule.coldStorageAccess
+
+  /** Runs `body` over the account an operation's one operand names, at what
+    * reaching it costs.
+    *
+    * ==The operand is popped here because the charge depends on it==
+    *
+    * [[priced]] settles a charge before the operation is entered, which a
+    * warm-and-cold scheme cannot do: what reaching an account costs is decided
+    * by which account, and the operand is where that is stated. So this pops
+    * first and hands the body both the address and the figure, rather than the
+    * figure alone.
+    *
+    * ==The two schemes reach the charge by different routes and the table says
+    * which==
+    *
+    * Under [[StateAccessMetering.Settled]] the figure is the entry's, exactly as
+    * [[priced]] reads it, and an entry that computes its own price is the same
+    * mismatch [[priced]] reports. Under [[StateAccessMetering.WarmCold]] the
+    * entry holds no figure and none is read, so a configuration whose entries
+    * were never rebuilt still charges correctly -- which is why the rule and not
+    * the entry is what selects the scheme.
+    */
+  private def reachingAnAccount(frame: Frame, operation: Operation, rules: EvmRules)(
+      body: (Address, BigInt) => Either[Halt, Unit]
+  ): Either[Fault, Unit] =
+    frame.stack.pop() match
+      case Left(halt)     => Left(Fault.Exceptional(halt))
+      case Right(operand) =>
+        val address = addressOf(operand)
+        rules.stateAccessMetering match
+          case StateAccessMetering.WarmCold =>
+            exceptional(body(address, warmingAccount(frame, rules.schedule, address)))
+          case StateAccessMetering.Settled =>
+            operation.cost match
+              case Cost.Fixed(gas) => exceptional(body(address, gas))
+              case Cost.Computed   => Left(Fault.NotBuilt(operation.opcode))
+
+  /** Runs `body` over the slot an operation's one operand names, at what
+    * reaching it costs.
+    *
+    * [[reachingAnAccount]]'s counterpart, and its scaladoc carries the reasoning
+    * both share. What differs is only the key: a slot is reached under the
+    * account the invocation is running as, and the pair is what the set holds.
+    */
+  private def reachingASlot(frame: Frame, operation: Operation, rules: EvmRules)(
+      body: (Word, BigInt) => Either[Halt, Unit]
+  ): Either[Fault, Unit] =
+    frame.stack.pop() match
+      case Left(halt)  => Left(Fault.Exceptional(halt))
+      case Right(slot) =>
+        rules.stateAccessMetering match
+          case StateAccessMetering.WarmCold =>
+            exceptional(body(slot, warmingSlot(frame, rules.schedule, frame.message.currentTarget, slot)))
+          case StateAccessMetering.Settled =>
+            operation.cost match
+              case Cost.Fixed(gas) => exceptional(body(slot, gas))
+              case Cost.Computed   => Left(Fault.NotBuilt(operation.opcode))
+
   /** What bringing an operation's destination into being adds to its price.
     *
     * ==One home for a branch two operations take==
@@ -1467,6 +1650,8 @@ object Interpreter:
     frame.refundCounter += nested.refundCounter
     frame.accountsToDelete = frame.accountsToDelete | nested.accountsToDelete
     frame.touchedAccounts = frame.touchedAccounts | nested.touchedAccounts
+    frame.accessedAddresses = frame.accessedAddresses | nested.accessedAddresses
+    frame.accessedStorageKeys = frame.accessedStorageKeys | nested.accessedStorageKeys
 
   /** Takes up what a nested invocation that failed still gives its caller:
     * whatever gas it did not spend, and a reach at an address whose reaches are
@@ -1491,6 +1676,15 @@ object Interpreter:
     * counterpart rather than a silence. Where [[EvmRules.touchSurvivesFailure]]
     * is empty -- every network at every height before the proposal that names
     * an address -- this is the same silence written out.
+    *
+    * **[[Frame.accessedAddresses]] and [[Frame.accessedStorageKeys]] are
+    * accumulators with NO exception**, so their line here is their absence:
+    * *"if a scope reverts, the access lists should be in the state they were in
+    * before that scope was entered"* (`ethereum/EIPs` @ `dbfa6bee8`,
+    * `EIPS/eip-2929.md`, Final), and the caller's own copy is exactly that
+    * state. The address a failed creation was to have been deployed at survives
+    * anyway, because the creator warmed it in its own set before the child
+    * existed -- so that exception needs nothing here either.
     *
     * ==One intersection covers what the specification writes as two arms, and
     * is WIDER than the two of them==

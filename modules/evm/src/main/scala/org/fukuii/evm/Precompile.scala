@@ -150,6 +150,66 @@ object Precompile:
     def gasFor(input: Bytes): BigInt = costPerWord(base, perWord, input)
     def run(input: Bytes): Either[Halt, Bytes] = Right(input)
 
+  /** How the difficulty of multiplying operands of a declared width is worked
+    * out.
+    *
+    * ==A case rather than a function, for the reason [[GasForwarding]] is==
+    *
+    * A `BigInt => BigInt` member would read naturally here and is closed off: a
+    * [[Precompile]] sits inside a [[PrecompileSet]], which sits inside
+    * [[EvmRules]], whose value comparison answers *"do these two networks run
+    * the same rules"* -- and equality on a function is unspecified, so one
+    * member of that shape puts the whole comparison back to reference identity.
+    * A case carries no quantity for a caller to get wrong either; both figures
+    * either scheme spends stay [[GasSchedule]]'s.
+    *
+    * ==Two cases, and the second arrives with a divisor and a floor that move
+    * with it==
+    *
+    * The scheme, the divisor and the floor are one document's three changes
+    * rather than three independent settings, so a network moving one without the
+    * others is expressible and is no network. Nothing here refuses it; what the
+    * separation buys is that each is stated where its own kind belongs -- the two
+    * figures in the schedule with every other price, the scheme here because it
+    * is not a figure.
+    */
+  enum ModExpComplexity:
+
+    /** Three branches over the declared width in bytes, quadratic in each.
+      *
+      * `ethereum/EIPs` @ `dbfa6bee8`, `EIPS/eip-198.md` gives it as
+      * `mult_complexity`, and the branches meet at 64 and 1024 bytes.
+      */
+    case Piecewise
+
+    /** The square of the number of eight-byte words the declared width occupies,
+      * rounded up.
+      *
+      * *"`max_length = max(base_length, modulus_length); words =
+      * math.ceil(max_length / 8); return words**2`"* (`ethereum/EIPs` @
+      * `dbfa6bee8`, `EIPS/eip-2565.md`, Final). `ethereum/execution-specs` @
+      * `20f7f6271` reaches the same expression at
+      * `forks/berlin/vm/precompiled_contracts/modexp.py:87-88`.
+      *
+      * **The word here is eight bytes and not the machine's thirty-two.** Both
+      * appear in this file's arithmetic, and the difficulty term is the only
+      * place the smaller one is meant.
+      */
+    case SquaredWordCount
+
+    /** The difficulty of multiplying operands `length` bytes wide.
+      *
+      * Every division is a floor, both operands being non-negative.
+      */
+    def of(length: BigInt): BigInt = this match
+      case Piecewise =>
+        if length <= 64 then length * length
+        else if length <= 1024 then length * length / 4 + 96 * length - 3072
+        else length * length / 16 + 480 * length - 199680
+      case SquaredWordCount =>
+        val words = (length + 7) / 8
+        words * words
+
   /** `base ** exponent mod modulus`, over operands whose widths the input
     * itself declares.
     *
@@ -192,12 +252,14 @@ object Precompile:
     * rather than the gas a transaction can express -- and the smaller of the
     * two is above 2**54, some six million times a limit that fits in 32 bits.
     *
-    * ==No floor at this fork==
+    * ==A floor of nothing is a floor, and is what a network below EIP-2565
+    * states==
     *
-    * A short input is charged what the formula gives, which is routinely under
-    * two hundred and is zero for some inputs. The floor arrives with the later
-    * proposal that also moves [[divisor]], and one here would overcharge every
-    * small call this fork admits.
+    * A short input is then charged what the formula gives, which is routinely
+    * under two hundred and is zero for some inputs. Holding [[floor]] at zero
+    * there rather than making it optional is the same shape
+    * [[GasSchedule.transactionCreate]] is held at zero for: a bound nothing can
+    * fall below is the absence of a bound, written as the value it is.
     *
     * ==Two answers are settled without an exponentiation==
     *
@@ -216,15 +278,17 @@ object Precompile:
     * specification states, and because without it the answer would rest on
     * two other branches meeting rather than on that rule.
     */
-  final case class ModExp(divisor: BigInt) extends Precompile:
+  final case class ModExp(divisor: BigInt, floor: BigInt, complexity: ModExpComplexity) extends Precompile:
 
     def gasFor(input: Bytes): BigInt =
       val baseLength = lengthAt(input, 0)
       val exponentLength = lengthAt(input, Word.Width)
       val modulusLength = lengthAt(input, 2 * Word.Width)
       val exponentHead = valueAt(input, BaseOffset + baseLength, exponentLength.min(BigInt(Word.Width)))
-      (multiplicationComplexity(baseLength.max(modulusLength)) *
-        adjustedExponentLength(exponentLength, exponentHead).max(1)) / divisor
+      val worked =
+        (complexity.of(baseLength.max(modulusLength)) *
+          adjustedExponentLength(exponentLength, exponentHead).max(1)) / divisor
+      worked.max(floor)
 
     def run(input: Bytes): Either[Halt, Bytes] = Right(answerFor(input))
 
@@ -403,17 +467,6 @@ object Precompile:
       else
         require(padding.isValidInt, "a right-padded read wider than the largest representable byte array")
         present << padding.toInt
-
-  /** The multiplication difficulty of operands `length` bytes wide.
-    *
-    * The three branches and their constants are `ethereum/EIPs` @ `9e393a79`,
-    * `EIPS/eip-198.md`, which gives them as `mult_complexity`. Every division
-    * here is a floor, both operands being non-negative.
-    */
-  private def multiplicationComplexity(length: BigInt): BigInt =
-    if length <= 64 then length * length
-    else if length <= 1024 then length * length / 4 + 96 * length - 3072
-    else length * length / 16 + 480 * length - 199680
 
   /** How many squarings an exponent of this length and leading word implies.
     *

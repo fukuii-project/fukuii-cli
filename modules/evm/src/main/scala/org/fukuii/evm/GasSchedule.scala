@@ -135,6 +135,21 @@ final case class GasSchedule(
     externalBase: BigInt,
     extCodeHash: BigInt,
     storageLoad: BigInt,
+    // THE THREE FIGURES A WARM-AND-COLD SCHEME NEEDS, and none of them is a
+    // price the four fields above become. A scheme that charges by whether the
+    // thing has been reached before in this transaction reads these instead of
+    // those, so the two sets coexist and a network running the settled scheme
+    // holds these at whatever it holds them at without spending any of them.
+    // [[EvmRules.stateAccessMetering]] is what decides which set is read.
+    //
+    // `warmAccess` prices a repeat reach at an account AND at a storage slot,
+    // which is why it is named for the reach rather than for either. EIP-2929
+    // calls it `WARM_STORAGE_READ_COST` and spends it on `BALANCE` and the call
+    // family as well; `ethereum/execution-specs` @ `20f7f6271` writes it as
+    // `WARM_ACCESS` (`forks/berlin/vm/gas.py:40`), which is the name taken here.
+    warmAccess: BigInt,
+    coldAccountAccess: BigInt,
+    coldStorageAccess: BigInt,
     storageSet: BigInt,
     storageReset: BigInt,
     refundStorageClear: BigInt,
@@ -177,6 +192,13 @@ final case class GasSchedule(
     // than a placement and a repricing at once, the shape `transactionCreate`
     // above is held at zero for.
     precompileModExpDivisor: BigInt,
+    // The least that precompile may be charged, whatever its widths work out
+    // to. A floor is a price like any other and is held here for the reason the
+    // divisor above it is; EIP-2565 introduces it in the same document that
+    // moves that divisor, so a network below that document holds it at zero,
+    // where it bounds nothing -- the same shape `transactionCreate` is held at
+    // zero for.
+    precompileModExpFloor: BigInt,
     precompileAltBn128Add: BigInt,
     precompileAltBn128Mul: BigInt,
     // What a pairing check costs before any pair is read, and what each pair
@@ -208,6 +230,14 @@ final case class GasSchedule(
     // repricing in place -- the shape the seam expresses best -- instead of a
     // change to the record's own shape.
     transactionCreate: BigInt,
+    // What a transaction pays for each address and each storage key it declares
+    // ahead of running. Intrinsic prices like the three above, and charged over
+    // the declaration AS ENCODED: EIP-2930 states that *"non-unique addresses
+    // and storage keys are not disallowed, though they will be charged for
+    // multiple times"*, so whatever spends these counts a sequence and never a
+    // set -- while the warm seed the same declaration produces IS a set.
+    transactionAccessListAddress: BigInt,
+    transactionAccessListStorageKey: BigInt,
     // SELFDESTRUCT costs nothing to execute at this fork and is priced as a
     // field rather than a literal for the same reason: EIP-150 reprices it to
     // 5000, so a schedule that cannot name it cannot express that fork either.

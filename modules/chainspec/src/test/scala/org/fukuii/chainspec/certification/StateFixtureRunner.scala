@@ -198,6 +198,22 @@ object StateFixtureRunner:
     * Every quantity crosses unchanged and unnarrowed. A corpus states a nonce, a
     * limit, a price and a value that no fixed-width type always holds, because
     * overflow at each of them is a thing it tests.
+    *
+    * ==THE DECLARATION IS EMPTY BECAUSE THE READER DOES NOT CARRY ONE, AND THAT
+    * IS A GAP RATHER THAN A FACT ABOUT ANY FIXTURE==
+    *
+    * [[org.fukuii.evm.fixtures.StateTransaction]] has no access-list member, so
+    * there is nothing here to pass. Every tier this runner is wired to today
+    * admits only formats that carry no such declaration, so the empty sequence
+    * is the right answer for all of them -- and it stops being the right answer
+    * the moment a tier whose fork admits the declaring format is wired.
+    *
+    * **What that would cost is an undercharge, not a skip.** A transaction
+    * declaring an address would be charged the base and its data alone, spend
+    * less than the chain spent, and settle to a different root. It is loud where
+    * a declaration is non-empty and silent where it is empty, so a tier wired
+    * without the reader growing this field fails on some of its entries and
+    * passes on the rest.
     */
   private def offered(transaction: StateTransaction, sender: Address): OfferedTransaction =
     OfferedTransaction(
@@ -208,7 +224,8 @@ object StateFixtureRunner:
       gasLimit = transaction.gasLimit,
       to = transaction.to,
       value = transaction.value,
-      data = transaction.data
+      data = transaction.data,
+      accessList = Seq.empty
     )
 
   /** Every way the state this reached disagrees with the state the fixture

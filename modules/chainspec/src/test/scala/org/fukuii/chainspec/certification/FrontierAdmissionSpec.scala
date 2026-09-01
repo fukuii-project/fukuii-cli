@@ -90,13 +90,13 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
       to: Option[Address] = Some(recipient),
       data: Bytes = Bytes.Empty
   ): OfferedTransaction =
-    OfferedTransaction(kind, sender, nonce, gasPrice, gasLimit, to, value, data)
+    OfferedTransaction(kind, sender, nonce, gasPrice, gasLimit, to, value, data, Seq.empty)
 
   /** The rules with EIP-2's creation surcharge applied. */
   private val charging: GasSchedule = ethereum.Upgrades.frontier.evm.applying(Eip2.creationCharge).schedule
 
   private def charged(transaction: OfferedTransaction, schedule: GasSchedule): BigInt =
-    IntrinsicGas.of(schedule, transaction.data, transaction.to.isEmpty)
+    IntrinsicGas.of(schedule, transaction.data, transaction.to.isEmpty, transaction.accessList)
 
   /** A world in which [[admissible]] is admitted, from which each refusal is
     * likewise one edit away.
@@ -132,6 +132,7 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
         transaction.to,
         transaction.value,
         transaction.data,
+        transaction.accessList,
         intrinsic
       )
     )

@@ -167,6 +167,9 @@ object EvmFixtures:
     externalBase = BigInt(26),
     extCodeHash = BigInt(28),
     storageLoad = BigInt(52),
+    warmAccess = BigInt(102),
+    coldAccountAccess = BigInt(2602),
+    coldStorageAccess = BigInt(2102),
     storageSet = BigInt(20002),
     storageReset = BigInt(5002),
     refundStorageClear = BigInt(15002),
@@ -200,6 +203,7 @@ object EvmFixtures:
     precompileIdentityBase = BigInt(17),
     precompileIdentityPerWord = BigInt(15),
     precompileModExpDivisor = BigInt(27),
+    precompileModExpFloor = BigInt(29),
     precompileAltBn128Add = BigInt(502),
     precompileAltBn128Mul = BigInt(40002),
     precompileAltBn128PairingBase = BigInt(100002),
@@ -209,6 +213,8 @@ object EvmFixtures:
     transactionDataPerZeroByte = BigInt(19),
     transactionDataPerNonZeroByte = BigInt(70),
     transactionCreate = BigInt(21),
+    transactionAccessListAddress = BigInt(2402),
+    transactionAccessListStorageKey = BigInt(1902),
     selfDestruct = BigInt(23),
     selfDestructNewAccount = BigInt(25)
   )
@@ -248,6 +254,7 @@ object EvmFixtures:
     createdAccountNonce = UInt64.Zero,
     newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent,
     storageMetering = StorageMetering.Legacy,
+    stateAccessMetering = StateAccessMetering.Settled,
     touchSurvivesFailure = Set.empty
   )
 

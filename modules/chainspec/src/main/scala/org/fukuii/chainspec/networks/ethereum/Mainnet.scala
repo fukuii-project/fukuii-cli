@@ -459,6 +459,43 @@ object Mainnet:
   private val muirGlacier: UpgradeSchedule.Entry =
     UpgradeSchedule.Entry(atBlock(9200000), upgrade("Muir Glacier"), Upgrade.RuleChange(Upgrades.muirGlacier))
 
+  /** Block 12,244,000.
+    *
+    * Stated by two of the four proposals this upgrade carries rather than by a
+    * document of its own: `ethereum/EIPs` @
+    * `dbfa6bee8329650969b95080f23f7059c015c2ba` (2026-08-26) gives
+    * `FORK_BLOCK | 12244000` in the Parameters table of both `EIPS/eip-2929.md`
+    * and `EIPS/eip-2930.md` (both Final). `ethereum/execution-specs` @
+    * `20f7f6271a720091e5fea0a82e7bc802866ae36a` (2026-08-26) states it executably
+    * as `ByBlockNumber(12244000)` in `src/ethereum/forks/berlin/__init__.py`,
+    * where its neighbours declare their own documented activations -- 9,200,000
+    * below it -- so the figure is not a criterion offset by a constant. Two
+    * clients from different language families implement it:
+    * `ethereum/go-ethereum` @ `e9e35a42f8213235da1fde4f9ac8f3e9ff666b87`
+    * (2026-08-26) as `BerlinBlock: big.NewInt(12_244_000)` in
+    * `params/config.go`, and `besu-eth/besu` @
+    * `fdf1247c6d6431f0325a123ada37086ded17ce7e` (2026-08-26) as
+    * `"berlinBlock": 12244000` in `config/src/main/resources/mainnet.json`.
+    *
+    * ==This entry carries four proposals and no meta document names them==
+    *
+    * [[Upgrades.berlin]] holds the membership and how it was established,
+    * including the fifth proposal that was in this upgrade and was removed
+    * before it ran. The caveat [[homestead]] carries -- an entry naming a
+    * network upgrade whose rule set is only part of it -- is not one this entry
+    * needs, but the reason is different from [[muirGlacier]]'s: there the meta
+    * document settles it, and here five client and specification readings do.
+    *
+    * ==The first activation on this network at which a new transaction format
+    * becomes valid==
+    *
+    * Every entry above changes what the machine does or what a header must
+    * satisfy. This one also changes what a block may CARRY, so a node at these
+    * rules accepts a block an earlier one would reject on its transactions alone.
+    */
+  private val berlin: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(12244000), upgrade("Berlin"), Upgrade.RuleChange(Upgrades.berlin))
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -494,6 +531,7 @@ object Mainnet:
         constantinople,
         petersburg,
         istanbul,
-        muirGlacier
+        muirGlacier,
+        berlin
       )
     )

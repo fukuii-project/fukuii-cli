@@ -60,7 +60,8 @@ class MainnetSpec extends AnyFlatSpec:
           "Constantinople",
           "Petersburg",
           "Istanbul",
-          "Muir Glacier"
+          "Muir Glacier",
+          "Berlin"
         ),
       "an enumeration missing an entry misnumbers every entry after it, which is silent rather than absent"
     )
@@ -134,7 +135,8 @@ class MainnetSpec extends AnyFlatSpec:
         // disagree about where the boundary falls. None sits at 9,200,000 or
         // either side of it. So this line is the only place an activation moved
         // by any amount is caught.
-        Activation.AtBlock(UInt64.fromBits(9200000L))
+        Activation.AtBlock(UInt64.fromBits(9200000L)),
+        Activation.AtBlock(UInt64.fromBits(12244000L))
       ),
       "genesis is excluded by EIP-2124 and thawing by enforcing nothing, leaving the ones that are neither"
     )
@@ -201,3 +203,44 @@ class MainnetSpec extends AnyFlatSpec:
       "writing the two entries the other way round does NOT change what resolves, so the real schedule's order is unpinned"
     )
   }
+
+  "the Berlin entry" should "resolve to the rules that adopt its four proposals" in
+    // THE ASSERTION THAT TELLS A CORRECT WIRING FROM A WRONG ONE. Every case in
+    // the four proposal specs, and every case in `UpgradesSpec`, reads a rule set
+    // NAMED -- so an entry pointing at the upgrade below, or at a composition
+    // built from the wrong base, satisfies all of them. Only resolving the
+    // schedule at a height reads what a node at that height would run.
+    assert(
+      schedule.at(UInt64.fromBits(12244000L), UInt64.Zero) == Upgrades.berlin,
+      "the entry at this network's Berlin height does not resolve to the rules that upgrade composes"
+    )
+
+  it should "resolve to the upgrade below it one block earlier" in
+    // The control. Without it the case above holds for an entry activating at
+    // genesis, and for one activating anywhere at or below this height.
+    assert(
+      schedule.at(UInt64.fromBits(12243999L), UInt64.Zero) == Upgrades.muirGlacier,
+      "a block below this network's Berlin height resolves to rules it does not run"
+    )
+
+  it should "change what a block may carry as well as what the machine does" in
+    // The first activation on this network at which a transaction FORMAT becomes
+    // valid, read at the height rather than at the composition. A node one block
+    // earlier rejects a block on its transactions alone.
+    assert(
+      !schedule
+        .at(UInt64.fromBits(12243999L), UInt64.Zero)
+        .admission
+        .admittedTypes
+        .contains(
+          org.fukuii.types.TransactionType.AccessList
+        ) &&
+        schedule
+          .at(UInt64.fromBits(12244000L), UInt64.Zero)
+          .admission
+          .admittedTypes
+          .contains(
+            org.fukuii.types.TransactionType.AccessList
+          ),
+      "the format the upgrade admits is valid on the wrong side of its own activation"
+    )

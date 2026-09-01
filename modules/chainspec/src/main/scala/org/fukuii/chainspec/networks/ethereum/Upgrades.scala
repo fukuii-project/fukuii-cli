@@ -29,6 +29,10 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip214,
   Eip2200,
   Eip2384,
+  Eip2565,
+  Eip2718,
+  Eip2929,
+  Eip2930,
   Eip649,
   Eip658,
   Eip7
@@ -41,6 +45,7 @@ import org.fukuii.evm.{
   OpcodeTable,
   Precompile,
   PrecompileSet,
+  StateAccessMetering,
   StorageMetering
 }
 import org.fukuii.execution.{AdmissionRules, ExecutionRules}
@@ -114,6 +119,9 @@ object Upgrades:
     externalBase = BigInt(20),
     extCodeHash = BigInt(400),
     storageLoad = BigInt(50),
+    warmAccess = BigInt(0),
+    coldAccountAccess = BigInt(0),
+    coldStorageAccess = BigInt(0),
     storageSet = BigInt(20000),
     storageReset = BigInt(5000),
     refundStorageClear = BigInt(15000),
@@ -147,6 +155,7 @@ object Upgrades:
     precompileIdentityBase = BigInt(15),
     precompileIdentityPerWord = BigInt(3),
     precompileModExpDivisor = BigInt(20),
+    precompileModExpFloor = BigInt(0),
     precompileAltBn128Add = BigInt(500),
     precompileAltBn128Mul = BigInt(40000),
     precompileAltBn128PairingBase = BigInt(100000),
@@ -156,6 +165,8 @@ object Upgrades:
     transactionDataPerZeroByte = BigInt(4),
     transactionDataPerNonZeroByte = BigInt(68),
     transactionCreate = BigInt(0),
+    transactionAccessListAddress = BigInt(0),
+    transactionAccessListStorageKey = BigInt(0),
     selfDestruct = BigInt(0),
     selfDestructNewAccount = BigInt(0)
   )
@@ -265,6 +276,7 @@ object Upgrades:
         createdAccountNonce = UInt64.Zero,
         newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent,
         storageMetering = StorageMetering.Legacy,
+        stateAccessMetering = StateAccessMetering.Settled,
         touchSurvivesFailure = Set.empty
       ),
       execution = ExecutionRules(
@@ -576,3 +588,63 @@ object Upgrades:
     * clean.
     */
   val muirGlacier: UpgradeRules = istanbul.adopting(Eip2384.component)
+
+  /** [[muirGlacier]] with EIP-2565, EIP-2718, EIP-2929 and EIP-2930 adopted.
+    *
+    * ==The membership does not come from a proposal, which is what makes it
+    * worth stating where it does come from==
+    *
+    * No document carries an *Included EIPs* section for this upgrade. The two
+    * that name it -- one Withdrawn, one Final -- both delegate to a file in
+    * `ethereum/execution-specs`, and that file is NOT at that repository's head:
+    * it reads only at `8dbde99b132ff8d8fcc9cfb015a9947ccc8b12d6`, the commit the
+    * Final one cites. A reader sweeping the current tree finds no membership
+    * statement at all and concludes there is none.
+    *
+    * Five independent readings agree on these four. `ethereum/go-ethereum` @
+    * `e9e35a42f` sets `BerlinBlock` in `params/config.go` and gates exactly these
+    * in `core/vm/eips.go` and its transaction validation; `besu-eth/besu` @
+    * `fdf1247c6` composes `berlinDefinition` from `muirGlacierDefinition` plus a
+    * Berlin gas calculator, the access-list transaction type and a receipt
+    * factory; `ethereum/execution-specs` @ `20f7f6271` reaches the same four in
+    * `forks/berlin/`.
+    *
+    * ==A fifth was in this upgrade and was taken out before it activated==
+    *
+    * EIP-2315 sat in that membership file from its first revision and was
+    * removed forty days before the upgrade ran, in `7d3d203a8`, *"Remove
+    * EIP-2315"*. **It resolves opposite to EIP-1283 at [[constantinople]]**: that
+    * one activated on a public network and had to be withdrawn, which is why
+    * [[petersburg]] is a second rule set recording an adoption and a removal.
+    * This one never activated anywhere, so there is no adoption to record and
+    * this composition is four entries with no withdrawal.
+    *
+    * ==One of the four changes no rule, and its entry is the point==
+    *
+    * [[Eip2718]]'s delta is the identity. Its own scaladoc carries why the
+    * envelope it defines is already in force at every height here, and why the
+    * record still states that this network adopted it.
+    *
+    * ==Two facets move where [[istanbul]] moved one==
+    *
+    * Three of the four are `evm` deltas; EIP-2930 also writes the admission
+    * facet, making this the first upgrade on this network since
+    * [[spuriousDragon]] to admit a transaction format it did not admit before.
+    * The consensus facet is untouched, so the delay [[muirGlacier]] set carries
+    * through -- `ethereum/execution-specs` @ `20f7f6271` states the same figure
+    * independently at `forks/berlin/fork.py:70`, which is what makes composing
+    * this from [[istanbul]] a silent chain split rather than a compile error.
+    *
+    * ==The order is stated and is immaterial==
+    *
+    * EIP-2565 rebuilds one native, EIP-2718 changes nothing, EIP-2929 writes
+    * three new schedule fields, five existing ones, a rule and four table
+    * entries, and EIP-2930 writes two further new schedule fields and one
+    * admission member. No two of them name a common field. It is stated because
+    * two deltas touching one field compose to whichever ran last, and because
+    * the DEPENDENCY between the last two is real at run time even though their
+    * deltas are disjoint: what EIP-2930 charges for is admission to the sets
+    * EIP-2929 introduces.
+    */
+  val berlin: UpgradeRules =
+    muirGlacier.adopting(Eip2565.component, Eip2718.component, Eip2929.component, Eip2930.component)

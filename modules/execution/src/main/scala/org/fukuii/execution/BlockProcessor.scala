@@ -406,6 +406,16 @@ object BlockProcessor:
       case t: Transaction.DynamicFee => unpriced(t)
       case t: Transaction.Blob       => unpriced(t)
       case t: Transaction.SetCode    => unpriced(t)
+    // A format that carries no declaration offers an empty one, which is
+    // charged nothing and warms nothing. Written out per payload rather than as
+    // a wildcard, so a format added later cannot silently offer an empty
+    // declaration while carrying a real one.
+    val declared = transaction match
+      case _: Transaction.Legacy     => Seq.empty
+      case t: Transaction.AccessList => t.accessList
+      case t: Transaction.DynamicFee => t.accessList
+      case t: Transaction.Blob       => t.accessList
+      case t: Transaction.SetCode    => t.accessList
     OfferedTransaction(
       transactionType = transaction.transactionType,
       sender = sender,
@@ -414,7 +424,8 @@ object BlockProcessor:
       gasLimit = transaction.gasLimit.toBigInt,
       to = transaction.to,
       value = transaction.value.toBigInt,
-      data = transaction.data
+      data = transaction.data,
+      accessList = declared
     )
 
   private def unpriced(transaction: Transaction): Nothing =

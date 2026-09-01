@@ -212,7 +212,7 @@ class PrecompilePropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
   /** Priced at this fork's own divisor, which is what every gas figure in the
     * corpus was generated against.
     */
-  private val modExp = Precompile.ModExp(BigInt(20))
+  private val modExp = Precompile.ModExp(BigInt(20), BigInt(0), Precompile.ModExpComplexity.Piecewise)
 
   /** One published case: what it charges and what it answers, either of which
     * the corpus that supplied it may leave unstated.

@@ -30,7 +30,9 @@ final class Frame(
     val message: Message,
     val code: Code,
     initialGas: BigInt,
-    val registeredByAncestors: Set[Address] = Set.empty
+    val registeredByAncestors: Set[Address] = Set.empty,
+    reachedBeforeEntry: Set[Address] = Set.empty,
+    slotsReachedBeforeEntry: Set[(Address, Word)] = Set.empty
 ):
 
   /** The position of the instruction about to run. */
@@ -138,6 +140,45 @@ final class Frame(
     * and it is read where the taking-up would have happened rather than here.
     */
   var touchedAccounts: Set[Address] = Set.empty
+
+  /** The accounts this invocation, or one it is nested inside, has already
+    * reached in a way a warm-and-cold scheme charges the reduced price for.
+    *
+    * ==Seeded with a COPY of what the caller held, which is what makes a revert
+    * fall out==
+    *
+    * A caller is suspended while its callee runs, so the set handed down cannot
+    * change underneath; the callee accumulates into its own copy, and
+    * [[Interpreter]] takes that copy up only where the callee stopped normally.
+    * An invocation that failed simply is not taken up, so what it reached is
+    * discarded with its logs and its registrations -- *"if a scope reverts, the
+    * access lists should be in the state they were in before that scope was
+    * entered"* (`ethereum/EIPs` @ `dbfa6bee8`, `EIPS/eip-2929.md`, Final).
+    *
+    * **That is why this is ONE accumulator and not the pair
+    * [[registeredByAncestors]] splits into.** A registration spans the chain of
+    * callers for a question about payment while only this frame's own set is
+    * acted on, so the two have to be told apart there. Here the question and the
+    * accumulation are the same set, and merging is the whole of what an ancestor
+    * contributes.
+    *
+    * ==The outermost invocation is seeded by whatever settles the transaction==
+    *
+    * Not by anything here. What belongs in that seed is the sender, the
+    * recipient or the address being created, every precompile, and whatever the
+    * transaction declared ahead of running -- and NOT the block's beneficiary,
+    * which a later proposal adds.
+    */
+  var accessedAddresses: Set[Address] = reachedBeforeEntry
+
+  /** The storage slots reached the same way, keyed by the account they belong
+    * to as well as by the slot.
+    *
+    * The account is part of the key rather than implied by the frame: the
+    * specification keys the same set on a pair, and an invocation can be
+    * re-entered under a different account with the same slot numbers.
+    */
+  var accessedStorageKeys: Set[(Address, Word)] = slotsReachedBeforeEntry
 
   val stack: Stack = new Stack
 

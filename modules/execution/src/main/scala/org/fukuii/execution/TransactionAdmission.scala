@@ -3,7 +3,7 @@ package org.fukuii.execution
 import org.fukuii.bytes.{Address, Bytes, UInt64}
 import org.fukuii.crypto.Secp256k1
 import org.fukuii.evm.{GasSchedule, WorldState}
-import org.fukuii.types.{Sender, SignatureScheme, Transaction, TransactionType}
+import org.fukuii.types.{AccessTuple, Sender, SignatureScheme, Transaction, TransactionType}
 
 /** Why a fork refuses a transaction.
   *
@@ -78,6 +78,20 @@ enum Refusal:
   *   where a signature is available.
   * @param to
   *   the recipient, absent when the transaction deploys.
+  * @param accessList
+  *   the accounts and slots the transaction declares ahead of running, empty
+  *   for every format that carries no such declaration.
+  *
+  *   **It is here because the intrinsic charge is priced from it**, and this
+  *   record's whole purpose is to carry what the branch comparing that charge
+  *   against the limit reads. Without it a transaction whose limit covers only
+  *   the base and its data is ADMITTED where a fork pricing the declaration
+  *   must refuse it -- which is not a refusal difference but a settled
+  *   transaction the network does not carry.
+  *
+  *   Carried as the sequence the transaction stated, never narrowed to a set:
+  *   [[IntrinsicGas]] charges duplicates and the warm seed built from the same
+  *   field does not, and only the sequence supports both.
   */
 final case class OfferedTransaction(
     transactionType: TransactionType,
@@ -87,7 +101,8 @@ final case class OfferedTransaction(
     gasLimit: BigInt,
     to: Option[Address],
     value: BigInt,
-    data: Bytes
+    data: Bytes,
+    accessList: Seq[AccessTuple]
 )
 
 /** Whether a transaction may run at all, and why not when it may not. */
@@ -272,7 +287,7 @@ object TransactionAdmission:
       rules: AdmissionRules,
       schedule: GasSchedule
   ): Admission =
-    lazy val intrinsic = IntrinsicGas.of(schedule, offered.data, offered.to.isEmpty)
+    lazy val intrinsic = IntrinsicGas.of(schedule, offered.data, offered.to.isEmpty, offered.accessList)
     lazy val counted = world.nonceOf(offered.sender).toBigInt
     lazy val held = world.balanceOf(offered.sender).toBigInt
     lazy val maximumFee = offered.gasLimit * offered.gasPrice
@@ -343,5 +358,6 @@ object TransactionAdmission:
       to = offered.to,
       value = offered.value,
       data = offered.data,
+      accessList = offered.accessList,
       intrinsicGas = intrinsicGas
     )

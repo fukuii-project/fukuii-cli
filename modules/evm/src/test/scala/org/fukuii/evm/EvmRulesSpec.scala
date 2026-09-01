@@ -137,6 +137,7 @@ class EvmRulesSpec extends AnyFlatSpec:
       createdAccountNonce = UInt64.Zero,
       newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent,
       storageMetering = StorageMetering.Legacy,
+      stateAccessMetering = StateAccessMetering.Settled,
       touchSurvivesFailure = Set.empty
     )
     assert(rebuilt == base, "two identical configurations built separately compared as different rules")

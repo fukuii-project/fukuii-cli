@@ -44,7 +44,13 @@ class Eip198Spec extends AnyFlatSpec:
     assert(
       adopted.evm.precompiles
         .at(PrecompileSet.ModExp)
-        .contains(Precompile.ModExp(base.evm.schedule.precompileModExpDivisor)),
+        .contains(
+          Precompile.ModExp(
+            base.evm.schedule.precompileModExpDivisor,
+            base.evm.schedule.precompileModExpFloor,
+            Precompile.ModExpComplexity.Piecewise
+          )
+        ),
       "0x05 answers something other than this document's native, or at some other price"
     )
 
@@ -60,7 +66,7 @@ class Eip198Spec extends AnyFlatSpec:
         .evm
         .precompiles
         .at(PrecompileSet.ModExp)
-        .contains(Precompile.ModExp(BigInt(7))),
+        .contains(Precompile.ModExp(BigInt(7), BigInt(0), Precompile.ModExpComplexity.Piecewise)),
       "a network stating its own divisor got someone else's"
     )
   }
@@ -96,7 +102,14 @@ class Eip198Spec extends AnyFlatSpec:
     assert(
       adopted.evm == base.evm.copy(precompiles =
         base.evm.precompiles
-          .adding(PrecompileSet.ModExp, Precompile.ModExp(base.evm.schedule.precompileModExpDivisor))
+          .adding(
+            PrecompileSet.ModExp,
+            Precompile.ModExp(
+              base.evm.schedule.precompileModExpDivisor,
+              base.evm.schedule.precompileModExpFloor,
+              Precompile.ModExpComplexity.Piecewise
+            )
+          )
       ),
       "the adopting rules differ from the earlier ones by something other than the one entry"
     )
