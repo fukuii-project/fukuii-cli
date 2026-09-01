@@ -43,7 +43,8 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     ("Gotham", 5000000L),
     ("Defuse Difficulty Bomb", 5900000L),
     ("Atlantis", 8772000L),
-    ("Agharta", 9573000L)
+    ("Agharta", 9573000L),
+    ("Phoenix", 10500839L)
   )
 
   /** The last height under the old rules and the first under the new, per
@@ -64,16 +65,24 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     * ten proposals that `params/config_classic.go` at `4185df450` places
     * together at that height.
     *
-    * ==The last two rows are not a boundary, and they are here to refute one==
+    * ==The pair at 9,582,999 and 9,583,000 is not a boundary, and it is here to
+    * refute one==
     *
-    * 9,582,999 and 9,583,000 both resolve to the rules that activate ten
-    * thousand blocks below them. That is the figure published ECIP-1066 gives
-    * this network's Agharta row, which `Mainnet`'s entry for that upgrade cites
-    * as wrong and sources against four readings that agree on 9,573,000. A
-    * schedule built from the table's figure instead would resolve the first of
-    * these two to the rules below, and nothing else in this build would report
-    * it: the certification tiers that run this network's fixtures never straddle
-    * either height.
+    * Both resolve to the rules that activate ten thousand blocks below them.
+    * That is the figure published ECIP-1066 gives this network's Agharta row,
+    * which `Mainnet`'s entry for that upgrade cites as wrong and sources against
+    * four readings that agree on 9,573,000. A schedule built from the table's
+    * figure instead would resolve the first of these two to the rules below, and
+    * nothing else in this build would report it: the certification tiers that
+    * run this network's fixtures never straddle either height.
+    *
+    * ==The last pair is the only boundary here that is not a round figure==
+    *
+    * 10,500,838 and 10,500,839 are the one activation on this schedule whose
+    * digits carry no zeros to end on, and four sources agree on all seven of
+    * them. That shape invites correction toward a rounder neighbour, and a
+    * correction of one block in either direction moves exactly one of these two
+    * rows and nothing else in this build.
     */
   private val boundaries = Table(
     ("height", "rules"),
@@ -101,7 +110,9 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     (9572999L, Upgrades.atlantis),
     (9573000L, Upgrades.agharta),
     (9582999L, Upgrades.agharta),
-    (9583000L, Upgrades.agharta)
+    (9583000L, Upgrades.agharta),
+    (10500838L, Upgrades.agharta),
+    (10500839L, Upgrades.phoenix)
   )
 
   property("every upgrade activates at the block its own citation states") {

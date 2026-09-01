@@ -2,7 +2,7 @@ package org.fukuii.chainspec.networks.ethereumclassic
 
 import org.fukuii.bytes.UInt64
 import org.fukuii.chainspec.{DifficultyAdjustment, UpgradeRules}
-import org.fukuii.evm.{NewAccountCharge, Opcode, PrecompileSet}
+import org.fukuii.evm.{Cost, NewAccountCharge, Opcode, Operation, Precompile, PrecompileSet, StorageMetering}
 import org.scalatest.prop.TableDrivenPropertyChecks
 import org.scalatest.propspec.AnyPropSpec
 
@@ -29,6 +29,17 @@ import org.scalatest.propspec.AnyPropSpec
   */
 class UpgradesPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
+  /** What a rule set's table charges for `opcode` before it runs, where that is
+    * settled.
+    *
+    * Read off the entry rather than off the record it was built from, because a
+    * fixed-price entry is settled at the moment the operation is adopted: a
+    * repricing that moved the schedule and left the entry alone would leave the
+    * two disagreeing, and only the entry is what a frame is billed.
+    */
+  private def settledCost(rules: UpgradeRules, opcode: Opcode): Option[BigInt] =
+    rules.evm.table.operationAt(opcode.code).collect { case Operation(_, Cost.Fixed(gas)) => gas }
+
   /** Every observable the ten proposals of [[Upgrades.atlantis]] settle,
     * keyed to the document that settles it.
     *
@@ -37,6 +48,13 @@ class UpgradesPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     * shares the machine with, in
     * [[org.fukuii.chainspec.networks.SharedHistorySpec]], which compares the
     * whole of the machine's rules rather than a member at a time.
+    *
+    * **That is this upgrade's reason and it does not reach every upgrade.** A
+    * comparison is refutable only where the two networks disagree, so it reports
+    * an agreement and never an adoption. That is sufficient here, where every
+    * proposal adopted settles something other than a price, and it is not
+    * sufficient where a proposal settles nothing else. [[phoenixObservables]] is
+    * the upgrade that reaches the limit, and it states the exception in full.
     */
   private val observables = Table(
     ("proposal, and what it settles", "in force"),
@@ -117,6 +135,124 @@ class UpgradesPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     )
   )
 
+  /** Every observable the six proposals of [[Upgrades.phoenix]] settle, keyed to
+    * the document that settles it.
+    *
+    * ==This table reads PRICES, where the two above it deliberately do not==
+    *
+    * [[observables]] defers what a native costs and what an operation charges to
+    * the comparison against the network this one shares the machine with. Two
+    * properties of these six put them outside that reason, and both are facts
+    * about the proposals rather than a change of mind about the convention.
+    *
+    * **Two of the six settle nothing else.** EIP-1108 reprices three natives
+    * already placed, and EIP-2028 moves one intrinsic charge; neither adds an
+    * operation, an address or a rule. A table declining to read prices would
+    * carry four of the six and read as complete.
+    *
+    * **And a comparison states an agreement rather than an adoption.** It is
+    * refutable only where the two networks disagree, and they disagree about no
+    * figure these six move: the machines are equal at the upgrade below this one
+    * on each network, which [[org.fukuii.chainspec.networks.SharedHistorySpec]]
+    * asserts. A figure moving on both sides at once satisfies it, so it cannot
+    * state that THIS network adopted a repricing -- which is what a row here is
+    * for, and what the second direction refutes.
+    *
+    * ==An addition priced from a figure this upgrade does not move is a PRESENCE
+    * row==
+    *
+    * The ninth native, `CHAINID` and `SELFBALANCE` are each built from a figure
+    * the base already carries, and no delta of these six writes any of the three.
+    * So a row stating one of those prices would be false below only because the
+    * entry is absent: the presence row with a clause added, and a conjunction is
+    * what this file's division of rows exists to avoid. What each of the three
+    * costs is asserted in [[UpgradesSpec]], read off the entry.
+    *
+    * **`SELFBALANCE` has a second reason not to be priced here**, which
+    * [[org.fukuii.chainspec.proposals.eip.Eip1884]] carries with its refs: the
+    * corroborating specification declares two constants of equal value, and the
+    * operation is charged the one that document names. A row citing the other
+    * would reach the right number by the wrong route and would go on agreeing if
+    * only one of them ever moved.
+    */
+  private val phoenixObservables = Table(
+    ("proposal, and what it settles", "in force"),
+    (
+      "EIP-152: a native answers at the ninth address",
+      (rules: UpgradeRules) => rules.evm.precompiles.at(PrecompileSet.Blake2f).isDefined
+    ),
+    (
+      "EIP-1108: the sixth native is repriced",
+      (rules: UpgradeRules) =>
+        rules.evm.precompiles.at(PrecompileSet.AltBn128Add).contains(Precompile.AltBn128Add(BigInt(150)))
+    ),
+    (
+      "EIP-1108: the seventh native is repriced",
+      (rules: UpgradeRules) =>
+        rules.evm.precompiles.at(PrecompileSet.AltBn128Mul).contains(Precompile.AltBn128Mul(BigInt(6000)))
+    ),
+    (
+      "EIP-1108: what a pairing check costs before any pair is read is repriced",
+      (rules: UpgradeRules) =>
+        rules.evm.precompiles
+          .at(PrecompileSet.AltBn128PairingCheck)
+          .collect { case Precompile.AltBn128PairingCheck(base, _) => base }
+          .contains(BigInt(45000))
+    ),
+    (
+      "EIP-1108: what each pair adds to a pairing check is repriced",
+      (rules: UpgradeRules) =>
+        rules.evm.precompiles
+          .at(PrecompileSet.AltBn128PairingCheck)
+          .collect { case Precompile.AltBn128PairingCheck(_, perPoint) => perPoint }
+          .contains(BigInt(34000))
+    ),
+    (
+      "EIP-1344: the machine can push the identifier its own network is known by",
+      (rules: UpgradeRules) => rules.evm.table.contains(Opcode.ChainId)
+    ),
+    (
+      "EIP-1884: reading a storage slot is repriced",
+      (rules: UpgradeRules) => settledCost(rules, Opcode.SLoad).contains(BigInt(800))
+    ),
+    (
+      "EIP-1884: reading another account's balance is repriced",
+      (rules: UpgradeRules) => settledCost(rules, Opcode.Balance).contains(BigInt(700))
+    ),
+    (
+      "EIP-1884: reading another account's code hash is repriced",
+      (rules: UpgradeRules) => settledCost(rules, Opcode.ExtCodeHash).contains(BigInt(700))
+    ),
+    (
+      "EIP-1884: the machine can read the balance it is running against",
+      (rules: UpgradeRules) => rules.evm.table.contains(Opcode.SelfBalance)
+    ),
+    (
+      "EIP-2028: a non-zero byte of transaction data is repriced",
+      (rules: UpgradeRules) => rules.evm.schedule.transactionDataPerNonZeroByte == BigInt(16)
+    ),
+    (
+      "EIP-2200: storage is metered net of what the transaction has already done, behind a sentry",
+      (rules: UpgradeRules) => rules.evm.storageMetering == StorageMetering.NetWithSentry
+    ),
+    (
+      "EIP-2200: a write leaving the slot as it found it is repriced",
+      (rules: UpgradeRules) => rules.evm.schedule.netStorageNoop == BigInt(800)
+    ),
+    (
+      "EIP-2200: a write to a slot this transaction has already moved is repriced",
+      (rules: UpgradeRules) => rules.evm.schedule.netStorageDirty == BigInt(800)
+    ),
+    (
+      "EIP-2200: the refund for resetting a slot that began empty follows the figure that moved",
+      (rules: UpgradeRules) => rules.evm.schedule.refundNetStorageResetFromZero == BigInt(19200)
+    ),
+    (
+      "EIP-2200: the refund for resetting a slot that began set follows the figure that moved",
+      (rules: UpgradeRules) => rules.evm.schedule.refundNetStorageReset == BigInt(4200)
+    )
+  )
+
   property("every proposal the reconvergence adopts settles what its own document settles") {
     forAll(observables) { (observable: String, inForce: UpgradeRules => Boolean) =>
       assert(inForce(Upgrades.atlantis), observable + " -- not in force at the upgrade that adopts it")
@@ -138,5 +274,17 @@ class UpgradesPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
   property("none of that was settled at the rule set below it either") {
     forAll(aghartaObservables) { (observable: String, inForce: UpgradeRules => Boolean) =>
       assert(!inForce(Upgrades.atlantis), observable + " -- already in force before the upgrade that adopts it")
+    }
+  }
+
+  property("every proposal the upgrade taken whole from upstream adopts settles what its own document settles") {
+    forAll(phoenixObservables) { (observable: String, inForce: UpgradeRules => Boolean) =>
+      assert(inForce(Upgrades.phoenix), observable + " -- not in force at the upgrade that adopts it")
+    }
+  }
+
+  property("none of what that upgrade adopts was settled at the rule set below it") {
+    forAll(phoenixObservables) { (observable: String, inForce: UpgradeRules => Boolean) =>
+      assert(!inForce(Upgrades.agharta), observable + " -- already in force before the upgrade that adopts it")
     }
   }

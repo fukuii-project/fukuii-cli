@@ -1,9 +1,9 @@
 package org.fukuii.chainspec.networks.ethereumclassic
 
 import org.fukuii.bytes.UInt256
-import org.fukuii.chainspec.proposals.eip.{Eip1234, Eip1283}
+import org.fukuii.chainspec.proposals.eip.{Eip1234, Eip1283, Eip1884, Eip2200}
 import org.fukuii.chainspec.{DifficultyAdjustment, ProposalId}
-import org.fukuii.evm.{Cost, Opcode, OpcodeTable, Operation, StorageMetering}
+import org.fukuii.evm.{Cost, Opcode, OpcodeTable, Operation, Precompile, PrecompileSet, StorageMetering}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Properties every rule set this network composed has to hold.
@@ -23,7 +23,8 @@ class UpgradesSpec extends AnyFlatSpec:
       Upgrades.gotham,
       Upgrades.defuse,
       Upgrades.atlantis,
-      Upgrades.agharta
+      Upgrades.agharta,
+      Upgrades.phoenix
     )
 
   /** What a table charges for `opcode` before it runs, where that is settled. */
@@ -102,7 +103,16 @@ class UpgradesSpec extends AnyFlatSpec:
           ProposalId.Eip(197)
         ) &&
         Upgrades.agharta.components == Upgrades.atlantis.components ++
-        Vector(ProposalId.Eip(145), ProposalId.Eip(1014), ProposalId.Eip(1052)),
+        Vector(ProposalId.Eip(145), ProposalId.Eip(1014), ProposalId.Eip(1052)) &&
+        Upgrades.phoenix.components == Upgrades.agharta.components ++
+        Vector(
+          ProposalId.Eip(152),
+          ProposalId.Eip(1108),
+          ProposalId.Eip(1344),
+          ProposalId.Eip(1884),
+          ProposalId.Eip(2028),
+          ProposalId.Eip(2200)
+        ),
       "a composition's recorded components are not the ones it adopted"
     )
 
@@ -235,4 +245,104 @@ class UpgradesSpec extends AnyFlatSpec:
       Upgrades.agharta.evm.table.contains(Opcode.Create2) &&
         settledCost(Upgrades.agharta.evm.table, Opcode.Create2).isEmpty,
       "the operation whose charge depends on its operands was given a fixed one"
+    )
+
+  "the first upgrade this network takes whole from upstream" should
+    "reach net-metered storage from the legacy scheme in one step" in
+    // The composition executed rather than the reasoning restated. EIP-2200
+    // writes its scheme absolutely rather than as an amendment to EIP-1283's
+    // state, so this network arrives at it from Legacy where the other network's
+    // journal is an adoption, a withdrawal and then this. The two clauses about
+    // the record are what make that a one-step arrival rather than a value that
+    // happens to match: a base that had run either proposal would carry it.
+    assert(
+      Upgrades.agharta.evm.storageMetering == StorageMetering.Legacy &&
+        Upgrades.phoenix.evm.storageMetering == StorageMetering.NetWithSentry &&
+        !Upgrades.phoenix.components.contains(ProposalId.Eip(1283)) &&
+        !Upgrades.phoenix.components.contains(ProposalId.Eip(1716)),
+      "this network reached net-metered storage through a proposal it never adopted, or did not reach it"
+    )
+
+  it should "carry the three figures EIP-2200 leaves alone at the values this network launched with" in
+    // The document lists SSTORE_SET_GAS, SSTORE_RESET_GAS and
+    // SSTORE_CLEARS_SCHEDULE as not changed, so the composition depends on the
+    // base supplying them. Read against genesisPrices rather than against
+    // literals: the claim is that no component between launch and here writes
+    // them, which a literal would go on satisfying if one started writing the
+    // same number. The literals are stated too, because carrying a figure
+    // forward unchanged says nothing about it being the figure the document
+    // expects.
+    assert(
+      Upgrades.phoenix.evm.schedule.netStorageInit == Upgrades.genesisPrices.netStorageInit &&
+        Upgrades.phoenix.evm.schedule.netStorageClean == Upgrades.genesisPrices.netStorageClean &&
+        Upgrades.phoenix.evm.schedule.refundNetStorageClear == Upgrades.genesisPrices.refundNetStorageClear &&
+        Upgrades.phoenix.evm.schedule.netStorageInit == BigInt(20000) &&
+        Upgrades.phoenix.evm.schedule.netStorageClean == BigInt(5000) &&
+        Upgrades.phoenix.evm.schedule.refundNetStorageClear == BigInt(15000),
+      "a figure EIP-2200 declares unchanged moved, or this network never held the value the document assumes"
+    )
+
+  it should "move one published figure into three fields, by two documents, and be neither document alone" in
+    // ECIP-1086 records that this network split two of its own test networks
+    // over exactly this: EIP-1884 and EIP-2200 each raise a quantity both call
+    // SLOAD_GAS from 200 to 800, and they raise different fields. The last two
+    // clauses are the ones that matter -- each adopts one document onto the
+    // base and reads the OTHER document's field, which is the pick-and-mix
+    // configuration that registry calls broken. A schedule sharing one field
+    // between the two documents could not express it, so it could not refute it
+    // either.
+    assert(
+      Upgrades.agharta.evm.schedule.storageLoad == BigInt(200) &&
+        Upgrades.agharta.evm.schedule.netStorageNoop == BigInt(200) &&
+        Upgrades.agharta.evm.schedule.netStorageDirty == BigInt(200) &&
+        Upgrades.phoenix.evm.schedule.storageLoad == BigInt(800) &&
+        Upgrades.phoenix.evm.schedule.netStorageNoop == BigInt(800) &&
+        Upgrades.phoenix.evm.schedule.netStorageDirty == BigInt(800) &&
+        Upgrades.agharta.adopting(Eip2200.component).evm.schedule.storageLoad == BigInt(200) &&
+        Upgrades.agharta.adopting(Eip1884.component).evm.schedule.netStorageNoop == BigInt(200),
+      "one document moved the other's field, or a composition of one document alone already moved both"
+    )
+
+  it should "price the operations it adds and reprices from this network's own schedule" in
+    // Read off the adopted table rather than off the schedule, because a
+    // fixed-price entry is settled at the moment of adoption: a repricing that
+    // moved the schedule and left the entry alone would leave the record and
+    // the charge disagreeing, and only the entry is what a frame is billed.
+    //
+    // Stated as literals on THIS network's base. The two additions are priced
+    // from tiers no proposal this network adopts ever writes, which is why they
+    // read 2 and 5 here and would read the same on any base carrying those
+    // tiers.
+    assert(
+      settledCost(Upgrades.phoenix.evm.table, Opcode.SLoad).contains(BigInt(800)) &&
+        settledCost(Upgrades.phoenix.evm.table, Opcode.Balance).contains(BigInt(700)) &&
+        settledCost(Upgrades.phoenix.evm.table, Opcode.ExtCodeHash).contains(BigInt(700)) &&
+        settledCost(Upgrades.phoenix.evm.table, Opcode.ChainId).contains(BigInt(2)) &&
+        settledCost(Upgrades.phoenix.evm.table, Opcode.SelfBalance).contains(BigInt(5)),
+      "an operation this upgrade adds or reprices charges something other than the figure its own document publishes"
+    )
+
+  it should "place the ninth native and reprice the three the upgrade below it carried" in
+    // The precompile set's side of the same hazard, and the first time this
+    // network reprices one at all. The three entries are rebuilt from the moved
+    // record rather than left reading the schedule, so an entry carrying the
+    // old figure beside a schedule carrying the new one is what this refutes.
+    //
+    // The absence at the upgrade below is what makes the first clause an
+    // adoption rather than a value the base already held -- and it is a reading
+    // of this composition, not of every client: one reference build installs
+    // this registry 927,839 blocks lower, which Upgrades.phoenix records.
+    assert(
+      Upgrades.agharta.evm.precompiles.at(PrecompileSet.Blake2f).isEmpty &&
+        Upgrades.phoenix.evm.precompiles.at(PrecompileSet.Blake2f).contains(Precompile.Blake2f(BigInt(1))) &&
+        Upgrades.phoenix.evm.precompiles
+          .at(PrecompileSet.AltBn128Add)
+          .contains(Precompile.AltBn128Add(BigInt(150))) &&
+        Upgrades.phoenix.evm.precompiles
+          .at(PrecompileSet.AltBn128Mul)
+          .contains(Precompile.AltBn128Mul(BigInt(6000))) &&
+        Upgrades.phoenix.evm.precompiles
+          .at(PrecompileSet.AltBn128PairingCheck)
+          .contains(Precompile.AltBn128PairingCheck(BigInt(45000), BigInt(34000))),
+      "a native this upgrade places or reprices is absent, or answers at the price the upgrade below it charged"
     )

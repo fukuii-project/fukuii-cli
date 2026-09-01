@@ -339,6 +339,73 @@ object Mainnet:
   private val agharta: UpgradeSchedule.Entry =
     UpgradeSchedule.Entry(atBlock(9573000), upgrade("Agharta"), Upgrade.RuleChange(Upgrades.agharta))
 
+  /** Block 10,500,839.
+    *
+    * **ECIP-1088 -- `ethereumclassic/ECIPs` @
+    * `f1bb761a80bcaae10c7b5e0c39e4a62062b1c023`, Final -- names the height
+    * itself**, listing `10_500_839` for this network among the three it
+    * proposes across the mainnet and two test networks.
+    *
+    * `ethereumclassic/core-geth` @ `4185df450` states it as six per-proposal
+    * transitions rather than a fork name, every one of them `big.NewInt(10_500_839)`
+    * in `params/config_classic.go:78-83`. `besu-eth/besu-etc` @ `eb4248c997`
+    * states it as `"phoenixBlock": 10500839` in
+    * `config/src/main/resources/classic.json`, and
+    * `openethereum/openethereum` @ `v3.0.1` as `0xa03ae7`, written across the
+    * transitions and native prices it sets in
+    * `ethcore/res/ethereum/classic.json`.
+    *
+    * **That last reading corroborates the HEIGHT and must not be carried over
+    * to the membership**, which is where the entry below it does use it.
+    * [[Upgrades.phoenix]] records that the commit configuring this upgrade in
+    * that tree shares an author with the proposal, so on membership it restates
+    * ECIP-1088 rather than reading it -- and a restatement of a figure this
+    * entry already takes from the proposal costs nothing, where a restatement
+    * of a membership is not a second opinion at all.
+    *
+    * ==An unusual number, and it is the specification's own==
+    *
+    * Every other activation on this schedule is a round figure. This one is
+    * not, and all four sources above carry it to the last digit -- so the
+    * oddity is the network's, not a transcription. A figure this shape is
+    * exactly the kind a reader corrects toward a rounder neighbour, which is
+    * why it is sourced four ways rather than two.
+    *
+    * ==The label==
+    *
+    * ECIP-1066's `Version and Code Name` cell less the subscripted counterpart
+    * it carries, which is where every other label on this schedule comes from.
+    * At `ethereumclassic/ECIPs` @ `e36ef7f10166769aa3ac469aaf27ba5b0cacb198`
+    * (2026-07-05) the cell reads `Phoenix <sub>Istanbul</sub>`.
+    * `besu-eth/besu-etc` @ `eb4248c997` states the label without it, as
+    * `PHOENIX(true, "Phoenix")` in `HardforkId.ClassicHardforkId`, and the two
+    * agree to the character.
+    *
+    * **That commit's row for this upgrade also carries the height correctly,
+    * and [[agharta]] records that its row for the upgrade below carries a
+    * figure nothing supports.** Both readings stand: a tabulation can be right
+    * in one row and wrong in the next, which is why a label is taken from it
+    * here and a height is not.
+    *
+    * ==Six proposals, and the registry holds three rival sets at this same
+    * height==
+    *
+    * ECIP-1088 § *Specification* lists EIP-152, EIP-1108, EIP-1344, EIP-1884,
+    * EIP-2028 and EIP-2200, and [[Upgrades.phoenix]] adopts every one of them
+    * and records all six in its component list. Three further documents in that
+    * registry propose a fork at this height with a different membership, one of
+    * them sharing this one's title stem; every one of them is Withdrawn or
+    * Rejected. [[Upgrades.phoenix]] carries them by number and status, because
+    * a membership matched on the name and the height reaches the wrong set
+    * without failing.
+    *
+    * **That is a statement about what the composition adopts, and not a
+    * conformance claim** -- the same division [[ethereum.Mainnet]] draws at its
+    * own entry for the upgrade these six proposals also make up there.
+    */
+  private val phoenix: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(10500839), upgrade("Phoenix"), Upgrade.RuleChange(Upgrades.phoenix))
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -373,5 +440,16 @@ object Mainnet:
     */
   val schedule: Either[UpgradeSchedule.Error, UpgradeSchedule] =
     UpgradeSchedule.of(
-      Vector(frontier, frontierThawing, homestead, gasReprice, dieHard, gotham, defuse, atlantis, agharta)
+      Vector(
+        frontier,
+        frontierThawing,
+        homestead,
+        gasReprice,
+        dieHard,
+        gotham,
+        defuse,
+        atlantis,
+        agharta,
+        phoenix
+      )
     )

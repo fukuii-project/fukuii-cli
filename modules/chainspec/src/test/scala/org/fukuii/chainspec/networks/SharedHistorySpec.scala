@@ -96,6 +96,14 @@ import org.scalatest.flatspec.AnyFlatSpec
   *     Ethereum Classic declined, and the reason its consensus facet still pays
   *     the launch amount where the other network's does not.
   *
+  * **That list is the FIRST realignment's, and it grows at each later one.** The
+  * other network goes on to adopt EIP-1234 and EIP-1283 at its next upgrade and
+  * EIP-1716 at the one after, and this network takes none of the three. So the
+  * cases below read the difference at each height rather than restating this
+  * list, and the third of them asserts that the difference stops growing --
+  * both networks adopt the same six proposals there, so the six cancel and what
+  * is left is what was already there.
+  *
   * `ethereumclassic/core-geth` @
   * `4185df450364973bbf99efa3923791f5ba40b351` carries it as
   * `// DAOForkBlock: big.NewInt(1920000),` in `params/config_classic.go`,
@@ -141,6 +149,18 @@ class SharedHistorySpec extends AnyFlatSpec:
 
   private val classicSecondRealignmentBlock: Long = 9573000L
 
+  /** The next height after that, on each schedule, sourced on the entry that
+    * carries it in each network's own `Mainnet`.
+    *
+    * The two are stated as heights rather than derived because neither
+    * schedule's position tells you the other's: Ethereum Classic reaches these
+    * rules 927,839 blocks above its previous entry and Ethereum mainnet
+    * 1,789,000 blocks above its previous pair.
+    */
+  private val ethereumThirdRealignmentBlock: Long = 9069000L
+
+  private val classicThirdRealignmentBlock: Long = 10500839L
+
   private def ethereumAt(height: Long) = ethereumSchedule.at(UInt64.fromBits(height), UInt64.Zero)
   private def classicAt(height: Long) = classicSchedule.at(UInt64.fromBits(height), UInt64.Zero)
 
@@ -176,7 +196,10 @@ class SharedHistorySpec extends AnyFlatSpec:
         (ethereumclassic.Upgrades.atlantis.admission ne ethereum.Upgrades.byzantium.admission) &&
         (ethereumclassic.Upgrades.agharta.evm ne ethereum.Upgrades.petersburg.evm) &&
         (ethereumclassic.Upgrades.agharta.execution ne ethereum.Upgrades.petersburg.execution) &&
-        (ethereumclassic.Upgrades.agharta.admission ne ethereum.Upgrades.petersburg.admission),
+        (ethereumclassic.Upgrades.agharta.admission ne ethereum.Upgrades.petersburg.admission) &&
+        (ethereumclassic.Upgrades.phoenix.evm ne ethereum.Upgrades.istanbul.evm) &&
+        (ethereumclassic.Upgrades.phoenix.execution ne ethereum.Upgrades.istanbul.execution) &&
+        (ethereumclassic.Upgrades.phoenix.admission ne ethereum.Upgrades.istanbul.admission),
       "one network's configuration is the other's, so every agreement asserted here is a tautology"
     )
 
@@ -338,4 +361,74 @@ class SharedHistorySpec extends AnyFlatSpec:
         classicAt(classicSecondRealignmentBlock).consensus !=
         ethereumAt(ethereumSecondRealignmentBlock).consensus,
       "the two networks' machines parted at the upgrade above their reconvergence, or their consensus rules became one"
+    )
+
+  it should "happen a third time, at the upgrade where both networks take one upstream set whole" in
+    // The same pair one upgrade further on, and the first realignment at which
+    // neither network declines anything: both adopt the same six proposals,
+    // where the two below them each took a subset of what the other's document
+    // named.
+    //
+    // The equality is also where this build's chain-identifier placement is
+    // exercised, which is what makes it more than a third copy of the case
+    // above.
+    //
+    // One of the six adds an operation that pushes the network's own
+    // identifier. This build puts that value on org.fukuii.evm.Environment, so
+    // the operation the rule set carries holds an opcode and a cost and nothing
+    // network-specific -- which is the whole reason two networks' rule sets can
+    // be compared by value here at all. Had the identifier been a parameter of
+    // the fork-resolved rules, this equality would fail 61 against 1 and the
+    // comparison would have to be abandoned or special-cased.
+    //
+    // That is not a hypothetical shape. besu-eth/besu-etc @ eb4248c997 builds
+    // this upgrade's machine as MainnetEVMs.istanbul(gasCalculator, chainId,
+    // ...), whose registerIstanbulOperations constructs the operation as
+    // new ChainIdOperation(gasCalculator, Bytes32.leftPad(chainId)) -- the
+    // identifier baked into the fork definition. Two networks' Istanbul-era
+    // machines are not one value in that client, and the assertion below could
+    // not be written against it.
+    assert(
+      classicAt(classicThirdRealignmentBlock).evm == ethereumAt(ethereumThirdRealignmentBlock).evm &&
+        classicAt(classicThirdRealignmentBlock).execution ==
+        ethereumAt(ethereumThirdRealignmentBlock).execution &&
+        classicAt(classicThirdRealignmentBlock).admission ==
+        ethereumAt(ethereumThirdRealignmentBlock).admission &&
+        classicAt(classicThirdRealignmentBlock).consensus !=
+        ethereumAt(ethereumThirdRealignmentBlock).consensus,
+      "the two networks' machines parted where both took the same six proposals, or their consensus rules became one"
+    )
+
+  it should "leave the two records differing by exactly what they differed by one upgrade below" in
+    // The record's side of the third realignment, and the precise statement of
+    // adoption rather than construction. Both networks adopt the SAME six
+    // proposals here, so the six cancel out of both directions of the
+    // difference and what is left is the difference that was already there.
+    //
+    // The literals are what keep the equalities from being vacuous -- two empty
+    // differences would satisfy them -- and the equalities are what make the
+    // claim about this upgrade rather than a second copy of the one below. A
+    // difference that MOVED here would mean the two networks took different
+    // sets, which is exactly the claim being made.
+    //
+    // Read the direction: one network declined the emission cut of its own
+    // earlier fork and then adopted a storage scheme it later withdrew, and
+    // this one took four consensus proposals of its own series. Neither list
+    // has anything to do with the six adopted here.
+    assert(
+      ethereumAt(ethereumThirdRealignmentBlock).components
+        .diff(classicAt(classicThirdRealignmentBlock).components) ==
+        Vector(ProposalId.Eip(649), ProposalId.Eip(1234), ProposalId.Eip(1283), ProposalId.Eip(1716)) &&
+        classicAt(classicThirdRealignmentBlock).components
+          .diff(ethereumAt(ethereumThirdRealignmentBlock).components) ==
+        Vector(ProposalId.Ecip(1010), ProposalId.Ecip(1017), ProposalId.Ecip(1039), ProposalId.Ecip(1041)) &&
+        ethereumAt(ethereumThirdRealignmentBlock).components
+          .diff(classicAt(classicThirdRealignmentBlock).components) ==
+        ethereumAt(ethereumSecondRealignmentBlock).components
+          .diff(classicAt(classicSecondRealignmentBlock).components) &&
+        classicAt(classicThirdRealignmentBlock).components
+          .diff(ethereumAt(ethereumThirdRealignmentBlock).components) ==
+        classicAt(classicSecondRealignmentBlock).components
+          .diff(ethereumAt(ethereumSecondRealignmentBlock).components),
+      "the six proposals both networks adopted here did not cancel, so one of them adopted something the other did not"
     )

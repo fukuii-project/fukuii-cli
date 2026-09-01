@@ -7,19 +7,25 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip100,
   Eip1014,
   Eip1052,
+  Eip1108,
+  Eip1344,
   Eip140,
   Eip145,
   Eip150,
+  Eip152,
   Eip155,
   Eip160,
   Eip161,
   Eip170,
+  Eip1884,
   Eip196,
   Eip197,
   Eip198,
   Eip2,
+  Eip2028,
   Eip211,
   Eip214,
+  Eip2200,
   Eip658,
   Eip7
 }
@@ -691,3 +697,188 @@ object Upgrades:
     * this composition adopts nothing that touches them.
     */
   val agharta: UpgradeRules = atlantis.adopting(Eip145.component, Eip1014.component, Eip1052.component)
+
+  /** [[agharta]] with EIP-152, EIP-1108, EIP-1344, EIP-1884, EIP-2028 and
+    * EIP-2200 adopted.
+    *
+    * The order is the order the six compose in. It is immaterial, and the
+    * claim is stronger in one place than [[atlantis]]'s and the same in two
+    * others.
+    *
+    * **On the machine's schedule it is the claim about FIELDS.** EIP-1108
+    * moves four native prices, EIP-1884 three operation prices, EIP-2028 one
+    * transaction charge, and EIP-2200 one metering figure with the two refunds
+    * defined as differences from it; no two of the six name one field.
+    *
+    * **On the operation table and the precompile set it is [[atlantis]]'s
+    * weaker claim about KEYS**, because two deltas write each collection:
+    * `0x46` against `0x31`, `0x3f`, `0x47` and `0x54` in the table, and `0x09`
+    * against `0x06` through `0x08` in the set. Inserts at distinct keys commute
+    * where a field assignment would not.
+    *
+    * **The third clause is the one [[atlantis]] and [[agharta]] each state more
+    * simply than this composition can.** Both of those say that the priced
+    * entries they build read a schedule no delta of theirs writes, and four of
+    * the six here DO write it. Three deltas build an entry from a price they do
+    * not themselves set -- the per-round figure a Blake2 invocation is charged,
+    * the tier `CHAINID` is priced at, and the tier `SELFBALANCE` is priced at.
+    * What holds is narrower and is still enough: none of those three fields is
+    * one any of the six writes, so what they read does not depend on when they
+    * run. The other two build their entries out of a schedule they have just
+    * written themselves, which fixes the order inside one delta rather than
+    * between two.
+    *
+    * ==This is the first upgrade at which this network takes an upstream set
+    * WHOLE==
+    *
+    * [[atlantis]] takes eight of EIP-609's nine and [[agharta]] three of
+    * EIP-1013's five, each declining a proposal with nothing here to act on.
+    * This composition declines nothing: EIP-1679 -- `ethereum/EIPs` @
+    * `dbfa6bee8329650969b95080f23f7059c015c2ba`, Final -- lists exactly these
+    * six under *Included EIPs*, and every one of them is adopted here.
+    *
+    * **That does not make these rules the other network's.** The bases differ
+    * by four proposals in each direction, and adding one set to both leaves
+    * that difference exactly where it was.
+    * `org.fukuii.chainspec.networks.SharedHistorySpec` asserts the machine,
+    * settlement and admission facets equal, the consensus facet not, and the
+    * two records differing by the same four proposals in each direction that
+    * they differed by one upgrade below.
+    *
+    * ==Which document settles membership, and the three at this height that do
+    * not==
+    *
+    * **ECIP-1088** -- `ethereumclassic/ECIPs` @
+    * `f1bb761a80bcaae10c7b5e0c39e4a62062b1c023`, Final, Meta -- is the document
+    * by which this network adopted them. Its Specification section enumerates
+    * these six and nothing else, and the six-bullet list in its own Abstract
+    * agrees with it.
+    *
+    * **Reading `status:` is what makes that a membership statement rather than
+    * a search result.** Four documents in that registry propose a hard fork at
+    * this network's Phoenix height and two of them are titled *Phoenix*.
+    * ECIP-1089 -- @ `5f59493da7b2a8269994c68e726548677618a323`, **Withdrawn** --
+    * shares this document's title stem, its creation date, its discussion issue
+    * and all three of its block heights, and proposes SEVEN members: it drops
+    * EIP-1884 and EIP-2200 and adds EIP-1283, EIP-1706 and ECIP-1080.
+    * ECIP-1061 -- @ `cf2e440dafc686820c16f8198d2896634272ecad`, **Rejected** --
+    * proposes five, arguing in its own text that EIP-1884 be deferred.
+    * ECIP-1078 -- @ `98ecc1a33c2995e5a5dad591105aaf6302a41ca7`, **Rejected** --
+    * proposes a third set. A membership matched on the name and the height
+    * would reach one of those three, and only the fourth is Final.
+    *
+    * ==Three implementations state the same six, and a fourth is not a fourth
+    * reading==
+    *
+    * `ethereumclassic/core-geth` @ `4185df450` states them as six per-proposal
+    * transitions rather than as a fork name -- `EIP152FBlock`, `EIP1108FBlock`,
+    * `EIP1344FBlock`, `EIP1884FBlock`, `EIP2028FBlock` and `EIP2200FBlock` in
+    * `params/config_classic.go:78-83`, under section comments naming both the
+    * upstream upgrade and ECIP-1088. `besu-eth/besu-etc` @ `eb4248c997` reaches
+    * the same six by replacement: `ClassicProtocolSpecs.phoenixDefinition`
+    * builds on `aghartaDefinition`, swaps in `IstanbulGasCalculator` and
+    * `MainnetEVMs.istanbul`, and re-installs the Istanbul precompile registry
+    * that base already carried -- which is the reading the section below is
+    * about.
+    *
+    * **`openethereum/openethereum` @ `v3.0.1` states the same six and is NOT a
+    * third lineage here.** The commit that configured this upgrade in that tree
+    * shares an author with ECIP-1088, so it restates the specification rather
+    * than reading it independently -- which is a different relation from the
+    * one the preceding upgrades cite it for, and the reason it is not counted
+    * among the readings above. **Its predecessor tree is worse than not
+    * independent: `openethereum/parity-ethereum` @ `55c90d401` carries this
+    * network's configuration from before ECIP-1088 and holds
+    * `eip1884Transition` at no height at all**, so a membership read there is
+    * missing the proposal this upgrade exists to have taken.
+    *
+    * That client also spells EIP-2200 as `eip1283ReenableTransition` plus
+    * `eip1706Transition` and carries no key named for the document at any
+    * height, which is its universal spelling rather than a choice made for this
+    * network -- `ethcore/res/ethereum/foundation.json` decomposes the same
+    * proposal the same way at `0x8a61c8` for the network this one parted from.
+    * Neither key is a seventh proposal.
+    *
+    * ==Net-metered storage arrives here having never been in force, which is
+    * not how the other network reaches it==
+    *
+    * [[agharta]] records that this network reaches
+    * `org.fukuii.evm.StorageMetering.Legacy` by never leaving it -- it adopted
+    * neither EIP-1283 nor EIP-1716, where the other network adopted both.
+    * [[Eip2200]] writes `org.fukuii.evm.StorageMetering.NetWithSentry`
+    * absolutely rather than as an amendment to EIP-1283's state, so this
+    * composition moves from `Legacy` to `NetWithSentry` in one step where the
+    * other network's journal is an adoption, a withdrawal and then this.
+    *
+    * **Same value, different journal, one upgrade further on** -- and this time
+    * the journals converge on the same rule rather than on the same absence.
+    *
+    * The three figures the document lists as *"not changed"* --
+    * `SSTORE_SET_GAS`, `SSTORE_RESET_GAS` and `SSTORE_CLEARS_SCHEDULE` -- are
+    * supplied by [[genesisPrices]] at 20000, 5000 and 15000 and are written by
+    * no component this build carries. That is a property of the vocabulary as
+    * it stands rather than a guarantee, so `UpgradesSpec` asserts it by running
+    * this composition rather than by reading this paragraph.
+    *
+    * ==Two of the six move a figure both documents call `SLOAD_GAS`, and this
+    * network split two of its own test networks over exactly that==
+    *
+    * EIP-1884 takes `org.fukuii.evm.GasSchedule.storageLoad` from 200 to 800,
+    * which is what the `SLOAD` OPERATION costs. EIP-2200 takes `netStorageNoop`
+    * and `netStorageDirty` from 200 to 800, which is what the same quantity is
+    * worth INSIDE the storage-write calculation. One constant in the two
+    * documents, three fields in this schedule, and neither document's fields
+    * are the other's.
+    *
+    * **ECIP-1086 -- @ `a852d25db550518e9199a90e77359f0162f60294`, Rejected -- is
+    * this network's own record of what taking one and not the other cost it.**
+    * Verbatim: *"Both [EIP-1884] and [EIP-2200] propose the `SLOAD_GAS` to be
+    * increased from `200` to `800` but not all clients correctly implemented
+    * this change for both EIPs leaving networks configured with a pick-and-mix
+    * EIP configuration ... with an incompatible configuration as compared to
+    * clients who correctly implemented the specifications."* That document
+    * proposes pinning the figure at 200 on the test networks and says of
+    * itself *"This ECIP shall not be considered on mainnet."*
+    *
+    * **So a five-member composition dropping EIP-1884 is not a smaller Phoenix;
+    * it is the configuration this network's own registry records as broken**,
+    * and it is what ECIP-1061 proposed. The three-field split is what makes
+    * that configuration expressible and therefore refutable -- `UpgradesSpec`
+    * builds it and asserts that this composition is not it. A schedule sharing
+    * one field between the two documents could not tell them apart at all.
+    *
+    * ==What besu-etc corroborates here, and the one thing it must not be cited
+    * for==
+    *
+    * It is a reading of all six proposals' CONTENT and of this upgrade's
+    * membership. **It is not a reading of EIP-152's or EIP-1108's ACTIVATION
+    * HEIGHT.** `ClassicProtocolSpecs.aghartaDefinition` installs
+    * `MainnetPrecompiledContractRegistries::istanbul`, which is exactly those
+    * two proposals, and has done so since a commit predating ECIP-1088 --
+    * [[agharta]] records the same finding from the other side. So in that
+    * client BLAKE2F is callable and the alt_bn128 natives carry this document's
+    * prices 927,839 blocks below where the specification and the other two
+    * implementations put them, and both are state-root-affecting if exercised.
+    *
+    * ==Every facet but the machine's is untouched==
+    *
+    * All six are `org.fukuii.chainspec.Component.evm` deltas, which cannot
+    * reach the consensus, settlement or admission facets. Two implementations
+    * agree from their own shapes: the six transitions above are every
+    * transition `params/config_classic.go` at `4185df450` carries between
+    * [[agharta]]'s height and 11,380,000, and besu-etc's `phoenixDefinition`
+    * sets a gas calculator, an EVM builder and a precompile registry and no
+    * block-header validator, difficulty calculator, block processor or receipt
+    * factory. A third reading, from another module and written before this
+    * composition existed, agrees: this network's difficulty corpus dispatches
+    * this upgrade's label to [[atlantis]]'s consensus rules unchanged.
+    */
+  val phoenix: UpgradeRules =
+    agharta.adopting(
+      Eip152.component,
+      Eip1108.component,
+      Eip1344.component,
+      Eip1884.component,
+      Eip2028.component,
+      Eip2200.component
+    )
