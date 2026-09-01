@@ -1336,6 +1336,31 @@ object Interpreter:
     * defensible reading of a split field; it is the answer the published corpus
     * requires at this fork.
     *
+    * ==A SECOND published corpus expects the opposite, and the discriminator is
+    * its filling client's vintage==
+    *
+    * *"The published corpus"* above is not the only one, and a reader who meets
+    * this rule through a failing fixture rather than through this comment will
+    * meet the other one first. `etclabscore/tests-etc` @ `06ec708ea7` carries
+    * `stSStoreTest/InitCollision` and `stExtCodeHash/dynamicAccountOverwriteEmpty`
+    * at this network's labels, and **five of their entries expect the deployment
+    * to succeed** -- the answer this rule refuses.
+    *
+    * **That corpus was filled by a client build predating this rule**, and
+    * `ethereum/legacytests`, which carries the same two scenarios refilled by a
+    * later one, agrees with this rule and is certified clean in
+    * `org.fukuii.chainspec.certification.CertificationCorpora`. So the two
+    * published corpora disagree with each other, and what separates them is when
+    * each was filled rather than which network it is labelled for.
+    *
+    * **Neither the disagreement nor its direction is a reversing trigger**, for
+    * the reason the next paragraph gives: a fixture older than the rule cannot
+    * be evidence about it.
+    * `org.fukuii.chainspec.certification.ClassicPublishedPhoenixStateCertificationSpec`
+    * names those five entries and certifies them as known divergences, so they
+    * are asserted rather than merely tolerated -- and a change in this rule's
+    * answer moves that list.
+    *
     * Reversing trigger, accordingly narrowed: **ECIP-1121 settling the question
     * the other way for the proof-of-work family**, in which case this becomes
     * configuration rather than a constant -- which the root-plus-deltas seam

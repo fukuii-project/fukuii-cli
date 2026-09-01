@@ -170,6 +170,30 @@ object FixtureCorpus:
   def generated(under: Path): Path =
     under.resolve("ethereum/execution-specs-fixtures/tests-v20.0.1/fixtures")
 
+  /** Ethereum Classic's own published state tier, in the same retesteth
+    * `GeneralStateTest` shape the two corpora above are read in.
+    *
+    * ==A third tree, and deliberately not a third root==
+    *
+    * [[root]] resolves to the directory holding one subdirectory per upstream
+    * organization, so a tree published by another organization is a `resolve`
+    * beside the two above rather than a second pointer to configure. A root of
+    * its own would give this tier a failure mode the others do not have, for no
+    * gain: the tree is third-party material fetched and never written, which is
+    * exactly what this root already locates.
+    *
+    * ==What makes it worth reading, which is a property of its transactions==
+    *
+    * Every entry this build reads here is signed under EIP-155 naming chain 61,
+    * so no other corpus available to this build can stand in for it: a tier
+    * whose transactions name no chain is satisfiable by any network's rules,
+    * and one naming another chain would be refused before its rules were
+    * reached. That is the whole of why this tree is registered and the
+    * unprotected tiers of the same shape are not.
+    */
+  def classicPublished(under: Path): Path =
+    under.resolve("etclabscore/tests-etc/GeneralStateTests")
+
   /** Every `.json` beneath `directory`, in a stable order so two runs report
     * the same thing.
     */
