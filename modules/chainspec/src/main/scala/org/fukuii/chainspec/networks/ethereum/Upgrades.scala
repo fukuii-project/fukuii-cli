@@ -28,6 +28,7 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip211,
   Eip214,
   Eip2200,
+  Eip2384,
   Eip649,
   Eip658,
   Eip7
@@ -532,3 +533,46 @@ object Upgrades:
       Eip2028.component,
       Eip2200.component
     )
+
+  /** [[istanbul]] with EIP-2384 adopted, which is the whole of it.
+    *
+    * ==The membership, from the meta document and from a client==
+    *
+    * `ethereum/EIPs` @ `dbfa6bee`, EIP-2387 *Hardfork Meta: Muir Glacier*
+    * (Final) lists a single entry under *Included EIPs*, and the meta document
+    * is the membership statement. `besu-eth/besu` @ `fdf1247c6` reaches the same
+    * answer from the other side: `muirGlacierDefinition`
+    * (`ethereum/core/.../mainnet/MainnetProtocolSpecs.java`) returns
+    * `istanbulDefinition(...)` with exactly two calls appended, one selecting a
+    * difficulty calculator and one setting the fork's own label. **A label is
+    * not a rule**, so what that client adds over the upgrade below is the
+    * calculator alone.
+    *
+    * **Read the document's *Included EIPs* section and not its frontmatter**,
+    * for the reason [[istanbul]] states: `requires:` lists EIP-1679 as well,
+    * which is that upgrade's own meta proposal and is not a rule to adopt here.
+    *
+    * ==This is the one facet [[istanbul]] leaves untouched==
+    *
+    * All six of the upgrade below are `evm` deltas and none writes the consensus
+    * facet; this one writes the consensus facet and nothing else. So the two
+    * compose without either reaching a member the other set, and the machine
+    * arriving here is the same value rather than an equal copy --
+    * `UpgradesSpec` asserts that as identity.
+    *
+    * ==Composing the upgrade above this one from [[istanbul]] would ship a wrong
+    * bomb delay==
+    *
+    * The next upgrade this network takes inherits 9,000,000 rather than
+    * restating it: `ethereum/execution-specs` @ `20f7f6271` declares
+    * `BOMB_DELAY_BLOCKS = 9000000` in `forks/berlin/fork.py:70` and in
+    * `forks/muir_glacier/fork.py:65` alike. Reaching past this composition would
+    * carry [[Eip1234]]'s 5,000,000 forward into a rule set whose delay is
+    * 9,000,000 -- which compiles, and which no state tier at any fork can see:
+    * a state fixture settles one transaction against a block it is handed, so
+    * nothing it expresses reads how the next block's difficulty is targeted.
+    * `CertificationCorporaSpec` records that as structural rather than as a
+    * shortfall in any corpus. It is a chain split that every tier reports
+    * clean.
+    */
+  val muirGlacier: UpgradeRules = istanbul.adopting(Eip2384.component)

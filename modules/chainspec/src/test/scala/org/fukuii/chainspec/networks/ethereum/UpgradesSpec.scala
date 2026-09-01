@@ -34,7 +34,8 @@ class UpgradesSpec extends AnyFlatSpec:
       Upgrades.byzantium,
       Upgrades.constantinople,
       Upgrades.petersburg,
-      Upgrades.istanbul
+      Upgrades.istanbul,
+      Upgrades.muirGlacier
     )
 
   /** The compositions below the one that adopts EIP-658.
@@ -489,4 +490,65 @@ class UpgradesSpec extends AnyFlatSpec:
     assert(
       Upgrades.petersburg.evm.schedule.transactionDataPerNonZeroByte == BigInt(68),
       "an upgrade below the one adopting EIP-2028 already charged its reduced figure"
+    )
+
+  "the composition this network calls Muir Glacier" should "record exactly the one proposal it adopted" in
+    // Stated relative to the upgrade below rather than as the whole journal, so
+    // a failure names what this composition did rather than restating every
+    // proposal adopted since genesis. `ethereum/EIPs` @ `dbfa6bee`, EIP-2387
+    // *Hardfork Meta: Muir Glacier* (Final) lists one entry under *Included
+    // EIPs*; its `requires:` frontmatter names EIP-1679 as well, which is the
+    // upgrade below's own meta proposal.
+    assert(
+      Upgrades.muirGlacier.components == Upgrades.istanbul.components :+ ProposalId.Eip(2384),
+      "this composition's recorded components are not the one it adopted"
+    )
+
+  it should "hold the exponential term back by nine million blocks" in
+    // THE CASE THIS SECTION EXISTS FOR, and it is asserted at the NETWORK rather
+    // than at the component for the reason the EIP-161 and Byzantium cases above
+    // give, more sharply than either: `Eip2384Spec` certifies the delta and
+    // passes with the component adopted by nothing, and the published difficulty
+    // corpus certifies the FIGURE while reading no schedule at all. Between them
+    // a rule set that never adopted this document is invisible -- and the next
+    // upgrade this network takes composes from THIS one, so it would inherit
+    // 5,000,000 into a fork whose delay is 9,000,000.
+    assert(
+      Upgrades.muirGlacier.consensus.difficultyBombDelay == BigInt(9000000),
+      "the upgrade that adopts EIP-2384 does not carry its figure"
+    )
+
+  it should "have held it back by five million at the upgrade before it" in
+    // The control, stated as the specific earlier figure. Without it the case
+    // above holds for a network that carried 9,000,000 all along, and the
+    // proposal below that sets it is EIP-1234's, adopted at Constantinople.
+    assert(
+      Upgrades.istanbul.consensus.difficultyBombDelay == BigInt(5000000),
+      "an upgrade below the one adopting EIP-2384 already held the term back by its figure"
+    )
+
+  it should "write the consensus facet and no other" in
+    // The mirror of the identity case Istanbul carries, and the two together are
+    // what make this upgrade's whole content checkable: that one asserts all six
+    // of its components stay inside the machine, this one asserts this
+    // document's single component stays outside it. Measured rather than
+    // assumed: `besu-eth/besu` @ `fdf1247c6`'s `muirGlacierDefinition` returns
+    // `istanbulDefinition(...)` with a difficulty calculator and a fork label
+    // appended, and a label is not a rule.
+    assert(
+      (Upgrades.muirGlacier.evm eq Upgrades.istanbul.evm) &&
+        (Upgrades.muirGlacier.execution eq Upgrades.istanbul.execution) &&
+        (Upgrades.muirGlacier.admission eq Upgrades.istanbul.admission),
+      "an upgrade whose one component names a consensus figure rebuilt a facet outside that one"
+    )
+
+  it should "pay two ether for a block, which is the amount it inherits rather than one it sets" in
+    // The amount is EIP-1234's, adopted at Constantinople alongside the delay
+    // this document extends -- so a component built by copying that document's
+    // two-part shape would cut it again here. An assertion that the two rule
+    // sets agree would not catch that, because a mutation moving both goes on
+    // agreeing; this states the FIGURE.
+    assert(
+      Upgrades.muirGlacier.consensus.blockReward == ether(2),
+      "an upgrade whose one document states no reward changed what a block pays its producer"
     )

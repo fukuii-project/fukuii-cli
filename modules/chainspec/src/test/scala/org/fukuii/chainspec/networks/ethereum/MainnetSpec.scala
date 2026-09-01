@@ -59,7 +59,8 @@ class MainnetSpec extends AnyFlatSpec:
           // EIP-1283 for ever.
           "Constantinople",
           "Petersburg",
-          "Istanbul"
+          "Istanbul",
+          "Muir Glacier"
         ),
       "an enumeration missing an entry misnumbers every entry after it, which is silent rather than absent"
     )
@@ -124,7 +125,16 @@ class MainnetSpec extends AnyFlatSpec:
         // place and the wrong answer is silent -- the checksum is still a
         // number, and every peer rejects it as unrelated network trouble.
         Activation.AtBlock(UInt64.fromBits(7280000L)),
-        Activation.AtBlock(UInt64.fromBits(9069000L))
+        Activation.AtBlock(UInt64.fromBits(9069000L)),
+        // The one figure EIP-2384 has that no corpus in this build can carry.
+        // Its 9,000,000 delay is certified over 4,254 published cases, and
+        // those cases do span this height -- they run from block 4,819 to
+        // 19,999,658 -- but every one of them is filed under a SINGLE fork key,
+        // so the corpus applies one rule set across the whole span and cannot
+        // disagree about where the boundary falls. None sits at 9,200,000 or
+        // either side of it. So this line is the only place an activation moved
+        // by any amount is caught.
+        Activation.AtBlock(UInt64.fromBits(9200000L))
       ),
       "genesis is excluded by EIP-2124 and thawing by enforcing nothing, leaving the ones that are neither"
     )

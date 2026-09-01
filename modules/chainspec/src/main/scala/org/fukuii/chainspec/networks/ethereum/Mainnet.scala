@@ -418,6 +418,47 @@ object Mainnet:
   private val istanbul: UpgradeSchedule.Entry =
     UpgradeSchedule.Entry(atBlock(9069000), upgrade("Istanbul"), Upgrade.RuleChange(Upgrades.istanbul))
 
+  /** Block 9,200,000.
+    *
+    * `ethereum/EIPs` @ `dbfa6bee8329650969b95080f23f7059c015c2ba` (2026-08-26),
+    * EIP-2387 *Hardfork Meta: Muir Glacier* (Final), § *Activation*: *"`Block >=
+    * 9,200,000` on the Ethereum mainnet"*. `ethereum/execution-specs` @
+    * `20f7f6271a720091e5fea0a82e7bc802866ae36a` (2026-08-26) states it executably
+    * as `ByBlockNumber(9200000)` in
+    * `src/ethereum/forks/muir_glacier/__init__.py`, where its neighbours declare
+    * their own documented activations -- 9,069,000 below it and 12,244,000 above
+    * -- so the figure is not a criterion offset by a constant. Two clients from
+    * different language families implement it: `ethereum/go-ethereum` @
+    * `e9e35a42f8213235da1fde4f9ac8f3e9ff666b87` (2026-08-26) as
+    * `MuirGlacierBlock: big.NewInt(9_200_000)` in `params/config.go`, and
+    * `besu-eth/besu` @ `fdf1247c6d6431f0325a123ada37086ded17ce7e` (2026-08-26) as
+    * `"muirGlacierBlock": 9200000` in `config/src/main/resources/mainnet.json`.
+    *
+    * ==This entry carries the one proposal the upgrade names==
+    *
+    * EIP-2387 § *Included EIPs* lists EIP-2384 and nothing else, and
+    * [[Upgrades.muirGlacier]] adopts exactly it. So the caveat [[homestead]]
+    * carries -- an entry naming a network upgrade whose rule set is only part of
+    * it -- is not one this entry needs.
+    *
+    * ==The upgrade above this one inherits its figure rather than restating it==
+    *
+    * That is what makes this entry load-bearing rather than a completeness item:
+    * an upgrade composed from [[Upgrades.istanbul]] instead would run a bomb
+    * delay of 5,000,000 where the network runs 9,000,000, and no state-fixture
+    * tier settles a header, so nothing this build certifies against would
+    * disagree.
+    *
+    * ==The label is this network's own and no corpus spells it==
+    *
+    * The published difficulty vectors key this document's cases on `Berlin`,
+    * under a directory named `dfEIP2384`, because the delay carries forward
+    * unchanged. `UpgradeId` is this network's word for what it released here;
+    * a corpus label is a different thing, exactly as it is at [[petersburg]].
+    */
+  private val muirGlacier: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(9200000), upgrade("Muir Glacier"), Upgrade.RuleChange(Upgrades.muirGlacier))
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -452,6 +493,7 @@ object Mainnet:
         byzantium,
         constantinople,
         petersburg,
-        istanbul
+        istanbul,
+        muirGlacier
       )
     )
