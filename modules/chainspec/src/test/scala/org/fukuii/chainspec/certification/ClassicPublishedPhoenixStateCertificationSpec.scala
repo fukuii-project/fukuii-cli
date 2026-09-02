@@ -196,7 +196,13 @@ class ClassicPublishedPhoenixStateCertificationSpec extends AnyFlatSpec:
     */
   private def under(height: Long, change: UpgradeRules => UpgradeRules): CorpusReport =
     ClassicPublishedStateCorpus
-      .reportAt("control", ClassicPublishedStateCorpus.PhoenixFork, height, change)
+      .reportAt(
+        "control",
+        ClassicPublishedStateCorpus.PhoenixFork,
+        height,
+        ClassicPublishedStateCorpus.PhaseOneDirectories,
+        change
+      )
       .getOrElse(fail("assembled once and not the second time"))
 
   /** The same directories at another label, resolved at this fork's own height.
@@ -206,7 +212,13 @@ class ClassicPublishedPhoenixStateCertificationSpec extends AnyFlatSpec:
     */
   private def readAs(label: String): CorpusReport =
     ClassicPublishedStateCorpus
-      .reportAt("control", label, ClassicPublishedStateCorpus.PhoenixStarts, identity)
+      .reportAt(
+        "control",
+        label,
+        ClassicPublishedStateCorpus.PhoenixStarts,
+        ClassicPublishedStateCorpus.PhaseOneDirectories,
+        identity
+      )
       .getOrElse(fail("assembled once and not the second time"))
 
   /** The six this upgrade adopts, in the order the composition takes them. */

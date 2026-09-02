@@ -121,6 +121,58 @@ object ClassicPublishedStateCorpus:
       "stZeroKnowledge2"
     )
 
+  /** The subdirectories registered at the label two upgrades above.
+    *
+    * ==Per label rather than shared, because the selection is by TARGET==
+    *
+    * [[PhaseOneDirectories]] is chosen so that every one of Phoenix's six
+    * proposals is the direct subject of at least one entry. That is a
+    * justification for Phoenix's list, not a general one, and this upgrade's
+    * four proposals have different subjects -- so a shared list would register
+    * directories chosen for someone else's targets and miss the one chosen for
+    * these.
+    *
+    * **The addition is `stEIP2930`, and it is the whole reason the split
+    * exists.** That directory holds this label's typed envelopes; without it a
+    * tier here reaches three of them, and the two proposals that introduce and
+    * admit the format would be certified by almost nothing.
+    *
+    * **Sharing the list would also move a landed tier's figures.** The Phoenix
+    * spec states its file, outcome and certified counts as literals and NAMES
+    * the cases stating nothing at its label rather than counting them, so
+    * adding a directory there is a rewrite of a spec this upgrade does not
+    * otherwise touch -- and the counts would move for a reason that has nothing
+    * to do with Phoenix.
+    */
+  val MagnetoDirectories: Vector[String] =
+    PhaseOneDirectories :+ "stEIP2930"
+
+  /** The label this upgrade's expectations are filed under in this tree. */
+  val MagnetoFork: String = "ETC_Magneto"
+
+  /** The name a report of this upgrade's rules over those directories carries. */
+  val MagnetoCorpus: String = "tests-etc GeneralStateTests at Magneto"
+
+  /** The height this harness believes Magneto begins at.
+    *
+    * ECIP-1103 -- `status: Final`, `type: Meta` -- names `13_189_133` for this
+    * network. `ethereumclassic/core-geth` @ `4185df450` sets this upgrade's
+    * four transitions there in `params/config_classic.go:90-93`, and
+    * `besu-eth/besu-etc` @ `eb4248c997` states `"magnetoBlock": 13189133`.
+    * Stated as a literal for the reason the others are.
+    */
+  private[certification] val MagnetoStarts: Long = 13189133L
+
+  /** The height the fork before it begins at, carried so a control can resolve
+    * this label's expectations under the previous fork's rules.
+    *
+    * **That fork is Thanos and not Phoenix**, which is what makes this a
+    * control over the upgrade immediately below rather than over one two down.
+    * `ethereumclassic/core-geth` @ `4185df450` sets `ECIP1099FBlock` at
+    * `big.NewInt(11_700_000)` in `params/config_classic.go:87`.
+    */
+  private[certification] val ThanosStarts: Long = 11700000L
+
   /** The label Phoenix's expectations are filed under in this tree.
     *
     * The tree's own spelling, which is what the reader dispatches on. Asking
@@ -169,6 +221,7 @@ object ClassicPublishedStateCorpus:
       name: String,
       fork: String,
       height: Long,
+      directories: Vector[String],
       change: UpgradeRules => UpgradeRules
   ): Option[CorpusReport] =
     for
@@ -179,13 +232,19 @@ object ClassicPublishedStateCorpus:
       // cannot drift into asking one network's rules as though it were another's.
       val chainId = resolved.network.chainId
       val rules = change(resolved.at(UInt64.fromBits(height), UInt64.Zero))
-      assemble(name, FixtureCorpus.classicPublished(root), fork, chainId, rules)
+      assemble(name, FixtureCorpus.classicPublished(root), fork, chainId, rules, directories)
 
   /** Phoenix's rules over these directories, as the run every count is read
     * from.
     */
   lazy val phoenix: Option[CorpusReport] =
-    reportAt(PhoenixCorpus, PhoenixFork, PhoenixStarts, identity)
+    reportAt(PhoenixCorpus, PhoenixFork, PhoenixStarts, PhaseOneDirectories, identity)
+
+  /** This upgrade's rules over its own directories, as the run every count in
+    * `ClassicPublishedMagnetoStateCertificationSpec` is read from.
+    */
+  lazy val magneto: Option[CorpusReport] =
+    reportAt(MagnetoCorpus, MagnetoFork, MagnetoStarts, MagnetoDirectories, identity)
 
   /** Every `.json` under the registered subdirectories, in the order the tree
     * is walked, so two runs report the same thing.
@@ -194,17 +253,18 @@ object ClassicPublishedStateCorpus:
     * failing, which is why the file count is asserted as a literal beside the
     * run: a mistyped name here would otherwise narrow the tier silently.
     */
-  private def files(under: Path): Vector[Path] =
-    PhaseOneDirectories.flatMap(directory => FixtureCorpus.jsonFilesUnder(under.resolve(directory)))
+  private def files(under: Path, directories: Vector[String]): Vector[Path] =
+    directories.flatMap(directory => FixtureCorpus.jsonFilesUnder(under.resolve(directory)))
 
   private def assemble(
       name: String,
       under: Path,
       fork: String,
       chainId: UInt64,
-      rules: UpgradeRules
+      rules: UpgradeRules,
+      directories: Vector[String]
   ): CorpusReport =
-    val read = files(under)
+    val read = files(under, directories)
     val outcomes = read.flatMap { file =>
       FixtureCorpus
         .read(file)
