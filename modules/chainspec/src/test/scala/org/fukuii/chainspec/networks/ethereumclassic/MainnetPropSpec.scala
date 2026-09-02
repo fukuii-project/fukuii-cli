@@ -44,7 +44,10 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     ("Defuse Difficulty Bomb", 5900000L),
     ("Atlantis", 8772000L),
     ("Agharta", 9573000L),
-    ("Phoenix", 10500839L)
+    ("Phoenix", 10500839L),
+    ("MESS", 11380000L),
+    ("Thanos", 11700000L),
+    ("Magneto", 13189133L)
   )
 
   /** The last height under the old rules and the first under the new, per
@@ -76,13 +79,34 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     * nothing else in this build would report it: the certification tiers that
     * run this network's fixtures never straddle either height.
     *
-    * ==The last pair is the only boundary here that is not a round figure==
+    * ==The Phoenix pair is the only boundary here that is not a round figure==
     *
     * 10,500,838 and 10,500,839 are the one activation on this schedule whose
     * digits carry no zeros to end on, and four sources agree on all seven of
     * them. That shape invites correction toward a rounder neighbour, and a
     * correction of one block in either direction moves exactly one of these two
     * rows and nothing else in this build.
+    *
+    * ==The pair after it is not a boundary, and it is the reason MESS is on the
+    * schedule at all==
+    *
+    * 11,379,999 and 11,380,000 both resolve to the rules above, because
+    * `Upgrade.Unenforced` holds the rules in force across it. It is the same
+    * shape as the pair at 199,999 and 200,000, which is this schedule's other
+    * entry of that case, and it is what an entry recording a client
+    * recommendation has to look like: on the schedule, and reaching no rule.
+    * An entry mistakenly recorded as a rule change would move the second of
+    * these two rows and would additionally add a fork point, which
+    * `MainnetSpec` asserts against from the other side.
+    *
+    * ==The pair after THAT one is a boundary, and the two together are the
+    * comparison==
+    *
+    * 11,699,999 and 11,700,000 straddle a rule change 320,000 blocks above a
+    * height that is not one. The two pairs sit next to each other deliberately:
+    * they are the same distance apart in this table and only one of them moves
+    * a rule set, which is what tells a reader that the case an entry takes is
+    * a fact about the entry rather than about how far apart the heights are.
     */
   private val boundaries = Table(
     ("height", "rules"),
@@ -112,7 +136,13 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     (9582999L, Upgrades.agharta),
     (9583000L, Upgrades.agharta),
     (10500838L, Upgrades.agharta),
-    (10500839L, Upgrades.phoenix)
+    (10500839L, Upgrades.phoenix),
+    (11379999L, Upgrades.phoenix),
+    (11380000L, Upgrades.phoenix),
+    (11699999L, Upgrades.phoenix),
+    (11700000L, Upgrades.thanos),
+    (13189132L, Upgrades.thanos),
+    (13189133L, Upgrades.magneto)
   )
 
   property("every upgrade activates at the block its own citation states") {

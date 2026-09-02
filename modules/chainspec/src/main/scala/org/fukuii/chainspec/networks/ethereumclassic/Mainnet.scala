@@ -406,6 +406,152 @@ object Mainnet:
   private val phoenix: UpgradeSchedule.Entry =
     UpgradeSchedule.Entry(atBlock(10500839), upgrade("Phoenix"), Upgrade.RuleChange(Upgrades.phoenix))
 
+  /** Block 11,380,000, gating nothing this build validates.
+    *
+    * The second [[Upgrade.Unenforced]] entry on this schedule, and the first
+    * whose emptiness is a property of the document class rather than of the
+    * record. ECIP-1100 -- `ethereumclassic/ECIPs` @ `0adb420` (2026-07-29),
+    * `_specs/ecip-1100.md`, `status: Replaced`, `type: Standards Track`,
+    * **`category: ECBP`** -- is an
+    * Ethereum Classic Best Practice. That category is recommended rather than
+    * required, so what it describes is at a client's discretion and no node
+    * validates differently for having taken it. **The document says so
+    * itself**, in its Specification: *"This specification falls outside of
+    * existing consensus protocol."*
+    *
+    * `ethereumclassic/core-geth` @ `4185df450` states the height as
+    * `ECBP1100FBlock: big.NewInt(11_380_000)` in `params/config_classic.go:85`.
+    *
+    * ==The height is tethered to no upgrade, and that is the strongest evidence
+    * for what this entry is==
+    *
+    * **One field in that configuration carries 11,380,000, and it is this one.**
+    * The comparison that gives the figure its weight is [[phoenix]]'s
+    * 10,500,839, which **six** fields carry, one per proposal that upgrade
+    * adopted. A hard fork gathers proposals at a shared height; this height
+    * gathers nothing, sits between two upgrades and belongs to neither, and the
+    * upgrade below it had already activated 879,161 blocks earlier.
+    *
+    * **The same configuration draws the contrast itself, one line down.** The
+    * deactivation this network later scheduled is annotated
+    * `// ETA 31 Jan 2023 (== Spiral hard fork)` -- bundled into an upgrade,
+    * where the activation was not. So a feature that arrived on its own and was
+    * retired inside a fork says, in the implementation's own comments, that
+    * arriving on its own was the deliberate part.
+    *
+    * ==Why the entry records the height and says nothing about the behavior==
+    *
+    * The proposal selects between competing chains that are each already valid,
+    * so two nodes disagreeing across this height disagree about which chain to
+    * follow and never about whether a block is admissible -- which is what
+    * [[Upgrade.RuleChange]] would assert and what [[Upgrade.Unenforced]]
+    * denies. The network states the same thing at the peer layer: this height
+    * is not among the twelve fork blocks its EIP-2124 identifier is a checksum
+    * over, and the reference implementation excludes it by naming scheme rather
+    * than by height -- `params/confp/configurator.go:31-36` matches `ECBP` and
+    * `EBP` as *"not incompatible with configuration either having or lacking
+    * them"*, and `BlockForks` skips what matches.
+    *
+    * **So the schedule carries when the network scheduled and named this, and
+    * nothing about whether a given node runs it.** Whether it runs is an
+    * operator setting rather than a property of the chain, it is not observable
+    * from the chain, and modeling it here would put a per-node choice in the
+    * one structure whose entries are the same for every node on the network.
+    *
+    * ==The label takes the name and drops the default, as every label here
+    * drops its subscript==
+    *
+    * ECIP-1066 -- `ethereumclassic/ECIPs` @
+    * `0adb420` (2026-07-29) -- tabulates the name cell as
+    * `MESS Default: On <br> <sub>ECBP-1100</sub>`, against a later
+    * `MESS Default: Off <br> <sub>ECBP-1110</sub>`. Every other label on this
+    * schedule is its row's name cell less the subscripted part, and this one is
+    * that plus one more removal: **the default.**
+    *
+    * **A default belongs to a client and not to a network.** The two rows read
+    * as a pair of defaults precisely because what they record is what client
+    * software shipped with, which is not a property of the chain and is not
+    * observable from it. This schedule has no member that could hold one, so a
+    * label asserting a default would describe something the entry cannot carry
+    * and would additionally imply a matching entry for the retraction. What the
+    * entry records is that the network scheduled and named MESS at this height.
+    *
+    * **A different commit is cited here than elsewhere in this file, and the
+    * reason is that this row is newer than the rest.** The commit most entries
+    * here cite -- `e36ef7f1` (2026-07-05) -- predates it and carries no row for
+    * this upgrade at all, so citing that ref for this entry would resolve, for a
+    * reader, to a table the row is missing from. The rows were added at
+    * `b3bda63a` (2026-07-24).
+    */
+  private val mess: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(11380000), upgrade("MESS"), Upgrade.Unenforced)
+
+  /** Block 11,700,000.
+    *
+    * `ethereumclassic/core-geth` @ `4185df450` states it as
+    * `ECIP1099FBlock: big.NewInt(11_700_000)` in `params/config_classic.go:87`.
+    * `besu-eth/besu-etc` @ `eb4248c997` states it as `"thanosBlock": 11700000`
+    * in `config/src/main/resources/classic.json`. **ECIP-1099 states it
+    * itself** -- `ETCHASH_FORK_BLOCK := 11_700_000`, annotated `(Epoch 390)` --
+    * so unlike [[gotham]] the proposal names its own height and the
+    * implementations corroborate rather than supply it. ECIP-1066 at
+    * `0adb420` tabulates the name cell as `Thanos <br> <sub>ECIP-1099</sub>`,
+    * and the label is that cell less the subscript, as every label here is.
+    * **The subscript is the document number rather than a counterpart upgrade
+    * on the other network**, which is what most of this schedule's rows carry
+    * there -- that network never calibrated an epoch, so there is no
+    * counterpart to name.
+    *
+    * ==A rule change whose rule no state-transition tier can observe==
+    *
+    * [[Upgrades.thanos]] says what moves and why every facet but the consensus
+    * one is [[Upgrades.phoenix]]'s. What makes the entry a
+    * [[Upgrade.RuleChange]] rather than the case the entry above it takes is
+    * that two nodes disagreeing across this height disagree about whether a
+    * block's seal is valid -- the epoch sizes the cache the seal is checked
+    * against -- and the proposal says so in its own Specification, which calls
+    * the change *"(hardfork required)"* where the document 320,000 blocks below
+    * is a recommendation a client may decline.
+    *
+    * The network states the same thing at the peer layer: this height is one of
+    * the twelve fork blocks its EIP-2124 identifier is a checksum over, where
+    * 11,380,000 is not.
+    */
+  private val thanos: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(11700000), upgrade("Thanos"), Upgrade.RuleChange(Upgrades.thanos))
+
+  /** Block 13,189,133.
+    *
+    * **ECIP-1103 states it** -- `ethereumclassic/ECIPs`, `_specs/ecip-1103.md`
+    * @ `8be555c3be366a91af2f000b82d52e672980d3b6`, `status: Final`,
+    * `type: Meta` -- naming `13_189_133` for this network beside the two test
+    * networks it also schedules. `ethereumclassic/core-geth` @ `4185df450`
+    * states it as four per-proposal transitions rather than the fork name, at
+    * `params/config_classic.go:90-93`, under the client's own comment
+    * `// Berlin eq, aka Magneto`. `besu-eth/besu-etc` @ `eb4248c997` states it
+    * as `"magnetoBlock": 13189133` in
+    * `config/src/main/resources/classic.json`. ECIP-1066 at `0adb420`
+    * tabulates the name cell as `Magneto <br> <sub>Berlin</sub>`, and the label
+    * is that cell less the subscripted counterpart, as this schedule's labels
+    * are.
+    *
+    * **The height moved twice before it settled, which is why it is sourced to
+    * the specification and the implementations together rather than to the
+    * proposal alone.** ECIP-1103's first revision named `12_759_699`; the
+    * revision removing EIP-2315 reset all three of its networks to `TBD`; the
+    * figure above was set 20 days later. A reading taken from the document's
+    * history rather than its head reaches a height this network never ran.
+    *
+    * ==What this entry does not settle==
+    *
+    * [[Upgrades.magneto]] says which four proposals compose it and which two
+    * facets they move. **That is a statement about what the composition adopts,
+    * and not a conformance claim** -- the same division this schedule draws at
+    * every entry that names an upstream counterpart.
+    */
+  private val magneto: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(13189133), upgrade("Magneto"), Upgrade.RuleChange(Upgrades.magneto))
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -450,6 +596,9 @@ object Mainnet:
         defuse,
         atlantis,
         agharta,
-        phoenix
+        phoenix,
+        mess,
+        thanos,
+        magneto
       )
     )

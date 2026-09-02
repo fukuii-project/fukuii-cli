@@ -2,7 +2,7 @@ package org.fukuii.chainspec.networks.ethereumclassic
 
 import org.fukuii.bytes.{UInt256, UInt64}
 import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment, UpgradeRules}
-import org.fukuii.chainspec.proposals.ecip.{Ecip1010, Ecip1017, Ecip1039, Ecip1041}
+import org.fukuii.chainspec.proposals.ecip.{Ecip1010, Ecip1017, Ecip1039, Ecip1041, Ecip1099}
 import org.fukuii.chainspec.proposals.eip.{
   Eip100,
   Eip1014,
@@ -26,6 +26,10 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip211,
   Eip214,
   Eip2200,
+  Eip2565,
+  Eip2718,
+  Eip2929,
+  Eip2930,
   Eip658,
   Eip7
 }
@@ -890,3 +894,143 @@ object Upgrades:
       Eip2028.component,
       Eip2200.component
     )
+
+  /** [[phoenix]] with ECIP-1099 adopted.
+    *
+    * ==One proposal, so there is no composition order to argue==
+    *
+    * Every upgrade above this one on this network reaches a rule set by
+    * composing several deltas, and each states why the order between them is
+    * immaterial. **A single delta has no such question**, and the argument
+    * those make is deliberately not restated here as though it did.
+    *
+    * ==The first upgrade on this network to move the consensus facet since the
+    * bomb was removed==
+    *
+    * [[Ecip1099.component]] writes
+    * [[org.fukuii.chainspec.ConsensusRules.ecip1099Activation]] and reaches
+    * nothing else, so the machine, settlement and admission facets are
+    * [[phoenix]]'s unchanged. Both implementations agree from their own shapes:
+    * `params/config_classic.go` at `4185df450` carries `ECIP1099FBlock` alone
+    * between this network's Phoenix transitions and its Magneto ones, and
+    * `besu-eth/besu-etc` @ `eb4248c997`'s `ClassicProtocolSpecs.thanosDefinition`
+    * builds on `phoenixDefinition` and installs two block-header validators and
+    * nothing else -- no gas calculator, no EVM builder, no precompile registry,
+    * no transaction or receipt change.
+    *
+    * ==What it changes is a seal, which is why no state-transition tier can see
+    * it==
+    *
+    * The value sizes a mining epoch, so it reaches the cache a seal is
+    * validated against and never the state a block produces. **A fixture corpus
+    * keyed on a state root cannot disagree with a wrong answer here**, and the
+    * published Ethereum Classic tier carries no label for this upgrade at all
+    * -- its five are Atlantis, Agharta, Phoenix, Magneto and Mystique -- while
+    * this network's difficulty corpus likewise names it nowhere. **Both
+    * absences are correct rather than gaps**, and they are the reason
+    * `ethereumclassic.UpgradesSpec` asserts the adopted height directly: what
+    * this upgrade lacks is a tier, and what it needs is an assertion that the
+    * schedule supplies the figure at all.
+    *
+    * ==This network states the height at the peer layer, where the entry below
+    * it does not==
+    *
+    * 11,700,000 is one of the twelve fork blocks this network's EIP-2124
+    * identifier is a checksum over. That is what distinguishes it from
+    * `Mainnet`'s entry at 11,380,000, which is a client recommendation and is
+    * absent from the same list -- and the distinction is the reference
+    * implementation's own, drawn by naming scheme rather than by height in
+    * `params/confp/configurator.go:31-36`.
+    */
+  val thanos: UpgradeRules = phoenix.adopting(Ecip1099.component)
+
+  /** [[thanos]] with EIP-2565, EIP-2718, EIP-2929 and EIP-2930 adopted.
+    *
+    * ==The order is immaterial, and the argument is shorter here than
+    * [[phoenix]]'s because the four write disjoint field sets==
+    *
+    * Read off the four components: EIP-2565 writes
+    * `precompileModExpDivisor` and `precompileModExpFloor` on the schedule and
+    * one entry of the precompile set; EIP-2929 writes eight schedule fields --
+    * `warmAccess`, `coldAccountAccess`, `coldStorageAccess`, `netStorageNoop`,
+    * `netStorageDirty`, `netStorageClean`, `refundNetStorageResetFromZero`,
+    * `refundNetStorageReset` -- plus `stateAccessMetering` and four entries of
+    * the operation table; EIP-2930 writes `transactionAccessListAddress` and
+    * `transactionAccessListStorageKey` on the schedule and `admittedTypes` on
+    * the admission facet; and EIP-2718 writes nothing at all. **No field is
+    * written by two of them**, which is the strong form of the claim
+    * [[phoenix]] could only make about keys.
+    *
+    * **The clause [[phoenix]] had to narrow does not arise.** Its four
+    * schedule-writing deltas included ones building a priced entry out of a
+    * figure another delta set. Here the four entries EIP-2929 rebuilds carry no
+    * figure -- they move to `org.fukuii.evm.Cost.Computed`, which is what
+    * `org.fukuii.evm.StateAccessMetering`'s own documentation says the switch
+    * to `WarmCold` requires -- so nothing in this composition reads a schedule
+    * field another member of it writes.
+    *
+    * ==EIP-2718 adopts no delta, and that is the document rather than an
+    * omission==
+    *
+    * Its component is the identity, because the envelope it defines is decoded
+    * and encoded by `org.fukuii.types.Transaction` at every fork and admitted
+    * by `org.fukuii.execution.AdmissionRules.admittedTypes`, which EIP-2930
+    * widens. The proposal introduces no transaction type of its own -- its
+    * payload is *"defined in future EIPs"* -- so there is no rule for it to
+    * write here. `Eip2718.scala` states what it therefore cannot certify.
+    *
+    * ==Which document settles membership==
+    *
+    * **ECIP-1103** -- `ethereumclassic/ECIPs`, `_specs/ecip-1103.md`,
+    * **`status: Final`, `type: Meta`** -- enumerates exactly these four in its
+    * Specification, and its Abstract's four-bullet list agrees with it.
+    *
+    * **A fifth proposal was in the document and was removed before any network
+    * ran it.** EIP-2315 appears in its first revision and is deleted at
+    * `eccc366473011d3b1fa979242c58517d41d5591a` (2021-05-05), 77 days before
+    * this network's activation and before either test network's. Exhaustive
+    * over that file's history, five EIP numbers ever appear and the fifth is
+    * 2315. **So `components` is four entries with no withdrawal and no second
+    * rule set** -- which is how the same proposal resolves on the other
+    * network, reached there by its own document and its own decision.
+    *
+    * **No rival document proposes a fork at this height**, which is what
+    * [[phoenix]] had to disqualify three of and this composition does not. A
+    * sweep of `_specs/` for every separator form of the height, at
+    * `ethereumclassic/ECIPs` @ `0adb420` (2026-07-29), returns **two**
+    * documents and only one of them proposes anything: ECIP-1103 itself, and
+    * **ECIP-1066**, `status: Active`, this network's own history table.
+    *
+    * **The sweep discriminates rather than merely running.** The same
+    * instrument at [[phoenix]]'s height returns eight, among them the three
+    * that composition disqualifies, and a height no document carries returns
+    * none.
+    *
+    * ==Two facets move, and admission moves for the first time on this
+    * network==
+    *
+    * EIP-2565 and EIP-2929 reach the machine; EIP-2930 reaches the machine and
+    * **admission**. Every rule set from [[frontier]] to [[thanos]] admits
+    * exactly `org.fukuii.types.TransactionType.Legacy`, set once at
+    * [[frontier]] and moved by nothing, so this is the first upgrade at which
+    * this network's admission facet changes at all. The settlement and
+    * consensus facets are [[thanos]]'s unchanged.
+    *
+    * Two implementations agree from their own shapes. `params/config_classic.go`
+    * at `4185df450` carries exactly four transitions at this height, under its
+    * own comment `// Berlin eq, aka Magneto`. `besu-eth/besu-etc` @
+    * `eb4248c997`'s `ClassicProtocolSpecs.magnetoDefinition` sets a gas
+    * calculator, a two-member accepted-transaction-type set and a receipt
+    * factory, and no difficulty calculator or block-header validator --
+    * **and it builds on `thanosDefinition` rather than on `phoenixDefinition`**,
+    * which is the same ordering [[thanos]] sits at here.
+    *
+    * **What besu-etc must not be cited for is the arithmetic.** Its gas
+    * calculator's contents are besu's rather than an Ethereum Classic decision,
+    * so it is not a second reading of EIP-2565's formula or EIP-2929's figures;
+    * `Eip2565.scala` states that boundary for the one it would most easily be
+    * mistaken on. What it does state independently is which calculator this
+    * network installs at which upgrade, and what that upgrade is built on.
+    */
+  val magneto: UpgradeRules =
+    thanos.adopting(Eip2565.component, Eip2718.component, Eip2929.component, Eip2930.component)

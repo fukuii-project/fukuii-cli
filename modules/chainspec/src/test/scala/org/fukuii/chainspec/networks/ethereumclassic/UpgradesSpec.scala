@@ -3,7 +3,17 @@ package org.fukuii.chainspec.networks.ethereumclassic
 import org.fukuii.bytes.UInt256
 import org.fukuii.chainspec.proposals.eip.{Eip1234, Eip1283, Eip1884, Eip2200}
 import org.fukuii.chainspec.{DifficultyAdjustment, ProposalId}
-import org.fukuii.evm.{Cost, Opcode, OpcodeTable, Operation, Precompile, PrecompileSet, StorageMetering}
+import org.fukuii.evm.{
+  Cost,
+  Opcode,
+  OpcodeTable,
+  Operation,
+  Precompile,
+  PrecompileSet,
+  StateAccessMetering,
+  StorageMetering
+}
+import org.fukuii.types.TransactionType
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Properties every rule set this network composed has to hold.
@@ -24,7 +34,9 @@ class UpgradesSpec extends AnyFlatSpec:
       Upgrades.defuse,
       Upgrades.atlantis,
       Upgrades.agharta,
-      Upgrades.phoenix
+      Upgrades.phoenix,
+      Upgrades.thanos,
+      Upgrades.magneto
     )
 
   /** What a table charges for `opcode` before it runs, where that is settled. */
@@ -112,8 +124,136 @@ class UpgradesSpec extends AnyFlatSpec:
           ProposalId.Eip(1884),
           ProposalId.Eip(2028),
           ProposalId.Eip(2200)
+        ) &&
+        Upgrades.thanos.components == Upgrades.phoenix.components ++ Vector(ProposalId.Ecip(1099)) &&
+        Upgrades.magneto.components == Upgrades.thanos.components ++
+        Vector(
+          ProposalId.Eip(2565),
+          ProposalId.Eip(2718),
+          ProposalId.Eip(2929),
+          ProposalId.Eip(2930)
         ),
       "a composition's recorded components are not the ones it adopted"
+    )
+
+  "the epoch calibration" should "be adopted at this network's own height, and at no upgrade below it" in
+    // The assertion this upgrade exists to carry, and the only one that can
+    // catch it: the value sizes a mining epoch, so it reaches a seal rather
+    // than a state root, and no state-transition or difficulty tier this build
+    // reads carries a label for it at all. What would otherwise be untested is
+    // whether the schedule supplies the figure -- a field every rule set left
+    // empty would compute a wrong DAG size for every block above the height and
+    // report nothing.
+    //
+    // Three arms rather than one: the value adopted, the base it extends, and a
+    // rule set below both. The base is what makes it a change rather than a
+    // restatement, and the third arm is the negative control -- without it an
+    // implementation that set the field everywhere would pass.
+    assert(
+      Upgrades.thanos.consensus.ecip1099Activation.contains(BigInt(11700000)) &&
+        Upgrades.phoenix.consensus.ecip1099Activation.isEmpty &&
+        Upgrades.frontier.consensus.ecip1099Activation.isEmpty,
+      "the height ECIP-1099 states for this network is not the one its rule set carries"
+    )
+
+  it should "leave every facet but the consensus one exactly as it found them" in
+    // Reference equality, for the reason the emission-step case below gives: a
+    // delta that reached a facet by accident would produce an equal copy, which
+    // a value comparison cannot tell from the original.
+    assert(
+      (Upgrades.thanos.evm eq Upgrades.phoenix.evm) &&
+        (Upgrades.thanos.execution eq Upgrades.phoenix.execution) &&
+        (Upgrades.thanos.admission eq Upgrades.phoenix.admission) &&
+        (Upgrades.thanos.consensus ne Upgrades.phoenix.consensus),
+      "ECIP-1099 reached a facet it does not name, or failed to reach the one it does"
+    )
+
+  "the composition this network calls Magneto" should "price reaching state by whether this transaction has reached it" in
+    // The case only a composition can make: `Eip2929Spec` certifies the delta
+    // and passes with the component adopted by nothing.
+    assert(
+      Upgrades.magneto.evm.stateAccessMetering == StateAccessMetering.WarmCold,
+      "the upgrade that adopts EIP-2929 does not carry its rule"
+    )
+
+  it should "have priced every reach alike at the upgrade before it" in
+    assert(
+      Upgrades.thanos.evm.stateAccessMetering == StateAccessMetering.Settled,
+      "an upgrade below the one adopting EIP-2929 already ran its scheme"
+    )
+
+  it should "carry the three figures that scheme spends" in
+    assert(
+      Upgrades.magneto.evm.schedule.warmAccess == BigInt(100) &&
+        Upgrades.magneto.evm.schedule.coldAccountAccess == BigInt(2600) &&
+        Upgrades.magneto.evm.schedule.coldStorageAccess == BigInt(2100),
+      "the upgrade carries a figure other than the document's"
+    )
+
+  it should "carry the five figures of the storage scheme that document re-derives" in
+    // Four are EIP-2200's settled literals and the fifth is what SSTORE_RESET_GAS
+    // becomes. A delta applying the new constants without re-running the
+    // derivations leaves this upgrade internally inconsistent and passes
+    // everything that does not execute a store.
+    assert(
+      Upgrades.magneto.evm.schedule.netStorageNoop == BigInt(100) &&
+        Upgrades.magneto.evm.schedule.netStorageDirty == BigInt(100) &&
+        Upgrades.magneto.evm.schedule.netStorageClean == BigInt(2900) &&
+        Upgrades.magneto.evm.schedule.refundNetStorageResetFromZero == BigInt(19900) &&
+        Upgrades.magneto.evm.schedule.refundNetStorageReset == BigInt(2800),
+      "a derivation that reads SLOAD_GAS was not re-run against this document's terms"
+    )
+
+  it should "let a block carry the declaring transaction format" in
+    // THE FIRST TIME THIS NETWORK'S ADMISSION FACET MOVES. Every rule set from
+    // `frontier` to `thanos` admits the untagged format alone, set once at
+    // genesis and moved by nothing, so a component built from the
+    // machine-scoped constructor would apply EIP-2930's prices and admit
+    // nothing -- which no case reading only the machine would catch.
+    assert(
+      Upgrades.magneto.admission.admittedTypes == Set(TransactionType.Legacy, TransactionType.AccessList),
+      "the upgrade that adopts EIP-2930 does not admit the format it defines"
+    )
+
+  it should "have carried only the untagged format at the upgrade before it" in
+    assert(
+      Upgrades.thanos.admission.admittedTypes == Set(TransactionType.Legacy),
+      "an upgrade below the one adopting EIP-2930 already carried its format"
+    )
+
+  it should "charge modular exponentiation under this document's own scheme" in
+    // The entry rather than the record: a precompile's price is copied into its
+    // entry when the entry is built, so an upgrade stating 3 and charging 20 is
+    // what reading only the schedule would miss.
+    assert(
+      Upgrades.magneto.evm.precompiles
+        .at(PrecompileSet.ModExp)
+        .contains(Precompile.ModExp(BigInt(3), BigInt(200), Precompile.ModExpComplexity.SquaredWordCount)),
+      "the upgrade that adopts EIP-2565 charges the entry it inherited"
+    )
+
+  it should "still size an epoch by the calibration adopted below it" in
+    // THE CASE THIS NETWORK NEEDS AND THE OTHER ONE HAS NO ANALOGUE FOR. None of
+    // Magneto's four documents mentions an epoch, so this value can only arrive
+    // by having composed from the upgrade that set it. A composition built from
+    // `phoenix` instead -- which is what the upstream counterpart composes from,
+    // and what a reading taken from that network would produce here -- carries
+    // an empty field, sizes every epoch above 11,700,000 by the shorter length,
+    // and is refutable by nothing else in this build: the value reaches a seal
+    // rather than a state root.
+    assert(
+      Upgrades.magneto.consensus.ecip1099Activation.contains(BigInt(11700000)),
+      "this composition was built from an upgrade below the one that calibrated the epoch"
+    )
+
+  it should "write the machine's rules and admission's, and no other facet" in
+    // Three of the four are confined to the machine and the fourth also reaches
+    // admission, so consensus and settlement survive as the SAME values rather
+    // than as equal copies. Reference equality is what distinguishes those.
+    assert(
+      (Upgrades.magneto.consensus eq Upgrades.thanos.consensus) &&
+        (Upgrades.magneto.execution eq Upgrades.thanos.execution),
+      "an upgrade whose components name the machine and admission rebuilt a third facet"
     )
 
   it should "differ from the rules it was built on by the record alone, at the emission step" in

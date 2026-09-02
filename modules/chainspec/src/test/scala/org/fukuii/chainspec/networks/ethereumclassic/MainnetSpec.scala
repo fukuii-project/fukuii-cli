@@ -4,8 +4,8 @@ import org.fukuii.bytes.UInt64
 import org.fukuii.chainspec.{Activation, Upgrade, UpgradeId, UpgradeSchedule}
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** What this network's schedule is made of, and the two entries that must be in
-  * it without reaching anything derived from them.
+/** What this network's schedule is made of, and the entries that must be in it
+  * without reaching anything derived from them.
   *
   * The activation figures themselves are a matrix and live in
   * [[MainnetPropSpec]]; this holds the structural facts.
@@ -23,6 +23,8 @@ class MainnetSpec extends AnyFlatSpec:
     schedule.entries.find(entry => label(entry) == text).getOrElse(fail("no entry named " + text))
 
   private val thawing: UpgradeSchedule.Entry = entryNamed("Frontier Thawing")
+
+  private val mess: UpgradeSchedule.Entry = entryNamed("MESS")
 
   "the authored entries" should "form a schedule" in
     assert(
@@ -43,7 +45,10 @@ class MainnetSpec extends AnyFlatSpec:
           "Defuse Difficulty Bomb",
           "Atlantis",
           "Agharta",
-          "Phoenix"
+          "Phoenix",
+          "MESS",
+          "Thanos",
+          "Magneto"
         ),
       "an enumeration missing an entry misnumbers every entry after it, which is silent rather than absent"
     )
@@ -66,6 +71,28 @@ class MainnetSpec extends AnyFlatSpec:
       "this network inherited the entry with the history, and omitting it renumbers everything after it"
     )
 
+  "MESS" should "enforce nothing" in
+    assert(
+      mess.upgrade == Upgrade.Unenforced,
+      "ECBP-1100 selects between chains that are each already valid, so no node validates differently for it"
+    )
+
+  it should "be on the schedule even so" in
+    assert(
+      mess.activation == Activation.AtBlock(UInt64.fromBits(11380000L)),
+      "the network scheduled and named it at this height, and what a client does with it is not the schedule's"
+    )
+
+  it should "not be a fork point, unlike every entry the network expects nodes to diverge across" in
+    // The pair that distinguishes this case from Gotham below. Gotham moves no
+    // value a rule set holds and IS a fork point; this moves none and is not.
+    // What separates them is not the size of the change but whether a node can
+    // validate differently across it.
+    assert(
+      !schedule.forkPoints.contains(Activation.AtBlock(UInt64.fromBits(11380000L))),
+      "a recommendation a client may decline cannot be a height the identifier is a checksum over"
+    )
+
   "this network's fork points" should "be exactly the upgrades that change what a node validates" in
     assert(
       schedule.forkPoints ==
@@ -77,9 +104,11 @@ class MainnetSpec extends AnyFlatSpec:
           Activation.AtBlock(UInt64.fromBits(5900000L)),
           Activation.AtBlock(UInt64.fromBits(8772000L)),
           Activation.AtBlock(UInt64.fromBits(9573000L)),
-          Activation.AtBlock(UInt64.fromBits(10500839L))
+          Activation.AtBlock(UInt64.fromBits(10500839L)),
+          Activation.AtBlock(UInt64.fromBits(11700000L)),
+          Activation.AtBlock(UInt64.fromBits(13189133L))
         ),
-      "genesis is excluded by EIP-2124 and thawing by enforcing nothing, leaving the ones that are neither"
+      "genesis is excluded by EIP-2124 and the two unenforced entries by enforcing nothing, leaving the rest"
     )
 
   "Gotham" should "be a fork point even though it moves no value a rule set holds" in
