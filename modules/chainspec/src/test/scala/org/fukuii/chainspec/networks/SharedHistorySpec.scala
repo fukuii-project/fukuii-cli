@@ -100,9 +100,16 @@ import org.scalatest.flatspec.AnyFlatSpec
   * other network goes on to adopt EIP-1234 and EIP-1283 at its next upgrade and
   * EIP-1716 at the one after, and this network takes none of the three. So the
   * cases below read the difference at each height rather than restating this
-  * list, and the third of them asserts that the difference stops growing --
-  * both networks adopt the same six proposals there, so the six cancel and what
-  * is left is what was already there.
+  * list, and the third of them asserts that the difference does not grow AT
+  * THAT UPGRADE -- both networks adopt the same six proposals there, so the six
+  * cancel and what is left is what was already there.
+  *
+  * **That is a claim about one upgrade and not about the journey, and the
+  * fourth realignment is where the distinction shows.** There both networks
+  * again adopt the same set, which again cancels -- and each has also adopted
+  * one proposal alone since, so the difference grows by one in each direction.
+  * A reading of the sentence above as "the difference has stopped growing"
+  * would be refuted by the case that states it.
   *
   * `ethereumclassic/core-geth` @
   * `4185df450364973bbf99efa3923791f5ba40b351` carries it as
@@ -161,6 +168,17 @@ class SharedHistorySpec extends AnyFlatSpec:
 
   private val classicThirdRealignmentBlock: Long = 10500839L
 
+  /** The next height after that, on each schedule.
+    *
+    * Stated as heights for the reason the pair above is: Ethereum Classic
+    * reaches these rules 2,688,294 blocks above its previous entry and 1,489,133
+    * above the one between them, and Ethereum mainnet 3,175,000 above its
+    * previous pair -- neither schedule's position tells you the other's.
+    */
+  private val ethereumFourthRealignmentBlock: Long = 12244000L
+
+  private val classicFourthRealignmentBlock: Long = 13189133L
+
   private def ethereumAt(height: Long) = ethereumSchedule.at(UInt64.fromBits(height), UInt64.Zero)
   private def classicAt(height: Long) = classicSchedule.at(UInt64.fromBits(height), UInt64.Zero)
 
@@ -199,7 +217,10 @@ class SharedHistorySpec extends AnyFlatSpec:
         (ethereumclassic.Upgrades.agharta.admission ne ethereum.Upgrades.petersburg.admission) &&
         (ethereumclassic.Upgrades.phoenix.evm ne ethereum.Upgrades.istanbul.evm) &&
         (ethereumclassic.Upgrades.phoenix.execution ne ethereum.Upgrades.istanbul.execution) &&
-        (ethereumclassic.Upgrades.phoenix.admission ne ethereum.Upgrades.istanbul.admission),
+        (ethereumclassic.Upgrades.phoenix.admission ne ethereum.Upgrades.istanbul.admission) &&
+        (ethereumclassic.Upgrades.magneto.evm ne ethereum.Upgrades.berlin.evm) &&
+        (ethereumclassic.Upgrades.magneto.execution ne ethereum.Upgrades.berlin.execution) &&
+        (ethereumclassic.Upgrades.magneto.admission ne ethereum.Upgrades.berlin.admission),
       "one network's configuration is the other's, so every agreement asserted here is a tautology"
     )
 
@@ -397,6 +418,96 @@ class SharedHistorySpec extends AnyFlatSpec:
         classicAt(classicThirdRealignmentBlock).consensus !=
         ethereumAt(ethereumThirdRealignmentBlock).consensus,
       "the two networks' machines parted where both took the same six proposals, or their consensus rules became one"
+    )
+
+  it should "happen a fourth time, at the upgrade where the two networks' admission rules first move" in
+    // The first realignment at which the ADMISSION facet is doing work. Through
+    // the third, every rule set on both networks admitted the untagged format
+    // alone -- set by each network's own `frontier` and moved by nothing -- so
+    // "the admission facets are equal" had been true partly by never having been
+    // tested. Here both networks widen it, 945,133 blocks apart, and the case
+    // below states the interval where they disagree.
+    //
+    // The consensus inequality holds several times over rather than narrowly:
+    // the block reward is five ether against two, one network carries an
+    // exponential term held back by nine million blocks where the other removed
+    // it outright, and only one of the two has calibrated an epoch.
+    assert(
+      classicAt(classicFourthRealignmentBlock).evm == ethereumAt(ethereumFourthRealignmentBlock).evm &&
+        classicAt(classicFourthRealignmentBlock).execution ==
+        ethereumAt(ethereumFourthRealignmentBlock).execution &&
+        classicAt(classicFourthRealignmentBlock).admission ==
+        ethereumAt(ethereumFourthRealignmentBlock).admission &&
+        classicAt(classicFourthRealignmentBlock).consensus !=
+        ethereumAt(ethereumFourthRealignmentBlock).consensus,
+      "the two networks' machines parted where both took the same four proposals, or their consensus rules became one"
+    )
+
+  it should "have disagreed about which formats are admissible for the whole interval between the two activations" in
+    // The case with no analogue at any earlier realignment, and what stops the
+    // equality above reporting an agreement that has been continuous rather than
+    // one that was restored. It is the admission-facet counterpart of the
+    // machine case at the first parting: the two networks are compared at a
+    // height where only one of them has widened the set.
+    //
+    // Both endpoints matter. At the lower one the other network has already
+    // moved and this one has not; one block below this network's own activation
+    // it still has not.
+    assert(
+      ethereumAt(ethereumFourthRealignmentBlock).admission !=
+        classicAt(ethereumFourthRealignmentBlock).admission &&
+        ethereumAt(ethereumFourthRealignmentBlock).admission !=
+        classicAt(classicFourthRealignmentBlock - 1L).admission,
+      "the two networks admitted the same transaction formats at a height where only one of them had widened the set"
+    )
+
+  it should "leave the two records differing by one more proposal in each direction, having grown symmetrically" in
+    // The record's side of the fourth realignment, and the one place where the
+    // difference GROWS at a realignment rather than cancelling. Both networks
+    // adopt the same four proposals here, so those four cancel exactly as the
+    // six did one upgrade below -- but each network also adopted one proposal
+    // alone since that upgrade, and neither of those cancels.
+    //
+    // One network delayed an exponential term it still carries; this one
+    // calibrated a mining epoch. Both are consensus proposals reaching a rule no
+    // state-transition tier can observe, which is why the record is where they
+    // are visible at all.
+    //
+    // The literals are what keep the equalities from being vacuous, and the
+    // comparison against the upgrade below is what makes the growth the claim
+    // rather than an accident of two lists.
+    assert(
+      ethereumAt(ethereumFourthRealignmentBlock).components
+        .diff(classicAt(classicFourthRealignmentBlock).components) ==
+        Vector(
+          ProposalId.Eip(649),
+          ProposalId.Eip(1234),
+          ProposalId.Eip(1283),
+          ProposalId.Eip(1716),
+          ProposalId.Eip(2384)
+        ) &&
+        classicAt(classicFourthRealignmentBlock).components
+          .diff(ethereumAt(ethereumFourthRealignmentBlock).components) ==
+        Vector(
+          ProposalId.Ecip(1010),
+          ProposalId.Ecip(1017),
+          ProposalId.Ecip(1039),
+          ProposalId.Ecip(1041),
+          ProposalId.Ecip(1099)
+        ) &&
+        ethereumAt(ethereumFourthRealignmentBlock).components
+          .diff(classicAt(classicFourthRealignmentBlock).components)
+          .size ==
+        ethereumAt(ethereumThirdRealignmentBlock).components
+          .diff(classicAt(classicThirdRealignmentBlock).components)
+          .size + 1 &&
+        classicAt(classicFourthRealignmentBlock).components
+          .diff(ethereumAt(ethereumFourthRealignmentBlock).components)
+          .size ==
+        classicAt(classicThirdRealignmentBlock).components
+          .diff(ethereumAt(ethereumThirdRealignmentBlock).components)
+          .size + 1,
+      "the four proposals both networks adopted here did not cancel, or the one each took alone did"
     )
 
   it should "leave the two records differing by exactly what they differed by one upgrade below" in
