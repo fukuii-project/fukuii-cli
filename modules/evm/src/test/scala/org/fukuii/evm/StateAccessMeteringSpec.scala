@@ -37,6 +37,12 @@ class StateAccessMeteringSpec extends AnyFlatSpec:
   /** An account the programs below reach, distinct from the one running. */
   private val other: Address = EvmFixtures.address(0x33)
 
+  /** An account reached only by code a NESTED invocation runs, so that whether
+    * the invocation that started it is charged a first reach answers whether a
+    * nested reach survived.
+    */
+  private val elsewhere: Address = EvmFixtures.address(0x44)
+
   /** What a frame is given, comfortably above anything charged here. */
   private val allowance: BigInt = 1000000
 
@@ -47,8 +53,20 @@ class StateAccessMeteringSpec extends AnyFlatSpec:
   /** `PUSH1 n`. */
   private def pushingSmall(value: Int): Seq[Int] = Seq(0x60, value)
 
+  /** `PUSH3 n`, which is what a forwarded request needs: an invocation asked to
+    * pay for a first reach wants more gas than one byte can name, and a request
+    * no caller can cover wants more than two. Every push width is priced alike,
+    * so naming one operand through the widest costs a program nothing.
+    */
+  private def pushingLarge(value: Int): Seq[Int] =
+    Seq(0x62, (value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff)
+
+  /** Reaching `address` with `opcode`, discarding what it pushed. */
+  private def reachingAt(address: Address, opcode: Opcode): Seq[Int] =
+    pushing(address) ++ Seq(opcode.code, Opcode.Pop.code)
+
   /** Reaching `other` with `opcode`, discarding what it pushed. */
-  private def reaching(opcode: Opcode): Seq[Int] = pushing(other) ++ Seq(opcode.code, Opcode.Pop.code)
+  private def reaching(opcode: Opcode): Seq[Int] = reachingAt(other, opcode)
 
   /** Reading slot `number` and discarding what it pushed. */
   private def loading(number: Int): Seq[Int] = pushingSmall(number) ++ Seq(Opcode.SLoad.code, Opcode.Pop.code)
@@ -66,12 +84,16 @@ class StateAccessMeteringSpec extends AnyFlatSpec:
   /** The table under `metering`.
     *
     * The four operations this document reprices lose their figure under the
-    * warm-and-cold scheme, and `EXTCODEHASH` has to be placed under both -- the
-    * original instruction set does not carry it, so the fixture's table has no
-    * entry for it at all and a program using it would meet an invalid byte.
+    * warm-and-cold scheme, and `EXTCODEHASH` and `REVERT` have to be placed
+    * under both -- the original instruction set carries neither, so the
+    * fixture's table has no entry for either and a program using one would meet
+    * an invalid byte. `REVERT` works out its price from the region it names, so
+    * its entry carries no figure to be read.
     */
   private def tableUnder(metering: StateAccessMetering): OpcodeTable =
-    val placed = EvmFixtures.rules.table.adding(Operation(Opcode.ExtCodeHash, Cost.Fixed(schedule.extCodeHash)))
+    val placed = EvmFixtures.rules.table
+      .adding(Operation(Opcode.ExtCodeHash, Cost.Fixed(schedule.extCodeHash)))
+      .adding(Operation(Opcode.Revert, Cost.Computed))
     metering match
       case StateAccessMetering.Settled  => placed
       case StateAccessMetering.WarmCold =>
@@ -81,10 +103,15 @@ class StateAccessMeteringSpec extends AnyFlatSpec:
           .adding(Operation(Opcode.ExtCodeHash, Cost.Computed))
           .adding(Operation(Opcode.SLoad, Cost.Computed))
 
-  private def world(): EvmFixtures.MapWorldState =
+  /** The code `other` carries where a case does not care what a callee does:
+    * it pushes, reaches nothing, and stops.
+    */
+  private val inert: Seq[Int] = pushingSmall(1)
+
+  private def world(codeAtOther: Seq[Int]): EvmFixtures.MapWorldState =
     val built = new EvmFixtures.MapWorldState
     built.setBalance(other, EvmFixtures.word(1))
-    built.setCode(other, EvmFixtures.bytesOf("0x6001"))
+    built.setCode(other, Bytes.fromArray(codeAtOther.map(_.toByte).toArray))
     built.setBalance(target, EvmFixtures.word(1000000))
     built
 
@@ -102,10 +129,13 @@ class StateAccessMeteringSpec extends AnyFlatSpec:
       metering: StateAccessMetering,
       program: Seq[Int],
       warm: Set[Address] = Set.empty,
-      warmSlots: Set[(Address, Word)] = Set.empty
+      warmSlots: Set[(Address, Word)] = Set.empty,
+      childCode: Seq[Int] = inert,
+      forwarding: GasForwarding = EvmFixtures.rules.gasForwarded
   ): BigInt =
-    val rules = EvmFixtures.rules.copy(stateAccessMetering = metering, table = tableUnder(metering))
-    val environment = EvmFixtures.environmentUnder(rules, world())
+    val rules = EvmFixtures.rules
+      .copy(stateAccessMetering = metering, table = tableUnder(metering), gasForwarded = forwarding)
+    val environment = EvmFixtures.environmentUnder(rules, world(childCode))
     val frame = new Frame(
       EvmFixtures.message(currentTarget = target, transfersValue = false),
       Code(Bytes.fromArray(program.map(_.toByte).toArray)),
@@ -118,16 +148,61 @@ class StateAccessMeteringSpec extends AnyFlatSpec:
       case Right(Outcome.Stopped(_, _)) => allowance - frame.gasLeft
       case other                        => fail("the program under test did not stop normally: " + other.toString)
 
-  /** A call to `other` asking for no gas, sending nothing and naming no region,
-    * with the answer discarded.
+  /** A call to `other` asking for `request` gas, sending nothing and naming no
+    * region, with the answer discarded. `form` decides which of the two the
+    * account named runs AS, which is what the slot cases below turn on.
     *
     * The operands are pushed in the reverse of the order the operation pops
     * them, which is the output region, the input region, the value, the account
     * and then the request.
     */
-  private val calling: Seq[Int] =
+  private def callingWith(form: Opcode, request: Int): Seq[Int] =
     pushingSmall(0) ++ pushingSmall(0) ++ pushingSmall(0) ++ pushingSmall(0) ++ pushingSmall(0) ++
-      pushing(other) ++ pushingSmall(0) ++ Seq(Opcode.Call.code, Opcode.Pop.code)
+      pushing(other) ++ pushingLarge(request) ++ Seq(form.code, Opcode.Pop.code)
+
+  /** A call to `other` asking for no gas, which is a callee that halts before
+    * it can reach anything.
+    */
+  private val calling: Seq[Int] = callingWith(Opcode.Call, 0)
+
+  /** What a call below forwards.
+    *
+    * Comfortably above what any callee here spends, so that a callee's reaches
+    * are discarded by the ending under test rather than for want of gas -- and
+    * comfortably below it, so that a callee handing back its remainder is
+    * distinguishable from one that kept nothing. The case pinning that
+    * distinction is what holds this figure to both bounds.
+    */
+  private val forwarded: Int = 20000
+
+  /** A callee that reaches `elsewhere` and stops. */
+  private val reachingThenStopping: Seq[Int] = reachingAt(elsewhere, Opcode.Balance)
+
+  /** `PUSH1 0, PUSH1 0, REVERT` -- ending an invocation the failing way over an
+    * empty region, which is charged for no memory.
+    */
+  private val reverting: Seq[Int] = pushingSmall(0) ++ pushingSmall(0) ++ Seq(Opcode.Revert.code)
+
+  /** A callee that reaches `elsewhere` and then reverts. */
+  private val reachingThenReverting: Seq[Int] = reachingThenStopping ++ reverting
+
+  /** A callee that reaches slot 1 of whichever account it runs as, and stops. */
+  private val loadingThenStopping: Seq[Int] = loading(1)
+
+  /** A callee that reaches that slot and then reverts. */
+  private val loadingThenReverting: Seq[Int] = loadingThenStopping ++ reverting
+
+  /** A request no caller here can cover, so that a forwarding rule with a cap
+    * hands over the cap rather than the request.
+    */
+  private val unaffordable: Int = 0xffffff
+
+  /** A callee that meets a byte no table carries and so halts, which keeps
+    * everything it was given rather than handing a remainder back. That is what
+    * puts the amount forwarded into what the caller spent, where a case can
+    * read it.
+    */
+  private val halting: Seq[Int] = Seq(0x0c)
 
   "BALANCE at an account this transaction has not reached" should "be charged the cold account figure" in
     assert(
@@ -322,3 +397,124 @@ class StateAccessMeteringSpec extends AnyFlatSpec:
         spent(StateAccessMetering.WarmCold, calling) - overhead == schedule.warmAccess,
       "the call did not record the account it charged a first reach for"
     )
+
+  "an account a CALLEE reached" should "be charged the warm figure by its caller where the callee stopped" in
+    // Every case above reaches what it reaches from the invocation being
+    // measured, so none of them can tell whether a reach crosses back out of a
+    // nested one. This account is named by no program the caller runs: the
+    // caller pays a first reach for it only if what the callee recorded was
+    // discarded on the way out.
+    assert(
+      spent(
+        StateAccessMetering.WarmCold,
+        callingWith(Opcode.Call, forwarded) ++ reachingAt(elsewhere, Opcode.Balance),
+        childCode = reachingThenStopping
+      ) - spent(
+        StateAccessMetering.WarmCold,
+        callingWith(Opcode.Call, forwarded),
+        childCode = reachingThenStopping
+      ) - overhead == schedule.warmAccess,
+      "a reach made inside a nested invocation that stopped did not survive into the one that started it"
+    )
+
+  it should "be charged the COLD figure where the callee reverted" in
+    // The exception the document states for a scope that fails: "if a scope
+    // reverts, the access lists should be in the state they were in before that
+    // scope was entered" (`ethereum/EIPs` @ `dbfa6bee8`, `EIPS/eip-2929.md`,
+    // Final). Adding the caller's two set lines to the failing incorporation is
+    // the symmetry that reads as a tidy-up and is a consensus change, and this
+    // is the only case in the module that refuses it.
+    assert(
+      spent(
+        StateAccessMetering.WarmCold,
+        callingWith(Opcode.Call, forwarded) ++ reachingAt(elsewhere, Opcode.Balance),
+        childCode = reachingThenReverting
+      ) - spent(
+        StateAccessMetering.WarmCold,
+        callingWith(Opcode.Call, forwarded),
+        childCode = reachingThenReverting
+      ) - overhead == schedule.coldAccountAccess,
+      "a reach made inside a nested invocation that reverted was kept by the one that started it"
+    )
+
+  "a callee that reverted" should "hand back what it did not spend" in
+    // What keeps the two cases either side of this from passing on a callee
+    // that never reached anything at all: one that ran out of gas keeps
+    // everything forwarded and warms nothing, which answers the cold case
+    // correctly for the wrong reason. It cannot answer this one, because a
+    // program whose callee kept the whole request costs more than the request.
+    assert(
+      spent(
+        StateAccessMetering.WarmCold,
+        callingWith(Opcode.Call, forwarded),
+        childCode = reachingThenReverting
+      ) < BigInt(forwarded),
+      "the request forwarded did not cover the callee, whose reaches went for want of gas rather than by the revert"
+    )
+
+  "a slot a BORROWED callee reached" should "be charged the warm figure by its caller where the callee stopped" in
+    // A borrowing form is what makes a nested slot observable at all: the set
+    // is keyed on the account and the slot together, so the pair the callee
+    // reached is the pair the caller goes on to read only where the callee ran
+    // AS the account already running. Two forms do that, and this one is here
+    // because the other takes one operand fewer -- it inherits its value
+    // rather than popping one -- so the shared harness, which pushes a value,
+    // would misalign its stack.
+    assert(
+      spent(
+        StateAccessMetering.WarmCold,
+        callingWith(Opcode.CallCode, forwarded) ++ loading(1),
+        childCode = loadingThenStopping
+      ) - spent(
+        StateAccessMetering.WarmCold,
+        callingWith(Opcode.CallCode, forwarded),
+        childCode = loadingThenStopping
+      ) - overhead == schedule.warmAccess,
+      "a slot reached inside a nested invocation that stopped did not survive into the one that started it"
+    )
+
+  it should "be charged the COLD storage figure where the callee reverted" in
+    assert(
+      spent(
+        StateAccessMetering.WarmCold,
+        callingWith(Opcode.CallCode, forwarded) ++ loading(1),
+        childCode = loadingThenReverting
+      ) - spent(
+        StateAccessMetering.WarmCold,
+        callingWith(Opcode.CallCode, forwarded),
+        childCode = loadingThenReverting
+      ) - overhead == schedule.coldStorageAccess,
+      "a slot reached inside a nested invocation that reverted was kept by the one that started it"
+    )
+
+  "a call under a forwarding cap" should "settle the access charge BEFORE working out what it forwards" in {
+    // Where the charge sits is observable only once a rule caps the amount, and
+    // the document legislates the order rather than leaving it to be inferred:
+    // the figure "is applied immediately (exactly like how `700` was charged
+    // before this EIP), i.e: before calculating the `63/64ths` available for
+    // entering the call" (`ethereum/EIPs` @ `dbfa6bee8`, `EIPS/eip-2929.md`,
+    // Final).
+    //
+    // A callee that halts keeps everything handed to it, so what the caller
+    // spent carries the amount forwarded. Subtracted first, the two runs have
+    // different amounts to divide and differ by a sixty-fourth of the gap
+    // between the two figures; applied after the division instead, both divide
+    // the same amount and the runs differ by the WHOLE gap.
+    val capped = callingWith(Opcode.Call, unaffordable)
+    assert(
+      spent(
+        StateAccessMetering.WarmCold,
+        capped,
+        childCode = halting,
+        forwarding = GasForwarding.AllButOneSixtyFourth
+      ) -
+        spent(
+          StateAccessMetering.WarmCold,
+          capped,
+          warm = Set(other),
+          childCode = halting,
+          forwarding = GasForwarding.AllButOneSixtyFourth
+        ) < schedule.coldAccountAccess - schedule.warmAccess,
+      "the whole difference between the two figures reached the callee, so the charge was settled after the division"
+    )
+  }

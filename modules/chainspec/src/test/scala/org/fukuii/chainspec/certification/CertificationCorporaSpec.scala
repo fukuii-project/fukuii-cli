@@ -756,11 +756,18 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     * rows less often, which is what [[heavyRows]] below does.
     *
     * **A pass does NOT cost the same per case whichever tier it is over.**
-    * Measured over all twenty-six rows, an unmodified pass costs 1.80 ms a case
-    * over the generated tier at the earlier fork, 2.20 over the legacy tier
-    * there, 5.47 over the generated tier at the later fork and 12.21 over the
-    * legacy tier there -- a spread of 6.8 times, not the uniform figure a
-    * smaller sample suggested.
+    * Timed over the twenty-six rows [[coverageRows]] held when this was
+    * measured, an unmodified pass cost 1.80 ms a case over the generated tier
+    * at the earlier fork, 2.20 over the legacy tier there, 5.47 over the
+    * generated tier at the later fork and 12.21 over the legacy tier there -- a
+    * spread of 6.8 times, not the uniform figure a smaller sample suggested.
+    *
+    * **That count is the measurement's own scope and not a reading of the table
+    * today**, which is the only form a figure like it can take here: rows are
+    * added as forks are certified, so a count written as a description of
+    * [[coverageRows]] goes wrong on the commit that adds the next row rather
+    * than on the one that states it. What carries forward is the per-case
+    * figures and the spread, neither of which a longer table moves.
     *
     * **So "the legacy tier is expensive" is false**, and the same 2394 files
     * demonstrate it: read at the earlier fork they are the second CHEAPEST
@@ -787,13 +794,19 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     *
     * ==Keyed on the corpus because that is what the measurement found==
     *
-    * Timed per row over all twenty-six, the legacy tier at the later fork is
-    * 81% of the matrix: nine rows at 55.8 seconds each against 114.3 seconds
-    * for the other seventeen together. Neither of the two shapes a reader
-    * expects is what the numbers show -- it is not a tier, because the same
-    * files at the earlier fork are among the cheapest rows here, and it is not
-    * one or two outlying proposals, because eight of that corpus's nine rows
-    * sit within 3% of their own mean.
+    * Timed per row over the twenty-six [[coverageRows]] then held, the legacy
+    * tier at the later fork was 81% of the matrix: nine rows at 55.8 seconds
+    * each against 114.3 seconds for the seventeen beside them. Neither of the
+    * two shapes a reader expects is what the numbers show -- it is not a tier,
+    * because the same files at the earlier fork are among the cheapest rows
+    * here, and it is not one or two outlying proposals, because eight of that
+    * corpus's nine rows sit within 3% of their own mean.
+    *
+    * **Those three counts are the measurement's scope rather than the table's**,
+    * for the reason [[movedFor]] gives, and the share moves with every row
+    * added. **What a later reader applies is the rule below and not the
+    * share**, which is why the rule is stated in seconds a row rather than as a
+    * proportion of a matrix whose size does not stay put.
     *
     * **The split is clean, which is what makes a corpus the right key.** The
     * cheapest row of this set costs 19.7 seconds and the dearest row outside it
@@ -841,9 +854,9 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     * actually saves its time.
     *
     * **One memo over every row would defeat the tag entirely.** Whichever
-    * property ran first would force all twenty-six reruns, so an excluded
-    * property would still have been paid for and the ordinary run would be no
-    * quicker -- a tag that reports a saving it did not make.
+    * property ran first would force every row's rerun, so an excluded property
+    * would still have been paid for and the ordinary run would be no quicker --
+    * a tag that reports a saving it did not make.
     */
   private lazy val movedPerOrdinaryRow: Map[(String, String), Vector[String]] = movedFor(ordinaryRows)
   private lazy val movedPerHeavyRow: Map[(String, String), Vector[String]] = movedFor(heavyRows)

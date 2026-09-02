@@ -40,9 +40,15 @@ import org.fukuii.types.TransactionType
   * `Cancun/GeneralStateTests/stEIP2930/coinbaseT01.json`, whose `accessLists`
   * is `[null, [...], [...]]` against three `data` entries, and whose per-entry
   * `txbytes` begins `0xf8` at index 0 and `0x01` at indexes 1 and 2. That file
-  * is in a directory this build does not read, and no case in the four corpora
-  * it does read carries a null entry, so the shape is reproduced here rather
-  * than quoted from material the suite can reach.
+  * is in a directory this build does not read, and every `accessLists` array in
+  * the directories it does read was swept for a null entry and none carries
+  * one, so the shape is reproduced here rather than quoted from material the
+  * suite can reach.
+  *
+  * **What that rests on is the sweep and not a count of corpora.** How many
+  * directories are read says nothing about whether one of them holds the shape,
+  * and a figure for it goes wrong on the commit that registers the next corpus
+  * rather than on the one that states it.
   */
 class StateFixtureSpec extends AnyFlatSpec:
 

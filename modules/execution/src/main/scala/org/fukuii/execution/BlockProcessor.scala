@@ -389,15 +389,28 @@ object BlockProcessor:
     * ==Only a format stating its own price is reachable here==
     *
     * The three formats whose charge is computed against a block's base fee
-    * state a cap and a tip rather than a price, and no rule set in this project
-    * admits one: each holds the legacy format alone.
-    * [[TransactionAdmission.admitsFormat]] is asked before this, by
-    * [[TransactionAdmission.senderOf]], so a block carrying such a transaction
-    * is refused for its FORMAT and never priced. A rule set that admitted one
-    * without the fee rule that prices it is a configuration this project would
-    * have had to write, which is why the impossible branch is raised rather
-    * than returned -- there is no caller who could act on it and nothing on a
-    * chain that produces it.
+    * state a cap and a tip rather than a price, and there is no base fee here
+    * to resolve one against.
+    *
+    * **Two things keep that branch out of reach, and collapsing them is how a
+    * later fork walks into it.** [[TransactionAdmission.senderOf]] asks
+    * [[TransactionAdmission.admitsFormat]] ahead of everything else it does,
+    * and [[settleInto]] binds its answer before this is applied at all, so a
+    * format these rules do not admit is refused for that FORMAT and never
+    * reaches here. That ordering does not move when the admitted set grows.
+    *
+    * **What the ordering does NOT say is that every format these rules DO admit
+    * is priced here**, and that is the half the branch actually rests on: none
+    * of the three is admitted anywhere today. So the set is evidence about this
+    * branch, and the obligation it carries is that a fork admitting one of the
+    * three brings the fee rule that prices it, both landing together. Reading
+    * the ordering alone as the guarantee would say the opposite -- that
+    * extending the admitted set is safe on its own.
+    *
+    * A rule set that admitted one of the three without the fee rule that prices
+    * it is a configuration this project would have had to write, which is why
+    * the impossible branch is raised rather than returned -- there is no caller
+    * who could act on it and nothing on a chain that produces it.
     */
   private def offered(transaction: Transaction, sender: Address): OfferedTransaction =
     val price = transaction match
