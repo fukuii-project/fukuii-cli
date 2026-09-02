@@ -4,11 +4,23 @@ import io.circe.Json
 
 import org.fukuii.bytes.{Address, Bytes, Hash}
 import org.fukuii.evm.BlockContext
-import org.fukuii.types.TransactionType
+import org.fukuii.types.{AccessTuple, TransactionType}
 
 /** The transaction a state fixture asks to be executed, with one combination of
   * its data, gas and value arrays already selected.
   *
+  * @param accessList
+  *   the accounts and slots this combination declares ahead of running, empty
+  *   for a combination that declares none.
+  *
+  *   **It is read per index, because the field it comes from is indexed.**
+  *   `accessLists` is parallel to `data`, so entry `i` belongs to `data[i]` and
+  *   a reader taking the whole field would charge one combination for another's
+  *   declaration.
+  *
+  *   Carried as the sequence the file states rather than as a set: the
+  *   intrinsic charge prices duplicates and the warm seed built from the same
+  *   field does not, so only the sequence supports both.
   * @param kind
   *   which of EIP-2718's formats the fixture wrote. A format a fork predates is
   *   named rather than rejected at the reader, because a fixture carrying one
@@ -22,6 +34,7 @@ final case class StateTransaction(
     to: Option[Address],
     value: BigInt,
     data: Bytes,
+    accessList: Seq[AccessTuple],
     sender: Address,
     signed: Option[Bytes],
     kind: TransactionType
@@ -205,9 +218,91 @@ object StateFixture:
       gasLimit <- selected(json, "gasLimit", indexes.gas).flatMap(FixtureValues.quantity)
       value <- selected(json, "value", indexes.value).flatMap(FixtureValues.quantity)
       data <- selected(json, "data", indexes.data).flatMap(FixtureValues.bytesOf)
+      declared <- declarationAt(json, indexes.data)
       sender <- FixtureValues.addressAt(json, "sender")
       to <- recipientOf(json)
-    yield StateTransaction(nonce, gasPrice, gasLimit, to, value, data, sender, signed, kind)
+    yield StateTransaction(nonce, gasPrice, gasLimit, to, value, data, declared, sender, signed, kind)
+
+  /** What `accessLists` declares for one combination.
+    *
+    * ==Read from the fields rather than from the published envelope==
+    *
+    * The two production clients that consume this corpus both build the
+    * transaction from this field at this index: `besu-eth/besu` @ `fdf1247c6d`
+    * takes `accessLists.get(indexes.data)` in
+    * `StateTestVersionedTransaction.get`, and `NethermindEth/nethermind` @
+    * `b92e2a4719` takes `transactionJson.AccessLists[postStateJson.Indexes.Data]`
+    * in `JsonToEthereumTest`. besu reads no published envelope at all -- it
+    * re-signs from the secret key -- and nethermind decodes one only for a case
+    * expecting an exception.
+    *
+    * **The two sources were compared before this was written, and they agree.**
+    * Over the 154 admitted type-1 entries of the generated tier's Berlin
+    * directory, the tuples this field states at each entry's own data index are
+    * the tuples that entry's `txbytes` carries, in the same order, in every
+    * case. So this corpus cannot discriminate the two readings, and what
+    * selects the field is the clients rather than a measurement -- 129 of those
+    * entries declare something and 25 declare nothing.
+    *
+    * ==Absent, null and empty are three different statements==
+    *
+    * A case stating no `accessLists` at all declares nothing, which is every
+    * case at every fork below the one that introduced the field. A null entry
+    * is that index saying it predates the envelope. `[]` is a typed transaction
+    * listing nothing, and separating it from null is what [[listedAt]] is for.
+    *
+    * **No case in any corpus this build reads carries a null entry**, so the
+    * branch above is asserted by this module's own suite rather than by a run.
+    * The shape is real all the same: `etclabscore/tests-etc` writes it eight
+    * times, in directories outside the ten this build registers, and
+    * `ethereum/legacytests` writes it in a snapshot this build does not read.
+    *
+    * **An index the field does not reach is a broken fixture and not a third
+    * kind of absence.** `accessLists` is parallel to `data`, so a combination
+    * whose index falls outside it describes a file whose two arrays disagree,
+    * and answering with an empty declaration there would charge a transaction
+    * for less than it declares and settle it to a root the chain never reached.
+    * No case in any corpus read here does it.
+    */
+  private def declarationAt(json: Json, index: Int): Either[String, Seq[AccessTuple]] =
+    json.hcursor.downField("accessLists").focus match
+      case None       => Right(Seq.empty)
+      case Some(held) =>
+        held.asArray.toRight("accessLists is not an array").flatMap { lists =>
+          lists.lift(index).toRight("accessLists has no entry " + index).flatMap { entry =>
+            if entry.isNull then Right(Seq.empty)
+            else
+              entry.asArray.toRight("accessLists entry " + index + " is not an array").flatMap { tuples =>
+                tuples.foldLeft(Right(Vector.empty): Either[String, Vector[AccessTuple]]) {
+                  case (Left(error), _)      => Left(error)
+                  case (Right(sofar), tuple) => declaredTuple(tuple).map(sofar :+ _)
+                }
+              }
+          }
+        }
+
+  /** One declared account and the slots declared with it.
+    *
+    * A tuple stating no `storageKeys` declares the account alone, which the
+    * proposal prices and both clients above accept.
+    */
+  private def declaredTuple(json: Json): Either[String, AccessTuple] =
+    for
+      address <- FixtureValues.addressAt(json, "address")
+      keys <- json.hcursor.downField("storageKeys").focus match
+        case None       => Right(Vector.empty)
+        case Some(held) =>
+          held.asArray.toRight("storageKeys is not an array").flatMap { stated =>
+            stated.foldLeft(Right(Vector.empty): Either[String, Vector[Hash]]) {
+              case (Left(error), _)     => Left(error)
+              case (Right(sofar), slot) =>
+                slot.asString
+                  .toRight("a declared storage key is not a string")
+                  .flatMap(FixtureValues.hashOf)
+                  .map(sofar :+ _)
+            }
+          }
+    yield AccessTuple(address, keys)
 
   /** Which of EIP-2718's formats this one combination is.
     *

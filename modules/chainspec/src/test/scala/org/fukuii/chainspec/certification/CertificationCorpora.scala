@@ -289,6 +289,39 @@ object CertificationCorpora:
     */
   val GeneratedIstanbulCorpus: String = "execution-specs-fixtures state_tests/for_istanbul"
 
+  /** The generated tier filled for the first fork whose blocks may carry a
+    * second transaction format.
+    *
+    * ==The first tier here that runs a TAGGED transaction rather than refusing
+    * one==
+    *
+    * Every directory below this one carries typed envelopes only as cases
+    * asserting that the fork of the day refuses them -- two at the fork below,
+    * both `TYPE_n_TX_PRE_FORK`. Here 154 of the 2742 entries carry a `0x01`
+    * envelope the rules admit, execute, and publish a receipt for whose octets
+    * begin with the same tag. So this is the first corpus in the harness that
+    * can disagree about a typed transaction at all, in either direction:
+    * whether it is admitted, what its declaration is charged, and what its
+    * receipt encodes to.
+    *
+    * A further 144 typed entries here ARE refusals, and they are not a
+    * duplicate of the fork below's two: the fork admits `0x01`, so what those
+    * assert is a typed transaction refused for something other than its format.
+    *
+    * ==What the corpus reaches beyond the fork it is named for==
+    *
+    * The directory is partitioned by the fork a test was FILLED FOR rather than
+    * by the fork it was authored at -- the reading the Tangerine Whistle tier
+    * above already states -- and here it is what supplies the modular
+    * exponentiation row. Eleven files of this directory name that native in
+    * their path against one in the directory filled for the fork below, and ten
+    * of the eleven sit under `osaka/eip7883_modexp_gas_increase`, a family
+    * named for a later fork's repricing of the same native and filled at these
+    * rules. Measured with a path match calibrated against a token no path
+    * carries.
+    */
+  val GeneratedBerlinCorpus: String = "execution-specs-fixtures state_tests/for_berlin"
+
   /** The same directory as the Tangerine Whistle tier, resolved through the
     * other network's schedule instead.
     *
@@ -356,6 +389,7 @@ object CertificationCorpora:
 
   private[certification] val EthereumConstantinopleStarts: Long = 7280000L
   private[certification] val EthereumIstanbulStarts: Long = 9069000L
+  private[certification] val EthereumBerlinStarts: Long = 12244000L
   private[certification] val ClassicGasRepriceStarts: Long = 2500000L
 
   /** Every network-and-height pair the corpora above are resolved at.
@@ -382,6 +416,7 @@ object CertificationCorpora:
       ethereum.Mainnet.network -> EthereumByzantiumStarts,
       ethereum.Mainnet.network -> EthereumConstantinopleStarts,
       ethereum.Mainnet.network -> EthereumIstanbulStarts,
+      ethereum.Mainnet.network -> EthereumBerlinStarts,
       ethereumclassic.Mainnet.network -> ClassicGasRepriceStarts
     )
 
@@ -450,6 +485,13 @@ object CertificationCorpora:
     val constantinople = ethereum.Upgrades.constantinople
 
     val istanbul = rulesAt(ethereumSchedule, EthereumIstanbulStarts)
+
+    // Resolved at this network's Berlin activation and not at Muir Glacier's,
+    // even though the corpus is the first thing here that could tell the two
+    // apart on a header: no state fixture settles one, so what separates them
+    // for this tier is the four proposals rather than the bomb delay between
+    // them.
+    val berlin = rulesAt(ethereumSchedule, EthereumBerlinStarts)
 
     val gasReprice = rulesAt(classicSchedule, ClassicGasRepriceStarts)
 
@@ -549,6 +591,13 @@ object CertificationCorpora:
         "Istanbul",
         ethereumChain,
         istanbul
+      ),
+      StateCorpus(
+        GeneratedBerlinCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_berlin"),
+        "Berlin",
+        ethereumChain,
+        berlin
       ),
       StateCorpus(
         ClassicTangerineWhistleCorpus,

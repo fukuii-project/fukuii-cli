@@ -2,7 +2,8 @@ package org.fukuii.chainspec.certification
 
 import org.fukuii.bytes.UInt64
 import org.fukuii.chainspec.networks.{KnownNetworks, ethereum}
-import org.fukuii.chainspec.{Activation, DifficultyAdjustment, Network, Registry, UpgradeRules}
+import org.fukuii.chainspec.proposals.eip.{Eip2565, Eip2718, Eip2929, Eip2930}
+import org.fukuii.chainspec.{Activation, Component, DifficultyAdjustment, Network, Registry, UpgradeRules}
 import org.fukuii.evm.fixtures.*
 import org.fukuii.evm.{Cost, Operation, Precompile, PrecompileSet, StorageMetering, Opcode}
 
@@ -93,7 +94,13 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     // envelopes in the directory are not skipped either: a format this fork
     // does not admit is REFUSED, which is a verdict, and the fixtures expect
     // exactly that refusal.
-    CertificationCorpora.GeneratedIstanbulCorpus -> CorpusCensus(files = 104, cases = 2075, skipped = 0)
+    CertificationCorpora.GeneratedIstanbulCorpus -> CorpusCensus(files = 104, cases = 2075, skipped = 0),
+    // Nothing is skipped here either, and for this tier that is a stronger
+    // statement than at the fork below: 298 of its entries carry a typed
+    // envelope, 154 of which the rules admit and execute. A typed entry the
+    // rules refused would still be a verdict rather than a skip, so a zero here
+    // is not evidence that the format is admitted -- the coverage rows are.
+    CertificationCorpora.GeneratedBerlinCorpus -> CorpusCensus(files = 132, cases = 2742, skipped = 0)
   )
 
   /** Every censused corpus, as the rows the four properties below drive.
@@ -165,7 +172,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     assert(names == census.keySet, s"assembled ${names.toString} against a census of ${census.keySet.toString}")
   }
 
-  property("the census covers fifteen corpora, counted") {
+  property("the census covers sixteen corpora, counted") {
     // THE REMOVAL CASE, which the pairing cannot see. Dropping a corpus from the
     // census AND from what the harness assembles leaves those two agreeing with
     // each other, leaves the same six properties registered, and leaves the
@@ -185,7 +192,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     //
     // Raising this is adding a corpus. Lowering it is dropping certified cases,
     // and that is a decision rather than a tidy-up.
-    assert(census.size == 15, s"the census covers ${census.size.toString} corpora rather than fifteen")
+    assert(census.size == 16, s"the census covers ${census.size.toString} corpora rather than sixteen")
   }
 
   property("every censused corpus holds the files the census records") {
@@ -483,6 +490,61 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
         )
       )
 
+  /** The four proposals the highest fork here adopts, in the order its
+    * composition takes them.
+    */
+  private val theBerlinFour: Vector[Component] =
+    Vector(Eip2565.component, Eip2718.component, Eip2929.component, Eip2930.component)
+
+  /** The fork below with three of the four adopted.
+    *
+    * ==Recomposed rather than reverted field by field, unlike every row above==
+    *
+    * Adoption has no inverse -- a component is an arbitrary function over the
+    * whole rule set -- so the rows above each hand-write the figures a proposal
+    * moved and rebuild whatever copied them. Two of these four defeat that
+    * shape outright: the access repricing moves eight schedule figures, four
+    * table entries and one metering rule together, and the declaring format is
+    * one member of a different facet. Hand-reverting either is a second
+    * statement of the proposal's own delta, maintained beside it and wrong the
+    * first time one of them changes.
+    *
+    * **What recomposition costs is that it can drift from the schedule**, which
+    * the hand-written rows cannot: they start from whatever the schedule
+    * resolved. A property below closes that by asserting all four recomposed
+    * equal what this network resolves at that height, so a differential here is
+    * a statement about this upgrade rather than about a composition that
+    * resembles it.
+    */
+  private def berlinWithout(dropped: Component): UpgradeRules => UpgradeRules =
+    _ => ethereum.Upgrades.muirGlacier.adopting(theBerlinFour.filterNot(_.id == dropped.id)*)
+
+  /** What declaring an account and a slot costs, back at nothing.
+    *
+    * ==The one row here that separates admitting the format from charging the
+    * declaration==
+    *
+    * Withdrawing EIP-2930 whole does both at once, so its row counts every
+    * entry whose envelope the rules stop admitting -- which measures the
+    * envelope and not the declaration. This drops the two prices alone, leaving
+    * the format admitted, so what moves is the entries whose intrinsic charge
+    * the declaration decides.
+    *
+    * Zero is what the fork below charges: the schedule carries the two members
+    * at that value everywhere the format is not admitted, so this is a revert
+    * rather than a figure invented for the differential.
+    */
+  private val withoutTheDeclarationCharge: UpgradeRules => UpgradeRules =
+    rules =>
+      rules.copy(evm =
+        rules.evm.copy(schedule =
+          rules.evm.schedule.copy(
+            transactionAccessListAddress = BigInt(0),
+            transactionAccessListStorageKey = BigInt(0)
+          )
+        )
+      )
+
   /** How many cases each censused tier decides on each proposal of the two
     * forks either tier is read at, measured by removing the proposal and
     * rerunning.
@@ -572,6 +634,58 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     * the operation at all, which is why the four repricings here draw on
     * between three and twelve directories each while the two additions draw on
     * two apiece.
+    *
+    * ==At the highest fork here, one row is legitimately ZERO and the widest
+    * row is the least specific==
+    *
+    * The four rows of that fork are the only group in this matrix where a
+    * reader ranking the proposals by their figures would be misled about every
+    * one of them, so each carries its own reading:
+    *
+    *   - **EIP-2718 is 0, and it is neither uncertified nor an artifact.** That
+    *     document introduces no transaction type -- its payload is *"defined in
+    *     future EIPs"* -- so at this fork the only tagged format that exists is
+    *     the one the document beside it defines. Withdrawing either leaves the
+    *     same rules admitting the same one format, which forecloses a partition
+    *     of this fork's four before any differential is run. What certifies the
+    *     envelope is not a differential at all: 154 entries here publish a
+    *     receipt whose octets this build reproduces byte for byte, and every one
+    *     of those receipts begins with the type tag.
+    *   - **EIP-2929 at 2109 is the widest row over this tier and the least
+    *     specific.** It reprices eleven operations most executing cases touch,
+    *     so a case that reads a balance, a code size, a code hash, a storage
+    *     slot, makes a call or self-destructs changes its gas used, its sender's
+    *     balance, its beneficiary's balance and therefore its root -- whatever
+    *     it was written to test. The row measures how much of the tier reaches
+    *     state at all.
+    *   - **EIP-2930 at 297 measures the ENVELOPE, not the declaration.**
+    *     Withdrawing it stops the fork admitting the tagged format, so what
+    *     moves is every entry carrying one that the fork otherwise settles: 154
+    *     admitted and 143 refused for something other than their format. The
+    *     one typed entry that does not move carries the tag of a format this
+    *     fork does not admit either way.
+    *   - **The declaration charge is the row that separates the two questions**,
+    *     and it is the only place in this fork where the corpus supplies both
+    *     halves. Dropping the two prices alone leaves the format admitted, so
+    *     what moves is decided by the declaration and by nothing else.
+    *
+    * ==What the declaration row does NOT count, measured rather than inferred==
+    *
+    * 252 entries of this tier declare something the fork prices, and 154 of them
+    * answer differently when the price is removed: 123 that the tier expects to
+    * be refused, and 31 that it expects to settle. The remaining 98 are settled
+    * entries whose verdict the price cannot move, and the reason is a property
+    * of gas rather than of the corpus -- **a transaction that runs out of gas is
+    * charged its whole limit whatever its intrinsic charge was.** All 98 come
+    * from one family, `eip2930_access_list/tx_intrinsic_gas`, which sets the
+    * limit at exactly the intrinsic charge and calls code that cannot run in
+    * what is left; removing the declaration's price leaves more gas for an
+    * invocation that still exhausts it, and the beneficiary is credited the same
+    * limit either way.
+    *
+    * So the row is a floor on what the corpus decides about the declaration and
+    * not a census of what declares: a differential over a repricing can only see
+    * a case whose OUTCOME the figure changes.
     */
   private val coverageRows: Vector[(String, String, UpgradeRules => UpgradeRules, Int)] =
     Vector(
@@ -610,7 +724,12 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
       ("EIP-1344", CertificationCorpora.GeneratedIstanbulCorpus, withoutTheChainIdOpcode, 3),
       ("EIP-1884", CertificationCorpora.GeneratedIstanbulCorpus, withoutTheTrieSizeReprice, 83),
       ("EIP-2028", CertificationCorpora.GeneratedIstanbulCorpus, withoutTheCallDataReprice, 1382),
-      ("EIP-2200", CertificationCorpora.GeneratedIstanbulCorpus, withoutTheStorageSentry, 1070)
+      ("EIP-2200", CertificationCorpora.GeneratedIstanbulCorpus, withoutTheStorageSentry, 1070),
+      ("EIP-2565", CertificationCorpora.GeneratedBerlinCorpus, berlinWithout(Eip2565.component), 186),
+      ("EIP-2718", CertificationCorpora.GeneratedBerlinCorpus, berlinWithout(Eip2718.component), 0),
+      ("EIP-2929", CertificationCorpora.GeneratedBerlinCorpus, berlinWithout(Eip2929.component), 2109),
+      ("EIP-2930", CertificationCorpora.GeneratedBerlinCorpus, berlinWithout(Eip2930.component), 297),
+      ("EIP-2930 declaration charge", CertificationCorpora.GeneratedBerlinCorpus, withoutTheDeclarationCharge, 154)
     )
 
   /** One group of the rows above rerun, once each, keyed by the proposal and
@@ -685,6 +804,18 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     * failure that direction produces is a slower run, which is loud; naming a
     * corpus here is what stops rows being asserted on every run, and that is
     * the quiet direction.
+    *
+    * ==The generated tier at the highest fork was measured against that rule
+    * and stays ordinary==
+    *
+    * One rerun of it costs **8 seconds** over 2742 entries, taken as the
+    * difference between two runs of this suite differing in exactly one rerun:
+    * 373 seconds for the census properties alone against 381 for the census
+    * plus one pass over that tier. That is below the 10.7 seconds this set's
+    * own rule gives as the dearest row outside it, so naming it here would
+    * break the clean split rather than preserve it -- and its five rows cost
+    * about 41 seconds on every ordinary run, which is the price of asserting
+    * that fork's coverage at all.
     */
   private val corporaRerunInMinutes: Set[String] =
     Set(
@@ -787,6 +918,42 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     assert(
       moved == Vector("codesizeOOGInvalidSize[d0g0v0]"),
       s"the bound decides these cases: ${moved.mkString(", ")}"
+    )
+  }
+
+  property("the four recomposed from the fork below are the rules the Berlin tier is resolved to") {
+    // Four of that tier's five rows withdraw a proposal by rebuilding the
+    // upgrade without it rather than by reverting the figures it moved, which
+    // is the only shape two of them admit at all. What that buys has to be paid
+    // for here: a recomposition is right by construction and says nothing about
+    // the schedule, so without this the four differentials would be statements
+    // about a composition that merely resembles what this network runs.
+    val schedule = registry
+      .at(ethereum.Mainnet.network.chainId)
+      .getOrElse(fail("no schedule for " + ethereum.Mainnet.network.name))
+    assert(
+      ethereum.Upgrades.muirGlacier.adopting(theBerlinFour*) ==
+        schedule.at(UInt64.fromBits(CertificationCorpora.EthereumBerlinStarts), UInt64.Zero),
+      "the four withdrawn from below do not recompose to what this network resolves at block " +
+        CertificationCorpora.EthereumBerlinStarts.toString
+    )
+  }
+
+  property("the height the Berlin tier is resolved at holds that fork's rules and not its neighbours'") {
+    // The upgrade below this one changes nothing a state fixture can see -- it
+    // moves a difficulty delay and no state test settles a header -- so this
+    // tier resolved one activation too low would run under rules that differ
+    // from these in nothing the corpus reads, and every case would still pass.
+    // That makes it the one height in this harness whose neighbour a divergence
+    // could not catch.
+    val schedule = registry
+      .at(ethereum.Mainnet.network.chainId)
+      .getOrElse(fail("no schedule for " + ethereum.Mainnet.network.name))
+    assert(
+      schedule.at(UInt64.fromBits(CertificationCorpora.EthereumBerlinStarts), UInt64.Zero) ==
+        ethereum.Upgrades.berlin,
+      "the Berlin tier is resolved at block " + CertificationCorpora.EthereumBerlinStarts.toString +
+        ", which does not hold this network's Berlin rules"
     )
   }
 

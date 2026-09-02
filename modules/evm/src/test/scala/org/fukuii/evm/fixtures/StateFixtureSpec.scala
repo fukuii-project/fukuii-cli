@@ -5,7 +5,8 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.fukuii.types.TransactionType
 
 /** What the reader makes of one combination of a state case's arrays: which
-  * format it names, and what it takes as the receipt the case published.
+  * format it names, what it takes as the declaration that combination makes,
+  * and what it takes as the receipt the case published.
   *
   * ==Why this is worth its own suite==
   *
@@ -20,6 +21,12 @@ import org.fukuii.types.TransactionType
   * receipt reports a case with nothing to compare, which is indistinguishable
   * from a corpus that published none -- so the check does not fail, it stops
   * existing. The cases below are what separate the two.
+  *
+  * The declaration fails a third way: it is priced before anything runs, so a
+  * reader that reads it short charges a transaction less than the chain charged
+  * it and settles to another root -- and it does that only on the combinations
+  * that declare something, so a tier wired without it passes on most of its
+  * entries.
   *
   * ==None of these cases is run, so nothing here is an expectation==
   *
@@ -137,6 +144,38 @@ class StateFixtureSpec extends AnyFlatSpec:
     */
   private def entryPublishing(receipt: String): String =
     s"""{ "hash": "$zeroRoot", "indexes": { "data": 0, "gas": 0, "value": 0 }, "receipt": $receipt }"""
+
+  /** A case declaring an account with two slots at one index, an account with
+    * none at another, and one account twice at a third.
+    *
+    * The repeat is the shape the proposal singles out: *"non-unique addresses
+    * and storage keys are not disallowed, though they will be charged for
+    * multiple times"*, so a reader that deduplicated would undercharge exactly
+    * the case written to test that it does not.
+    */
+  private val declaringAccessLists: String =
+    fixture(
+      common + ""","accessLists": [
+        |[ { "address": "0x0000000000000000000000000000000000003000",
+        |    "storageKeys": [ "0x0000000000000000000000000000000000000000000000000000000000000001",
+        |                     "0x0000000000000000000000000000000000000000000000000000000000000002" ] } ],
+        |[ { "address": "0x0000000000000000000000000000000000004000" } ],
+        |[ { "address": "0x0000000000000000000000000000000000005000", "storageKeys": [] },
+        |  { "address": "0x0000000000000000000000000000000000005000", "storageKeys": [] } ] ]""".stripMargin,
+      threeUnsignedEntries
+    )
+
+  /** What the reader read the declaration as for one combination, as the hex a
+    * failure can be read from, or nothing where the file did not decode.
+    */
+  private def declaredAt(contents: String, data: Int): Option[Vector[(String, Vector[String])]] =
+    StateFixture
+      .decodeFile("classification", contents)
+      .toOption
+      .flatMap(_.fixtures.find(_.name.endsWith("[d" + data + "g0v0]")))
+      .map(
+        _.transaction.accessList.toVector.map(tuple => (tuple.address.toHex, tuple.storageKeys.toVector.map(_.toHex)))
+      )
 
   /** What the reader expects of the first combination, or the reason the file
     * did not decode.
@@ -269,3 +308,64 @@ class StateFixtureSpec extends AnyFlatSpec:
     // malformed rather than legacy -- and reading them as legacy would silently
     // overrule an access list the case does state.
     assert(kindAt(envelope("0x00f8"), 0) == Some(TransactionType.AccessList), decoded(envelope("0x00f8")))
+
+  "an index declaring an account with slots" should "carry both, in the order stated" in
+    // The charge is per address and per key, so a declaration read short is a
+    // transaction charged less than the chain charged it -- which surfaces as a
+    // post-state root and never as a reader fault.
+    assert(
+      declaredAt(declaringAccessLists, 0) == Some(
+        Vector(
+          (
+            "0000000000000000000000000000000000003000",
+            Vector(
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "0000000000000000000000000000000000000000000000000000000000000002"
+            )
+          )
+        )
+      ),
+      declaredAt(declaringAccessLists, 0).toString
+    )
+
+  "an index declaring an account and no storage keys" should "carry the account alone" in
+    // The member is omitted rather than written empty, which is a shape the
+    // published tiers use and a reader requiring it would refuse.
+    assert(
+      declaredAt(declaringAccessLists, 1) == Some(Vector(("0000000000000000000000000000000000004000", Vector.empty))),
+      declaredAt(declaringAccessLists, 1).toString
+    )
+
+  "a declaration naming one account twice" should "keep the repeat rather than deduplicating it" in
+    // EIP-2930 charges a repeat twice while the warm seed built from the same
+    // field takes it once, so a reader that collapsed the two would undercharge
+    // and leave the seed unchanged -- visible only as a root.
+    assert(
+      declaredAt(declaringAccessLists, 2).map(_.length) == Some(2),
+      declaredAt(declaringAccessLists, 2).toString
+    )
+
+  "an index whose access list is null" should "declare nothing" in
+    // Null is the index saying it predates the envelope. It is read as no
+    // declaration for the same reason it is read as the earlier format.
+    assert(declaredAt(mixedAccessLists, 0) == Some(Vector.empty), declaredAt(mixedAccessLists, 0).toString)
+
+  "an index whose access list is empty" should "declare nothing" in
+    // `[]` is a typed transaction listing nothing, which costs the same as
+    // declaring nothing and is a different statement about the format. The
+    // format case above is what separates them.
+    assert(declaredAt(mixedAccessLists, 1) == Some(Vector.empty), declaredAt(mixedAccessLists, 1).toString)
+
+  "a case stating no access lists at all" should "declare nothing" in {
+    val plain = fixture(common, threeUnsignedEntries)
+    assert(declaredAt(plain, 0) == Some(Vector.empty), declaredAt(plain, 0).toString)
+  }
+
+  "a case whose access lists do not reach a combination's index" should "make the file undecodable" in {
+    // The field is parallel to `data`, so an index outside it is a file whose
+    // two arrays disagree. Answering with an empty declaration would charge that
+    // combination for less than it declares, which is the one outcome a reader
+    // must not have.
+    val short = fixture(common + ""","accessLists": [ [] ]""", threeUnsignedEntries)
+    assert(StateFixture.decodeFile("classification", short).isLeft, decoded(short))
+  }

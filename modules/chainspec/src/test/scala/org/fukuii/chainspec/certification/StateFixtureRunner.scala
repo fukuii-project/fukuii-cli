@@ -128,12 +128,28 @@ object StateFixtureRunner:
     * across it, rather than a judgment made case by case -- and nothing
     * degrades quietly, because wherever bytes are present they settle the
     * question in both directions.
+    *
+    * ==`txbytes` is the CANONICAL form, and the codec reads a different one==
+    *
+    * `org.fukuii.types.Transaction`'s codec encodes a typed transaction as an
+    * RLP byte string wrapping `type || rlp(payload)`, because that is what a
+    * transaction is as an element of a block body. A fixture publishes the
+    * unwrapped form -- the bytes that travel as a whole transaction and that
+    * the hash is taken over -- so reading these through the codec parses the
+    * leading `0x01` as a one-byte RLP item and reports the rest as trailing.
+    *
+    * **The two forms agree for a legacy transaction and disagree for every
+    * typed one**, which is why this was invisible until a tier whose fork
+    * admits a typed format was wired. It surfaced as 297 entries SKIPPED as
+    * undecodable rather than as anything failing -- every typed entry of that
+    * tier except the one whose tag the fork does not admit, which is refused
+    * for its format before its bytes are read at all.
     */
   private def signerOf(transaction: StateTransaction, chainId: UInt64, rules: UpgradeRules): Signer =
     transaction.signed match
       case None        => Signer.Settled(transaction.sender)
       case Some(bytes) =>
-        RlpCodec.decodeFrom[Transaction](bytes.toIArray) match
+        Transaction.fromCanonicalBytes(bytes.toIArray) match
           case Left(error)   => Signer.Unreadable("published signature: " + error)
           case Right(signed) =>
             TransactionAdmission.senderOf(signed, chainId, rules.admission) match
@@ -199,21 +215,22 @@ object StateFixtureRunner:
     * limit, a price and a value that no fixed-width type always holds, because
     * overflow at each of them is a thing it tests.
     *
-    * ==THE DECLARATION IS EMPTY BECAUSE THE READER DOES NOT CARRY ONE, AND THAT
-    * IS A GAP RATHER THAN A FACT ABOUT ANY FIXTURE==
+    * ==The declaration crosses too, and offering an empty one is loud on some
+    * of the entries that carry one and silent on the rest==
     *
-    * [[org.fukuii.evm.fixtures.StateTransaction]] has no access-list member, so
-    * there is nothing here to pass. Every tier this runner is wired to today
-    * admits only formats that carry no such declaration, so the empty sequence
-    * is the right answer for all of them -- and it stops being the right answer
-    * the moment a tier whose fork admits the declaring format is wired.
+    * The charge for a declared account and slot is intrinsic, so it is compared
+    * against the transaction's limit before anything runs, and the same field
+    * seeds what the transaction may then reach warm. A transaction declaring an
+    * address but offered an empty declaration is charged the base and its data
+    * alone, spends less than the chain spent, and settles to a different root.
     *
-    * **What that would cost is an undercharge, not a skip.** A transaction
-    * declaring an address would be charged the base and its data alone, spend
-    * less than the chain spent, and settle to a different root. It is loud where
-    * a declaration is non-empty and silent where it is empty, so a tier wired
-    * without the reader growing this field fails on some of its entries and
-    * passes on the rest.
+    * **Measured against the generated tier at the first fork admitting the
+    * declaring format**: offering an empty declaration there leaves 154 of its
+    * 2742 entries disagreeing and the rest agreeing, so the defect is neither
+    * total nor invisible. It is not silent on the entries that declare nothing,
+    * which is the trivial half; it is silent on entries that DO declare and
+    * exhaust their gas limit either way, because such a transaction is charged
+    * its whole limit whatever its intrinsic charge was.
     */
   private def offered(transaction: StateTransaction, sender: Address): OfferedTransaction =
     OfferedTransaction(
@@ -225,7 +242,7 @@ object StateFixtureRunner:
       to = transaction.to,
       value = transaction.value,
       data = transaction.data,
-      accessList = Seq.empty
+      accessList = transaction.accessList
     )
 
   /** Every way the state this reached disagrees with the state the fixture
