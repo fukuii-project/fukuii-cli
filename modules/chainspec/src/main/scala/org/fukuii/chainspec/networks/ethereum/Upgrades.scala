@@ -594,12 +594,18 @@ object Upgrades:
     * ==The membership does not come from a proposal, which is what makes it
     * worth stating where it does come from==
     *
-    * No document carries an *Included EIPs* section for this upgrade. The two
-    * that name it -- one Withdrawn, one Final -- both delegate to a file in
-    * `ethereum/execution-specs`, and that file is NOT at that repository's head:
-    * it reads only at `8dbde99b132ff8d8fcc9cfb015a9947ccc8b12d6`, the commit the
-    * Final one cites. A reader sweeping the current tree finds no membership
-    * statement at all and concludes there is none.
+    * No proposal states it. The two hardfork-meta documents that name this
+    * upgrade -- one Withdrawn, one Final -- both delegate to
+    * `network-upgrades/mainnet-upgrades/berlin.md` in `ethereum/execution-specs`,
+    * which carries the four under a literal *Included EIPs* heading and is NOT
+    * at that repository's head: it reads only at
+    * `8dbde99b132ff8d8fcc9cfb015a9947ccc8b12d6`, the commit the Final one cites.
+    *
+    * **The delegated file is not the only statement, and a reader who stops at
+    * its absence concludes wrongly.** `ethereum/execution-specs` @ `20f7f6271`
+    * states the same four in `src/ethereum/forks/berlin/__init__.py` under
+    * *Changes*, with the upgrade schedule beside them. So what the delegation
+    * costs is the checklist and the readiness table, never the membership.
     *
     * Five independent readings agree on these four. `ethereum/go-ethereum` @
     * `e9e35a42f` sets `BerlinBlock` in `params/config.go` and gates exactly these
