@@ -13,7 +13,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 class OpcodeSpec extends AnyFlatSpec:
 
   "the vocabulary" should "hold every operation this build knows, across forks" in
-    // 141, counted in the file rather than recalled. **This is not a per-fork
+    // 142, counted in the file rather than recalled. **This is not a per-fork
     // figure**: a byte's meaning does not change once it has one, so the enum
     // accumulates across forks and a table selects from it. The number rises
     // with the first operation each proposal adds, and is a counted fact either
@@ -21,11 +21,12 @@ class OpcodeSpec extends AnyFlatSpec:
     //
     // 134 until Constantinople, which added five: EIP-145's SHL, SHR and SAR,
     // EIP-1052's EXTCODEHASH and EIP-1014's CREATE2. 139 until Istanbul, which
-    // added two: EIP-1344's CHAINID and EIP-1884's SELFBALANCE. Every one of
-    // the seven is also in `OpcodeTable.laterThanOriginal`, so the FRONTIER
-    // table's own size is unmoved -- the two counts answer different questions
-    // and only this one rises when an operation is added.
-    assert(Opcode.values.length == 141, "the Ops enum has 141 members, counted in the file rather than recalled")
+    // added two: EIP-1344's CHAINID and EIP-1884's SELFBALANCE. 141 until
+    // London, which added one: EIP-3198's BASEFEE. Every one of the eight is
+    // also in `OpcodeTable.laterThanOriginal`, so the FRONTIER table's own size
+    // is unmoved -- the two counts answer different questions and only this one
+    // rises when an operation is added.
+    assert(Opcode.values.length == 142, "the Ops enum has 142 members, counted in the file rather than recalled")
 
   it should "give each operation a distinct byte" in
     assert(

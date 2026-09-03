@@ -72,13 +72,13 @@ class Eip3554Spec extends AnyFlatSpec:
     )
 
   it should "NOT carry the figure of either upgrade beside it" in
-    // Both neighbours are bomb delays and nothing else, so a component copied
+    // Both neighbors are bomb delays and nothing else, so a component copied
     // from one of them compiles, adopts, and states a figure off by one upgrade.
     // Arrow Glacier is 10,700,000 and Gray Glacier 11,400,000.
     assert(
       adopted.consensus.difficultyBombDelay != BigInt(10700000) &&
         adopted.consensus.difficultyBombDelay != BigInt(11400000),
-      "a neighbouring upgrade's delay was adopted under this document's number"
+      "a neighboring upgrade's delay was adopted under this document's number"
     )
 
   it should "settle that one member and nothing else on the consensus facet" in

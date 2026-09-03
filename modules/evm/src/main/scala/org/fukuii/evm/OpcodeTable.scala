@@ -247,7 +247,8 @@ object OpcodeTable:
       Opcode.ExtCodeHash,
       Opcode.Create2,
       Opcode.ChainId,
-      Opcode.SelfBalance
+      Opcode.SelfBalance,
+      Opcode.BaseFee
     )
 
   /** The three families whose members differ only in a count, and which are

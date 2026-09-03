@@ -154,6 +154,21 @@ object Interpreter:
     * subtraction would turn a shortfall into an enormous balance rather than
     * into a failure.
     */
+  /** A rule set holding the base-fee operation over a block carrying no base
+    * fee, which is a configuration rather than a chain state.
+    *
+    * Raised rather than returned for the reason every other broken precondition
+    * here is: there is no caller who could act on it, and nothing on a chain
+    * produces it. The message names the block, because what has to be found is
+    * the rule set that put the operation in the table without the header field
+    * beside it.
+    */
+  private def unfilledBaseFee(environment: Environment): Nothing =
+    throw new IllegalStateException(
+      "the base-fee operation is in this table over a block that carries no base fee, at number " +
+        environment.block.number.toString
+    )
+
   private def transfer(world: JournaledWorldState, message: Message): Unit =
     if message.transfersValue && !message.value.isZero then
       val available = world.balanceOf(message.caller)
@@ -394,6 +409,16 @@ object Interpreter:
       case Opcode.Number     => pushing(frame, operation)(Word(environment.block.number))
       case Opcode.Difficulty => pushing(frame, operation)(Word(environment.block.difficulty))
       case Opcode.GasLimit   => pushing(frame, operation)(Word(environment.block.gasLimit))
+
+      // The one block value that is absent below the fork which introduced it,
+      // so reading it is the only block read that can find nothing. It is
+      // refused rather than defaulted: zero is a legal base fee, so standing it
+      // in for a field that is not there would push a plausible answer for a
+      // block that never had one. What keeps the refusal out of reach is that
+      // this operation joins the table at the same fork that fills the header
+      // field, and the two are adopted together.
+      case Opcode.BaseFee =>
+        pushing(frame, operation)(Word(environment.block.baseFee.getOrElse(unfilledBaseFee(environment))))
 
       case Opcode.BlockHash =>
         priced(operation) { gas =>

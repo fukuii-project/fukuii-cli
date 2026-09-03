@@ -77,6 +77,7 @@ enum Opcode(val code: Int):
   case GasLimit extends Opcode(0x45)
   case ChainId extends Opcode(0x46)
   case SelfBalance extends Opcode(0x47)
+  case BaseFee extends Opcode(0x48)
   case Pop extends Opcode(0x50)
   case MLoad extends Opcode(0x51)
   case MStore extends Opcode(0x52)

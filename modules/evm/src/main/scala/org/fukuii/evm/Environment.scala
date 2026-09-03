@@ -10,13 +10,41 @@ import org.fukuii.bytes.{Address, Hash, UInt64}
   * top of the range would wrap if the sum were taken in a 256-bit word and the
   * window would then admit a block it must refuse. The specification takes the
   * same care, widening the operand out of a word before adding to it.
+  *
+  * @param baseFee
+  *   the charge per unit of gas a block destroys rather than pays, absent below
+  *   the fork that introduced it. **Optional because the header it is read off
+  *   is**: `org.fukuii.types.BlockHeader.baseFeePerGas` answers `None` for every
+  *   block below that fork, and modeling one layer down as a plain quantity
+  *   would mean choosing a number to stand for a field that is not there. Zero
+  *   is the number that would be chosen and it is a legal base fee, so the
+  *   substitution is unrecoverable rather than merely lossy.
+  *
+  *   **A reader is not required to handle the absence, and must not paper over
+  *   it.** The one operation that reads this joins the table only at the fork
+  *   that fills it, so an invocation reaching this member with nothing in it
+  *   describes a rule set that put the operation in the table without the header
+  *   field beside it -- a configuration this project would have had to write.
+  *   That is the same obligation
+  *   `org.fukuii.execution.BlockProcessor.offered` carries for the formats it
+  *   cannot price, and it is discharged the same way, by refusing rather than by
+  *   defaulting.
+  *
+  *   The field is split on how to say this and agrees on what it means:
+  *   `ethereum/go-ethereum` @ `e9e35a42f8` carries a nil-able `BaseFee
+  *   *big.Int`, `besu-eth/besu` @ `fdf1247c6d` an `Optional<Wei>`, and
+  *   `ethereum/execution-specs` @ `20f7f6271a` gives the field only to the block
+  *   environments of the forks that have it. Absence is representable in all
+  *   three; which construct carries it is this build's to choose, and an option
+  *   is what the layer above already uses.
   */
 final case class BlockContext(
     coinbase: Address,
     number: BigInt,
     timestamp: BigInt,
     difficulty: BigInt,
-    gasLimit: BigInt
+    gasLimit: BigInt,
+    baseFee: Option[BigInt] = None
 )
 
 /** The transaction an invocation is running inside, as the values it can read.
