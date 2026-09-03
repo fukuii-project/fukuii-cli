@@ -1,7 +1,7 @@
 package org.fukuii.chainspec.networks.ethereum
 
 import org.fukuii.bytes.{UInt256, UInt64}
-import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment, UpgradeRules}
+import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment, HeaderRules, UpgradeRules}
 import org.fukuii.chainspec.proposals.eip.{
   Eip100,
   Eip1014,
@@ -299,7 +299,8 @@ object Upgrades:
         difficultyBombRemovedFrom = None,
         difficultyBoundDivisor = ConsensusRules.LaunchBoundDivisor,
         ecip1099Activation = None
-      )
+      ),
+      header = HeaderRules.Unset
     )
 
   /** [[frontier]] with EIP-7 and EIP-2 adopted.

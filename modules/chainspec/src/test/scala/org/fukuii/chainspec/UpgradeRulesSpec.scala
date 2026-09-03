@@ -61,7 +61,8 @@ class UpgradeRulesSpec extends AnyFlatSpec:
       signatureMayCarryChainId = false,
       signatureSMustBeLow = false
     ),
-    consensus = firstRules.consensus
+    consensus = firstRules.consensus,
+    header = firstRules.header
   )
 
   "adopting components" should "record their proposals in the order adopted" in

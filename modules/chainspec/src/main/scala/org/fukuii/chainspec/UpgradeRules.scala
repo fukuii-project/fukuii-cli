@@ -168,7 +168,8 @@ final case class UpgradeRules(
     evm: EvmRules,
     execution: ExecutionRules,
     admission: AdmissionRules,
-    consensus: ConsensusRules
+    consensus: ConsensusRules,
+    header: HeaderRules
 ):
 
   /** These rules with each component adopted, in the order given.
