@@ -548,6 +548,26 @@ enum NewAccountCharge:
   *   `c35ce1b1ab` and `bluealloy/revm` @ `3064c0901c`. **That the narrowing is
   *   historical rather than semantic is an inference and not established**: no
   *   client explains the choice, and nothing here depends on it.
+  * @param reservedCodePrefix
+  *   a leading byte no deployment may store, absent where no proposal reserves
+  *   one. Carried as the byte rather than as a flag for the reason
+  *   [[maxCodeSize]] carries its bound rather than a flag: both are constraints
+  *   on what a deployment may store, and a flag would hide the constant in the
+  *   check that reads it.
+  *
+  *   Held as an `Int` rather than a `Byte` because the reserved value is 0xEF
+  *   and a `Byte` in this language is signed -- the literal does not fit, and a
+  *   member typed to need `.toByte` at every comparison invites a sign error at
+  *   the one site that forgets it.
+  *
+  *   The field agrees on the rule and splits on how to say it:
+  *   `ethereum/go-ethereum-pow` @ `v1.10.26` tests `ret[0] == 0xEF` behind a
+  *   fork flag, `besu-eth/besu` @ `fdf1247c6d` installs a `PrefixCodeRule` as a
+  *   contract-validation rule, and `ethereum/execution-specs` @ `20f7f6271a`
+  *   compares inline in the fork module that has it. None parameterizes the
+  *   byte, so holding it as data is this build's choice rather than the field's
+  *   -- taken because the alternative states the same fact twice, once as a
+  *   boolean here and once as a literal in the machine.
   */
 final case class EvmRules(
     table: OpcodeTable,
@@ -560,7 +580,8 @@ final case class EvmRules(
     newAccountCharge: NewAccountCharge,
     storageMetering: StorageMetering,
     stateAccessMetering: StateAccessMetering,
-    touchSurvivesFailure: Set[Address]
+    touchSurvivesFailure: Set[Address],
+    reservedCodePrefix: Option[Int]
 ):
 
   /** These rules with each proposal applied, in the order given.

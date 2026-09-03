@@ -154,6 +154,27 @@ object Interpreter:
     * subtraction would turn a shortfall into an enormous balance rather than
     * into a failure.
     */
+  /** Whether these rules refuse to store code beginning with the byte they
+    * reserve.
+    *
+    * ==Empty code is not refused, and the guard is the specification's==
+    *
+    * A deployment returning nothing has no leading byte to compare, and it is a
+    * legal deployment at every fork. The specification writes the same guard as
+    * a length test before the comparison
+    * (`ethereum/execution-specs` @ `20f7f6271a`,
+    * `forks/london/vm/interpreter.py`), and `ethereum/go-ethereum-pow` @
+    * `v1.10.26` writes it as `len(ret) >= 1` in the same condition. Reading a
+    * missing first byte as anything other than "no prefix to reserve" would
+    * refuse every self-destructing constructor on the network.
+    *
+    * The comparison is unsigned. The reserved value exceeds what a signed byte
+    * holds, so the byte read out of the code is widened before it is compared
+    * rather than the reserved value being narrowed to meet it.
+    */
+  private def reservesPrefix(rules: EvmRules, code: Bytes): Boolean =
+    rules.reservedCodePrefix.exists(reserved => code.nonEmpty && (code.toIArray(0) & 0xff) == reserved)
+
   /** A rule set holding the base-fee operation over a block carrying no base
     * fee, which is a configuration rather than a chain state.
     *
@@ -1231,6 +1252,24 @@ object Interpreter:
     * name it apart do so to say which check failed, and [[Halt]] records why
     * this machine has nothing to say with that.
     *
+    * ==A reserved leading byte is refused ahead of both, and it does earn one==
+    *
+    * [[reservesPrefix]] runs before the bound and before the charge. That is the
+    * specification's own order -- it compares the leading byte, then charges,
+    * then bounds the length -- and it is the order every client read here takes.
+    * The bound sits where this file already put it, so the two orderings are
+    * unchanged relative to each other and only the new check is placed.
+    *
+    * **Nothing observable turns on where it goes**, for the reason stated above:
+    * all three refusals end with the state restored, no gas left and the
+    * creating operation told nothing. It is placed to match the specification
+    * because there is no reason to differ, not because a case would fail.
+    *
+    * Unlike the bound, this reason IS a member of [[Halt]] -- the forks either
+    * side of the proposal that introduces it declare different exception sets,
+    * where the forks either side of EIP-170 declare the same. That type's own
+    * note carries the sweep and both of its calibrations.
+    *
     * ==The second snapshot earns its place once that flag can be set==
     *
     * It used to be omitted, on the reasoning that the outer one restores
@@ -1313,7 +1352,8 @@ object Interpreter:
         world.restore(taken)
         Left(unsupported)
       case Right(Outcome.Stopped(_, code)) =>
-        if rules.maxCodeSize.exists(bound => code.length > bound) then Right(undone(Halt.OutOfGas))
+        if reservesPrefix(rules, code) then Right(undone(Halt.InvalidContractPrefix))
+        else if rules.maxCodeSize.exists(bound => code.length > bound) then Right(undone(Halt.OutOfGas))
         else
           nested.charge(schedule.codeDepositPerByte * BigInt(code.length)) match
             case Left(halt) if rules.codeDepositMustSucceed => Right(undone(halt))

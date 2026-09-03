@@ -192,7 +192,7 @@ object StateFixture:
       timestamp <- FixtureValues.quantityAt(json, "currentTimestamp")
       difficulty <- FixtureValues.quantityAt(json, "currentDifficulty")
       gasLimit <- FixtureValues.quantityAt(json, "currentGasLimit")
-    yield BlockContext(coinbase, number, timestamp, difficulty, gasLimit)
+    yield BlockContext(coinbase, number, timestamp, difficulty, gasLimit, baseFee = None)
 
   /** The signed transaction a combination was built from, where the corpus
     * publishes it.

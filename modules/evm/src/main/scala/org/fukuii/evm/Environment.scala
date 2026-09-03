@@ -44,7 +44,7 @@ final case class BlockContext(
     timestamp: BigInt,
     difficulty: BigInt,
     gasLimit: BigInt,
-    baseFee: Option[BigInt] = None
+    baseFee: Option[BigInt]
 )
 
 /** The transaction an invocation is running inside, as the values it can read.
@@ -94,8 +94,10 @@ final case class TransactionContext(origin: Address, gasPrice: BigInt)
   * cost something specific: [[EvmRules]] exists so that two networks running
   * the same rules can be asserted equal, and a chain id inside it would make
   * every network's rules differ from every other's at every height, by
-  * construction. [[BlockContext]] is the other near miss: its five members are
-  * all read off a header, and no header carries a chain id.
+  * construction. [[BlockContext]] is the other near miss: its members are all
+  * read off a header, and no header carries a chain id. **That test is what put
+  * the base fee there and kept the chain id here**, so it is a live rule rather
+  * than a description of the members that happened to exist when it was written.
   *
   * **No surveyed client puts it on the fork-resolved rules.**
   * `ethereum/go-ethereum` @ `e9e35a42f8` holds it on `chainConfig`, a member of

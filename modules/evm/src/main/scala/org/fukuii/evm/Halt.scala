@@ -15,11 +15,17 @@ package org.fukuii.evm
   * ==The set is the specification's, and membership is not a claim about this
   * build==
   *
-  * Exactly the ten `ExceptionalHalt` subclasses of
-  * `forks/byzantium/vm/exceptions.py` at `ethereum/execution-specs` @
+  * Exactly the eleven `ExceptionalHalt` subclasses of
+  * `forks/london/vm/exceptions.py` at `ethereum/execution-specs` @
   * `20f7f6271a`, counted in the file rather than recalled: the same sweep
-  * returns seven for `forks/frontier` and for `forks/spurious_dragon`, so it
-  * discriminates, and zero for a class name no fork declares.
+  * returns ten for `forks/byzantium` and for `forks/berlin`, seven for
+  * `forks/frontier` and for `forks/spurious_dragon`, so it discriminates, and
+  * zero for a class name no fork declares.
+  *
+  * **The set grows with a fork and the count is a reading, not a constant.**
+  * It stood at ten while `forks/berlin` was the newest fork this build modeled;
+  * [[InvalidContractPrefix]] is the eleventh and arrives with London. Re-run the
+  * sweep rather than trusting this sentence.
   *
   * Being a member says the specification declares the reason, never that any
   * operation this build runs raises it. [[AddressCollision]] is the standing
@@ -83,3 +89,26 @@ enum Halt:
     * layer above this one.
     */
   case AddressCollision
+
+  /** A deployment whose code begins with the byte a proposal reserved.
+    *
+    * ==Indistinguishable from [[OutOfGas]] to a caller, and a member anyway==
+    *
+    * The specification raises this and its over-long-code refusal into one
+    * handler, which restores the state, zeroes the gas and empties the output
+    * for both -- so no state root, receipt or gas figure separates them, and no
+    * published fixture format records an exceptional halt's identity at all.
+    *
+    * **That is not the membership test.** This type's set is the
+    * specification's, and [[AddressCollision]] is already here while being
+    * unreachable from every operation at every fork. What earns a member is the
+    * specification declaring the reason.
+    *
+    * It is worth saying why that reads as a reversal and is not one. The
+    * over-long refusal earns no member of this type, on the ground that the
+    * forks either side of the proposal introducing it declare the same
+    * exceptions; the sweep those two counts come from returns eleven here
+    * against ten for the fork below, the difference being this reason alone.
+    * One rule, two inputs, two answers.
+    */
+  case InvalidContractPrefix

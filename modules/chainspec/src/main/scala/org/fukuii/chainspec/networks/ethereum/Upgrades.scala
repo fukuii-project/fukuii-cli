@@ -277,7 +277,8 @@ object Upgrades:
         newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent,
         storageMetering = StorageMetering.Legacy,
         stateAccessMetering = StateAccessMetering.Settled,
-        touchSurvivesFailure = Set.empty
+        touchSurvivesFailure = Set.empty,
+        reservedCodePrefix = None
       ),
       execution = ExecutionRules(
         touchedEmptyAccountsAreDeleted = false,

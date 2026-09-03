@@ -255,7 +255,8 @@ object EvmFixtures:
     newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent,
     storageMetering = StorageMetering.Legacy,
     stateAccessMetering = StateAccessMetering.Settled,
-    touchSurvivesFailure = Set.empty
+    touchSurvivesFailure = Set.empty,
+    reservedCodePrefix = None
   )
 
   val block: BlockContext = BlockContext(
@@ -263,7 +264,8 @@ object EvmFixtures:
     number = BigInt(1000),
     timestamp = BigInt(1234567890),
     difficulty = BigInt(0x0100),
-    gasLimit = BigInt(3141592)
+    gasLimit = BigInt(3141592),
+    baseFee = None
   )
 
   val transaction: TransactionContext = TransactionContext(origin = address(0x99), gasPrice = BigInt(7))
