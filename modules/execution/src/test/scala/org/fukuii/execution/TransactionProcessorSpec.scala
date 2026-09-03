@@ -129,7 +129,7 @@ class TransactionProcessorSpec extends AnyFlatSpec:
     * nothing ceases to exist.
     */
   private val notClearing: ExecutionRules =
-    ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = false)
+    ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = false, maxRefundQuotient = BigInt(2))
 
   /** The same, from the height that deletes one. */
   private val clearing: ExecutionRules = notClearing.copy(touchedEmptyAccountsAreDeleted = true)
@@ -355,6 +355,48 @@ class TransactionProcessorSpec extends AnyFlatSpec:
     assert(
       schedule.refundSelfDestruct > selfDestructSpend / 2,
       "the fixture schedule must earn more than half the spend, or the cap is not what bounds the figure"
+    )
+
+  it should "follow the divisor the rules carry rather than a figure of its own" in
+    // The case that separates reading the rule from holding the literal. Both
+    // cases above run at a divisor of two, so an implementation that ignored
+    // the member entirely would satisfy them; this one asks for a fifth and
+    // requires a different answer. A proposal moves this divisor, so a
+    // settlement that could not follow it would be a rule with a setter and no
+    // reader -- which is invisible to every fixture whose fork runs at two.
+    assert(
+      settle(
+        transaction(),
+        Map(recipient -> selfDestructs),
+        execution = notClearing.copy(maxRefundQuotient = BigInt(5))
+      ).settlement.gasUsed == selfDestructSpend - selfDestructSpend / 5,
+      "the bound must come from the execution rules, because a later proposal changes it"
+    )
+
+  it should "hand back the whole spend where the divisor is one" in
+    // A third divisor and a third answer, which is what makes the two above a
+    // reading of the member rather than a coincidence: an implementation
+    // holding any single literal can satisfy at most one of the three.
+    //
+    // It is the CAP that binds in all three, not the earned refund. This
+    // fixture earns more than the transaction spends, so the minimum resolves
+    // to the cap at every divisor, and at one the cap is the whole spend.
+    assert(
+      settle(
+        transaction(),
+        Map(recipient -> selfDestructs),
+        execution = notClearing.copy(maxRefundQuotient = BigInt(1))
+      ).settlement.gasUsed == BigInt(0),
+      "at a divisor of one the bound is the entire spend, so nothing is left charged"
+    )
+
+  it should "earn more than it spends, which is what makes the cap the binding half" in
+    // Named rather than inferred. Were the earned refund the smaller of the
+    // two, the three cases above would all report the earned figure and none
+    // of them would be reading the divisor at all.
+    assert(
+      schedule.refundSelfDestruct > selfDestructSpend,
+      "the fixture must earn more than the spend, or the minimum resolves to the earned figure"
     )
 
   // ── What a registration becomes, and when it does not ─────────────────────

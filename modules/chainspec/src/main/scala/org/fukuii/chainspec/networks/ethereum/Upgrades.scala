@@ -282,7 +282,8 @@ object Upgrades:
       ),
       execution = ExecutionRules(
         touchedEmptyAccountsAreDeleted = false,
-        receiptCarriesStatus = false
+        receiptCarriesStatus = false,
+        maxRefundQuotient = BigInt(2)
       ),
       admission = AdmissionRules(
         admittedTypes = Set(TransactionType.Legacy),

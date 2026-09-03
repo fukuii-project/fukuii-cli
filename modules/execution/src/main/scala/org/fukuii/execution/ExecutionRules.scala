@@ -79,8 +79,31 @@ package org.fukuii.execution
   *   which is why `types`' own `PostStateOrStatus` carries both and states that
   *   which of them is correct at a given height belongs to the layer above it.
   *   This is that rule.
+  * @param maxRefundQuotient
+  *   the divisor bounding what a settling transaction may hand back: at most
+  *   the gas it used divided by this, whatever the refund counter reached.
+  *
+  *   **Named for the constant the proposal that moved it names.** EIP-3529's
+  *   own remark is that the earlier bound *"was defined as `gas_used // 2`.
+  *   Here we name the constant `2` as `MAX_REFUND_QUOTIENT` and change its
+  *   value to `5`"* -- so the ecosystem supplies both the name and the reading
+  *   that this is one parameter with two values rather than two rules.
+  *
+  *   **It is settled outside the machine, which is what puts it here.** The
+  *   refund COUNTER is the machine's -- operations add to it as they run -- and
+  *   the bound is applied once, when the transaction settles and its gas is
+  *   accounted for. `ethereum/execution-specs` @ `20f7f6271a` draws the line in
+  *   the same place, `forks/london/fork.py:813` applying the divisor in
+  *   `process_transaction` rather than anywhere under `vm/`.
+  *
+  *   **This member exists because the divisor was a bare literal.** It was
+  *   written into the settlement arithmetic, reachable by no proposal, so a
+  *   fork could not have moved it without editing the processor -- which is the
+  *   shape this record exists to prevent, and which no earlier fork had needed
+  *   to notice because no earlier fork moved it.
   */
 final case class ExecutionRules(
     touchedEmptyAccountsAreDeleted: Boolean,
-    receiptCarriesStatus: Boolean
+    receiptCarriesStatus: Boolean,
+    maxRefundQuotient: BigInt
 )

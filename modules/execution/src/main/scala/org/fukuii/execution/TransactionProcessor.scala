@@ -149,7 +149,8 @@ object TransactionProcessor:
     * runs, so an invocation reading its sender's balance sees what it would see
     * on a chain, and an invocation that halts has still paid. What comes back
     * afterwards is the unused gas plus whatever refund the transaction earned,
-    * capped at half of what it spent.
+    * bounded by a fraction of what it spent -- a fraction a proposal moves, so
+    * the divisor is read from [[ExecutionRules]] rather than written here.
     *
     * The nonce is read out of `world` before it is bumped rather than taken
     * from the transaction, because the address a deployment lands at is derived
@@ -387,7 +388,7 @@ object TransactionProcessor:
       case Right(Outcome.Halted(_))              => (BigInt(0), false, None)
     val spent = transaction.gasLimit - gasLeft
     val earned = if succeeded then frame.refundCounter else BigInt(0)
-    val refunded = (spent / 2).min(earned)
+    val refunded = (spent / execution.maxRefundQuotient).min(earned)
     val used = spent - refunded
     val returned = transaction.gasLimit - used
     moveBalance(world, transaction.sender, returned * transaction.gasPrice)

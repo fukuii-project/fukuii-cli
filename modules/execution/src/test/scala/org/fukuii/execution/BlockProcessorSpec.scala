@@ -131,10 +131,10 @@ class BlockProcessorSpec extends AnyFlatSpec:
     )
 
   private val statusReceipts: ExecutionRules =
-    ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = true)
+    ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = true, maxRefundQuotient = BigInt(2))
 
   private val rootReceipts: ExecutionRules =
-    ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = false)
+    ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = false, maxRefundQuotient = BigInt(2))
 
   private val legacyOnly: AdmissionRules =
     AdmissionRules(

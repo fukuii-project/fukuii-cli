@@ -51,7 +51,11 @@ class UpgradeRulesSpec extends AnyFlatSpec:
   private val rebuilt: UpgradeRules = UpgradeRules(
     components = firstRules.components,
     evm = firstRules.evm,
-    execution = ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = false),
+    execution = ExecutionRules(
+      touchedEmptyAccountsAreDeleted = false,
+      receiptCarriesStatus = false,
+      maxRefundQuotient = BigInt(2)
+    ),
     admission = AdmissionRules(
       admittedTypes = Set(TransactionType.Legacy),
       signatureMayCarryChainId = false,
