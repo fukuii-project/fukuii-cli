@@ -358,7 +358,9 @@ object TransactionProcessor:
     *
     * ==The refund is capped against what was spent, not against the limit==
     *
-    * Half of the gas the transaction actually consumed. A cap against the limit
+    * A fraction of the gas the transaction actually consumed, which fraction
+    * being a fork's answer rather than this file's --
+    * [[ExecutionRules.maxRefundQuotient]] holds it. A cap against the limit
     * would let a transaction that spent little claim a refund it never earned
     * the room for.
     *

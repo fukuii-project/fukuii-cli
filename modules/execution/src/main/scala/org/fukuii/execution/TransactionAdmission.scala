@@ -193,9 +193,14 @@ enum FeeOffer:
     * `ethereum/execution-specs` @ `20f7f6271a` `forks/london/fork.py:508-512`
     * takes the tip as `min(maxPriorityFeePerGas, maxFeePerGas - baseFee)` and
     * adds the charge back. **`min(maxFee, baseFee + maxPriorityFee)` is the same
-    * number** and is the form the proposal's abstract suggests; this follows the
-    * executable specification because the two differ in what they compute
-    * first, and only this order never forms a value above the cap.
+    * number** and is the form the proposal's abstract suggests. This follows the
+    * executable specification so the two read against each other directly.
+    *
+    * **Not for an overflow reason**, which is what an earlier wording here
+    * claimed: both forms are computed in arbitrary precision on both sides --
+    * `BigInt` here, and the specification's own unbounded integer type there --
+    * so neither can form a value it cannot hold, and the intermediate that
+    * exceeds the cap in one ordering is harmless in both.
     *
     * Requires the caller to have refused an offer whose cap is under the
     * charge, which [[Refusal.FeeCapBelowBaseFee]] is; without that the
@@ -372,6 +377,15 @@ object TransactionAdmission:
     * ordering matters, because admission is what faces a transaction that
     * arrived from somewhere else.
     *
+    * @param baseFeePerGas
+    *   what the BLOCK charges, absent where the fork runs no fee market.
+    *
+    *   **The caller owes the pair being consistent**, and nothing here can check
+    *   it: these rules do not carry a fee market, so admission cannot tell a
+    *   fork with no market from a caller that forgot to pass its charge.
+    *   `org.fukuii.consensus.HeaderValidator` is what establishes it -- it
+    *   refuses a header stating no charge under a fork with a market, and one
+    *   stating a charge under a fork without.
     * @param gasAvailable
     *   what the block has left to give, which is its limit less the gas already
     *   used by the transactions before this one. It is the remainder rather
@@ -395,17 +409,26 @@ object TransactionAdmission:
     // two are different numbers under a fee market, and this is the check the
     // specification makes against the higher of them.
     lazy val maximumFee = offered.gasLimit * offered.fee.cap
-    val charge = baseFeePerGas.getOrElse(BigInt(0))
+    // A block below any fee market charges nothing, and that is not the same
+    // fact as a block charging zero -- the machine refuses to collapse the two
+    // one layer down, where `org.fukuii.evm.Environment` argues that zero is
+    // itself a legal charge so the substitution is unrecoverable. Here the two
+    // branches happen to agree, because a cap is never below nothing and a
+    // charge subtracted from a price is never subtracted at all. They are
+    // written separately anyway, so that a later rule reading `charge` cannot
+    // silently inherit a zero that means absence.
+    val charge = baseFeePerGas
+    val underCharge = charge.exists(offered.fee.cap < _)
     if !admitsFormat(offered.transactionType, rules) then Admission.Refused(Refusal.TypeNotAdmitted)
     else if intrinsic > offered.gasLimit then Admission.Refused(Refusal.IntrinsicGasTooLow)
     else if tipExceedsCap(offered.fee) then Admission.Refused(Refusal.PriorityFeeAboveFeeCap)
     else if offered.nonce >= NonceLimit then Admission.Refused(Refusal.NonceIsMax)
     else if offered.gasLimit > gasAvailable then Admission.Refused(Refusal.GasAllowanceExceeded)
-    else if offered.fee.cap < charge then Admission.Refused(Refusal.FeeCapBelowBaseFee)
+    else if underCharge then Admission.Refused(Refusal.FeeCapBelowBaseFee)
     else if counted != offered.nonce then Admission.Refused(Refusal.NonceMismatch)
     else if held < maximumFee + offered.value then Admission.Refused(Refusal.InsufficientAccountFunds)
     else if world.codeOf(offered.sender).nonEmpty then Admission.Refused(Refusal.SenderNotEoa)
-    else Admission.Admitted(settling(offered, intrinsic, charge))
+    else Admission.Admitted(settling(offered, intrinsic, charge.getOrElse(BigInt(0))))
 
   /** Whether the tip offered exceeds the total the transaction will pay.
     *

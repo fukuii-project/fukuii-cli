@@ -772,15 +772,16 @@ class TransactionProcessorSpec extends AnyFlatSpec:
     )
   }
 
-  it should "credit the producer the whole price where the block charges nothing" in
+  it should "credit the producer the whole price where the block charges nothing" in {
     // The control that makes the assertion above about the charge rather than
     // about arithmetic: the same expression, with the charge at zero, must pay
     // everything to the producer.
+    val ran = settle(transaction(gasPrice = 10, baseFeePerGas = 0))
     assert(
-      settle(transaction(gasPrice = 10, baseFeePerGas = 0)).world.balanceOf(coinbase).toBigInt ==
-        settle(transaction(gasPrice = 10, baseFeePerGas = 0)).settlement.gasUsed * 10,
+      ran.world.balanceOf(coinbase).toBigInt == ran.settlement.gasUsed * 10,
       "below any market the whole price is the producer's, which is every fork before London"
     )
+  }
 
   it should "destroy the charge rather than move it anywhere" in {
     // The burn, asserted as a conservation failure rather than by looking for a

@@ -6,7 +6,7 @@ import java.nio.file.{Files, Path}
 import org.fukuii.bytes.{Bytes, UInt256, UInt64}
 import org.fukuii.chainspec.networks.ethereum
 import org.fukuii.chainspec.UpgradeRules
-import org.fukuii.consensus.{HeaderFault, HeaderValidator}
+import org.fukuii.consensus.{HeaderFault, HeaderValidator, Resolved}
 import org.fukuii.evm.EvmFixtures
 import org.fukuii.evm.fixtures.FixtureCorpus
 import org.fukuii.types.{BaseFeeTail, BlockHeader, BlockNonce, Bloom, Seal}
@@ -27,12 +27,18 @@ import org.scalatest.flatspec.AnyFlatSpec
   * ==The obvious corpus is vacuous, which is the finding worth recording==
   *
   * `ethereum/execution-specs-fixtures` `tests-v20.0.1`'s `blockchain_tests`
-  * under `for_london` carry thousands of blocks and **one distinct base-fee
-  * value across all of them**. Every parent-to-child step is therefore a fixed
-  * point, and a derivation that returned its parent's charge unchanged --
-  * ignoring gas used, the target, and both bounded arms -- would agree with the
-  * entire tier. **A tier that cannot disagree is not evidence**, so it is not
-  * what is read here.
+  * under `for_london` carry 3,484 cases across 144 files, and every block the
+  * corpus accepts states the same charge -- `0x07`. Every parent-to-child step
+  * is therefore a fixed point, and a derivation that returned its parent's
+  * charge unchanged, ignoring gas used, the target and both bounded arms, would
+  * agree with all of them.
+  *
+  * **A second value exists and it does not rescue the tier.** One case,
+  * `london/validation/header/invalid_header.json`, carries `0x01` on a block it
+  * requires REJECTED. A parent-echo derivation answers `0x07` there too, so it
+  * refuses that block correctly as well -- the tier agrees with a derivation
+  * that does no arithmetic at all, in both directions. **A tier that cannot
+  * disagree is not evidence**, so it is not what is read here.
   *
   * ==What IS read, and why it discriminates==
   *
@@ -68,8 +74,16 @@ class LondonHeaderCertificationSpec extends AnyFlatSpec:
     * Every other field is left at its zero rather than transcribed: a value in
     * a field no rule reads would suggest something depended on it.
     */
-  private def headerOf(gasLimit: BigInt, gasUsed: BigInt, baseFee: Option[BigInt]): Option[BlockHeader] =
+  private def headerOf(
+      number: BigInt,
+      timestamp: BigInt,
+      gasLimit: BigInt,
+      gasUsed: BigInt,
+      baseFee: Option[BigInt]
+  ): Option[BlockHeader] =
     for
+      count <- UInt64.fromBigInt(number).toOption
+      when <- UInt64.fromBigInt(timestamp).toOption
       limit <- UInt64.fromBigInt(gasLimit).toOption
       used <- UInt64.fromBigInt(gasUsed).toOption
       tail <- baseFee match
@@ -84,10 +98,10 @@ class LondonHeaderCertificationSpec extends AnyFlatSpec:
       receiptsRoot = EvmFixtures.hash(0),
       logsBloom = Bloom.Empty,
       difficulty = UInt256.Zero,
-      number = UInt64.Zero,
+      number = count,
       gasLimit = limit,
       gasUsed = used,
-      timestamp = UInt64.Zero,
+      timestamp = when,
       extraData = Bytes.Empty,
       seal = Seal.MixHashAndNonce(EvmFixtures.hash(0), BlockNonce.Zero),
       tail = tail
@@ -95,9 +109,11 @@ class LondonHeaderCertificationSpec extends AnyFlatSpec:
 
   private def headerFrom(json: Json): Option[BlockHeader] =
     for
+      number <- quantityAt(json, "number")
+      timestamp <- quantityAt(json, "timestamp")
       limit <- quantityAt(json, "gasLimit")
       used <- quantityAt(json, "gasUsed")
-      header <- headerOf(limit, used, quantityAt(json, "baseFeePerGas"))
+      header <- headerOf(number, timestamp, limit, used, quantityAt(json, "baseFeePerGas"))
     yield header
 
   /** One parent-to-child step the corpus published. */
@@ -141,7 +157,11 @@ class LondonHeaderCertificationSpec extends AnyFlatSpec:
 
   it should "carry enough steps to be worth reading" in {
     val _ = assume(steps.nonEmpty)
-    assert(steps.length >= 100, "measured at 116 parent-to-child steps across nine London cases: " + steps.length)
+    // EXACT rather than a lower bound. A bound of 100 against a measured 116
+    // tolerates a corpus refresh removing a sixth of the tier without saying
+    // so, which is the silent weakening this file exists to prevent -- and the
+    // same discipline the tracked test-count ratchet already applies.
+    assert(steps.length == 116, "measured at 116 parent-to-child steps across nine London cases: " + steps.length)
   }
 
   it should "carry steps at which the charge MOVES, which is what discriminates" in {
@@ -151,14 +171,15 @@ class LondonHeaderCertificationSpec extends AnyFlatSpec:
     // would still pass while certifying nothing, which is precisely the state
     // the generated corpus is in.
     assert(
-      moving.length >= 50,
+      moving.length == 84,
       "measured at 84 steps where the charge changes; a tier of fixed points cannot disagree: " + moving.length
     )
   }
 
   it should "agree with this build's derivation at every published step" in {
     val _ = assume(steps.nonEmpty)
-    val disagreed = steps.filter(s => HeaderValidator.validate(s.child, s.parent, London, London).isLeft)
+    val disagreed =
+      steps.filter(s => HeaderValidator.validate(Resolved(s.child, London), Resolved(s.parent, London)).isLeft)
     assert(
       disagreed.isEmpty,
       "steps where the derivation or the gas-limit bound disagreed with the corpus: " + disagreed.length +
@@ -175,8 +196,16 @@ class LondonHeaderCertificationSpec extends AnyFlatSpec:
     val accepted = moving.filter { s =>
       val perturbed = s.child.baseFeePerGas
         .map(_.toBigInt + 1)
-        .flatMap(f => headerOf(s.child.gasLimit.toBigInt, s.child.gasUsed.toBigInt, Some(f)))
-      perturbed.exists(h => HeaderValidator.validate(h, s.parent, London, London).isRight)
+        .flatMap(f =>
+          headerOf(
+            s.child.number.toBigInt,
+            s.child.timestamp.toBigInt,
+            s.child.gasLimit.toBigInt,
+            s.child.gasUsed.toBigInt,
+            Some(f)
+          )
+        )
+      perturbed.exists(h => HeaderValidator.validate(Resolved(h, London), Resolved(s.parent, London)).isRight)
     }
     assert(accepted.isEmpty, "moving steps that accepted a charge one unit off: " + accepted.length)
   }
@@ -186,9 +215,17 @@ class LondonHeaderCertificationSpec extends AnyFlatSpec:
     val step = moving.head
     val perturbed = step.child.baseFeePerGas
       .map(_.toBigInt + 1)
-      .flatMap(f => headerOf(step.child.gasLimit.toBigInt, step.child.gasUsed.toBigInt, Some(f)))
+      .flatMap(f =>
+        headerOf(
+          step.child.number.toBigInt,
+          step.child.timestamp.toBigInt,
+          step.child.gasLimit.toBigInt,
+          step.child.gasUsed.toBigInt,
+          Some(f)
+        )
+      )
     assert(
-      perturbed.map(h => HeaderValidator.validate(h, step.parent, London, London)).exists {
+      perturbed.map(h => HeaderValidator.validate(Resolved(h, London), Resolved(step.parent, London))).exists {
         case Left(_: HeaderFault.BaseFeeMismatch) => true
         case _                                    => false
       },

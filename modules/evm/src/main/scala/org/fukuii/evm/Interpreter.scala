@@ -1254,11 +1254,25 @@ object Interpreter:
     *
     * ==A reserved leading byte is refused ahead of both, and it does earn one==
     *
-    * [[reservesPrefix]] runs before the bound and before the charge. That is the
-    * specification's own order -- it compares the leading byte, then charges,
-    * then bounds the length -- and it is the order every client read here takes.
-    * The bound sits where this file already put it, so the two orderings are
-    * unchanged relative to each other and only the new check is placed.
+    * [[reservesPrefix]] runs before the bound and before the charge, which is
+    * nearest to the specification's own order -- it compares the leading byte,
+    * then charges, then bounds the length. The bound sits where this file
+    * already put it, so the two orderings are unchanged relative to each other
+    * and only the new check is placed.
+    *
+    * **The clients read here take a different order, and the field is split
+    * three ways rather than agreeing.** `ethereum/go-ethereum-pow` @ `v1.10.26`
+    * `core/vm/evm.go:456-462` bounds the length first and compares the byte
+    * second; `besu-eth/besu` @ `fdf1247c6d` builds its rules as
+    * `List.of(MaxCodeSizeRule.from(evm), PrefixCodeRule.of())` and takes the
+    * first that fails, so it does the same. So the orders are: the
+    * specification's byte-charge-bound, those two clients' bound-byte-charge,
+    * and this file's byte-bound-charge.
+    *
+    * **That three-way split costs nothing, which is the actual point** -- see
+    * below. It is spelled out because an earlier wording here claimed this was
+    * the order every client takes, and both clients it cites two paragraphs
+    * above contradict it.
     *
     * **Nothing observable turns on where it goes**, for the reason stated above:
     * all three refusals end with the state restored, no gas left and the

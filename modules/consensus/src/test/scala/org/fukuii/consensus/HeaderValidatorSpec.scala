@@ -57,7 +57,10 @@ class HeaderValidatorSpec extends AnyFlatSpec:
       number = count(BigInt(number)),
       gasLimit = count(gasLimit),
       gasUsed = count(gasUsed),
-      timestamp = UInt64.Zero,
+      // Derived from the number so every pair below satisfies succession by
+      // construction. A case about the fee market must not be decided by a rule
+      // it is not about.
+      timestamp = count(BigInt(number) * 12),
       extraData = Bytes.Empty,
       seal = Seal.MixHashAndNonce(EvmFixtures.hash(0), BlockNonce.Zero),
       tail = baseFee.map(f => BaseFeeTail(word(f)))
@@ -73,10 +76,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
 
   private def atTransition(childLimit: BigInt): Either[HeaderFault, Unit] =
     HeaderValidator.validate(
-      headerOf(5, childLimit, 0, Some(market.initialBaseFee.toBigInt)),
-      headerOf(4, FixtureParentLimit, 0, None),
-      under,
-      below
+      Resolved(headerOf(5, childLimit, 0, Some(market.initialBaseFee.toBigInt)), under),
+      Resolved(headerOf(4, FixtureParentLimit, 0, None), below)
     )
 
   // ── The market's own arithmetic, all three arms ───────────────────────────
@@ -87,10 +88,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
 
   private def childUnder(gasUsedByParent: BigInt, statedFee: BigInt): Either[HeaderFault, Unit] =
     HeaderValidator.validate(
-      headerOf(2, Limit, 0, Some(statedFee)),
-      headerOf(1, Limit, gasUsedByParent, Some(ParentFee)),
-      under,
-      under
+      Resolved(headerOf(2, Limit, 0, Some(statedFee)), under),
+      Resolved(headerOf(1, Limit, gasUsedByParent, Some(ParentFee)), under)
     )
 
   "a block whose parent used exactly its target" should "state the parent's own charge" in
@@ -136,10 +135,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
   "a block under a fee market" should "be refused for carrying no charge" in
     assert(
       HeaderValidator.validate(
-        headerOf(2, Limit, 0, None),
-        headerOf(1, Limit, Target, Some(ParentFee)),
-        under,
-        under
+        Resolved(headerOf(2, Limit, 0, None), under),
+        Resolved(headerOf(1, Limit, Target, Some(ParentFee)), under)
       ) == Left(HeaderFault.BaseFeeMissing),
       "a header under a market must state a charge"
     )
@@ -149,17 +146,18 @@ class HeaderValidatorSpec extends AnyFlatSpec:
     // charge admits a block that states one before any market exists.
     assert(
       HeaderValidator.validate(
-        headerOf(2, Limit, 0, Some(ParentFee)),
-        headerOf(1, Limit, 0, None),
-        below,
-        below
+        Resolved(headerOf(2, Limit, 0, Some(ParentFee)), below),
+        Resolved(headerOf(1, Limit, 0, None), below)
       ) == Left(HeaderFault.BaseFeeUnexpected(word(ParentFee))),
       "a header below any market must state none"
     )
 
   it should "be accepted carrying none" in
     assert(
-      HeaderValidator.validate(headerOf(2, Limit, 0, None), headerOf(1, Limit, 0, None), below, below) == Right(()),
+      HeaderValidator.validate(
+        Resolved(headerOf(2, Limit, 0, None), below),
+        Resolved(headerOf(1, Limit, 0, None), below)
+      ) == Right(()),
       "the ordinary pre-market case"
     )
 
@@ -173,10 +171,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
       atTransition(FixtureScaled).isRight &&
         HeaderValidator
           .validate(
-            headerOf(5, FixtureScaled, 0, Some(BigInt(1))),
-            headerOf(4, FixtureParentLimit, 0, None),
-            under,
-            below
+            Resolved(headerOf(5, FixtureScaled, 0, Some(BigInt(1))), under),
+            Resolved(headerOf(4, FixtureParentLimit, 0, None), below)
           )
           .isLeft,
       "only the opening charge is admissible at the first block"
@@ -209,10 +205,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
   "a block inside a fee market" should "have its gas limit compared against an UNSCALED parent" in
     assert(
       HeaderValidator.validate(
-        headerOf(3, Limit, 0, Some(ParentFee)),
-        headerOf(2, Limit, Target, Some(ParentFee)),
-        under,
-        under
+        Resolved(headerOf(3, Limit, 0, Some(ParentFee)), under),
+        Resolved(headerOf(2, Limit, Target, Some(ParentFee)), under)
       ) == Right(()),
       "the scaling belongs to the transition alone"
     )
@@ -221,11 +215,82 @@ class HeaderValidatorSpec extends AnyFlatSpec:
     assert(
       HeaderValidator
         .validate(
-          headerOf(3, BigInt(4999), 0, Some(ParentFee)),
-          headerOf(2, BigInt(5000), 0, Some(ParentFee)),
-          under,
-          under
+          Resolved(headerOf(3, BigInt(4999), 0, Some(ParentFee)), under),
+
+          Resolved(headerOf(2, BigInt(5000), 0, Some(ParentFee)), under)
         )
         .isLeft,
       "no gas limit may fall under the floor, whatever the step"
     )
+
+  it should "refuse the corpus's own near-boundary sibling, which is the case that separates the readings" in
+    // 3,144,650 is the sharpest value the fixture publishes and the earlier
+    // cases did not use it. The two siblings at 6,289,320 and 6,277,048 are
+    // refused under a scaled parent AND under an unscaled one, so they test the
+    // bound's strictness rather than which bound is taken. This one is refused
+    // only under a scaled parent: against the unscaled 3,141,592 its delta is
+    // 3,058 against a permitted 3,068, so an unscaled implementation ACCEPTS it
+    // and the corpus requires it rejected.
+    assert(
+      atTransition(BigInt(3144650)).isLeft,
+      "the one published sibling whose verdict differs between the two readings"
+    )
+
+  // ── Succession, which needs neither a fork's rules nor an executed block ──
+
+  "a block that is not its parent's successor" should "be refused" in
+    assert(
+      HeaderValidator.validate(
+        Resolved(headerOf(4, Limit, 0, None), below),
+        Resolved(headerOf(1, Limit, 0, None), below)
+      ) == Left(HeaderFault.NumberNotParentSuccessor(BigInt(4), BigInt(1))),
+      "a header three blocks past its parent is not a successor"
+    )
+
+  "a block no later than its parent" should "be refused" in
+    assert(
+      HeaderValidator.validate(
+        Resolved(headerOf(2, Limit, 0, None).copy(timestamp = count(BigInt(12))), below),
+        Resolved(headerOf(1, Limit, 0, None), below)
+      ) == Left(HeaderFault.TimestampNotAfterParent(BigInt(12), BigInt(12))),
+      "a block sharing its parent's timestamp is not later than it"
+    )
+
+  "a block claiming to have used more gas than it allowed itself" should "be refused" in
+    // Two fields of one header. It is NOT the commitment this layer defers: that
+    // one compares the figure against what execution produced and needs a run.
+    assert(
+      HeaderValidator.validate(
+        Resolved(headerOf(2, BigInt(30000), BigInt(30001), None), below),
+        Resolved(headerOf(1, BigInt(30000), 0, None), below)
+      ) == Left(HeaderFault.GasUsedAboveLimit(BigInt(30001), BigInt(30000))),
+      "a header may not report using more than its own limit"
+    )
+
+  it should "be accepted using exactly its limit" in
+    assert(
+      HeaderValidator.validate(
+        Resolved(headerOf(2, BigInt(30000), BigInt(30000), None), below),
+        Resolved(headerOf(1, BigInt(30000), 0, None), below)
+      ) == Right(()),
+      "the bound is inclusive, so a block using its whole limit is valid"
+    )
+
+  "a derivation wider than a header can state" should "be returned rather than raised" in {
+    // The parent is not itself validated -- which is exactly the case a peer
+    // supplies. Its charge sits near the top of the range and its gas use is at
+    // its limit, so the successor's charge is a ninth larger and does not fit.
+    // Raising here would let one header pair terminate a validating thread
+    // through an API whose whole contract is that it returns a reason.
+    val huge = (BigInt(2).pow(256) - 1)
+    val parent = headerOf(1, BigInt(30000000), BigInt(30000000), Some(huge))
+    val child = headerOf(2, BigInt(30000000), 0, Some(huge))
+    assert(
+      HeaderValidator.validate(Resolved(child, under), Resolved(parent, under)).exists(_ => false) ||
+        HeaderValidator.validate(Resolved(child, under), Resolved(parent, under)).swap.exists {
+          case HeaderFault.BaseFeeNotRepresentable(_) => true
+          case _                                      => false
+        },
+      "an overflowing derivation is a fault, never an exception"
+    )
+  }
