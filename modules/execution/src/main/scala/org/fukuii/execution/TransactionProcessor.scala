@@ -72,6 +72,7 @@ final case class AdmittedTransaction(
     sender: Address,
     nonce: BigInt,
     gasPrice: BigInt,
+    baseFeePerGas: BigInt,
     gasLimit: BigInt,
     to: Option[Address],
     value: BigInt,
@@ -392,7 +393,16 @@ object TransactionProcessor:
     val used = spent - refunded
     val returned = transaction.gasLimit - used
     moveBalance(world, transaction.sender, returned * transaction.gasPrice)
-    moveBalance(world, block.coinbase, used * transaction.gasPrice)
+    // The producer is credited the TIP alone. What the block charged is not
+    // moved anywhere -- not to the producer, not to a treasury, not to an
+    // account at all -- so the burn is an omission rather than a transfer, and
+    // there is no address to look for. `ethereum/execution-specs` @
+    // `20f7f6271a` `forks/london/fork.py:820-821` credits exactly this
+    // difference and never mentions the rest.
+    //
+    // One expression covers both eras because the charge is zero below any fee
+    // market, which is the same collapse the specification notes at `:819`.
+    moveBalance(world, block.coinbase, used * (transaction.gasPrice - transaction.baseFeePerGas))
     world.commit()
     if succeeded then frame.accountsToDelete.foreach(destroyAccount)
     if execution.touchedEmptyAccountsAreDeleted then

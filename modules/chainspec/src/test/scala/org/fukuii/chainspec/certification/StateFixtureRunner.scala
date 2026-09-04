@@ -7,6 +7,7 @@ import org.fukuii.chainspec.UpgradeRules
 import org.fukuii.crypto.Keccak256
 import org.fukuii.evm.{JournaledWorldState, StateTrieWorldState}
 import org.fukuii.execution.{
+  FeeOffer,
   Admission,
   BlockProcessor,
   OfferedTransaction,
@@ -192,6 +193,7 @@ object StateFixtureRunner:
       offered(fixture.transaction, sender),
       journal,
       fixture.block.gasLimit,
+      fixture.block.baseFee,
       rules.admission,
       rules.evm.schedule
     ) match
@@ -237,7 +239,14 @@ object StateFixtureRunner:
       transactionType = transaction.kind,
       sender = sender,
       nonce = transaction.nonce,
-      gasPrice = transaction.gasPrice,
+      // A fee-market fixture states a cap and a tip and this model carries one
+      // price, so what arrives here is the CAP and the tip is lost. That is
+      // correct for every label this runner is wired to today, none of which
+      // carries a fee market -- and it is wrong the moment one does, because a
+      // capped offer resolved as a fixed price pays the cap where it should pay
+      // the tip plus the charge. Extending the fixture model is what a
+      // fee-market tier needs before it can be believed.
+      fee = FeeOffer.Fixed(transaction.gasPrice),
       gasLimit = transaction.gasLimit,
       to = transaction.to,
       value = transaction.value,

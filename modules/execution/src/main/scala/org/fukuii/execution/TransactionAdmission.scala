@@ -50,6 +50,33 @@ enum Refusal:
   /** The signature names no account this fork accepts. */
   case InvalidSignature
 
+  /** The most the transaction will pay per unit of gas is less than the charge
+    * the block sets.
+    *
+    * ==One reason, where the specification raises two exceptions==
+    *
+    * `ethereum/execution-specs` @ `20f7f6271a` `forks/london/fork.py` refuses a
+    * fee-market transaction whose cap is under the charge at `:503` and a
+    * fixed-price one at `:517`, by two different exceptions. **They are one
+    * rule** -- what the transaction is willing to pay cannot cover what the
+    * block charges -- and this enum names rules rather than exceptions, which
+    * its own opening states. What differs between the two is only which field
+    * states the ceiling, and [[FeeOffer.cap]] is where that difference already
+    * lives.
+    *
+    * **It reaches formats that predate the fee market**, which is the half a
+    * reader expects least: a fixed-price transaction at a fork with a market is
+    * refused by this rule exactly as a capped one is.
+    */
+  case FeeCapBelowBaseFee
+
+  /** The tip offered exceeds the most the transaction will pay in total.
+    *
+    * Reachable only by a format stating a cap and a tip separately, since no
+    * other format can express the pair.
+    */
+  case PriorityFeeAboveFeeCap
+
 /** A transaction offered for admission: the values a fork's rules are read
   * against, with the sender already settled.
   *
@@ -97,13 +124,86 @@ final case class OfferedTransaction(
     transactionType: TransactionType,
     sender: Address,
     nonce: BigInt,
-    gasPrice: BigInt,
+    fee: FeeOffer,
     gasLimit: BigInt,
     to: Option[Address],
     value: BigInt,
     data: Bytes,
     accessList: Seq[AccessTuple]
 )
+
+/** What a transaction offers to pay per unit of gas.
+  *
+  * ==A sum, because two of the quantities are genuinely different numbers==
+  *
+  * A format stating a cap and a tip separately is offering two figures that a
+  * settled transaction resolves into one, and **the resolution needs the
+  * block's charge, which the transaction does not carry.** So the offer cannot
+  * be reduced to a single price where it is made; it is reduced at admission,
+  * where a base fee is finally available.
+  *
+  * ==Why one price here would be admitting transactions no conformant node
+  * admits==
+  *
+  * The two figures are read by two different rules. The balance check is made
+  * against the CAP -- `ethereum/execution-specs` @ `20f7f6271a`
+  * `forks/london/fork.py:513` computes `max_gas_fee` from `max_fee_per_gas` --
+  * and the up-front charge against the EFFECTIVE price, at `:778`. Folding them
+  * into one field makes the balance check read whichever survived, and where
+  * that is the effective price the check passes on a balance every conformant
+  * node refuses.
+  *
+  * **The failure is a NARROWER refusal set, which is why a state fixture would
+  * not catch it**: the transaction is admitted rather than refused, so a case
+  * asserting a successful transaction still agrees.
+  *
+  * ==A fixed price is not a cap of itself with a zero tip==
+  *
+  * Both cases could be expressed as [[Capped]], and doing so would lose the one
+  * thing this type is for: a fixed-price transaction pays its stated price
+  * whatever the block charges, and a capped one pays what the block charges
+  * plus a tip. They coincide only when the two arms are computed, never in what
+  * the transaction stated -- and it is what was stated that a refusal is
+  * compared against.
+  */
+enum FeeOffer:
+
+  /** A format stating one price, which it pays whatever the block charges. */
+  case Fixed(gasPrice: BigInt)
+
+  /** A format stating the most it will pay in total and the most it will pay
+    * above the block's charge.
+    */
+  case Capped(maxFeePerGas: BigInt, maxPriorityFeePerGas: BigInt)
+
+  /** The most this offer will pay per unit of gas.
+    *
+    * What the balance check is made against, and what the block's charge is
+    * compared to. Both formats state it; only the field differs.
+    */
+  def cap: BigInt = this match
+    case Fixed(gasPrice)   => gasPrice
+    case Capped(maxFee, _) => maxFee
+
+  /** What this offer actually pays per unit of gas, given the block's charge.
+    *
+    * ==Stated as the specification states it, not as the algebraically equal
+    * form==
+    *
+    * `ethereum/execution-specs` @ `20f7f6271a` `forks/london/fork.py:508-512`
+    * takes the tip as `min(maxPriorityFeePerGas, maxFeePerGas - baseFee)` and
+    * adds the charge back. **`min(maxFee, baseFee + maxPriorityFee)` is the same
+    * number** and is the form the proposal's abstract suggests; this follows the
+    * executable specification because the two differ in what they compute
+    * first, and only this order never forms a value above the cap.
+    *
+    * Requires the caller to have refused an offer whose cap is under the
+    * charge, which [[Refusal.FeeCapBelowBaseFee]] is; without that the
+    * subtraction is negative and the tip arm is meaningless.
+    */
+  def effective(baseFee: BigInt): BigInt = this match
+    case Fixed(gasPrice)             => gasPrice
+    case Capped(maxFee, maxPriority) => maxPriority.min(maxFee - baseFee) + baseFee
 
 /** Whether a transaction may run at all, and why not when it may not. */
 enum Admission:
@@ -284,21 +384,42 @@ object TransactionAdmission:
       offered: OfferedTransaction,
       world: WorldState,
       gasAvailable: BigInt,
+      baseFeePerGas: Option[BigInt],
       rules: AdmissionRules,
       schedule: GasSchedule
   ): Admission =
     lazy val intrinsic = IntrinsicGas.of(schedule, offered.data, offered.to.isEmpty, offered.accessList)
     lazy val counted = world.nonceOf(offered.sender).toBigInt
     lazy val held = world.balanceOf(offered.sender).toBigInt
-    lazy val maximumFee = offered.gasLimit * offered.gasPrice
+    // The CAP, never the effective price. `FeeOffer` states why at length: the
+    // two are different numbers under a fee market, and this is the check the
+    // specification makes against the higher of them.
+    lazy val maximumFee = offered.gasLimit * offered.fee.cap
+    val charge = baseFeePerGas.getOrElse(BigInt(0))
     if !admitsFormat(offered.transactionType, rules) then Admission.Refused(Refusal.TypeNotAdmitted)
     else if intrinsic > offered.gasLimit then Admission.Refused(Refusal.IntrinsicGasTooLow)
+    else if tipExceedsCap(offered.fee) then Admission.Refused(Refusal.PriorityFeeAboveFeeCap)
     else if offered.nonce >= NonceLimit then Admission.Refused(Refusal.NonceIsMax)
     else if offered.gasLimit > gasAvailable then Admission.Refused(Refusal.GasAllowanceExceeded)
+    else if offered.fee.cap < charge then Admission.Refused(Refusal.FeeCapBelowBaseFee)
     else if counted != offered.nonce then Admission.Refused(Refusal.NonceMismatch)
     else if held < maximumFee + offered.value then Admission.Refused(Refusal.InsufficientAccountFunds)
     else if world.codeOf(offered.sender).nonEmpty then Admission.Refused(Refusal.SenderNotEoa)
-    else Admission.Admitted(settling(offered, intrinsic))
+    else Admission.Admitted(settling(offered, intrinsic, charge))
+
+  /** Whether the tip offered exceeds the total the transaction will pay.
+    *
+    * Checked before the block's charge is consulted, because it is a property of
+    * the transaction alone -- the specification makes it in
+    * `validate_transaction` alongside the intrinsic-gas check rather than in
+    * `check_transaction` with the rules that read a block
+    * (`ethereum/execution-specs` @ `20f7f6271a`
+    * `forks/london/transactions.py:334-338`). A transaction failing it is
+    * malformed at any charge, including none.
+    */
+  private def tipExceedsCap(fee: FeeOffer): Boolean = fee match
+    case FeeOffer.Fixed(_)                    => false
+    case FeeOffer.Capped(maxFee, maxPriority) => maxPriority > maxFee
 
   /** The identifier the signature was made for, where it names one.
     *
@@ -349,11 +470,12 @@ object TransactionAdmission:
     * record carries is the one the branch above compared against the limit. A
     * second call would be a second definition of it.
     */
-  private def settling(offered: OfferedTransaction, intrinsicGas: BigInt): AdmittedTransaction =
+  private def settling(offered: OfferedTransaction, intrinsicGas: BigInt, baseFeePerGas: BigInt): AdmittedTransaction =
     AdmittedTransaction(
       sender = offered.sender,
       nonce = offered.nonce,
-      gasPrice = offered.gasPrice,
+      gasPrice = offered.fee.effective(baseFeePerGas),
+      baseFeePerGas = baseFeePerGas,
       gasLimit = offered.gasLimit,
       to = offered.to,
       value = offered.value,

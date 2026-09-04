@@ -108,21 +108,23 @@ class TransactionProcessorSpec extends AnyFlatSpec:
   private def transaction(
       nonce: BigInt = 0,
       gasPrice: BigInt = 3,
+      baseFeePerGas: BigInt = 0,
       gasLimit: BigInt = 100000,
       to: Option[Address] = Some(recipient),
       value: BigInt = 1000,
       data: Bytes = Bytes.Empty
   ): AdmittedTransaction =
     AdmittedTransaction(
-      sender,
-      nonce,
-      gasPrice,
-      gasLimit,
-      to,
-      value,
-      data,
-      Seq.empty,
-      IntrinsicGas.of(schedule, data, to.isEmpty, Seq.empty)
+      sender = sender,
+      nonce = nonce,
+      gasPrice = gasPrice,
+      baseFeePerGas = baseFeePerGas,
+      gasLimit = gasLimit,
+      to = to,
+      value = value,
+      data = data,
+      accessList = Seq.empty,
+      intrinsicGas = IntrinsicGas.of(schedule, data, to.isEmpty, Seq.empty)
     )
 
   /** Settlement at every height before an account reached and left holding
@@ -757,3 +759,40 @@ class TransactionProcessorSpec extends AnyFlatSpec:
       ).world.storageAt(recipient, EvmFixtures.word(1)) == EvmFixtures.word(42),
       "the storing half of the program above never ran, so the empty slot tells us nothing"
     )
+
+  // ── The fee split, which is where a charge is destroyed ───────────────────
+
+  "settlement under a fee market" should "credit the producer the tip alone" in {
+    // Price 10, charge 4, so the tip is 6 and a plain transfer uses its whole
+    // 21000 intrinsic charge.
+    val ran = settle(transaction(gasPrice = 10, baseFeePerGas = 4, data = Bytes.Empty))
+    assert(
+      ran.world.balanceOf(coinbase).toBigInt == ran.settlement.gasUsed * 6,
+      "the producer is paid what the transaction offered ABOVE the charge, never the whole price"
+    )
+  }
+
+  it should "credit the producer the whole price where the block charges nothing" in
+    // The control that makes the assertion above about the charge rather than
+    // about arithmetic: the same expression, with the charge at zero, must pay
+    // everything to the producer.
+    assert(
+      settle(transaction(gasPrice = 10, baseFeePerGas = 0)).world.balanceOf(coinbase).toBigInt ==
+        settle(transaction(gasPrice = 10, baseFeePerGas = 0)).settlement.gasUsed * 10,
+      "below any market the whole price is the producer's, which is every fork before London"
+    )
+
+  it should "destroy the charge rather than move it anywhere" in {
+    // The burn, asserted as a conservation failure rather than by looking for a
+    // destination: what left the sender exceeds what reached the producer, and
+    // the difference is exactly the charge. There is no address to check,
+    // because the specification credits the charge to nothing at all.
+    val funded = Funded
+    val ran = settle(transaction(gasPrice = 10, baseFeePerGas = 4, value = 0), funded = funded)
+    val spentBySender = funded - ran.world.balanceOf(sender).toBigInt
+    val paidToProducer = ran.world.balanceOf(coinbase).toBigInt
+    assert(
+      spentBySender - paidToProducer == ran.settlement.gasUsed * 4,
+      "the difference between what the sender lost and what the producer gained is the charge, held by no account"
+    )
+  }

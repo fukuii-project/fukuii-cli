@@ -290,6 +290,7 @@ object BlockProcessor:
           offered(transaction, sender),
           journal,
           block.gasLimit - output.gasUsed,
+          block.baseFee,
           admission,
           evm.schedule
         ) match
@@ -386,39 +387,41 @@ object BlockProcessor:
 
   /** The transaction as the values admission reads.
     *
-    * ==Only a format stating its own price is reachable here==
+    * ==What a format states, never what it will pay==
     *
-    * The three formats whose charge is computed against a block's base fee
-    * state a cap and a tip rather than a price, and there is no base fee here
-    * to resolve one against.
+    * A format stating a cap and a tip is carried here as the pair it stated.
+    * Resolving that pair into one price needs the block's charge, and this is
+    * not where that happens -- [[FeeOffer]] holds the resolution and admission
+    * applies it, because admission is where a base fee is finally in hand.
     *
-    * **Two things keep that branch out of reach, and collapsing them is how a
-    * later fork walks into it.** [[TransactionAdmission.senderOf]] asks
+    * ==Two of the five are still unreachable, and the obligation is unchanged==
+    *
+    * [[TransactionAdmission.senderOf]] asks
     * [[TransactionAdmission.admitsFormat]] ahead of everything else it does,
     * and [[settleInto]] binds its answer before this is applied at all, so a
     * format these rules do not admit is refused for that FORMAT and never
-    * reaches here. That ordering does not move when the admitted set grows.
+    * reaches here. **That ordering was never the guarantee**, and the
+    * distinction has now been paid once: what actually kept the branch out of
+    * reach was that no rule set admitted any of the three, and the obligation
+    * recorded against it was that a fork admitting one brings the fee rule that
+    * prices it, both landing together. That is what happened -- the fee market
+    * arrived with the format, in one upgrade.
     *
-    * **What the ordering does NOT say is that every format these rules DO admit
-    * is priced here**, and that is the half the branch actually rests on: none
-    * of the three is admitted anywhere today. So the set is evidence about this
-    * branch, and the obligation it carries is that a fork admitting one of the
-    * three brings the fee rule that prices it, both landing together. Reading
-    * the ordering alone as the guarantee would say the opposite -- that
-    * extending the admitted set is safe on its own.
-    *
-    * A rule set that admitted one of the three without the fee rule that prices
-    * it is a configuration this project would have had to write, which is why
-    * the impossible branch is raised rather than returned -- there is no caller
-    * who could act on it and nothing on a chain that produces it.
+    * The two remaining formats carry further fields no rule here reads, so the
+    * same obligation stands for each: a fork admitting one brings what prices
+    * it. The branch is raised rather than returned because a rule set admitting
+    * a format nothing prices is a configuration this project would have had to
+    * write, so there is no caller who could act on it and nothing on a chain
+    * that produces it.
     */
   private def offered(transaction: Transaction, sender: Address): OfferedTransaction =
     val price = transaction match
-      case t: Transaction.Legacy     => t.gasPrice.toBigInt
-      case t: Transaction.AccessList => t.gasPrice.toBigInt
-      case t: Transaction.DynamicFee => unpriced(t)
-      case t: Transaction.Blob       => unpriced(t)
-      case t: Transaction.SetCode    => unpriced(t)
+      case t: Transaction.Legacy     => FeeOffer.Fixed(t.gasPrice.toBigInt)
+      case t: Transaction.AccessList => FeeOffer.Fixed(t.gasPrice.toBigInt)
+      case t: Transaction.DynamicFee =>
+        FeeOffer.Capped(t.maxFeePerGas.toBigInt, t.maxPriorityFeePerGas.toBigInt)
+      case t: Transaction.Blob    => unpriced(t)
+      case t: Transaction.SetCode => unpriced(t)
     // A format that carries no declaration offers an empty one, which is
     // charged nothing and warms nothing. Written out per payload rather than as
     // a wildcard, so a format added later cannot silently offer an empty
@@ -433,7 +436,7 @@ object BlockProcessor:
       transactionType = transaction.transactionType,
       sender = sender,
       nonce = transaction.nonce.toBigInt,
-      gasPrice = price,
+      fee = price,
       gasLimit = transaction.gasLimit.toBigInt,
       to = transaction.to,
       value = transaction.value.toBigInt,

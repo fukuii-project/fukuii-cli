@@ -8,6 +8,7 @@ import org.fukuii.chainspec.proposals.eip.Eip2
 import org.fukuii.evm.{EvmFixtures, GasSchedule, Word}
 import org.fukuii.execution.{
   Admission,
+  FeeOffer,
   AdmittedTransaction,
   IntrinsicGas,
   OfferedTransaction,
@@ -90,7 +91,7 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
       to: Option[Address] = Some(recipient),
       data: Bytes = Bytes.Empty
   ): OfferedTransaction =
-    OfferedTransaction(kind, sender, nonce, gasPrice, gasLimit, to, value, data, Seq.empty)
+    OfferedTransaction(kind, sender, nonce, FeeOffer.Fixed(gasPrice), gasLimit, to, value, data, Seq.empty)
 
   /** The rules with EIP-2's creation surcharge applied. */
   private val charging: GasSchedule = ethereum.Upgrades.frontier.evm.applying(Eip2.creationCharge).schedule
@@ -117,6 +118,7 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
       transaction,
       state,
       available,
+      None,
       ethereum.Upgrades.frontier.admission,
       ethereum.Upgrades.genesisPrices
     )
@@ -125,15 +127,18 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
   private def settling(transaction: OfferedTransaction, intrinsic: BigInt): Admission =
     Admission.Admitted(
       AdmittedTransaction(
-        transaction.sender,
-        transaction.nonce,
-        transaction.gasPrice,
-        transaction.gasLimit,
-        transaction.to,
-        transaction.value,
-        transaction.data,
-        transaction.accessList,
-        intrinsic
+        sender = transaction.sender,
+        nonce = transaction.nonce,
+        // Frontier carries no fee market, so the offer resolves to itself and
+        // the charge subtracted at settlement is nothing.
+        gasPrice = transaction.fee.effective(BigInt(0)),
+        baseFeePerGas = BigInt(0),
+        gasLimit = transaction.gasLimit,
+        to = transaction.to,
+        value = transaction.value,
+        data = transaction.data,
+        accessList = transaction.accessList,
+        intrinsicGas = intrinsic
       )
     )
 
