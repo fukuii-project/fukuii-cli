@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(bash .local/scratch/*)"
+      "Bash(bash .local/scratch/*)",
+      "Bash(sbt compile)",
+      "Bash(sbt testFull)"
     ],
     "deny": [
       "Read(./.env)",
@@ -10,7 +12,19 @@
       "Read(./**/*.pem)",
       "Read(./**/*.key)",
       "Read(./**/*.keystore)",
-      "Read(./**/*.p12)"
+      "Read(./**/*.p12)",
+      "Read(UTC--*)",
+      "Read(**/*.jks)",
+      "Read(**/*.pfx)",
+      "Read(nodekey)",
+      "Read(jwtsecret)",
+      "Read(jwt.hex)",
+      "Read(wallet.json)",
+      "Read(mnemonic.txt)",
+      "Read(**/*.credentials)",
+      "Read(.netrc)",
+      "Read(.envrc)",
+      "Read(.git-credentials)"
     ]
   },
   "hooks": {
