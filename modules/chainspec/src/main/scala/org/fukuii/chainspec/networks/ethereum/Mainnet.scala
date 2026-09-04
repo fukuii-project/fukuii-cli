@@ -496,6 +496,51 @@ object Mainnet:
   private val berlin: UpgradeSchedule.Entry =
     UpgradeSchedule.Entry(atBlock(12244000), upgrade("Berlin"), Upgrade.RuleChange(Upgrades.berlin))
 
+  /** Block 12,965,000.
+    *
+    * `ethereum/execution-specs` @
+    * `20f7f6271a720091e5fea0a82e7bc802866ae36a` (2026-08-26) states it
+    * executably in `src/ethereum/forks/london/__init__.py`, whose upgrade
+    * schedule gives `| Mainnet | 12,965,000 | August 5, 2021 |`, and its
+    * neighbours declare their own documented activations -- 12,244,000 below it
+    * -- so the figure is not a criterion offset by a constant. Three clients
+    * from three language families implement it: `ethereum/go-ethereum` @
+    * `e9e35a42f8213235da1fde4f9ac8f3e9ff666b87` (2026-08-26) as
+    * `LondonBlock: big.NewInt(12_965_000)` in `params/config.go`;
+    * `besu-eth/besu` @ `fdf1247c6d6431f0325a123ada37086ded17ce7e` (2026-08-26)
+    * as `"londonBlock": 12965000` in `config/src/main/resources/mainnet.json`;
+    * and `ethereumclassic/core-geth` @ `4185df450364973bbf99efa3923791f5ba40b351`
+    * (2025-01-23), which states the height five times rather than once, one per
+    * proposal, in `params/confp/testdata/coregeth_foundation.json`.
+    *
+    * ==That last reading is what makes the membership checkable by height==
+    *
+    * A configuration keyed per proposal answers *which proposals activate here*
+    * without consulting any document that names the upgrade, so it is an
+    * instrument independent of the meta document [[Upgrades.london]] rests on.
+    * It returns exactly five at this height.
+    *
+    * ==Nothing activates between this entry and the one below it==
+    *
+    * Checked rather than assumed, because the two entries preceding this one on
+    * this network were each planned as a single upgrade and each grew under
+    * survey. The instrument is every block-number-valued field in a client's
+    * mainnet configuration, including fields not named after an upgrade --
+    * which is what the two misses had in common. Calibrated in both directions
+    * before its zero was believed: the same sweep finds an upgrade that appears
+    * in one client only as a difficulty-delay key and no proposal transition,
+    * and finds two Ethereum Classic events that no fork identifier reports at
+    * all. Six client lineages agree there is nothing in this window.
+    *
+    * ==The first activation on this network whose rules reach the header==
+    *
+    * [[berlin]] changed what a block may carry. This one changes what a block's
+    * header must SAY -- it must state the charge its parent's rules require,
+    * and a header below this height must state none.
+    */
+  private val london: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(12965000), upgrade("London"), Upgrade.RuleChange(Upgrades.london))
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -532,6 +577,7 @@ object Mainnet:
         petersburg,
         istanbul,
         muirGlacier,
-        berlin
+        berlin,
+        london
       )
     )

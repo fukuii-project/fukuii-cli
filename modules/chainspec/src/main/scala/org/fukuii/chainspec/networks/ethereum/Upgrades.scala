@@ -12,13 +12,14 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip1344,
   Eip140,
   Eip145,
-  Eip152,
-  Eip1716,
   Eip150,
+  Eip152,
   Eip155,
+  Eip1559,
   Eip160,
   Eip161,
   Eip170,
+  Eip1716,
   Eip1884,
   Eip196,
   Eip197,
@@ -33,6 +34,10 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip2718,
   Eip2929,
   Eip2930,
+  Eip3198,
+  Eip3529,
+  Eip3541,
+  Eip3554,
   Eip649,
   Eip658,
   Eip7
@@ -657,3 +662,77 @@ object Upgrades:
     */
   val berlin: UpgradeRules =
     muirGlacier.adopting(Eip2565.component, Eip2718.component, Eip2929.component, Eip2930.component)
+
+  /** [[berlin]] with EIP-1559, EIP-3198, EIP-3529, EIP-3541 and EIP-3554
+    * adopted.
+    *
+    * ==Where the membership comes from, and it does NOT read like [[berlin]]'s==
+    *
+    * No proposal states it. `EIP-7568` (Final), a backfill covering several
+    * upgrades at once, delegates to
+    * `network-upgrades/mainnet-upgrades/london.md` in
+    * `ethereum/execution-specs` @ `8dbde99b132ff8d8fcc9cfb015a9947ccc8b12d6`,
+    * which lists these five under an *Included EIPs* heading.
+    *
+    * **Unlike [[berlin]] the membership is also at that repository's head**, and
+    * this is the difference not to carry Berlin's wording over: `20f7f6271a`
+    * states all five in `src/ethereum/forks/london/__init__.py` under *Changes*,
+    * with the activation beside them. A reader sweeping the current tree finds
+    * the membership immediately.
+    *
+    * Four further readings agree: `ethereum/go-ethereum` @ `e9e35a42f`,
+    * `ethereumclassic/core-geth` @ `4185df450` (whose configuration is per
+    * proposal rather than per fork, so it names all five separately),
+    * `besu-eth/besu` @ `fdf1247c6d` and `NethermindEth/nethermind` @
+    * `b92e2a4719`.
+    *
+    * ==A sixth was in this upgrade and was SUBSTITUTED rather than removed==
+    *
+    * EIP-3238 sat in that membership file from its first revision and was
+    * replaced by [[Eip3554]] in `b484f1c8f`, 88 days before the upgrade ran.
+    * **It resolves opposite to EIP-2315 at [[berlin]]**: that one was struck
+    * leaving four members and no replacement, so the count fell. This one was
+    * swapped in the same slot, so **the count never moved and only the occupant
+    * did** -- and a check comparing membership by size would report this upgrade
+    * unchanged throughout. Neither ever activated, so as at [[berlin]] there is
+    * no adoption to record and this composition is five entries with no
+    * withdrawal.
+    *
+    * ==Composing this from anywhere below [[berlin]] is a silent chain split==
+    *
+    * [[Eip3554]] moves the exponential term from 9,000,000 to 9,700,000, and the
+    * figure is cumulative rather than a delta. A composition from [[istanbul]]
+    * or [[muirGlacier]] would carry a different starting figure into the same
+    * assignment and compile -- and **no state-fixture tier at any fork could
+    * observe it**, because difficulty is settled in a header. That is the same
+    * hazard [[berlin]]'s own note records, arriving at the upgrade that moves
+    * the figure rather than at one that inherits it.
+    *
+    * ==Three facets move, where [[berlin]] moved two==
+    *
+    * [[Eip3198]] and [[Eip3541]] are `evm` deltas and [[Eip3529]] writes both
+    * `evm` and the execution facet. [[Eip1559]] writes admission and the header
+    * facet, **which nothing had written before**: this is the first upgrade on
+    * this network whose rules say anything about the header its blocks carry,
+    * and `org.fukuii.consensus.HeaderValidator` is what reads it. [[Eip3554]]
+    * writes the consensus facet.
+    *
+    * ==The order is stated and is immaterial==
+    *
+    * No two of the five name a common field. EIP-1559 writes admission and the
+    * header facet, EIP-3198 one opcode, EIP-3529 one refund and one execution
+    * member, EIP-3541 one machine rule, EIP-3554 one consensus figure. It is
+    * stated because two deltas touching one field compose to whichever ran
+    * last, and because the DEPENDENCY between the first two is real at run time
+    * even though their deltas are disjoint: the opcode EIP-3198 adds reads the
+    * charge EIP-1559 introduces, and at a fork carrying the opcode without the
+    * market it would read an absent value.
+    */
+  val london: UpgradeRules =
+    berlin.adopting(
+      Eip1559.component,
+      Eip3198.component,
+      Eip3529.component,
+      Eip3541.component,
+      Eip3554.component
+    )

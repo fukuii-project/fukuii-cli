@@ -683,3 +683,60 @@ class UpgradesSpec extends AnyFlatSpec:
       Upgrades.berlin.consensus.blockReward == ether(2),
       "an upgrade whose four documents state no reward changed what a block pays its producer"
     )
+
+  // ── London ────────────────────────────────────────────────────────────────
+
+  "the upgrade adopting London's five" should "record all five in its journal" in
+    assert(
+      Vector(1559, 3198, 3529, 3541, 3554).forall(n => Upgrades.london.components.contains(ProposalId.Eip(n))),
+      "the journal is what a schedule entry is read from, and a missing entry is silent"
+    )
+
+  it should "let a block carry the capped transaction format" in
+    assert(
+      Upgrades.london.admission.admittedTypes ==
+        Set(TransactionType.Legacy, TransactionType.AccessList, TransactionType.DynamicFee),
+      "the upgrade that adopts EIP-1559 does not admit the format it defines"
+    )
+
+  it should "give this network its first fee market" in
+    // The case only the composition can make. EIP-1559's component is the first
+    // here to write the header facet, so one built from the admission-only
+    // shape its sibling documents use would admit the format and set no charge
+    // -- and a capped offer with no market to resolve it against is the
+    // configuration BlockProcessor raises on rather than returns.
+    assert(
+      Upgrades.london.header.feeMarket.isDefined,
+      "the upgrade that adopts EIP-1559 sets no charge, so nothing prices the format it just admitted"
+    )
+
+  it should "have had no fee market at the upgrade before it" in
+    assert(
+      Upgrades.berlin.header.feeMarket.isEmpty,
+      "an upgrade below the one adopting EIP-1559 already set a charge"
+    )
+
+  it should "hold the exponential term back by nine million seven hundred thousand blocks" in
+    // The figure is cumulative rather than a delta, so composing this upgrade
+    // from anywhere below Berlin carries a different starting point into the
+    // same assignment and compiles. No state-fixture tier at any fork could
+    // observe it, because difficulty is settled in a header.
+    assert(
+      Upgrades.london.consensus.difficultyBombDelay == BigInt(9700000),
+      "EIP-3554 states the cumulative figure and the upgrade below it holds nine million"
+    )
+
+  it should "have held it back by nine million at the upgrade before it" in
+    assert(
+      Upgrades.berlin.consensus.difficultyBombDelay == BigInt(9000000),
+      "otherwise the assertion above holds for a reason that is not this document"
+    )
+
+  it should "keep the block reward the upgrade before it paid" in
+    // EIP-1559 moves where a fee GOES and not what a block is paid for
+    // producing. An upgrade that changed both would be two documents folded
+    // together.
+    assert(
+      Upgrades.london.consensus.blockReward == Upgrades.berlin.consensus.blockReward,
+      "the fee market changes the fee, never the reward"
+    )

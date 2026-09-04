@@ -61,7 +61,8 @@ class MainnetSpec extends AnyFlatSpec:
           "Petersburg",
           "Istanbul",
           "Muir Glacier",
-          "Berlin"
+          "Berlin",
+          "London"
         ),
       "an enumeration missing an entry misnumbers every entry after it, which is silent rather than absent"
     )
@@ -136,7 +137,8 @@ class MainnetSpec extends AnyFlatSpec:
         // either side of it. So this line is the only place an activation moved
         // by any amount is caught.
         Activation.AtBlock(UInt64.fromBits(9200000L)),
-        Activation.AtBlock(UInt64.fromBits(12244000L))
+        Activation.AtBlock(UInt64.fromBits(12244000L)),
+        Activation.AtBlock(UInt64.fromBits(12965000L))
       ),
       "genesis is excluded by EIP-2124 and thawing by enforcing nothing, leaving the ones that are neither"
     )
