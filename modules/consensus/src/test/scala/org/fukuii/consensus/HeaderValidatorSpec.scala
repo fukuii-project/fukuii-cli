@@ -16,9 +16,11 @@ import org.scalatest.flatspec.AnyFlatSpec
   * `ethereum/legacytests` @ `1f581b8c`,
   * `Cancun/BlockchainTests/TransitionTests/bcBerlinToLondon/BerlinToLondonTransition.json`
   * -- a parent limit of 3,141,592, an accepted child at exactly twice that, and
-  * two rejected siblings one unit outside the bound in each direction. Using
-  * those rather than round numbers is what makes the boundary cases a reading of
-  * the corpus rather than a restatement of this file's own implementation.
+  * three rejected siblings: two one unit outside the bound in each direction,
+  * and one that is refused under a scaled parent and accepted under an unscaled
+  * one. Using those rather than round numbers is what makes the boundary cases a
+  * reading of the corpus rather than a restatement of this file's own
+  * implementation.
   *
   * ==Every field no rule reads is left at its zero==
   *
@@ -229,7 +231,7 @@ class HeaderValidatorSpec extends AnyFlatSpec:
     // refused under a scaled parent AND under an unscaled one, so they test the
     // bound's strictness rather than which bound is taken. This one is refused
     // only under a scaled parent: against the unscaled 3,141,592 its delta is
-    // 3,058 against a permitted 3,068, so an unscaled implementation ACCEPTS it
+    // 3,058 against a permitted 3,067, so an unscaled implementation ACCEPTS it
     // and the corpus requires it rejected.
     assert(
       atTransition(BigInt(3144650)).isLeft,
@@ -286,11 +288,39 @@ class HeaderValidatorSpec extends AnyFlatSpec:
     val parent = headerOf(1, BigInt(30000000), BigInt(30000000), Some(huge))
     val child = headerOf(2, BigInt(30000000), 0, Some(huge))
     assert(
-      HeaderValidator.validate(Resolved(child, under), Resolved(parent, under)).exists(_ => false) ||
-        HeaderValidator.validate(Resolved(child, under), Resolved(parent, under)).swap.exists {
-          case HeaderFault.BaseFeeNotRepresentable(_) => true
-          case _                                      => false
-        },
+      HeaderValidator.validate(Resolved(child, under), Resolved(parent, under)) match
+        case Left(_: HeaderFault.BaseFeeNotRepresentable) => true
+        case _                                            => false,
       "an overflowing derivation is a fault, never an exception"
     )
   }
+
+  "a parent whose own limit is under the floor" should "be refused rather than derived from" in
+    // Reachable by a narrow margin and the margin is the point: a parent at
+    // 4,999 permits a step of 4, so a header at 5,000 satisfies the bound in
+    // both directions AND clears the floor itself -- and only then does the
+    // derivation see a parent that is not a valid header. Anything smaller is
+    // refused by the bound first, which is why this case needed the numbers
+    // rather than round ones.
+    //
+    // It exists so the derivation's totality does not rest on which check runs
+    // first. Reordering the rules must not reopen a division by a parent's
+    // target.
+    assert(
+      HeaderValidator.validate(
+        Resolved(headerOf(2, BigInt(5000), 0, Some(ParentFee)), under),
+        Resolved(headerOf(1, BigInt(4999), 0, Some(ParentFee)), under)
+      ) == Left(HeaderFault.ParentGasLimitBelowFloor(BigInt(4999), BigInt(5000))),
+      "a parent under the floor is a fault named for the parent, not an arithmetic failure"
+    )
+
+  it should "not be refused for that reason when the parent clears the floor" in
+    // The control. Same shape one unit up, so the case above cannot be passing
+    // because of the bound or the charge.
+    assert(
+      HeaderValidator.validate(
+        Resolved(headerOf(2, BigInt(5000), 0, Some(ParentFee)), under),
+        Resolved(headerOf(1, BigInt(5000), 0, Some(ParentFee)), under)
+      ) != Left(HeaderFault.ParentGasLimitBelowFloor(BigInt(5000), BigInt(5000))),
+      "otherwise the assertion above holds for a reason that is not the floor"
+    )

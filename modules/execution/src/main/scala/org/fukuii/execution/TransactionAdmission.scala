@@ -196,11 +196,11 @@ enum FeeOffer:
     * number** and is the form the proposal's abstract suggests. This follows the
     * executable specification so the two read against each other directly.
     *
-    * **Not for an overflow reason**, which is what an earlier wording here
-    * claimed: both forms are computed in arbitrary precision on both sides --
-    * `BigInt` here, and the specification's own unbounded integer type there --
-    * so neither can form a value it cannot hold, and the intermediate that
-    * exceeds the cap in one ordering is harmless in both.
+    * **Not for an overflow reason.** Both forms are computed in arbitrary
+    * precision on both sides -- `BigInt` here, and the specification's own
+    * unbounded integer type there -- so neither can form a value it cannot
+    * hold, and the intermediate that exceeds the cap in one ordering is
+    * harmless in both.
     *
     * Requires the caller to have refused an offer whose cap is under the
     * charge, which [[Refusal.FeeCapBelowBaseFee]] is; without that the
@@ -245,7 +245,7 @@ enum Admission:
   *
   * A transaction can break two rules at once, and which refusal a client
   * reports is what the corpus states, so the order is load-bearing within each
-  * of them. [[admit]] takes its six from `ethereum/execution-specs` @
+  * of them. [[admit]] takes its rules from `ethereum/execution-specs` @
   * `ccaaaba58` in that document's own order: `frontier/transactions.py`'s
   * `validate_transaction` supplies the intrinsic charge and the nonce ceiling,
   * and `frontier/fork.py`'s `check_transaction` follows with

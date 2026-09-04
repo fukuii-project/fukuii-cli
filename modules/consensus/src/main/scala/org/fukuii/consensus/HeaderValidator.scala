@@ -46,6 +46,15 @@ enum HeaderFault:
   /** A block that is not its parent's successor. */
   case NumberNotParentSuccessor(stated: BigInt, parent: BigInt)
 
+  /** A parent whose gas limit is too small for a target to be taken from it.
+    *
+    * Reachable only from a parent that was never itself validated, and returned
+    * rather than left to arithmetic: dividing a parent's limit by the elasticity
+    * multiplier gives the target the charge is derived against, and a target of
+    * zero is a division by zero rather than a wrong answer.
+    */
+  case ParentGasLimitBelowFloor(stated: BigInt, floor: BigInt)
+
   /** A charge whose derivation does not fit what a header can state.
     *
     * Reachable only from a parent header that was never itself validated: a
@@ -66,9 +75,10 @@ enum HeaderFault:
   * of them validates a header against the wrong fork's rules, which is a chain
   * split from a call-site mistake nothing reports.
   *
-  * Pairing them does not make a mistake impossible: a caller can still pass a
-  * block as its own parent. It reduces four independent ways to be wrong to one
-  * that reads wrongly at the call site.
+  * Pairing them does not make a mistake impossible: a caller can still pass the
+  * two the wrong way round. It reduces four arrangements of which three are
+  * wrong to two of which one is, and the survivor reads wrongly at the call
+  * site.
   *
   * @param rules
   *   what `org.fukuii.chainspec.UpgradeSchedule` answers at this header's own
@@ -89,15 +99,24 @@ final case class Resolved(header: BlockHeader, rules: UpgradeRules)
   * a block may move the gas limit -- which the fee market modifies at the one
   * block where a market begins, and which therefore could not be left unbuilt.
   *
-  * **What IS checked is every header-against-parent rule this fork states that
-  * needs neither an engine nor an executed block** -- succession, the gas figure
-  * against its own limit, the gas-limit bound, and the charge. Measured against
-  * `ethereum/execution-specs` @ `20f7f6271a` `forks/london/fork.py`'s
-  * `validate_header`, what remains there is the seal, the difficulty, the
-  * extra-data cap and the commitments. **This list was incomplete when the layer
-  * landed and read as though it were not**, which is the failure worth recording:
-  * an enumeration that looks exhaustive invites a caller to treat this as
-  * sufficient for header validity.
+  * **What is checked: succession, the gas figure against its own limit, the
+  * gas-limit bound, and the charge.** Against `ethereum/execution-specs` @
+  * `20f7f6271a` `forks/london/fork.py`'s `validate_header`, what remains there
+  * is the extra-data cap, the difficulty, the seal, the commitments -- and the
+  * PARENT HASH, at `:364-366`, which is the one a reader would expect to find
+  * here.
+  *
+  * **The parent hash is deferred to the caller, and the reason is that the
+  * caller has usually discharged it already.** A header is paired with its
+  * parent by looking the parent up under `parentHash`, and a caller that did
+  * that has performed the comparison by construction; one that paired them some
+  * other way has not, and owes it. Checking it here would also cost this layer
+  * an RLP encoding and a hash of the parent on every header, to re-derive
+  * something the lookup already knew.
+  *
+  * **No claim is made that this list is exhaustive.** An enumeration that looks
+  * complete invites a caller to treat this layer as sufficient for header
+  * validity, and it is not.
   *
   * **Difficulty, the seal and ommers are not here.** Each is engine-shaped on
   * the evidence, and [[ConsensusEngine]] already records that each *"arrives
@@ -110,19 +129,23 @@ final case class Resolved(header: BlockHeader, rules: UpgradeRules)
   * megabytes and a header-only pass must not have to hold one.
   *
   * **A future-timestamp tolerance is not here either, and that is a boundary
-  * rather than a deferral.** The geth lineage checks a header's timestamp
-  * against the local clock in the same function as the rules above --
+  * rather than a deferral.** Four clients across two lineages check a header's
+  * timestamp against the local clock in the same place as the rules above:
   * `ethereum/go-ethereum-pow` @ `v1.10.26`
-  * `consensus/ethash/consensus.go:275`, and `erigontech/erigon` @ `776a380b1a`
-  * and `ethereumclassic/core-geth` @ `4185df450` reach the same
-  * `ErrFutureBlock` -- which makes it look like one of them.
+  * `consensus/ethash/consensus.go:275`, `erigontech/erigon` @ `776a380b1a` and
+  * `ethereumclassic/core-geth` @ `4185df450` all reach one `ErrFutureBlock`,
+  * and `besu-eth/besu` @ `fdf1247c6d` reaches it independently, wiring
+  * `TimestampBoundedByFutureParameter` into the same rule set that carries its
+  * gas-usage and gas-limit rules.
   *
-  * **That is three readings of one lineage and it is not the argument.** The
-  * argument is that `ethereum/execution-specs` @ `20f7f6271a` carries no clock
-  * comparison anywhere in `validate_header`: the rule is not a function of the
-  * chain, it alters no state root, and it is operator-tunable. It belongs to
-  * whichever layer decides what this node is willing to accept rather than what
-  * the network declares valid.
+  * **That agreement is what makes the rule look like one of these and is not
+  * the argument against it.** The argument is that `ethereum/execution-specs` @
+  * `20f7f6271a` carries no clock comparison anywhere in `validate_header`, and
+  * that each of those four picks its own tolerance -- so the rule is not a
+  * function of the chain, it alters no state root, and it is operator-tunable.
+  * Four clients each choosing a different bound is stronger evidence for that
+  * than agreement on one would be. It belongs to whichever layer decides what
+  * this node is willing to accept rather than what the network declares valid.
   *
   * ==Two values are held here rather than resolved per fork, and the reason is
   * that they do not vary==
@@ -175,6 +198,22 @@ object HeaderValidator:
     * activation axis and duplicate a fact
     * [[org.fukuii.chainspec.UpgradeSchedule]] already owns.
     */
+  /** ==The order differs from the specification's, and it costs a reason==
+    *
+    * `ethereum/execution-specs` @ `20f7f6271a` `forks/london/fork.py`'s
+    * `validate_header` runs the gas figure, then the charge, then succession.
+    * This runs succession first, because a pair that is not a parent and a child
+    * has no meaningful answer to the other three. **The cost is the same one
+    * `org.fukuii.execution.TransactionAdmission` records for its own composed
+    * order: a header breaking two rules is refused by whichever runs first, so
+    * the REASON differs from the specification's while the verdict does not.**
+    *
+    * **Nothing here depends on that order for its totality**, which is worth
+    * stating because it briefly did: the derivation's division by a parent's
+    * target was safe only because the gas-limit bound happened to refuse a tiny
+    * parent first, so reordering would have reopened a crash. The derivation now
+    * refuses such a parent itself.
+    */
   def validate(block: Resolved, parent: Resolved): Either[HeaderFault, Unit] =
     for
       _ <- checkSuccession(block.header, parent.header)
@@ -187,7 +226,7 @@ object HeaderValidator:
     *
     * Two rules that need neither a fork's rules nor an executed block, and that
     * the field checks in the same place as the rest: `ethereum/execution-specs`
-    * @ `20f7f6271a` `forks/london/fork.py:345` and `:347`, inside
+    * @ `20f7f6271a` `forks/london/fork.py:347` and `:349`, inside
     * `validate_header`.
     */
   private def checkSuccession(header: BlockHeader, parent: BlockHeader): Either[HeaderFault, Unit] =
@@ -208,7 +247,7 @@ object HeaderValidator:
     * because collapsing the two is how this rule went missing: the reason for
     * deferring the first does not reach the second.
     *
-    * `ethereum/execution-specs` @ `20f7f6271a` `forks/london/fork.py:325`;
+    * `ethereum/execution-specs` @ `20f7f6271a` `forks/london/fork.py:327`;
     * `ethereum/EIPs` @ `dbfa6bee83` `EIPS/eip-1559.md:173`;
     * `ethereum/go-ethereum-pow` @ `v1.10.26`
     * `consensus/ethash/consensus.go:293`.
@@ -237,8 +276,8 @@ object HeaderValidator:
     * where the block is the first under the market. **Every other source read
     * runs it against a scaled parent**, and they are listed rather than counted,
     * because a count over a list mixing a specification with clients has to say
-    * which it is counting and this one did not -- the proposal's own
-    * specification, which applies
+    * which of the two it counts -- the proposal's own specification, which
+    * applies
     * the multiplier to `parent_gas_limit` at the fork block with a comment
     * saying why and leaves the assertions unconditional; `go-ethereum-pow` @
     * `v1.10.26` `consensus/misc/eip1559.go:34-38`; `besu-eth/besu` @
@@ -270,9 +309,9 @@ object HeaderValidator:
     * that would separate the two readings, 6,289,319 and 6,277,049, are absent
     * from it.
     *
-    * Stated because the earlier wording here claimed the fixture reconciled only
-    * under the strict reading, which is the vacuous-corpus shape: citing a corpus
-    * as agreeing where it could not have disagreed.
+    * **So the fixture settles which bound is taken and not how the comparison
+    * is written.** Reading it as evidence for the second would be citing a
+    * corpus as agreeing where it could not have disagreed.
     */
   private def checkGasLimit(block: Resolved, parent: Resolved): Either[HeaderFault, Unit] =
     val parentLimit = parent.header.gasLimit.toBigInt
@@ -339,16 +378,19 @@ object HeaderValidator:
     else
       val parentBaseFee = parent.header.baseFeePerGas.map(_.toBigInt).getOrElse(BigInt(0))
       val parentUsed = parent.header.gasUsed.toBigInt
-      val parentTarget = parent.header.gasLimit.toBigInt / market.elasticityMultiplier
-      val derived =
-        if parentUsed == parentTarget then parentBaseFee
-        else if parentUsed > parentTarget then
-          val delta = parentBaseFee * (parentUsed - parentTarget) / parentTarget / market.maxChangeDenominator
-          parentBaseFee + delta.max(BigInt(1))
-        else
-          val delta = parentBaseFee * (parentTarget - parentUsed) / parentTarget / market.maxChangeDenominator
-          parentBaseFee - delta
-      UInt256.fromBigInt(derived).left.map(_ => HeaderFault.BaseFeeNotRepresentable(derived))
+      val parentLimit = parent.header.gasLimit.toBigInt
+      val parentTarget = parentLimit / market.elasticityMultiplier
+      if parentLimit < MinGasLimit then Left(HeaderFault.ParentGasLimitBelowFloor(parentLimit, MinGasLimit))
+      else
+        val derived =
+          if parentUsed == parentTarget then parentBaseFee
+          else if parentUsed > parentTarget then
+            val delta = parentBaseFee * (parentUsed - parentTarget) / parentTarget / market.maxChangeDenominator
+            parentBaseFee + delta.max(BigInt(1))
+          else
+            val delta = parentBaseFee * (parentTarget - parentUsed) / parentTarget / market.maxChangeDenominator
+            parentBaseFee - delta
+        UInt256.fromBigInt(derived).left.map(_ => HeaderFault.BaseFeeNotRepresentable(derived))
 
   /** Whether this block is the first under a fee market.
     *

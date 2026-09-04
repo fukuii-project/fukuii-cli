@@ -1270,9 +1270,9 @@ object Interpreter:
     * and this file's byte-bound-charge.
     *
     * **That three-way split costs nothing, which is the actual point** -- see
-    * below. It is spelled out because an earlier wording here claimed this was
-    * the order every client takes, and both clients it cites two paragraphs
-    * above contradict it.
+    * below. It is spelled out rather than summarized as agreement, because the
+    * three orders are easy to state and a claim that they agree would be
+    * checkable and wrong.
     *
     * **Nothing observable turns on where it goes**, for the reason stated above:
     * all three refusals end with the state restored, no gas left and the
