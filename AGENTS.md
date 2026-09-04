@@ -1,14 +1,6 @@
 # Fukuii — agent instructions
 
 <!--
-  DEFAULT WIRING. The content sections below are deliberately unfilled.
-
-  Fill each one from what this repository actually contains — never from what a
-  comparable project usually contains. Anything written here is read as fact by
-  every agent that opens the repo, so an unverified placeholder is worse than an
-  empty heading. Delete a heading this project does not need rather than
-  inventing content for it.
-
   Format: plain Markdown, no YAML frontmatter. This is the cross-tool AGENTS.md
   standard (https://agents.md), read by many agents besides Claude, and it
   belongs at the repository root and nowhere else.
@@ -633,7 +625,7 @@ broken build.
 | `.claude/agents/` | This repository's own domain specialists — the directory listing is authoritative, not this row |
 | `.claude/rules/` | Standards that load on their own. **Some are path-scoped and fire on a matching read; the rest carry no `paths:` and load every session** — read each file's own opening for which, since a roster here would go stale on the next rule added. `## Code style` maps the ones governing Scala |
 | `.claude/protocols/` | Two kinds, neither of which auto-loads: operating discipline, and consensus domain facts — see `## Protocols` |
-| `.claude/hooks/` | The hook scripts and their own tests; `settings.json` states which are actually registered |
+| `.claude/hooks/` | The hook scripts and their own tests; `settings.json` states which are actually registered. **A tracked hook that no tracked settings file registers is a decision, not an oversight** — the script travels so its calibration stays re-runnable from a clone, while the registration is withheld because firing it in a clone would cost that clone something it did not ask for. Do not "fix" the gap by registering one; ask first. **Read that narrowly: it is not a claim that this directory is inert in a clone.** A hook `settings.json` does register runs in a clone before any permission rule is consulted, and a fork can edit a script as readily as a registration — so a withheld registration is one surface fewer, never a guarantee |
 | `.claude/settings.json` | Hook registrations and the read-deny list — see `## Boundaries` item 4 |
 | `.github/copilot-instructions.md`, `.github/assets/` | Copilot's self-contained instructions, and the logo `README.md` renders |
 | `scripts/` | Two kinds of thing, and they answer to different standards: **checkers** and a wrapper, most paired with a `*-proof.sh`, plus the fixtures and reference figures they run against; and **vector generators**, which produce a test resource from an external corpus rather than checking anything. See `scripts/README.md` |
@@ -1109,6 +1101,16 @@ declaration above is the only thing that activates it.
 **When a local branch is used, name it conventionally:** a prefix plus a short
 kebab-case description. Use the same set this repository uses for commit types —
 `feat/`, `fix/`, `refactor/`, `test/`, `build/`, `docs/`, `chore/`.
+
+**This repository sends no pull requests to any upstream project, and that is
+settled rather than unexamined.** It is not a fork: `origin` is the project's
+own canonical home, and this client carries no code from any prior
+implementation, so there is no upstream queue for a change here to reach. What
+that settles is a question about the root instruction files — `AGENTS.md` and
+`CLAUDE.md` reach only people who already have this repository, never a
+reviewer on someone else's project — so their presence at the root needs no
+further justification. Do not re-open it on finding no `upstream` remote
+configured; an absent remote is corroboration and was never what decided this.
 
 Pushing is a separate decision from committing. Never push unasked.
 

@@ -3,11 +3,12 @@
 <!--
   SELF-CONTAINED BY CHOICE. Do not thin this into a pointer at AGENTS.md.
 
-  This repository is public, so its github.com surfaces are in play for anyone
-  browsing it. github.com Chat reads this file and does NOT read AGENTS.md; the
-  same is true of several other Chat and code-review surfaces. On those, this
-  file is the only instruction the model sees, so a thin delta pointing
-  elsewhere would leave it with nothing.
+  This repository is public, so surfaces well beyond one contributor's editor
+  are in play for anyone browsing it. Some Copilot Chat and code-review
+  surfaces read this file and do not read AGENTS.md at all. On those, this file
+  is the only instruction the model sees, so a thin delta pointing elsewhere
+  would leave it with nothing. That is the whole of the decision; which
+  surfaces those are is read at the source below, never recorded here.
 
   The per-surface support matrix deliberately is NOT reproduced here. It changes
   on roughly a monthly cadence, and a copy pasted into a repo goes stale without
@@ -19,9 +20,6 @@
   surface reads both, both are supplied to the model and neither is dropped, so
   the actionable rule is that THE TWO MUST NOT CONTRADICT EACH OTHER.
 
-  DEFAULT WIRING — the content sections below are deliberately unfilled. Fill
-  each from what this repository actually contains, never from what a comparable
-  project usually contains.
 -->
 
 ## Project
@@ -41,9 +39,6 @@ per PLANNED layer with most still empty — so read the BUILT set with
 reads as though the whole client existed.
 
 ## Stack
-
-<!-- Language, runtime and build-tool versions, read from this repo's own
-     manifest and lockfile. Record the major series, not an exact patch. -->
 
 | | Version | Declared in |
 |---|---|---|
@@ -94,11 +89,6 @@ permanently.
 
 ## Commands
 
-<!-- Copy the real task names verbatim from this repo's build definition. Every
-     command listed must exist. State absent tooling as absent — "there is no
-     lint or test task here" tells the model to match style by hand rather than
-     trust a gate that does not exist. -->
-
 ```
 sdk env            apply the JDK this repo declares (once, per shell)
 sbt compile        compile
@@ -139,7 +129,7 @@ command — one the build does not define will fail and read as a broken build.
 | `LICENSE`, `NOTICE` | Apache-2.0 and its required attribution |
 | `build.sbt`, `project/build.properties` | The build definition and the sbt launcher pin |
 | `.sdkmanrc`, `.jvmopts`, `.gitattributes`, `.gitignore` | JDK, JVM, line-ending and private/public-gate pins |
-| `.claude/` | This environment's own framework layer — agents, rules, protocols, hooks, and the settings that register and gate them; tracked by default. **Some rules are path-scoped and fire on a matching read; the rest load every session** — read each file's own opening rather than assuming either |
+| `.claude/` | This environment's own framework layer — agents, rules, protocols, hooks, and the settings that register and gate them; tracked by default. **A tracked hook that no tracked settings file registers is a decision, not an oversight — ask before registering one, and do not read the gap as meaning the registered ones are gated.** **Some rules are path-scoped and fire on a matching read; the rest load every session** — read each file's own opening rather than assuming either |
 | `.github/assets/` | The logo this file and `README.md` render |
 | `scripts/` | Two kinds of thing, held to different standards: **checkers** and a wrapper, most paired with a proof script, plus the fixtures they run against; and **vector generators**, which read an external corpus and write a test resource rather than checking anything |
 | `modules/` | The layered module tree. Each module holds `src/main/scala/` and `src/test/scala/` under `org/fukuii/<module>/` — **read the directory for the current set rather than a list here** |
@@ -150,8 +140,6 @@ it. That is a property of git, not a status of this repository, so it holds
 whenever a module is created.
 
 ## Testing
-
-<!-- How tests are run and what must pass before a change lands. -->
 
 **Use `sbt testFull`, not `sbt test`, before treating a run as evidence anything
 passed.** sbt 2 caches the test result machine-wide, and that cache survives
