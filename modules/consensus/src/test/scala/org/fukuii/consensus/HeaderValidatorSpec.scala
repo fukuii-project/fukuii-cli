@@ -1,7 +1,7 @@
 package org.fukuii.consensus
 
-import org.fukuii.bytes.{Bytes, UInt256, UInt64}
-import org.fukuii.chainspec.{FeeMarket, HeaderRules, UpgradeRules}
+import org.fukuii.bytes.{Bytes, Hash, UInt256, UInt64}
+import org.fukuii.chainspec.{FeeMarket, HeaderConstants, HeaderRules, UpgradeRules}
 import org.fukuii.chainspec.networks.ethereum
 import org.fukuii.evm.EvmFixtures
 import org.fukuii.types.{BaseFeeTail, BlockHeader, BlockNonce, Bloom, Seal}
@@ -42,7 +42,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
     maxChangeDenominator = BigInt(8)
   )
 
-  private val under: UpgradeRules = ethereum.Upgrades.berlin.copy(header = HeaderRules(Some(market)))
+  private val under: UpgradeRules =
+    ethereum.Upgrades.berlin.copy(header = HeaderRules(Some(market), HeaderConstants.Unconstrained))
 
   private val below: UpgradeRules = ethereum.Upgrades.berlin
 
@@ -92,6 +93,52 @@ class HeaderValidatorSpec extends AnyFlatSpec:
     HeaderValidator.validate(
       Resolved(headerOf(2, Limit, 0, Some(statedFee)), under),
       Resolved(headerOf(1, Limit, gasUsedByParent, Some(ParentFee)), under)
+    )
+
+  // ── The fields a fork holds at a constant ─────────────────────────────────
+
+  private val fixed: UpgradeRules =
+    ethereum.Upgrades.berlin.copy(header = HeaderRules(Some(market), HeaderConstants.Eip3675))
+
+  /** The commitment EIP-3675's table states, as the 32-byte literal rather than
+    * as the derivation the validator holds.
+    *
+    * Written out here so that the derived constant is compared against
+    * something that was not derived the same way: an implementation and an
+    * assertion sharing one derivation agree however wrong it is.
+    */
+  private val StatedEmptyOmmersHash: String =
+    "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"
+
+  /** A nonce that is not the eight zero bytes, as the width the field requires.
+    *
+    * `BlockNonce` offers no numeric constructor, which is the type refusing to
+    * let a nonce be confused with a quantity -- so this is the eight-byte
+    * literal rather than a one widened into it.
+    */
+  private val NonZeroNonce: BlockNonce =
+    BlockNonce
+      .fromHex("0x0000000000000001")
+      .getOrElse(throw new IllegalStateException("an eight-byte nonce literal did not parse"))
+
+  /** A header satisfying every other rule this object checks, with the three
+    * constrained fields open.
+    *
+    * Its parent used exactly its target, so the charge is unchanged and the
+    * base-fee arm cannot be what refuses a case below.
+    */
+  private def constrained(
+      difficulty: UInt256 = UInt256.Zero,
+      ommersHash: Hash = HeaderValidator.EmptyOmmersHash,
+      seal: Seal = Seal.MixHashAndNonce(EvmFixtures.hash(0), BlockNonce.Zero),
+      rules: UpgradeRules = fixed
+  ): Either[HeaderFault, Unit] =
+    HeaderValidator.validate(
+      Resolved(
+        headerOf(2, Limit, 0, Some(ParentFee)).copy(difficulty = difficulty, ommersHash = ommersHash, seal = seal),
+        rules
+      ),
+      Resolved(headerOf(1, Limit, Target, Some(ParentFee)), rules)
     )
 
   "a block whose parent used exactly its target" should "state the parent's own charge" in
@@ -323,4 +370,85 @@ class HeaderValidatorSpec extends AnyFlatSpec:
         Resolved(headerOf(1, BigInt(5000), 0, Some(ParentFee)), under)
       ) != Left(HeaderFault.ParentGasLimitBelowFloor(BigInt(5000), BigInt(5000))),
       "otherwise the assertion above holds for a reason that is not the floor"
+    )
+
+  // ── The header fields EIP-3675 holds at a constant ────────────────────────
+
+  "the empty-ommers commitment" should "be the digest EIP-3675 states" in
+    // The calibration of the derivation the validator holds. It composes the
+    // document's two statements -- the commitment is Keccak256(RLP([])) and
+    // RLP([]) is 0xc0 -- and this compares the result against the 32-byte
+    // literal the same line prints, which is the one reading that could catch a
+    // derivation built from the wrong empty encoding.
+    assert(
+      Hash.fromHex(StatedEmptyOmmersHash) == Right(HeaderValidator.EmptyOmmersHash),
+      "the derived commitment is not the digest the document tabulates"
+    )
+
+  "a header under a fork that fixes its fields" should "be accepted when it states all three" in
+    // The positive control. Without it every refusal below could be produced by
+    // some other rule this object runs, and the cases would all pass over a
+    // header that is refused for a reason nobody named.
+    assert(constrained() == Right(()), "a header stating every constant was refused anyway")
+
+  it should "be refused for stating a difficulty" in
+    assert(
+      constrained(difficulty = word(1)) == Left(HeaderFault.DifficultyNotFixed(word(1))),
+      "a difficulty of one is what a header under these rules must not state"
+    )
+
+  it should "be refused for stating the difficulty the fork below it would have required" in
+    // The wrong answer that is not a typo: a producer carrying its previous
+    // targeting forward writes a plausible figure, and a validator reading the
+    // formula rather than the constant accepts it.
+    assert(
+      constrained(difficulty = word(BigInt(2) * BigInt(10).pow(16))).isLeft,
+      "a mined difficulty was accepted under rules that require zero"
+    )
+
+  it should "be refused for carrying a nonce" in
+    assert(
+      constrained(seal = Seal.MixHashAndNonce(EvmFixtures.hash(0), NonZeroNonce)) ==
+        Left(HeaderFault.NonceNotFixed(NonZeroNonce)),
+      "a non-zero nonce is what a header under these rules must not carry"
+    )
+
+  it should "be refused for committing to any other ommer list" in
+    assert(
+      constrained(ommersHash = EvmFixtures.hash(1)) == Left(HeaderFault.OmmersNotEmpty(EvmFixtures.hash(1))),
+      "a commitment to something other than the empty list must be refused"
+    )
+
+  it should "not be refused for the mixed hash it carries" in
+    // The one field EIP-3675's table fixes that this layer deliberately leaves
+    // alone. That document sets it to zero and EIP-4399 fills it with the
+    // beacon chain's randomness, and the two arrive in one upgrade -- so a
+    // validator enforcing the zero would reject every block the network
+    // actually produced.
+    assert(
+      constrained(seal = Seal.MixHashAndNonce(EvmFixtures.hash(0xab), BlockNonce.Zero)) == Right(()),
+      "the randomness slot was checked against the constant the later document overrides"
+    )
+
+  it should "be refused as a shape mismatch when its seal is not the two-slot one" in
+    // Not reported as a wrong nonce: a header sealed by an authority round has
+    // no nonce field to state one in, and saying so is what keeps a shape
+    // mismatch from reading as a value mismatch.
+    assert(
+      constrained(seal = Seal.AuthorityRound(UInt64.Zero, Bytes.Empty)) == Left(HeaderFault.SealShapeUnexpected),
+      "a seal of another shape was diagnosed as a wrong value in a field it does not have"
+    )
+
+  "a header under a fork that fixes nothing" should "be accepted while violating all three" in
+    // The negative control for the whole group, and the one that shows the
+    // checks are gated on the rules rather than run unconditionally. The same
+    // header that is refused three times above is accepted here.
+    assert(
+      constrained(
+        difficulty = word(1),
+        ommersHash = EvmFixtures.hash(1),
+        seal = Seal.MixHashAndNonce(EvmFixtures.hash(0), NonZeroNonce),
+        rules = under
+      ) == Right(()),
+      "a fork that fixes none of these fields had them enforced anyway"
     )

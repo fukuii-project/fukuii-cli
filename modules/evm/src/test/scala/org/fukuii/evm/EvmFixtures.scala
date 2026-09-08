@@ -256,7 +256,8 @@ object EvmFixtures:
     storageMetering = StorageMetering.Legacy,
     stateAccessMetering = StateAccessMetering.Settled,
     touchSurvivesFailure = Set.empty,
-    reservedCodePrefix = None
+    reservedCodePrefix = None,
+    blockRandomness = BlockRandomness.Unavailable
   )
 
   val block: BlockContext = BlockContext(
@@ -265,7 +266,8 @@ object EvmFixtures:
     timestamp = BigInt(1234567890),
     difficulty = BigInt(0x0100),
     gasLimit = BigInt(3141592),
-    baseFee = None
+    baseFee = None,
+    prevRandao = None
   )
 
   val transaction: TransactionContext = TransactionContext(origin = address(0x99), gasPrice = BigInt(7))

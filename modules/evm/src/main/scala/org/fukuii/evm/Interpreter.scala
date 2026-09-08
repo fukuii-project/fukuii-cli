@@ -190,6 +190,21 @@ object Interpreter:
         environment.block.number.toString
     )
 
+  /** Refused rather than defaulted, for the reason [[unfilledBaseFee]] is.
+    *
+    * A zero randomness value is legal and indistinguishable from an absent one,
+    * so standing it in would push a plausible answer for a block that supplied
+    * none. What keeps this out of reach is that the rules answering
+    * [[BlockRandomness.Eip4399]] and the block carrying a value are settled by
+    * one upgrade, so reaching here describes a configuration this project would
+    * have had to write.
+    */
+  private def unfilledPrevRandao(environment: Environment): Nothing =
+    throw new IllegalStateException(
+      "these rules read the block's randomness at a block that carries none, at number " +
+        environment.block.number.toString
+    )
+
   private def transfer(world: JournaledWorldState, message: Message): Unit =
     if message.transfersValue && !message.value.isZero then
       val available = world.balanceOf(message.caller)
@@ -422,14 +437,28 @@ object Interpreter:
       // The one operation that reads which network this is. It is not a block
       // value and not a transaction value, so it comes from the environment
       // directly rather than through either context.
-      case Opcode.ChainId    => pushing(frame, operation)(Word(environment.chainId.toBigInt))
-      case Opcode.Origin     => pushing(frame, operation)(wordOf(environment.transaction.origin))
-      case Opcode.GasPrice   => pushing(frame, operation)(Word(environment.transaction.gasPrice))
-      case Opcode.Coinbase   => pushing(frame, operation)(wordOf(environment.block.coinbase))
-      case Opcode.Timestamp  => pushing(frame, operation)(Word(environment.block.timestamp))
-      case Opcode.Number     => pushing(frame, operation)(Word(environment.block.number))
-      case Opcode.Difficulty => pushing(frame, operation)(Word(environment.block.difficulty))
-      case Opcode.GasLimit   => pushing(frame, operation)(Word(environment.block.gasLimit))
+      case Opcode.ChainId   => pushing(frame, operation)(Word(environment.chainId.toBigInt))
+      case Opcode.Origin    => pushing(frame, operation)(wordOf(environment.transaction.origin))
+      case Opcode.GasPrice  => pushing(frame, operation)(Word(environment.transaction.gasPrice))
+      case Opcode.Coinbase  => pushing(frame, operation)(wordOf(environment.block.coinbase))
+      case Opcode.Timestamp => pushing(frame, operation)(Word(environment.block.timestamp))
+      case Opcode.Number    => pushing(frame, operation)(Word(environment.block.number))
+      case Opcode.GasLimit  => pushing(frame, operation)(Word(environment.block.gasLimit))
+
+      // The one operation whose byte and price are the same on both sides of the
+      // fork that changes it and whose VALUE is not, so the table cannot say
+      // which reading is in force and the rules have to. EIP-4399 supplants what
+      // this reports without moving it or repricing it.
+      case Opcode.Difficulty =>
+        environment.rules.blockRandomness match
+          case BlockRandomness.Unavailable =>
+            pushing(frame, operation)(Word(environment.block.difficulty))
+          case BlockRandomness.Eip4399 =>
+            pushing(frame, operation)(
+              Word.fromBytes(
+                Bytes.fromIArray(environment.block.prevRandao.getOrElse(unfilledPrevRandao(environment)).toBytes)
+              )
+            )
 
       // The one block value that is absent below the fork which introduced it,
       // so reading it is the only block read that can find nothing. It is

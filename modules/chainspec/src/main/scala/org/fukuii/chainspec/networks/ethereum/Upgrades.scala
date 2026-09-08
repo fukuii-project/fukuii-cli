@@ -38,13 +38,16 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip3529,
   Eip3541,
   Eip3554,
+  Eip3675,
   Eip4345,
+  Eip4399,
   Eip5133,
   Eip649,
   Eip658,
   Eip7
 }
 import org.fukuii.evm.{
+  BlockRandomness,
   EvmRules,
   GasForwarding,
   GasSchedule,
@@ -285,7 +288,8 @@ object Upgrades:
         storageMetering = StorageMetering.Legacy,
         stateAccessMetering = StateAccessMetering.Settled,
         touchSurvivesFailure = Set.empty,
-        reservedCodePrefix = None
+        reservedCodePrefix = None,
+        blockRandomness = BlockRandomness.Unavailable
       ),
       execution = ExecutionRules(
         touchedEmptyAccountsAreDeleted = false,
@@ -776,3 +780,47 @@ object Upgrades:
     * establishes it.
     */
   val grayGlacier: UpgradeRules = arrowGlacier.adopting(Eip5133.component)
+
+  /** [[grayGlacier]] with EIP-3675 and EIP-4399 adopted.
+    *
+    * ==Two members, from the same kind of statement as the two above==
+    *
+    * `ethereum/execution-specs` @ `20f7f6271` (2026-08-26) states what this fork
+    * changes in `src/ethereum/forks/paris/__init__.py` and the list has two
+    * entries, EIP-3675 and EIP-4399. That is the same source
+    * [[arrowGlacier]] and [[grayGlacier]] rest their single-member lists on, and
+    * a different kind from [[berlin]]'s, whose note records that no proposal
+    * states its membership at all.
+    *
+    * ==Three facets move, and the one a reader expects to is not among them==
+    *
+    * [[Eip3675]] writes the consensus facet and the header facet; [[Eip4399]]
+    * writes `evm`. **Nothing writes the difficulty members**, which is the
+    * omission worth stating on the composition rather than only on the document:
+    * a reader arriving from six consecutive upgrades that moved a bomb delay
+    * would reasonably expect a seventh figure here, and the reason there is none
+    * is that EIP-3675 removes the formula those figures parameterize rather than
+    * moving them. They are carried through from [[grayGlacier]] unchanged, and
+    * nothing on this network reads them again.
+    *
+    * ==The order is stated and is immaterial==
+    *
+    * The two name no common field. EIP-3675 writes two consensus members and one
+    * header member; EIP-4399 writes one machine member. It is stated because two
+    * deltas touching one field compose to whichever ran last, and because the
+    * DEPENDENCY between them is real even though their deltas are disjoint --
+    * EIP-4399's frontmatter is `requires: 3675`, and the field it reads is one
+    * EIP-3675's own table would otherwise hold at zero.
+    *
+    * ==The first rule set on this network that no miner can produce==
+    *
+    * Which is what makes it the first whose blocks are not sealed by the
+    * mechanism `org.fukuii.consensus.pow.EthashEngine` implements. **That engine
+    * is not disabled by anything here** -- these rules still carry the difficulty
+    * members it reads, and handing them to it would compute a nonzero target for
+    * a block whose header must state zero. Which engine a network runs at a
+    * height is `org.fukuii.consensus.ConsensusEngine`'s question and is not
+    * answered in this file; what a header must then state is, and
+    * `org.fukuii.consensus.HeaderValidator` refuses the mismatch.
+    */
+  val paris: UpgradeRules = grayGlacier.adopting(Eip3675.component, Eip4399.component)

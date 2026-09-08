@@ -87,7 +87,7 @@ object VmFixture:
       timestamp <- FixtureValues.quantityAt(json, "currentTimestamp")
       difficulty <- FixtureValues.quantityAt(json, "currentDifficulty")
       gasLimit <- FixtureValues.quantityAt(json, "currentGasLimit")
-    yield BlockContext(coinbase, number, timestamp, difficulty, gasLimit, baseFee = None)
+    yield BlockContext(coinbase, number, timestamp, difficulty, gasLimit, baseFee = None, prevRandao = None)
 
   private def invocationOf(json: Json): Either[String, VmInvocation] =
     for

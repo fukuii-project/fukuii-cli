@@ -139,7 +139,8 @@ class EvmRulesSpec extends AnyFlatSpec:
       storageMetering = StorageMetering.Legacy,
       stateAccessMetering = StateAccessMetering.Settled,
       touchSurvivesFailure = Set.empty,
-      reservedCodePrefix = None
+      reservedCodePrefix = None,
+      blockRandomness = BlockRandomness.Unavailable
     )
     assert(rebuilt == base, "two identical configurations built separately compared as different rules")
   }

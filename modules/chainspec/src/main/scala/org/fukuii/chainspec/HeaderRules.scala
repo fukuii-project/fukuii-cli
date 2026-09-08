@@ -54,22 +54,79 @@ final case class FeeMarket(
     maxChangeDenominator: BigInt
 )
 
+/** Which header fields a fork holds at a constant, rather than leaving them for
+  * a block's producer to choose and its consensus mechanism to check.
+  *
+  * ==Why a selector and not the constants themselves==
+  *
+  * [[HeaderRules]]'s own admission test refuses a fork-invariant value a place
+  * on a fork-resolved record, and the constants are fork-invariant: EIP-3675
+  * fixes all three, so every network adopting it fixes the same three to the
+  * same values. What varies per fork is only whether the rule is in force, and
+  * that is the whole of what this carries.
+  *
+  * ==One member for three checks, where two clients write three==
+  *
+  * `ethereum/execution-specs` @ `20f7f6271a` (2026-08-26) checks each
+  * separately inside one function -- `src/ethereum/forks/paris/fork.py:324`,
+  * `:326` and `:328` -- and `besu-eth/besu` @ `fdf1247c6d` (2026-08-26) wires
+  * three named rules, `NoDifficultyRule`, `NoNonceRule` and
+  * `ConstantOmmersHashRule`, into one builder in
+  * `MainnetBlockHeaderValidator.mergeBlockHeaderValidator`. **Neither gates them
+  * independently.** All three arrive in one document at one activation, so a
+  * rule set that could hold two of the three would express a fork no
+  * specification states.
+  *
+  * `org.fukuii.consensus.HeaderValidator` still reports which of the three
+  * refused a header, because that is a diagnosis rather than a rule: the reason
+  * a peer's block was rejected is what a divergence is read from.
+  */
+enum HeaderConstants:
+
+  /** None of them: the producer chooses its difficulty, its seal and its
+    * ommers, and whichever mechanism the network runs is what checks them.
+    *
+    * The answer every fork gives below the first that fixes any of them, which
+    * is every fork this project has built until now.
+    */
+  case Unconstrained
+
+  /** The difficulty, the seal's nonce and the ommers commitment are each fixed
+    * to the value EIP-3675 states.
+    *
+    * Named for the document rather than for a mechanism or a network's word for
+    * the upgrade that carried it, which is
+    * [[DifficultyAdjustment.Eip100]]'s precedent on the facet beside this one
+    * and is what `.claude/rules/nomenclature.md` requires of a name read by more
+    * than one network family.
+    */
+  case Eip3675
+
 /** What a fork decides about a header's own fields, rather than about what runs
   * inside the block.
   *
-  * ==Forecast by [[UpgradeRules]] and landing with one member==
+  * ==Forecast by [[UpgradeRules]], and each member arrived with its reader==
   *
   * That type states the test a facet's members are admitted by -- a facet holds
   * what the layer reading it needs, never before, so **a facet is smaller than
   * the concern it is named for and grows as the layers that read it land**. This
-  * one is named for everything a fork settles about a header and carries the one
-  * thing the layer built beside it reads.
+  * one is named for everything a fork settles about a header and carries what
+  * the layer built beside it reads. **No count is stated, deliberately**: the
+  * count is what goes stale on the commit that adds the next member, and the
+  * record itself is where a reader finds it.
   *
-  * Its own note names what brought it: *"a base fee and a withdrawals root are
-  * not rules the consensus mechanism sets ... what it wants is a header facet,
-  * which nothing here reads yet."* A fee market is the first of those to exist,
-  * and `org.fukuii.consensus.HeaderValidator` is the reader that makes the facet
-  * admissible.
+  * Its own note names what brought the first: *"a base fee and a withdrawals
+  * root are not rules the consensus mechanism sets ... what it wants is a header
+  * facet, which nothing here reads yet."* A fee market is the first of those to
+  * exist, and `org.fukuii.consensus.HeaderValidator` is the reader that makes
+  * the facet admissible.
+  *
+  * [[constants]] arrived the same way and not by forecast: EIP-3675 fixes three
+  * header fields to constants, the same validator is what compares them, and the
+  * member exists because that comparison needs to know whether the rule is in
+  * force. **What it is emphatically not is a second way to ask which consensus
+  * mechanism a network runs** -- it answers one question about one header, and a
+  * reader wanting the mechanism wants `org.fukuii.consensus.ConsensusEngine`.
   *
   * ==Three header rules this build owes are deliberately NOT members==
   *
@@ -100,12 +157,22 @@ final case class FeeMarket(
   *   MUST NOT, which is a rule about the header's shape rather than about any
   *   value in it -- and it is the pair, not the presence alone, that
   *   `org.fukuii.consensus.HeaderValidator` checks.
+  * @param constants
+  *   which of a header's fields this fork holds at a constant. [[HeaderConstants]]
+  *   carries the evidence for the pair and for why one member answers for three
+  *   fields.
+  *
+  *   **It admits a member here on the same test [[feeMarket]] met, and that test
+  *   is what the second member is evidence for rather than against.** A rule
+  *   being fork-INVARIANT keeps it off this record; this one is fork-resolved in
+  *   the two clients read for it and in the executable specification, each of
+  *   which enforces the constants at one fork and not at the fork below it.
   */
-final case class HeaderRules(feeMarket: Option[FeeMarket])
+final case class HeaderRules(feeMarket: Option[FeeMarket], constants: HeaderConstants)
 
 object HeaderRules:
 
   /** A fork settling nothing about its headers, which is every fork below the
     * first fee market.
     */
-  val Unset: HeaderRules = HeaderRules(feeMarket = None)
+  val Unset: HeaderRules = HeaderRules(feeMarket = None, constants = HeaderConstants.Unconstrained)

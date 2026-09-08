@@ -64,7 +64,8 @@ class MainnetSpec extends AnyFlatSpec:
           "Berlin",
           "London",
           "Arrow Glacier",
-          "Gray Glacier"
+          "Gray Glacier",
+          "Paris"
         ),
       "an enumeration missing an entry misnumbers every entry after it, which is silent rather than absent"
     )
@@ -150,6 +151,16 @@ class MainnetSpec extends AnyFlatSpec:
         // rather than at a block.
         Activation.AtBlock(UInt64.fromBits(13773000L)),
         Activation.AtBlock(UInt64.fromBits(15050000L))
+        // AND NOTHING FOR 15,537,394, which is the one exclusion here that
+        // drops an entry that DOES change the rules. EIP-3675 requires it: a
+        // fork identifier is exchanged before either peer has the other's
+        // chain, and a point that was a condition on accumulated work rather
+        // than a number cannot go into one -- a peer that has not reached the
+        // condition has no figure to checksum. The entry is
+        // `Upgrade.RetrospectiveRuleChange` for exactly this, and the wrong
+        // answer here is silent in the worst way: the identifier is still a
+        // number, every peer still computes one, and the ones that reject it
+        // look like unrelated network trouble.
       ),
       "genesis is excluded by EIP-2124 and thawing by enforcing nothing, leaving the ones that are neither"
     )
@@ -319,4 +330,70 @@ class MainnetSpec extends AnyFlatSpec:
       Upgrades.arrowGlacier.components.diff(Upgrades.london.components) == Vector(ProposalId.Eip(4345)) &&
         Upgrades.grayGlacier.components.diff(Upgrades.arrowGlacier.components) == Vector(ProposalId.Eip(5133)),
       "a glacier adopted a different set of proposals than the one it is named for"
+    )
+
+  // ── The entry whose activation nobody could have stated in advance ─────────
+
+  "the Paris entry" should "resolve to the rules that adopt its two proposals" in
+    assert(
+      schedule.at(UInt64.fromBits(15537394L), UInt64.Zero) == Upgrades.paris,
+      "the entry at this network's transition height does not resolve to the rules that upgrade composes"
+    )
+
+  it should "leave Gray Glacier's rules in force at the block below it" in
+    // The one-block boundary this entry's own documentation names as the
+    // available mistake: a client on this machine indexes its equivalent
+    // specification at 15,537,393, and a schedule copying that figure would put
+    // post-merge rules over the last block that was mined.
+    assert(
+      schedule.at(UInt64.fromBits(15537393L), UInt64.Zero) == Upgrades.grayGlacier,
+      "the last mined block resolves to rules produced without mining"
+    )
+
+  it should "NOT reach the fork identifier" in
+    // Asserted on the height directly as well as by the whole-vector case
+    // above, because that one is a list a careless edit can extend while this
+    // one names the figure that must be absent.
+    assert(
+      !schedule.forkPoints.contains(Activation.AtBlock(UInt64.fromBits(15537394L))),
+      "EIP-3675 forbids a point that was not knowable in advance from entering the identifier"
+    )
+
+  it should "still be a rule change across itself, which is what makes that exclusion cost something" in
+    // The exclusion above is the only one in this schedule that drops an entry
+    // changing the rules, so the pair of assertions has to state both halves:
+    // absent from the identifier, and genuinely different rules either side. A
+    // reader meeting only the first would conclude the entry changes nothing.
+    assert(
+      schedule.at(UInt64.fromBits(15537393L), UInt64.Zero) != schedule.at(UInt64.fromBits(15537394L), UInt64.Zero),
+      "an entry excluded from the identifier for being unknowable also turned out to change no rules"
+    )
+
+  it should "differ from the rules below it in the machine, the header and the consensus facets" in
+    // Three facets and not one, which separates this upgrade from the six bomb
+    // delays below it: each of those moved a single consensus figure, so a
+    // check written against their shape would pass here while reading only a
+    // third of what changed.
+    assert(
+      Upgrades.paris.evm != Upgrades.grayGlacier.evm &&
+        Upgrades.paris.header != Upgrades.grayGlacier.header &&
+        Upgrades.paris.consensus != Upgrades.grayGlacier.consensus,
+      "a facet this upgrade must move was left where the fork below it had put it"
+    )
+
+  it should "record both of its proposals in the components it carries" in
+    assert(
+      Upgrades.paris.components.diff(Upgrades.grayGlacier.components) ==
+        Vector(ProposalId.Eip(3675), ProposalId.Eip(4399)),
+      "the journal must record both documents this upgrade adopted, in the order they were adopted"
+    )
+
+  it should "leave the admission and execution facets exactly where it found them" in
+    // Neither document touches what admits a transaction or what settling one
+    // does around the machine, and stating so is what would catch a delta
+    // reaching a facet its own documentation says it does not.
+    assert(
+      (Upgrades.paris.admission eq Upgrades.grayGlacier.admission) &&
+        (Upgrades.paris.execution eq Upgrades.grayGlacier.execution),
+      "a document confined to three facets reached a fourth"
     )

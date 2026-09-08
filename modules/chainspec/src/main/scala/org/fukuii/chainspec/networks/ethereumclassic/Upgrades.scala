@@ -36,6 +36,7 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip7
 }
 import org.fukuii.evm.{
+  BlockRandomness,
   EvmRules,
   GasForwarding,
   GasSchedule,
@@ -299,7 +300,12 @@ object Upgrades:
         storageMetering = StorageMetering.Legacy,
         stateAccessMetering = StateAccessMetering.Settled,
         touchSurvivesFailure = Set.empty,
-        reservedCodePrefix = None
+        reservedCodePrefix = None,
+        // This network keeps proof of work, so the operation at 0x44 reports a
+        // difficulty at every height it will ever reach. No proposal in this
+        // file's compositions moves it, and none can: EIP-4399 is not in this
+        // network's series.
+        blockRandomness = BlockRandomness.Unavailable
       ),
       execution = ExecutionRules(
         touchedEmptyAccountsAreDeleted = false,

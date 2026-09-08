@@ -1,8 +1,9 @@
 package org.fukuii.consensus
 
-import org.fukuii.bytes.UInt256
-import org.fukuii.chainspec.{FeeMarket, UpgradeRules}
-import org.fukuii.types.BlockHeader
+import org.fukuii.bytes.{Hash, UInt256}
+import org.fukuii.chainspec.{FeeMarket, HeaderConstants, UpgradeRules}
+import org.fukuii.crypto.Keccak256
+import org.fukuii.types.{BlockHeader, BlockNonce, Seal}
 
 /** Why a header is not valid against its parent.
   *
@@ -55,6 +56,47 @@ enum HeaderFault:
     */
   case ParentGasLimitBelowFloor(stated: BigInt, floor: BigInt)
 
+  /** A block under a fork that fixes the difficulty, stating something else.
+    *
+    * The stated value is carried and the required one is not: it is the
+    * constant zero under every fork that has this rule, so repeating it in the
+    * reason would state a fact the type already fixes.
+    */
+  case DifficultyNotFixed(stated: UInt256)
+
+  /** A block under a fork that fixes the seal's nonce, carrying a different
+    * one.
+    *
+    * ==The seal the fork does not use is a separate reason==
+    *
+    * A header sealed some other way than by a digest and a nonce cannot state a
+    * wrong nonce, because it has no nonce field to state one in. That is
+    * [[SealShapeUnexpected]], and collapsing the two would report a header
+    * carrying an authority-round seal as one whose nonce is non-zero, which is
+    * a diagnosis a reader cannot act on.
+    */
+  case NonceNotFixed(stated: BlockNonce)
+
+  /** A block under a fork that fixes the ommers commitment, committing to some
+    * other list.
+    *
+    * **This is a header rule and it is not the whole of the ommer rule.** The
+    * body carrying no ommers is checked where a body is available, which is not
+    * this layer -- see [[HeaderValidator]].
+    */
+  case OmmersNotEmpty(stated: Hash)
+
+  /** A header whose seal is not the shape the fork's constant rules are stated
+    * over.
+    *
+    * EIP-3675 fixes a `nonce`, and a header sealed by an authority round
+    * carries a step and a signature in those two slots rather than a digest and
+    * a nonce. Such a header is not one whose nonce is wrong; it is one the rule
+    * cannot be applied to at all, and saying so is what keeps this layer from
+    * reporting a shape mismatch as a value mismatch.
+    */
+  case SealShapeUnexpected
+
   /** A charge whose derivation does not fit what a header can state.
     *
     * Reachable only from a parent header that was never itself validated: a
@@ -100,11 +142,11 @@ final case class Resolved(header: BlockHeader, rules: UpgradeRules)
   * block where a market begins, and which therefore could not be left unbuilt.
   *
   * **What is checked: succession, the gas figure against its own limit, the
-  * gas-limit bound, and the charge.** Against `ethereum/execution-specs` @
-  * `20f7f6271a` `forks/london/fork.py`'s `validate_header`, what remains there
-  * is the extra-data cap, the difficulty, the seal, the commitments -- and the
-  * PARENT HASH, at `:364-366`, which is the one a reader would expect to find
-  * here.
+  * gas-limit bound, the charge, and the fields a fork fixes to constants.**
+  * Against `ethereum/execution-specs` @ `20f7f6271a` `forks/london/fork.py`'s
+  * `validate_header`, what remains there is the extra-data cap, the difficulty,
+  * the seal, the commitments -- and the PARENT HASH, at `:364-366`, which is the
+  * one a reader would expect to find here.
   *
   * **The parent hash is deferred to the caller, and the reason is that the
   * caller has usually discharged it already.** A header is paired with its
@@ -118,15 +160,56 @@ final case class Resolved(header: BlockHeader, rules: UpgradeRules)
   * complete invites a caller to treat this layer as sufficient for header
   * validity, and it is not.
   *
-  * **Difficulty, the seal and ommers are not here.** Each is engine-shaped on
-  * the evidence, and [[ConsensusEngine]] already records that each *"arrives
-  * with the layer that validates the thing it governs"*. This layer validates a
-  * fee market and a gas limit; the layer that validates a difficulty is not this
-  * one, and building it here would be building against a requirement nothing
-  * has. The shape admits them: each is a further rule over the same two headers,
-  * and the seal in particular wants to be a collaborator rather than a member,
-  * because verifying one needs an epoch-scoped cache measured in tens of
-  * megabytes and a header-only pass must not have to hold one.
+  * **Difficulty, the seal and ommers are not VERIFIED here, and three of them
+  * are now COMPARED here.** The distinction is the whole content of EIP-3675 as
+  * this layer meets it, and reading the two as one is what would put the wrong
+  * rule in the wrong place.
+  *
+  * Verifying a difficulty means running a targeting formula over a parent;
+  * verifying a seal means hashing a header against an epoch-scoped cache
+  * measured in tens of megabytes; verifying ommers means holding a body and
+  * several ancestors. Each is engine-shaped on the evidence, and
+  * [[ConsensusEngine]] already records that each *"arrives with the layer that
+  * validates the thing it governs"*. **None of the three happens here.** The
+  * shape admits them: each is a further rule over the same two headers, and the
+  * seal in particular wants to be a collaborator rather than a member, so that a
+  * header-only pass never has to hold that cache.
+  *
+  * **What EIP-3675 adds is not verification of any of the three but the removal
+  * of it, replaced by a comparison against a constant** -- *"Remove verification
+  * of the block's `difficulty` value with respect to the difficulty formula.
+  * Remove verification of the block's `nonce` and `mixHash` values with respect
+  * to the Ethash function"* (`ethereum/EIPs` @ `dbfa6bee8` (2026-08-26),
+  * `EIPS/eip-3675.md:99-100`). A comparison against a constant needs no engine,
+  * no cache and no parent, so it is a header rule in the strict sense this layer
+  * already holds, and it is gated on
+  * [[org.fukuii.chainspec.HeaderRules.constants]] rather than on an engine's
+  * identity.
+  *
+  * **Two sources put those comparisons exactly where this layer sits.**
+  * `ethereum/execution-specs` @ `20f7f6271a` (2026-08-26) runs all three inside
+  * `validate_header` -- `src/ethereum/forks/paris/fork.py:324`, `:326` and
+  * `:328` -- the same function this layer implements a subset of. `besu-eth/besu`
+  * @ `fdf1247c6d` (2026-08-26) adds `ConstantOmmersHashRule`, `NoNonceRule` and
+  * `NoDifficultyRule` to the header-validation builder its fork-resolved
+  * specification wires, in
+  * `MainnetBlockHeaderValidator.mergeBlockHeaderValidator`, alongside the
+  * ancestry, gas-usage, gas-limit and base-fee rules this layer already carries.
+  *
+  * ==besu ships each of those three rules TWICE, and the copy this layer follows
+  * is the unconditional one==
+  *
+  * Worth recording because the other copy is the one a reader finds first and it
+  * would be the wrong model. Its `consensus/merge` package carries a
+  * `NoDifficultyRule` and a `NoNonceRule` that consult the accumulated work
+  * against a terminal total difficulty and exempt the terminal block, and its
+  * `ethereum/core` package carries a `NoDifficultyRule` and a `NoNonceRule` that
+  * compare the constant and nothing else. **The fork-resolved definition wires
+  * the second.** The conditional pair exists for a node deciding the transition
+  * as it happens, which is a question a schedule resolved at a known height has
+  * already answered -- see
+  * [[org.fukuii.chainspec.Upgrade.RetrospectiveRuleChange]] for why the height
+  * is knowable afterwards and was not before.
   *
   * **A future-timestamp tolerance is not here either, and that is a boundary
   * rather than a deferral.** Four clients across two lineages check a header's
@@ -187,6 +270,22 @@ object HeaderValidator:
     */
   val MinGasLimit: BigInt = BigInt(5000)
 
+  /** What a header commits to when it includes no ommers.
+    *
+    * ==Derived from the two facts the document states, rather than transcribed==
+    *
+    * `ethereum/EIPs` @ `dbfa6bee8` (2026-08-26), `EIPS/eip-3675.md:83` gives the
+    * commitment as `Keccak256(RLP([]))` and `:87` gives `RLP([]) = 0xc0`, so the
+    * value below is the composition of the document's own two statements and not
+    * a 32-byte literal copied out of it. A transcribed digest is the shape of
+    * error nothing catches -- it compiles, it round-trips, and it is wrong in one
+    * nibble -- and a derivation has no such failure available to it.
+    *
+    * `HeaderValidatorSpec` asserts it against the literal the same line states,
+    * which is what makes the derivation checked rather than merely preferred.
+    */
+  val EmptyOmmersHash: Hash = Keccak256.hash(IArray[Byte](0xc0.toByte))
+
   /** Checks `header` against `parent`, under the rules each resolves to.
     *
     * ==Both rule sets, because the transition is where they differ==
@@ -220,7 +319,46 @@ object HeaderValidator:
       _ <- checkGasUsed(block.header)
       _ <- checkGasLimit(block, parent)
       _ <- checkBaseFee(block, parent)
+      _ <- checkConstants(block)
     yield ()
+
+  /** The header fields a fork holds at a constant, against those constants.
+    *
+    * ==Three values, and each is the specification's rather than this build's==
+    *
+    * A zero difficulty, an eight-byte zero nonce, and the hash of the empty list
+    * -- `ethereum/EIPs` @ `dbfa6bee8` (2026-08-26), `EIPS/eip-3675.md:83-87`,
+    * which tabulates five rows where three are checkable on a header alone. The
+    * fourth, `mixHash`, is fixed to zero by that table and then unfixed by
+    * EIP-4399, which the same document points at two lines further on; see
+    * [[org.fukuii.chainspec.proposals.eip.Eip4399]] for why the later document
+    * governs. The fifth is the ommers list itself, which is a body and not a
+    * header.
+    *
+    * ==Nothing here reads a parent, and that is what makes it a constant rule==
+    *
+    * Every other check in this object compares a header against its parent.
+    * These compare a header against a figure the fork fixes, so the parent is
+    * unread -- which is why this is the one rule in this object that would give
+    * the same answer over a header with no parent at all.
+    */
+  private def checkConstants(block: Resolved): Either[HeaderFault, Unit] =
+    block.rules.header.constants match
+      case HeaderConstants.Unconstrained => Right(())
+      case HeaderConstants.Eip3675       =>
+        val header = block.header
+        if header.difficulty != UInt256.Zero then Left(HeaderFault.DifficultyNotFixed(header.difficulty))
+        else if header.ommersHash != HeaderValidator.EmptyOmmersHash then
+          Left(HeaderFault.OmmersNotEmpty(header.ommersHash))
+        else
+          header.seal match
+            case Seal.MixHashAndNonce(_, nonce) =>
+              // The mixed hash is deliberately unread. EIP-3675 fixes it to zero
+              // and EIP-4399 fills it with the beacon chain's randomness, so a
+              // fork carrying both -- which is every fork that has either --
+              // constrains this slot not at all.
+              if nonce != BlockNonce.Zero then Left(HeaderFault.NonceNotFixed(nonce)) else Right(())
+            case Seal.AuthorityRound(_, _) => Left(HeaderFault.SealShapeUnexpected)
 
   /** A block is its parent's successor and is later than it.
     *

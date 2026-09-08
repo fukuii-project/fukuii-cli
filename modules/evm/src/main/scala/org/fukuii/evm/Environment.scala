@@ -37,6 +37,34 @@ import org.fukuii.bytes.{Address, Hash, UInt64}
   *   environments of the forks that have it. Absence is representable in all
   *   three; which construct carries it is this build's to choose, and an option
   *   is what the layer above already uses.
+  * @param prevRandao
+  *   the randomness the beacon chain settled for the previous block, absent
+  *   where the network runs no such beacon.
+  *
+  *   **Optional for a different reason than [[baseFee]] is, and the difference
+  *   is worth stating because the two shapes look identical.** A base fee is
+  *   absent because the header FIELD is absent below the fork that adds one.
+  *   This field is not: `org.fukuii.types.Seal.MixHashAndNonce` carries a
+  *   32-byte slot on every header of that shape, at every height. What is absent
+  *   below the fork is the slot's MEANING as randomness -- pre-merge the same
+  *   bytes are a mining artifact, and pushing them would answer plausibly and
+  *   wrongly. So absence here records that the value in the header is not
+  *   randomness, rather than that there is no value.
+  *
+  *   **It is therefore the carrier and never the decider.** What the operation
+  *   at `0x44` reports is [[EvmRules.blockRandomness]]'s answer, resolved from
+  *   the schedule; this member is where the value comes from once that answer is
+  *   [[BlockRandomness.Eip4399]]. Deciding from the carrier instead would read
+  *   post-merge-ness off data rather than off the fork, which is a second source
+  *   of truth for a fact the schedule already settles.
+  *
+  *   `ethereum/go-ethereum` @ `e9e35a42f` (2026-08-26) splits it the same way and
+  *   keeps both: `core/evm.go:63-64` fills a nil-able `random` only where the
+  *   header's difficulty is zero, while `Difficulty` is set unconditionally
+  *   beside it, and the fork-resolved jump table is what picks between them.
+  *   `besu-eth/besu` @ `fdf1247c6d` (2026-08-26) keeps one accessor named for
+  *   both readings, `getMixHashOrPrevRandao()`, and picks by which operation its
+  *   fork-resolved registry holds.
   */
 final case class BlockContext(
     coinbase: Address,
@@ -44,7 +72,8 @@ final case class BlockContext(
     timestamp: BigInt,
     difficulty: BigInt,
     gasLimit: BigInt,
-    baseFee: Option[BigInt]
+    baseFee: Option[BigInt],
+    prevRandao: Option[Hash]
 )
 
 /** The transaction an invocation is running inside, as the values it can read.

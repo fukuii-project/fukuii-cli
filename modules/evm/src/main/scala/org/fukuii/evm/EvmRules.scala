@@ -343,6 +343,82 @@ enum NewAccountCharge:
     */
   case WhenValueReachesADeadDestination
 
+/** What the operation at `0x44` reports about the block it is running in.
+  *
+  * ==Why this is a rule and not a second table entry==
+  *
+  * Every other fork change to an operation is expressible in [[OpcodeTable]]: a
+  * proposal adds an entry, removes one, or moves its price. This one does none
+  * of those. The byte stays `0x44`, the operation keeps zero inputs and one
+  * output, and **its price does not move** -- *"The gas cost of the
+  * `DIFFICULTY (0x44)` opcode remains unchanged"* (`ethereum/EIPs` @
+  * `dbfa6bee8` (2026-08-26), `EIPS/eip-4399.md:46`), which
+  * `ethereum/execution-specs` @ `20f7f6271a` (2026-08-26) confirms by declaring
+  * the charge at the same tier on the same line of two consecutive fork modules:
+  * `forks/gray_glacier/vm/gas.py:135` is `OPCODE_DIFFICULTY: Final[Uint] = BASE`
+  * and `forks/paris/vm/gas.py:135` is `OPCODE_PREVRANDAO: Final[Uint] = BASE`.
+  * What changes is which value the operation reads, and an [[Operation]] carries
+  * an opcode and a cost rather than a behavior.
+  *
+  * **A second [[Opcode]] case at `0x44` is the other shape and this build cannot
+  * hold it.** That enum is documented as vocabulary rather than membership --
+  * *"a byte means the same operation everywhere it is defined at all"* -- and
+  * `Opcode.fromCode` is a map keyed on the byte, so two cases sharing one would
+  * silently drop whichever the enum happened to order last. `OpcodeSpec` already
+  * asserts the bytes are distinct, for that stated reason.
+  *
+  * **go-ethereum reaches the same arrangement from the other side, and it is the
+  * corroboration rather than the model.** `ethereum/go-ethereum` @ `e9e35a42f`
+  * (2026-08-26) declares `DIFFICULTY`, `RANDOM` and `PREVRANDAO` in
+  * `core/vm/opcodes.go:99-101` as three names for one constant `0x44` -- so its
+  * vocabulary has one entry too -- and swaps the behavior in the jump table,
+  * `core/vm/jump_table.go:147` putting `opRandom` at that byte over the fork
+  * below it. Its two implementations read different members of one block
+  * context: `core/vm/instructions.go:452` reads `Context.Difficulty` and `:457`
+  * reads `Context.Random`.
+  *
+  * ==Renaming the vocabulary entry is declined, and the document only asks==
+  *
+  * EIP-4399 puts the rename at `SHOULD` rather than `MUST`, twice and
+  * separately: *"The `mixHash` field **SHOULD** further be renamed to
+  * `prevRandao`"* and *"The `DIFFICULTY (0x44)` opcode **SHOULD** further be
+  * renamed to `PREVRANDAO (0x44)`"* (`EIPS/eip-4399.md:50` and `:52`).
+  *
+  * **Renaming [[Opcode.Difficulty]] would be false of the other network family
+  * this project serves.** A proof-of-work network runs that operation reporting
+  * a difficulty for its whole life, so a shared vocabulary naming the byte after
+  * the reading only one family ever adopts states that family's answer under no
+  * network's name -- which is what `.claude/rules/nomenclature.md` forbids of a
+  * name read at the shared level. The document's own name is carried by
+  * [[BlockRandomness.Eip4399]] instead, where it describes the reading rather
+  * than the byte.
+  */
+enum BlockRandomness:
+
+  /** The network runs no randomness beacon, and the operation reports the
+    * block's own difficulty.
+    *
+    * The answer at every fork below the first that supplies one, and the
+    * permanent answer on a network that never does.
+    */
+  case Unavailable
+
+  /** EIP-4399: the operation reports the randomness the beacon chain settled
+    * for the previous block.
+    *
+    * ==It is read as bytes and not as a number==
+    *
+    * The value is a 32-byte field widened to a machine word, where a difficulty
+    * is a quantity that was already one. `ethereum/execution-specs` @
+    * `20f7f6271a` `forks/paris/vm/instructions/block.py:195` pushes
+    * `U256.from_be_bytes(evm.message.block_env.prev_randao)` where
+    * `forks/gray_glacier/.../block.py` pushes `U256(...block_env.difficulty)`,
+    * and `besu-eth/besu` @ `fdf1247c6d` pushes
+    * `frame.getBlockValues().getMixHashOrPrevRandao()` -- a big-endian reading
+    * of the same 32 bytes in both.
+    */
+  case Eip4399
+
 /** The rules one chain runs, as a value a fork produces rather than a branch the
   * machine takes.
   *
@@ -568,6 +644,10 @@ enum NewAccountCharge:
   *   byte, so holding it as data is this build's choice rather than the field's
   *   -- taken because the alternative states the same fact twice, once as a
   *   boolean here and once as a literal in the machine.
+  * @param blockRandomness
+  *   what the operation at `0x44` reports about the block it runs in.
+  *   [[BlockRandomness]] carries the evidence for the pair, and for why this is
+  *   a member here rather than a second entry in [[table]].
   */
 final case class EvmRules(
     table: OpcodeTable,
@@ -581,7 +661,8 @@ final case class EvmRules(
     storageMetering: StorageMetering,
     stateAccessMetering: StateAccessMetering,
     touchSurvivesFailure: Set[Address],
-    reservedCodePrefix: Option[Int]
+    reservedCodePrefix: Option[Int],
+    blockRandomness: BlockRandomness
 ):
 
   /** These rules with each proposal applied, in the order given.

@@ -192,7 +192,12 @@ object StateFixture:
       timestamp <- FixtureValues.quantityAt(json, "currentTimestamp")
       difficulty <- FixtureValues.quantityAt(json, "currentDifficulty")
       gasLimit <- FixtureValues.quantityAt(json, "currentGasLimit")
-    yield BlockContext(coinbase, number, timestamp, difficulty, gasLimit, baseFee = None)
+    // The corpus publishes the beacon chain's randomness as `currentRandom`
+    // beside `currentDifficulty`, and this harness reads neither into the
+    // randomness member because it runs no fork that reports one. The trigger
+    // for reading it is the first post-merge fork this harness certifies; until
+    // then a filled member would be a value no case here can observe.
+    yield BlockContext(coinbase, number, timestamp, difficulty, gasLimit, baseFee = None, prevRandao = None)
 
   /** The signed transaction a combination was built from, where the corpus
     * publishes it.

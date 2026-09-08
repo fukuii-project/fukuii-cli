@@ -614,6 +614,103 @@ object Mainnet:
       Upgrade.RuleChange(Upgrades.grayGlacier)
     )
 
+  /** Paris, block 15,537,394.
+    *
+    * ==This height is a RETROSPECTIVE reading, and every other on this ladder is
+    * not==
+    *
+    * Each activation above was agreed in advance and published as a number. This
+    * one was not: the trigger was a condition on accumulated work, so no
+    * participant could state the height until the chain had reached it.
+    * [[Upgrade.RetrospectiveRuleChange]] carries what that costs -- the height is
+    * real, `UpgradeSchedule.at` honours it, and EIP-2124's fork identifier must
+    * not count it -- and that case's documentation holds the evidence rather than
+    * this entry.
+    *
+    * ==Where the number comes from, and the two nearby figures that are not it==
+    *
+    * `ethereum/execution-specs` @ `20f7f6271` (2026-08-26) states it as the
+    * executable criterion in `src/ethereum/forks/paris/__init__.py:43`,
+    * `FORK_CRITERIA: ForkCriteria = ByBlockNumber(15537394)`, under a comment
+    * recording that the trigger was the accumulated work reaching a terminal
+    * value and that the event *"is now a historical event"*.
+    *
+    * **A neighbouring figure is one below and is a different client's index, not
+    * this height.** `NethermindEth/nethermind` @ `b92e2a471` (2026-08-26) carries
+    * `ParisBlockNumber = 15_537_393` in
+    * `Nethermind.Specs/MainnetSpecProvider.cs:24`, with `postMergeBlock:
+    * ParisBlockNumber + 1` at `:75` recovering this height from it. That client
+    * indexes its own spec ladder at the last mined block deliberately; its own
+    * source explains why, and `org.fukuii.chainspec.proposals.eip.Eip3675`
+    * records that the arrangement is that client's and not the document's. **A
+    * schedule copying 15,537,393 would put post-merge rules over a block that was
+    * mined**, which is a chain split at exactly one block and is invisible to any
+    * fixture that does not straddle it.
+    *
+    * ==Two further statements of 15,537,394, of two different kinds==
+    *
+    * `erigontech/erigon` @ `776a380b1` (2026-08-26) states it as a schedule
+    * field, `"mergeBlock": 15537394` in
+    * `execution/chain/spec/chainspecs/mainnet.json`. `besu-eth/besu` @
+    * `fdf1247c6` (2026-08-26) states it as something else entirely and is worth
+    * keeping for that reason: `config/src/main/resources/mainnet.json` carries a
+    * `checkpoint` block whose `"number": 15537394` sits under the comment *"Start
+    * sync from first proof of stake block"*. That is a sync origin rather than a
+    * fork activation, so it is independent of any fork ladder and still names
+    * this height as the first block produced the new way.
+    *
+    * **`mergeBlock` is NOT `mergeNetsplitBlock`, and conflating them is the
+    * available mistake here.** The second is EIP-3675's `FORK_NEXT_VALUE`, the
+    * virtual fork a network configures at a knowable height so peers split there
+    * rather than at a transition nobody can predict. Erigon's own `sepolia.json`
+    * carries both and they differ -- `"mergeBlock": 1450409` against
+    * `"mergeNetsplitBlock": 1735371`, **284,962 blocks apart** -- so a reader
+    * taking one key for the other reads the right figure on this network and the
+    * wrong one on the next. [[UpgradeSchedule.forkPoints]] records that this
+    * build does not model the virtual fork and what would bring it in.
+    *
+    * ==go-ethereum states no height for it at all, and that is the corroboration
+    * it can offer==
+    *
+    * `ethereum/go-ethereum` @ `e9e35a42f` (2026-08-26) runs
+    * `GrayGlacierBlock: big.NewInt(15_050_000)` straight into
+    * `TerminalTotalDifficulty` and then into `ShanghaiTime` in `params/config.go`,
+    * with no block-numbered field for this transition anywhere between them, and
+    * `MergeNetsplitBlock` nil on this network. **So it is not a witness to the
+    * figure**, and the absence is the point: that client derives its fork
+    * identifier by reflecting over block-numbered configuration fields, and
+    * [[Upgrade.RetrospectiveRuleChange]] rests partly on there being no such field
+    * to reflect over. The reading that would be wrong is to record geth as
+    * agreeing with the height.
+    *
+    * ==Nothing activates between this entry and the one above it==
+    *
+    * Checked with the instrument the two misses on this ladder had in common --
+    * EVERY numeric field in a client's mainnet configuration, not the fields
+    * named after an upgrade -- over the window from 15,050,000 to this height,
+    * exclusive at both ends, in go-ethereum, erigon and besu. The window is
+    * empty in all three.
+    *
+    * **The zero is calibrated before it is read.** Run unchanged over
+    * 12,244,000 to 15,050,000, which is known to hold two upgrades, the same
+    * instrument returns 12,965,000 and 13,773,000 from each of the three -- so it
+    * discriminates, and an empty window above is a reading rather than a silence.
+    *
+    * ==The last entry activating by block number on this network==
+    *
+    * Every upgrade above this one activates at a timestamp, which
+    * `UpgradeSchedule.Error.TimestampBeforeBlock` is what enforces the ordering
+    * of. Stated here because this entry is where the axis changes, and a reader
+    * adding the next one needs to know that before writing its activation rather
+    * than after.
+    */
+  private val paris: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(
+      atBlock(15537394),
+      upgrade("Paris"),
+      Upgrade.RetrospectiveRuleChange(Upgrades.paris)
+    )
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -653,6 +750,7 @@ object Mainnet:
         berlin,
         london,
         arrowGlacier,
-        grayGlacier
+        grayGlacier,
+        paris
       )
     )
