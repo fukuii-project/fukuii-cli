@@ -97,6 +97,15 @@ enum HeaderFault:
     */
   case SealShapeUnexpected
 
+  /** A block at a fork that commits to withdrawals, carrying no such
+    * commitment.
+    */
+  case WithdrawalsRootMissing
+
+  /** A block below any withdrawals proposal, carrying a commitment over them.
+    */
+  case WithdrawalsRootUnexpected(stated: Hash)
+
   /** A charge whose derivation does not fit what a header can state.
     *
     * Reachable only from a parent header that was never itself validated: a
@@ -142,7 +151,9 @@ final case class Resolved(header: BlockHeader, rules: UpgradeRules)
   * block where a market begins, and which therefore could not be left unbuilt.
   *
   * **What is checked: succession, the gas figure against its own limit, the
-  * gas-limit bound, the charge, and the fields a fork fixes to constants.**
+  * gas-limit bound, the charge, the fields a fork fixes to constants, and
+  * whether a commitment over the block's withdrawals is present where its fork
+  * requires one.**
   * Against `ethereum/execution-specs` @ `20f7f6271a` `forks/london/fork.py`'s
   * `validate_header`, what remains there is the extra-data cap, the difficulty,
   * the seal, the commitments -- and the PARENT HASH, at `:364-366`, which is the
@@ -320,7 +331,39 @@ object HeaderValidator:
       _ <- checkGasLimit(block, parent)
       _ <- checkBaseFee(block, parent)
       _ <- checkConstants(block)
+      _ <- checkWithdrawalsRoot(block)
     yield ()
+
+  /** A header states a commitment over its block's withdrawals exactly where
+    * its fork requires one.
+    *
+    * ==Presence and absence, and deliberately not the value==
+    *
+    * The pair is the same one [[checkBaseFee]] states and is checked the same
+    * way, because a header alone is enough to settle it: a fork with the
+    * withdrawals proposal requires the field and a fork below it forbids it.
+    * `besu-eth/besu` @ `fdf1247c6d` (2026-08-26) resolves exactly this pair per
+    * fork, in `WithdrawalsValidator.ProhibitedWithdrawals.validateWithdrawalsRoot`
+    * -- *"withdrawalsRoot must be null when Withdrawals are prohibited"* -- and
+    * its `AllowedWithdrawals` converse.
+    *
+    * **What the root must BE is not asked here, and this is the boundary this
+    * object already draws rather than a new one.** That comparison needs the
+    * block's withdrawals, so it is a commitment in exactly the sense the state
+    * root, the receipts root and the gas figure are: checked against what
+    * execution produced, by a caller holding a body.
+    * `org.fukuii.execution.BlockOutput.withdrawalsRoot` is the value it is
+    * compared against, and because that value is itself an option over a hash,
+    * one comparison settles the value and re-settles the presence -- so a
+    * caller that has run the block is not relying on this check, and a node that
+    * has only a header is not left without one.
+    */
+  private def checkWithdrawalsRoot(block: Resolved): Either[HeaderFault, Unit] =
+    (block.rules.header.carriesWithdrawalsRoot, block.header.withdrawalsRoot) match
+      case (false, None)         => Right(())
+      case (false, Some(stated)) => Left(HeaderFault.WithdrawalsRootUnexpected(stated))
+      case (true, None)          => Left(HeaderFault.WithdrawalsRootMissing)
+      case (true, Some(_))       => Right(())
 
   /** The header fields a fork holds at a constant, against those constants.
     *

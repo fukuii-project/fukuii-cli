@@ -4,7 +4,7 @@ import org.fukuii.bytes.{Bytes, Hash, UInt256, UInt64}
 import org.fukuii.chainspec.{FeeMarket, HeaderConstants, HeaderRules, UpgradeRules}
 import org.fukuii.chainspec.networks.ethereum
 import org.fukuii.evm.EvmFixtures
-import org.fukuii.types.{BaseFeeTail, BlockHeader, BlockNonce, Bloom, Seal}
+import org.fukuii.types.{BaseFeeTail, BlockHeader, BlockNonce, Bloom, Seal, WithdrawalsTail}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** What a header must satisfy against its parent, at and around a fee market.
@@ -43,7 +43,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
   )
 
   private val under: UpgradeRules =
-    ethereum.Upgrades.berlin.copy(header = HeaderRules(Some(market), HeaderConstants.Unconstrained))
+    ethereum.Upgrades.berlin
+      .copy(header = HeaderRules(Some(market), HeaderConstants.Unconstrained, carriesWithdrawalsRoot = false))
 
   private val below: UpgradeRules = ethereum.Upgrades.berlin
 
@@ -83,6 +84,34 @@ class HeaderValidatorSpec extends AnyFlatSpec:
       Resolved(headerOf(4, FixtureParentLimit, 0, None), below)
     )
 
+  // ── The commitment over a block's withdrawals ─────────────────────────────
+
+  /** The fee market of [[under]], with the withdrawals commitment required too.
+    *
+    * A fork requiring the field is necessarily one with a fee market -- the
+    * root is a header element behind the base fee, so a header cannot carry one
+    * without the other -- which is why this is built over [[under]] rather than
+    * beside it.
+    */
+  private val withWithdrawals: UpgradeRules =
+    ethereum.Upgrades.berlin.copy(header = HeaderRules(Some(market), HeaderConstants.Unconstrained, true))
+
+  /** A commitment over some list, whose value no rule at this layer reads. */
+  private val SomeWithdrawalsRoot: Hash = EvmFixtures.hash(0x77)
+
+  /** [[headerOf]] with a commitment over the block's withdrawals attached
+    * behind the base fee.
+    */
+  private def carrying(header: BlockHeader, root: Hash): BlockHeader =
+    header.copy(tail = header.tail.map(fee => fee.copy(next = Some(WithdrawalsTail(root)))))
+
+  private def childCommitting(rules: UpgradeRules, root: Option[Hash]): Either[HeaderFault, Unit] =
+    val plain = headerOf(2, Limit, 0, Some(ParentFee))
+    HeaderValidator.validate(
+      Resolved(root.fold(plain)(carrying(plain, _)), rules),
+      Resolved(headerOf(1, Limit, Target, Some(ParentFee)), rules)
+    )
+
   // ── The market's own arithmetic, all three arms ───────────────────────────
 
   private val Target: BigInt = BigInt(1000000)
@@ -98,7 +127,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
   // ── The fields a fork holds at a constant ─────────────────────────────────
 
   private val fixed: UpgradeRules =
-    ethereum.Upgrades.berlin.copy(header = HeaderRules(Some(market), HeaderConstants.Eip3675))
+    ethereum.Upgrades.berlin
+      .copy(header = HeaderRules(Some(market), HeaderConstants.Eip3675, carriesWithdrawalsRoot = false))
 
   /** The commitment EIP-3675's table states, as the 32-byte literal rather than
     * as the derivation the validator holds.
@@ -451,4 +481,46 @@ class HeaderValidatorSpec extends AnyFlatSpec:
         rules = under
       ) == Right(()),
       "a fork that fixes none of these fields had them enforced anyway"
+    )
+
+  // ── The commitment over a block's withdrawals ─────────────────────────────
+
+  "a header at a fork that commits to withdrawals" should "be accepted when it states a commitment" in
+    assert(
+      childCommitting(withWithdrawals, Some(SomeWithdrawalsRoot)) == Right(()),
+      "the field is required and this header has one"
+    )
+
+  it should "be refused when it states none" in
+    assert(
+      childCommitting(withWithdrawals, None) == Left(HeaderFault.WithdrawalsRootMissing),
+      "a block at this fork whose header omits the field is invalid, not merely lossy"
+    )
+
+  "a header below any withdrawals proposal" should "be accepted when it states no commitment" in
+    assert(
+      childCommitting(under, None) == Right(()),
+      "every block this network produced before the fork is one of these"
+    )
+
+  it should "be refused when it states one" in
+    // The half a check written only for the required direction drops. A
+    // validator asserting presence alone admits a block carrying a field its
+    // height does not define, which is a header this network never produced and
+    // a shape every client read here refuses.
+    assert(
+      childCommitting(under, Some(SomeWithdrawalsRoot)) ==
+        Left(HeaderFault.WithdrawalsRootUnexpected(SomeWithdrawalsRoot)),
+      "absence is a rule, exactly as presence is"
+    )
+
+  "the value a commitment states" should "not be read at this layer" in
+    // Two headers differing only in the 32 bytes are both accepted, because the
+    // comparison needs the block's withdrawals and this layer holds no body.
+    // What settles it is `org.fukuii.execution.BlockOutput.withdrawalsRoot`
+    // against the header, which is where every other commitment is settled.
+    assert(
+      childCommitting(withWithdrawals, Some(EvmFixtures.hash(0x11))) ==
+        childCommitting(withWithdrawals, Some(EvmFixtures.hash(0x22))),
+      "a header-only pass cannot know which list a root commits to"
     )

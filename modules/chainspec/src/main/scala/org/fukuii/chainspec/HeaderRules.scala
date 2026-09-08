@@ -145,11 +145,12 @@ enum HeaderConstants:
   *
   * ==What a later fork adds, and why the shape admits it==
   *
-  * A withdrawals root, a blob-gas schedule and a beacon root each arrive as a
-  * further trailing header element with its own proposal.
-  * [[org.fukuii.types.BlockHeader]] already encodes all of them, so what each
-  * needs here is a member saying whether this fork requires it -- exactly the
-  * shape [[feeMarket]] takes. None is built, because no layer reads one.
+  * A blob-gas schedule and a beacon root each arrive as a further trailing
+  * header element with its own proposal.
+  * [[org.fukuii.types.BlockHeader]] already encodes both, so what each needs
+  * here is a member saying whether this fork requires it -- exactly the shape
+  * [[feeMarket]] takes, and the shape [[carriesWithdrawalsRoot]] took when the
+  * first of the three arrived. Neither is built, because no layer reads one.
   *
   * @param feeMarket
   *   the fee market this fork runs, absent where it runs none. A header under a
@@ -167,12 +168,35 @@ enum HeaderConstants:
   *   being fork-INVARIANT keeps it off this record; this one is fork-resolved in
   *   the two clients read for it and in the executable specification, each of
   *   which enforces the constants at one fork and not at the fork below it.
+  * @param carriesWithdrawalsRoot
+  *   whether a header at this fork states a commitment over the block's
+  *   withdrawals. EIP-4895 is what introduces the field, and
+  *   [[org.fukuii.chainspec.proposals.eip.Eip4895]] carries the evidence.
+  *
+  *   **A flag rather than a record, because the proposal parameterizes
+  *   nothing.** [[feeMarket]] carries three figures a derivation reads; this
+  *   carries none, and there is nothing a network could set differently. What
+  *   the root must BE is a function of the block's body and is produced where
+  *   the body is -- `org.fukuii.execution.BlockOutput.withdrawalsRoot` -- so
+  *   this member answers presence and never value.
+  *
+  *   **Both directions are rules**, as with [[feeMarket]]: a header below the
+  *   proposal carrying a root is invalid exactly as one at or above it carrying
+  *   none is. `besu-eth/besu` @ `fdf1247c6d` (2026-08-26) resolves the identical
+  *   pair per fork, selecting between a `WithdrawalsValidator.ProhibitedWithdrawals`
+  *   whose check is *"withdrawalsRoot must be null when Withdrawals are
+  *   prohibited"* and an `AllowedWithdrawals` whose check is the converse.
   */
-final case class HeaderRules(feeMarket: Option[FeeMarket], constants: HeaderConstants)
+final case class HeaderRules(
+    feeMarket: Option[FeeMarket],
+    constants: HeaderConstants,
+    carriesWithdrawalsRoot: Boolean
+)
 
 object HeaderRules:
 
   /** A fork settling nothing about its headers, which is every fork below the
     * first fee market.
     */
-  val Unset: HeaderRules = HeaderRules(feeMarket = None, constants = HeaderConstants.Unconstrained)
+  val Unset: HeaderRules =
+    HeaderRules(feeMarket = None, constants = HeaderConstants.Unconstrained, carriesWithdrawalsRoot = false)

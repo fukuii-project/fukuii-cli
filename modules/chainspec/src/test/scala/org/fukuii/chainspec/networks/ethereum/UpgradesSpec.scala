@@ -740,3 +740,45 @@ class UpgradesSpec extends AnyFlatSpec:
       Upgrades.london.consensus.blockReward == Upgrades.berlin.consensus.blockReward,
       "the fee market changes the fee, never the reward"
     )
+
+  // ── The composition that adds the withdrawals ────────────────────────────
+
+  "the composition this network calls Shanghai" should "record exactly the four proposals it adopted, in order" in
+    // The specification's own membership list for this fork has four entries
+    // and this is the order it states them in. A fifth document sits in the
+    // same file under Notices rather than Changes and is deliberately absent --
+    // see `org.fukuii.evm.Opcode.SelfDestruct`, which records why adopting it
+    // and adopting nothing produce the same machine.
+    assert(
+      Upgrades.shanghai.components.drop(Upgrades.paris.components.length) ==
+        Vector(ProposalId.Eip(3651), ProposalId.Eip(3855), ProposalId.Eip(3860), ProposalId.Eip(4895)),
+      "the journal states the four this upgrade added over the one below it"
+    )
+
+  it should "require its headers to commit to the block's withdrawals" in
+    assert(Upgrades.shanghai.header.carriesWithdrawalsRoot, "the field arrives with the fork, not with the body")
+
+  it should "not have required that at the upgrade before it" in
+    assert(
+      !Upgrades.paris.header.carriesWithdrawalsRoot,
+      "otherwise the assertion above holds for a build that requires the field at every height"
+    )
+
+  it should "keep the fee market and the fixed header fields the upgrade before it settled" in
+    // The withdrawals member is added to a facet that already carries two, and
+    // a delta rebuilding the record rather than copying it would reset them.
+    assert(
+      (Upgrades.shanghai.header.feeMarket, Upgrades.shanghai.header.constants) ==
+        (Upgrades.paris.header.feeMarket, Upgrades.paris.header.constants),
+      "one member moves and the facet's other two are carried through"
+    )
+
+  it should "leave what a block owes its consensus mechanism exactly as the upgrade below it left it" in
+    // Three of the four documents reach the machine and the fourth reaches the
+    // header. None of them is about how a block is produced, so a difference
+    // here would mean a delta had written a facet no member of this upgrade
+    // names.
+    assert(
+      Upgrades.shanghai.consensus == Upgrades.paris.consensus,
+      "no document in this upgrade settles anything about the mechanism"
+    )

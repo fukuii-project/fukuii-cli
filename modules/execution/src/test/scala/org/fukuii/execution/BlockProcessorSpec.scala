@@ -5,7 +5,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.fukuii.bytes.{Address, Bytes, Hash, UInt256, UInt64}
 import org.fukuii.crypto.Secp256k1
 import org.fukuii.evm.{Cost, EvmFixtures, EvmRules, Opcode, Operation, Unsupported, Word, WorldState}
-import org.fukuii.types.{PostStateOrStatus, Sender, SigningPreimage, Transaction, TransactionType}
+import org.fukuii.types.{PostStateOrStatus, Sender, SigningPreimage, Transaction, TransactionType, Withdrawal}
 
 /** What a block does that one transaction cannot show.
   *
@@ -63,6 +63,15 @@ class BlockProcessorSpec extends AnyFlatSpec:
 
   private def quantity(value: BigInt): UInt256 =
     UInt256.fromBigInt(value).getOrElse(fail("a fixture quantity does not fit a machine word"))
+
+  /** A withdrawal of `gwei` to `to`.
+    *
+    * The two counters are unread by anything this file asserts and are set to
+    * the position so that no two rows of one list are equal, which is what keeps
+    * a commitment over several of them from collapsing.
+    */
+  private def withdrawal(index: Int, to: Address, gwei: Long): Withdrawal =
+    Withdrawal(UInt64.fromBits(index.toLong), UInt64.fromBits(index.toLong), to, UInt64.fromBits(gwei))
 
   /** A signed transfer at `nonce`, unprotected, so no rule set below has to
     * admit a signature naming a chain.
@@ -235,7 +244,8 @@ class BlockProcessorSpec extends AnyFlatSpec:
       irregularStateChange: Option[WorldState => Unit] = None,
       code: Map[Address, Bytes] = Map.empty,
       evm: EvmRules = EvmFixtures.rules,
-      admission: AdmissionRules = legacyOnly
+      admission: AdmissionRules = legacyOnly,
+      withdrawals: Option[Seq[Withdrawal]] = None
   ): Ran =
     val world = new EvmFixtures.MapWorldState
     world.setBalance(signer, Word(funded))
@@ -257,7 +267,8 @@ class BlockProcessorSpec extends AnyFlatSpec:
       execution = execution,
       admission = admission,
       irregularStateChange = irregularStateChange,
-      consensusStateChange = closing => coinbaseAtClose = closing.balanceOf(coinbase).toBigInt
+      consensusStateChange = closing => coinbaseAtClose = closing.balanceOf(coinbase).toBigInt,
+      withdrawals = withdrawals
     )
     Ran(result, world, rootsAsked, coinbaseAtClose)
 
@@ -518,4 +529,87 @@ class BlockProcessorSpec extends AnyFlatSpec:
         evm = cannotRunAddOrMul
       ).output.unbuilt == Some(Unsupported(Opcode.Mul)),
       "both operations must be reachable, or the case above holds for a processor that always names the same one"
+    )
+
+  // ── The withdrawals a block carries ───────────────────────────────────────
+
+  "a block whose body carries no withdrawals field" should "state no commitment over them" in
+    // The absence and an empty list are different facts about a block, and a
+    // processor answering the empty trie's root here would make a header that
+    // omitted the field indistinguishable from one that stated that root.
+    assert(run(Seq(transfer(nonce = 0))).output.withdrawalsRoot.isEmpty, "no field carried is no commitment stated")
+
+  "a block carrying an empty withdrawals list" should "state the empty commitment rather than none" in
+    assert(
+      run(Seq(transfer(nonce = 0)), withdrawals = Some(Seq.empty)).output.withdrawalsRoot ==
+        Some(Withdrawals.root(Seq.empty)),
+      "a list with nothing in it still commits to something"
+    )
+
+  "a block carrying withdrawals" should "credit each recipient" in
+    assert(
+      run(Seq.empty, withdrawals = Some(Seq(withdrawal(0, otherRecipient, 3)))).world
+        .balanceOf(otherRecipient)
+        .toBigInt == BigInt(3) * Withdrawals.WeiPerGwei,
+      "a withdrawal is a balance increase nobody signed"
+    )
+
+  it should "state the commitment over exactly the list it carried" in
+    assert(
+      run(Seq.empty, withdrawals = Some(Seq(withdrawal(0, otherRecipient, 3)))).output.withdrawalsRoot ==
+        Some(Withdrawals.root(Seq(withdrawal(0, otherRecipient, 3)))),
+      "the commitment a header must state is the one over the block's own list"
+    )
+
+  it should "credit them after the transactions rather than before" in
+    // The signer is funded below what one transfer costs and the withdrawal
+    // would cover the difference, so a processor crediting first admits the
+    // transaction and one crediting second refuses it. EIP-4895 states only
+    // this ordering -- "processed after any user-level transactions are
+    // applied" -- and it is the half a fixture of a funded block cannot show.
+    assert(
+      run(
+        Seq(transfer(nonce = 0)),
+        funded = BigInt(1),
+        withdrawals = Some(Seq(withdrawal(0, signer, 1000000000L)))
+      ).result == Left(BlockRejection(0, Refusal.InsufficientAccountFunds)),
+      "a transaction cannot spend a withdrawal that lands in the same block"
+    )
+
+  it should "credit them before the mechanism's own change, so the close sees them" in
+    // The order of these two is unobservable on every network -- no rule set
+    // has both a block reward and withdrawals -- so this pins the arrangement
+    // rather than a rule, and is what a later edit that moved one of them past
+    // the other would have to answer for.
+    assert(
+      run(Seq.empty, withdrawals = Some(Seq(withdrawal(0, coinbase, 2)))).coinbaseAtClose ==
+        BigInt(2) * Withdrawals.WeiPerGwei,
+      "the mechanism's change runs last, so it observes what the withdrawals left"
+    )
+
+  it should "not be credited at all on a block that was rejected" in
+    // The credit sits with the close, past the fold, so a block the network
+    // does not accept reaches neither. A processor crediting before it knew the
+    // block was good would leave a balance behind that no accepted block
+    // explains.
+    assert(
+      run(
+        Seq(transfer(nonce = 1)),
+        withdrawals = Some(Seq(withdrawal(0, otherRecipient, 3)))
+      ).world.accountExists(otherRecipient) == false,
+      "there is no block, so there is nothing to credit"
+    )
+
+  // ── The commitment the output states ─────────────────────────────────────
+
+  "the commitment a block states" should "be the one over its own list and not another" in
+    // What a caller holding a header compares against. Both directions are
+    // asserted in one case because the pair is what carries the meaning: the
+    // right list agrees and a list differing by one Gwei does not.
+    assert(
+      run(Seq.empty, withdrawals = Some(Seq(withdrawal(0, otherRecipient, 3)))).output.withdrawalsRoot ==
+        Some(Withdrawals.root(Seq(withdrawal(0, otherRecipient, 3)))) &&
+        run(Seq.empty, withdrawals = Some(Seq(withdrawal(0, otherRecipient, 3)))).output.withdrawalsRoot !=
+        Some(Withdrawals.root(Seq(withdrawal(0, otherRecipient, 4)))),
+      "a commitment identifies the list it was taken over"
     )

@@ -2,7 +2,7 @@ package org.fukuii.execution
 
 import org.fukuii.bytes.{Address, Hash, UInt64}
 import org.fukuii.evm.{BlockContext, EvmRules, JournaledWorldState, Unsupported, WorldState}
-import org.fukuii.types.{Log, PostStateOrStatus, Receipt, Transaction, TransactionType}
+import org.fukuii.types.{Log, PostStateOrStatus, Receipt, Transaction, TransactionType, Withdrawal}
 
 /** What processing one block produced.
   *
@@ -39,11 +39,30 @@ import org.fukuii.types.{Log, PostStateOrStatus, Receipt, Transaction, Transacti
   *   hold is what the block would have produced had the operation halted, which
   *   is the only shape in which the block ends somewhere a caller can compare.
   *   One is enough to say so, so the first is kept rather than all of them.
+  * @param withdrawalsRoot
+  *   the commitment over the withdrawals the block carried, absent where the
+  *   block carried no withdrawals field at all.
+  *
+  *   **The absence and an empty list are different answers**, which is why this
+  *   is an option over a hash rather than a hash that is sometimes the empty
+  *   trie's. A block below the withdrawals proposal has no such field and its
+  *   header states no root; a block at or above it carrying an empty list
+  *   states the empty trie's root. Collapsing the two would make a header that
+  *   omitted the field indistinguishable from one that stated the empty root,
+  *   and `org.fukuii.chainspec.HeaderRules` resolves which a fork requires.
+  *
+  *   It sits beside [[gasUsed]] rather than being derived by a caller for the
+  *   same reason that figure does: `ethereum/execution-specs` @ `20f7f6271a`
+  *   (2026-08-26) carries `withdrawals_trie` on its own `BlockOutput` and takes
+  *   `root(...)` of it in `state_transition` (`forks/shanghai/fork.py:199`),
+  *   beside the transactions root, the receipts root and the bloom. This
+  *   project has only the one of those four so far.
   */
 final case class BlockOutput(
     receipts: Vector[Receipt],
     gasUsed: BigInt,
-    unbuilt: Option[Unsupported]
+    unbuilt: Option[Unsupported],
+    withdrawalsRoot: Option[Hash] = None
 ):
 
   /** Every log the block emitted, oldest first.
@@ -79,11 +98,13 @@ final case class BlockRejection(index: Int, reason: Refusal)
 
 /** What a block does around the transactions it carries.
   *
-  * ==The whole of it is an ordered loop and two state changes nobody signed==
+  * ==The whole of it is an ordered loop and the state changes nobody signed==
   *
   * `ethereum/execution-specs` @ `ccaaaba58` is the plainest statement of the
   * loop: `frontier/fork.py`'s `apply_body` is a `for` over the transactions
-  * followed by `pay_rewards`, and nothing else.
+  * followed by `pay_rewards`, and nothing else. What follows the loop grows
+  * with the forks -- the count is deliberately not stated here, being the thing
+  * that goes stale on the commit that adds the next one.
   * `ethereum/go-ethereum` @ `6bb0588ad`, `ethereum/go-ethereum-pow` @
   * `v1.10.26` and `ethereumclassic/core-geth` @ `4185df450` reach the same
   * loop and close it the same way, calling `engine.Finalize` after the last
@@ -142,12 +163,38 @@ object BlockProcessor:
     *
     * The irregular state change first, where one is scheduled, so that a
     * transaction in this very block sees the state it left; then the
-    * transactions, each seeing what the one before it wrote; then the consensus
-    * mechanism's own change, after the last transaction and before anything
-    * reads the block's final root. That order is the specification's rather than
-    * a count of clients: `ethereum/execution-specs` @ `ccaaaba58`'s `apply_body`
-    * runs its `for i, tx in enumerate(transactions)` loop to completion and
-    * calls `pay_rewards(block_env, ommers)` on the next statement.
+    * transactions, each seeing what the one before it wrote; then the
+    * withdrawals the body carries; then the consensus mechanism's own change,
+    * after the last transaction and before anything reads the block's final
+    * root. That order is the specification's rather than a count of clients:
+    * `ethereum/execution-specs` @ `ccaaaba58`'s `apply_body` runs its
+    * `for i, tx in enumerate(transactions)` loop to completion and calls
+    * `pay_rewards(block_env, ommers)` on the next statement, and at
+    * `20f7f6271a` `forks/shanghai/fork.py:500` the statement in that position is
+    * `process_withdrawals`.
+    *
+    * ==Withdrawals against the mechanism's change is an order nothing
+    * specifies, and it is stated rather than left implicit==
+    *
+    * EIP-4895 orders them against the transactions and against nothing else:
+    * *"The `withdrawals` in an execution payload are processed **after** any
+    * user-level transactions are applied"* (`ethereum/EIPs` @ `dbfa6bee8`
+    * (2026-08-26)). No source orders them against a block reward, because the
+    * two occupy the same slot in successive forks rather than appearing
+    * together -- the specification's `apply_body` ends in `pay_rewards` below
+    * the merge and in `process_withdrawals` above it, and
+    * `ethereum/go-ethereum` @ `e9e35a42f8` reaches one or the other from
+    * `Beacon.Finalize` on a branch. **So no rule set this project can build has
+    * both**, and the order below is unobservable on every network.
+    *
+    * It is stated because it would not be unobservable on a network that did
+    * have both: a reward that brings its beneficiary into being holding nothing
+    * and a zero-amount withdrawal to the same address reach opposite states
+    * depending on which ran last, since the second destroys what the first
+    * created. The mechanism's change is kept last so that the contract stated
+    * for it below -- *after the last transaction and before anything reads the
+    * block's final root* -- is unchanged, and the withdrawals occupy the
+    * position the specification gives them relative to the loop.
     *
     * ==`world` is written through, so a rejection leaves it part-way==
     *
@@ -211,6 +258,25 @@ object BlockProcessor:
     *   than a figure returned, so it composes with a mechanism that computes
     *   from an unbounded schedule, one that reads a contract at an earlier
     *   block, and one that does nothing at all.
+    * @param withdrawals
+    *   the operations the block's body carries, absent where the body carries
+    *   no such field. [[Withdrawals]] states what crediting one does; this
+    *   states where it happens.
+    *
+    *   **It arrives as a value rather than as a change to apply**, unlike the
+    *   two above, because this layer must also state the commitment over it and
+    *   a `WorldState => Unit` yields nothing to commit to.
+    *
+    *   **Whether a block at this height may carry the field is NOT decided
+    *   here**, and this layer is not where it could be: the rule is
+    *   `org.fukuii.chainspec.HeaderRules`'s, which this module sits below.
+    *   `besu-eth/besu` @ `fdf1247c6d` (2026-08-26) splits it the same way,
+    *   processing on `maybeWithdrawalsProcessor.isPresent() &&
+    *   maybeWithdrawals.isPresent()` in `AbstractBlockProcessor` while its
+    *   `WithdrawalsValidator` holds the agreement between the fork and the
+    *   body. A block whose body carries withdrawals its height does not admit
+    *   is caught by [[BlockOutput.withdrawalsRoot]] disagreeing with the header,
+    *   which is where every other commitment this layer produces is caught.
     */
   def process(
       transactions: Seq[Transaction],
@@ -224,7 +290,8 @@ object BlockProcessor:
       execution: ExecutionRules,
       admission: AdmissionRules,
       irregularStateChange: Option[WorldState => Unit],
-      consensusStateChange: WorldState => Unit
+      consensusStateChange: WorldState => Unit,
+      withdrawals: Option[Seq[Withdrawal]] = None
   ): Either[BlockRejection, BlockOutput] =
     irregularStateChange.foreach(change => change(world))
     val processed = transactions.zipWithIndex.foldLeft[Either[BlockRejection, BlockOutput]](Empty) {
@@ -248,8 +315,9 @@ object BlockProcessor:
         }
     }
     processed.map { output =>
+      withdrawals.foreach(carried => Withdrawals.credit(carried, world, destroyAccount))
       consensusStateChange(world)
-      output
+      output.copy(withdrawalsRoot = withdrawals.map(Withdrawals.root))
     }
 
   /** A block that has run nothing yet. */

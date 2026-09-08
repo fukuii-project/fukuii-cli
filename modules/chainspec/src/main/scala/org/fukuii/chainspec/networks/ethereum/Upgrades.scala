@@ -38,9 +38,13 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip3529,
   Eip3541,
   Eip3554,
+  Eip3651,
   Eip3675,
+  Eip3855,
+  Eip3860,
   Eip4345,
   Eip4399,
+  Eip4895,
   Eip5133,
   Eip649,
   Eip658,
@@ -827,3 +831,61 @@ object Upgrades:
     * `org.fukuii.consensus.HeaderValidator` refuses the mismatch.
     */
   val paris: UpgradeRules = grayGlacier.adopting(Eip3675.component, Eip4399.component)
+
+  /** [[paris]] with EIP-3651, EIP-3855, EIP-3860 and EIP-4895 adopted.
+    *
+    * ==Four members, from the same kind of statement as the four above==
+    *
+    * `ethereum/execution-specs` @ `20f7f6271a` (2026-08-26) states what this
+    * fork changes in `src/ethereum/forks/shanghai/__init__.py` and the list has
+    * four entries, in the order below. That is the same source [[paris]],
+    * [[arrowGlacier]] and [[grayGlacier]] rest their lists on.
+    *
+    * **A fifth document sits in that file under a different heading and is not
+    * a member.** EIP-6049 is listed under `### Notices` rather than `###
+    * Changes`, and `org.fukuii.evm.Opcode.SelfDestruct` -- its subject --
+    * records why adopting it and adopting nothing produce the same machine.
+    *
+    * ==Three of the four are also an Ethereum Classic upgrade's, and the fourth
+    * is why there is no bundle==
+    *
+    * [[Eip3651]], [[Eip3855]] and [[Eip3860]] compose over a proof-of-work rule
+    * set on their own, and that network takes none of the withdrawals work
+    * beside them -- see [[Eip4895]] for the client evidence. A component
+    * holding all four could not express that, which is the finding the three
+    * were landed without one for.
+    *
+    * ==Two facets move, and the machine is not the one a reader would expect
+    * for the fourth==
+    *
+    * [[Eip3651]] and [[Eip3855]] write `evm`; [[Eip3860]] writes `evm`,
+    * admission and the execution facet; [[Eip4895]] writes the header facet and
+    * nothing else. **The proposal this upgrade is named for in the
+    * specification's own summary reaches the machine nowhere at all** -- a
+    * withdrawal adds no operation and moves no price, which is what its own
+    * *"firewalls off generic EVM execution"* means where it lands here.
+    *
+    * ==The order is stated and is immaterial==
+    *
+    * No two of the four name a common field. It is stated because two deltas
+    * touching one field compose to whichever ran last, and because
+    * [[Eip3860]]'s bound is DERIVED from the deployed-code bound rather than
+    * stored -- so a composition placing it below the upgrade that sets that
+    * bound would evaluate to a different figure while compiling.
+    *
+    * ==The first rule set on this network whose blocks credit an account no
+    * transaction named==
+    *
+    * `org.fukuii.execution.Withdrawals` is what performs the credit and
+    * `org.fukuii.execution.BlockProcessor` places it; what this rule set adds is
+    * the header's obligation to commit to the list, which
+    * `org.fukuii.consensus.HeaderValidator` checks for presence and a caller
+    * holding the body checks for value.
+    */
+  val shanghai: UpgradeRules =
+    paris.adopting(
+      Eip3651.component,
+      Eip3855.component,
+      Eip3860.component,
+      Eip4895.component
+    )
