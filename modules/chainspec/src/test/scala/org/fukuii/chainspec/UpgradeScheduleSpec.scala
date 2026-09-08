@@ -241,3 +241,79 @@ class UpgradeScheduleSpec extends AnyFlatSpec:
       ).forkPoints == Vector(atBlock(100)),
       "the identifier is computed over the points that have passed, and one point reached twice is one point"
     )
+
+  // ── A rule change whose activation was not knowable in advance ────────────
+
+  "a retrospective rule change" should "state the rules in force from its activation" in
+    // The half it shares with an ordinary rule change. Without this it would be
+    // indistinguishable from an upgrade that gates nothing, and the schedule
+    // would answer with the rules below it for ever.
+    assert(
+      (built(
+        genesis,
+        entry(atBlock(100), "Retrospective", Upgrade.RetrospectiveRuleChange(secondRules))
+      ).at(number(100), UInt64.Zero) eq secondRules),
+      "an upgrade of this case did not put its rules in force, so it gated nothing"
+    )
+
+  it should "leave the rules below it alone one block earlier" in
+    assert(
+      (built(
+        genesis,
+        entry(atBlock(100), "Retrospective", Upgrade.RetrospectiveRuleChange(secondRules))
+      ).at(number(99), UInt64.Zero) eq firstRules),
+      "an upgrade of this case put its rules in force below its own activation"
+    )
+
+  it should "NOT reach the fork identifier" in
+    // THE ASSERTION THIS CASE EXISTS FOR. EIP-3675 requires it: a peer that has
+    // not reached the triggering condition has no number to checksum, so
+    // counting the point would make two honest nodes disagree about a chain
+    // they both hold.
+    assert(
+      built(
+        genesis,
+        entry(atBlock(100), "Retrospective", Upgrade.RetrospectiveRuleChange(secondRules))
+      ).forkPoints.isEmpty,
+      "an activation nobody could know in advance was counted into the fork identifier"
+    )
+
+  it should "be the ONLY case that changes rules without reaching the identifier" in {
+    // The discriminator, asserted over all four cases at once rather than by
+    // testing this one alone. An implementation that answered `false` for every
+    // case would satisfy the case above; this one fails it.
+    val points = (upgrade: Upgrade) => built(genesis, entry(atBlock(100), "Probe", upgrade)).forkPoints
+    assert(
+      points(Upgrade.RuleChange(secondRules)) == Vector(atBlock(100)) &&
+        points(Upgrade.IrregularStateChange) == Vector(atBlock(100)) &&
+        points(Upgrade.Unenforced).isEmpty &&
+        points(Upgrade.RetrospectiveRuleChange(secondRules)).isEmpty,
+      "the four cases do not split two-and-two at the identifier the way the type says they do"
+    )
+  }
+
+  it should "differ from Unenforced in what the schedule RESOLVES, which is the whole distinction" in {
+    // The two cases agree at the identifier and must not agree anywhere else.
+    // Without this, either could be substituted for the other and every
+    // fork-point assertion above would still pass.
+    val resolved =
+      (upgrade: Upgrade) => built(genesis, entry(atBlock(100), "Probe", upgrade)).at(number(100), UInt64.Zero)
+    assert(
+      (resolved(Upgrade.RetrospectiveRuleChange(secondRules)) eq secondRules) &&
+        (resolved(Upgrade.Unenforced) eq firstRules),
+      "the two cases that skip the identifier are interchangeable, so one of them is redundant"
+    )
+  }
+
+  "a retrospective rule change at block zero" should "supply the starting rule set" in
+    // The arm most likely to be got wrong, because the case reads as "special"
+    // and the two arms beside it in `startsAtGenesis` both refuse. It carries
+    // rules, so it must not: refusing here would reject a schedule that states
+    // a perfectly good starting rule set. Genesis reaches no identifier under
+    // any reading, so the case's own distinction cannot arise at this height.
+    assert(
+      UpgradeSchedule
+        .of(Vector(entry(atBlock(0), "Start", Upgrade.RetrospectiveRuleChange(secondRules))))
+        .map(_.at(number(0), UInt64.Zero)) == Right(secondRules),
+      "a schedule stating its genesis rules through this case was refused for having none"
+    )

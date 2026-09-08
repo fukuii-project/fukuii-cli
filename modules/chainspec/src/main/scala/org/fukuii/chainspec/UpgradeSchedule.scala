@@ -4,13 +4,30 @@ import org.fukuii.bytes.UInt64
 
 /** What a scheduled upgrade does when it activates.
   *
-  * ==Three answers, because the field needs all three==
+  * ==Four answers, because the field needs all four==
   *
   * An upgrade states rules, or mutates state without touching the rules, or
   * does neither and is on the schedule because the network's own canonical
-  * enumeration has it there. The second and third look alike from the rules'
-  * point of view and are told apart by [[UpgradeSchedule.forkPoints]], which is
-  * the one place the difference is observable.
+  * enumeration has it there, or states rules at a point nobody could have known
+  * in advance.
+  *
+  * **Two independent questions separate them, not one.** *Does this change the
+  * rules a node runs?* is answered by [[UpgradeSchedule.at]]. *Does EIP-2124
+  * count this activation?* is answered by [[UpgradeSchedule.forkPoints]]. The
+  * four cases are what happens when those two questions are allowed to disagree
+  * -- and three of the four combinations occur in the field, which is why no
+  * smaller type will do:
+  *
+  *   - rules AND counted -- [[RuleChange]], the ordinary hard fork.
+  *   - no rules AND counted -- [[IrregularStateChange]].
+  *   - no rules AND not counted -- [[Unenforced]].
+  *   - rules AND NOT counted -- [[RetrospectiveRuleChange]], where the
+  *     activation was a condition rather than a number.
+  *
+  * A reader looking for the fourth combination in the other direction -- no
+  * rules, no state, and counted anyway -- will find it is real and is not here.
+  * [[UpgradeSchedule.reachesForkIdentifier]] records where it occurs and what
+  * would bring it in.
   *
   * ==Not every upgrade is a rule change, and two networks demand the second
   * case==
@@ -92,6 +109,67 @@ enum Upgrade:
     */
   case Unenforced
 
+  /** The rules the network runs from here, where the activation point was not
+    * knowable in advance.
+    *
+    * ==Why this is not [[RuleChange]], when the rules change exactly as much==
+    *
+    * It differs in one thing only, and that thing is EIP-2124. A fork
+    * identifier is a checksum a node computes over the activation points it has
+    * passed and sends to a peer BEFORE either has the other's chain. A point
+    * that could not be known ahead of time cannot go into it: a peer that has
+    * not yet reached the condition has no number to checksum, so including it
+    * would make two honest nodes compute different identifiers for the same
+    * chain.
+    *
+    * **EIP-3675 states the requirement and the reason.** *"For the purposes of
+    * the EIP-2124 fork identifier, nodes implementing this EIP MUST set the
+    * `FORK_NEXT` parameter to the `FORK_NEXT_VALUE`"* (`ethereum/EIPs` @
+    * `dbfa6bee8` (2026-08-26), `EIPS/eip-3675.md:147`), because *"the number of
+    * `TRANSITION_BLOCK` cannot be known ahead of time given the dynamic nature
+    * of the transition trigger condition. As the block will not be known a
+    * priori, nodes can't use its number for `FORK_NEXT`"* (`:224`).
+    *
+    * ==The activation this case carries is a RETROSPECTIVE reading, and that is
+    * the whole content==
+    *
+    * Once such a transition has happened, the height it happened at is an
+    * ordinary number and a schedule can state it. `ethereum/execution-specs` @
+    * `20f7f6271` (2026-08-26) does exactly that and says why in the same file:
+    * `src/ethereum/forks/paris/__init__.py:39-43` notes that the trigger was a
+    * condition on accumulated work, that the event *"is now a historical
+    * event"*, and then states `ByBlockNumber(15537394)`.
+    *
+    * So the number is real, [[UpgradeSchedule.at]] must honour it, and only the
+    * identifier must not count it. **That is one fact about one entry, which is
+    * why it is a case here rather than a rule about which upgrades are special.**
+    *
+    * ==Four production clients agree, and one of them is shaped like this type==
+    *
+    * `NethermindEth/nethermind` @ `b92e2a471` (2026-08-26) is the closest: it
+    * puts such an upgrade on its schedule and then excludes that one height from
+    * the identifier by name (`Nethermind.Specs/MainnetSpecProvider.cs:76`,
+    * `excludeBlocks: [ParisBlockNumber]`), documenting the parameter as being
+    * for a point that is *"TTD-determined and not a fork-ID boundary"*.
+    * `besu-eth/besu` @ `fdf1247c6` enumerates the fork block numbers by hand and
+    * omits it. `ethereum/go-ethereum` @ `e9e35a42f` and `erigontech/erigon` @
+    * `776a380b1` reflect over configuration fields, and the transition has no
+    * field of the shape they read.
+    *
+    * ==What this case is NOT, and the distinction is a different entry==
+    *
+    * Not the *"virtual fork"* a network may configure alongside such a
+    * transition to split the network at a knowable height. That is EIP-3675's
+    * `FORK_NEXT_VALUE` and it is a separate upgrade at a separate height: on
+    * `Sepolia` the transition is at 1,450,409 and the virtual fork at 1,735,371,
+    * **284,962 blocks apart** (`erigontech/erigon` @ `776a380b1`,
+    * `execution/chain/spec/chainspecs/sepolia.json`, `mergeBlock` against
+    * `mergeNetsplitBlock`). That second entry DOES reach the identifier and
+    * changes no rules -- the mirror of this case, and one this type does not
+    * model. See [[UpgradeSchedule.reachesForkIdentifier]] for the trigger.
+    */
+  case RetrospectiveRuleChange(rules: UpgradeRules)
+
 /** One network's upgrades, in order, with the rules in force at any point
   * derivable from them.
   *
@@ -148,9 +226,10 @@ final class UpgradeSchedule private (
       .takeWhile(entry => UpgradeSchedule.hasActivated(entry.activation, number, timestamp))
       .foldLeft(genesisRules) { (held, entry) =>
         entry.upgrade match
-          case Upgrade.RuleChange(rules)    => rules
-          case Upgrade.IrregularStateChange => held
-          case Upgrade.Unenforced           => held
+          case Upgrade.RuleChange(rules)              => rules
+          case Upgrade.RetrospectiveRuleChange(rules) => rules
+          case Upgrade.IrregularStateChange           => held
+          case Upgrade.Unenforced                     => held
       }
 
   /** The activations at which this network's validity can diverge.
@@ -172,10 +251,15 @@ final class UpgradeSchedule private (
     * added to [[Upgrade]] stops this compiling rather than defaulting into
     * either answer.
     *
-    * Two exclusions, each with a different reason:
+    * Three exclusions, each with a different reason:
     *
     *   - [[Upgrade.Unenforced]], because nothing a node validates differs
     *     across it. That case's own documentation carries the evidence.
+    *   - [[Upgrade.RetrospectiveRuleChange]], because its activation was not
+    *     knowable in advance and EIP-3675 requires it be left out. That case's
+    *     own documentation carries the evidence, and note that this exclusion
+    *     is the only one of the three that drops an entry which DOES change the
+    *     rules.
     *   - The entry at block zero, because EIP-2124 says so directly: *"If a
     *     chain is configured to start with a non-Frontier ruleset already in
     *     its genesis, that is NOT considered a fork."*
@@ -196,7 +280,7 @@ final class UpgradeSchedule private (
     */
   def forkPoints: Vector[Activation] =
     scheduled
-      .filter(entry => UpgradeSchedule.divergesAt(entry.upgrade))
+      .filter(entry => UpgradeSchedule.reachesForkIdentifier(entry.upgrade))
       .map(_.activation)
       .filter {
         case Activation.AtBlock(number) => number != UInt64.Zero
@@ -310,9 +394,15 @@ object UpgradeSchedule:
     genesis.activation match
       case Activation.AtBlock(number) if number == UInt64.Zero =>
         genesis.upgrade match
-          case Upgrade.RuleChange(rules)    => Right(rules)
-          case Upgrade.IrregularStateChange => Left(Error.GenesisWithoutRules(genesis.id))
-          case Upgrade.Unenforced           => Left(Error.GenesisWithoutRules(genesis.id))
+          case Upgrade.RuleChange(rules) => Right(rules)
+          // Rules are rules: this case differs from the one above only at the
+          // identifier, and genesis reaches no identifier under any reading --
+          // EIP-2124 excludes block zero outright. So the answer here is the
+          // rules, and reading this case as "special" and refusing it would
+          // reject a schedule that states a starting rule set.
+          case Upgrade.RetrospectiveRuleChange(rules) => Right(rules)
+          case Upgrade.IrregularStateChange           => Left(Error.GenesisWithoutRules(genesis.id))
+          case Upgrade.Unenforced                     => Left(Error.GenesisWithoutRules(genesis.id))
       case first => Left(Error.MissingGenesis(first))
 
   private def ordered(scheduled: Vector[Entry]): Either[Error, Unit] =
@@ -327,15 +417,53 @@ object UpgradeSchedule:
       }
       .toLeft(())
 
-  /** Whether two nodes can disagree about validity across this upgrade.
+  /** Whether EIP-2124 counts this upgrade's activation.
     *
-    * Exhaustive on purpose: this is the one question whose answer cannot be
-    * defaulted, and a new case must be decided rather than inherited.
+    * ==The name is deliberate, and the obvious one is now FALSE==
+    *
+    * This asked *"whether two nodes can disagree about validity across this
+    * upgrade"* until [[Upgrade.RetrospectiveRuleChange]] existed, and that
+    * reading was exact while every rule change reached the identifier. It is
+    * not exact any more: two nodes plainly CAN disagree across a retrospective
+    * rule change -- it is a rule change -- and this answers `false` for it.
+    *
+    * Keeping the old name would have left the next reader concluding that such
+    * an upgrade changes no rules, which is the opposite of true and is a
+    * conclusion the type is otherwise careful to prevent.
+    *
+    * ==Exhaustive on purpose==
+    *
+    * This is the one question whose answer cannot be defaulted, and a new case
+    * must be decided rather than inherited. There is no `case _`, so a fifth
+    * case stops the compile here.
+    *
+    * ==The mirror case is real, is in the field today, and is NOT modeled==
+    *
+    * Everything below answers `false` by changing nothing a peer needs to agree
+    * about, or by being unknowable in advance. The reverse exists: an upgrade
+    * that reaches the identifier while changing neither the rules nor the state.
+    * EIP-3675 defines it as `FORK_NEXT_VALUE`, a *"virtual fork"* a network
+    * configures at a knowable height so that peers split there instead of at a
+    * transition nobody can predict.
+    *
+    * `Sepolia` has one: its transition is at 1,450,409 and its virtual fork at
+    * 1,735,371, **284,962 blocks apart** (`erigontech/erigon` @ `776a380b1`
+    * (2026-08-26), `execution/chain/spec/chainspecs/sepolia.json`, `mergeBlock`
+    * against `mergeNetsplitBlock`). Three clients publish identical fork-id
+    * vectors showing the identifier moving at the second height and not the
+    * first.
+    *
+    * **No network authored in this build configures one, so it is not built.**
+    * The trigger is the first that does. When it arrives, note that none of the
+    * four cases fits it either: [[Upgrade.Unenforced]] is the tempting one and
+    * is wrong, because it answers `false` here and such an entry must answer
+    * `true`.
     */
-  private def divergesAt(upgrade: Upgrade): Boolean = upgrade match
-    case Upgrade.RuleChange(_)        => true
-    case Upgrade.IrregularStateChange => true
-    case Upgrade.Unenforced           => false
+  private def reachesForkIdentifier(upgrade: Upgrade): Boolean = upgrade match
+    case Upgrade.RuleChange(_)              => true
+    case Upgrade.IrregularStateChange       => true
+    case Upgrade.Unenforced                 => false
+    case Upgrade.RetrospectiveRuleChange(_) => false
 
   private def hasActivated(activation: Activation, number: UInt64, timestamp: UInt64): Boolean =
     activation match
