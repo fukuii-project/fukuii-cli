@@ -48,7 +48,8 @@ class MainnetSpec extends AnyFlatSpec:
           "Phoenix",
           "MESS",
           "Thanos",
-          "Magneto"
+          "Magneto",
+          "Mystique"
         ),
       "an enumeration missing an entry misnumbers every entry after it, which is silent rather than absent"
     )
@@ -106,7 +107,8 @@ class MainnetSpec extends AnyFlatSpec:
           Activation.AtBlock(UInt64.fromBits(9573000L)),
           Activation.AtBlock(UInt64.fromBits(10500839L)),
           Activation.AtBlock(UInt64.fromBits(11700000L)),
-          Activation.AtBlock(UInt64.fromBits(13189133L))
+          Activation.AtBlock(UInt64.fromBits(13189133L)),
+          Activation.AtBlock(UInt64.fromBits(14525000L))
         ),
       "genesis is excluded by EIP-2124 and the two unenforced entries by enforcing nothing, leaving the rest"
     )

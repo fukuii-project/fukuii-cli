@@ -47,7 +47,8 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     ("Phoenix", 10500839L),
     ("MESS", 11380000L),
     ("Thanos", 11700000L),
-    ("Magneto", 13189133L)
+    ("Magneto", 13189133L),
+    ("Mystique", 14525000L)
   )
 
   /** The last height under the old rules and the first under the new, per
@@ -107,6 +108,27 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     * they are the same distance apart in this table and only one of them moves
     * a rule set, which is what tells a reader that the case an entry takes is
     * a fact about the entry rather than about how far apart the heights are.
+    *
+    * ==The pair at 1,452,499 and 1,452,500 is not a boundary, and it refutes a
+    * figure the SAME published commit gave as the Agharta one==
+    *
+    * Both resolve to the rules that activate 302,500 blocks below them. That is
+    * the height published ECIP-1066 gave this network's Mystique row until
+    * `b3bda63a` fixed it, and `Mainnet`'s entry for that upgrade cites it against
+    * the specification and two implementations that agree on 14,525,000.
+    *
+    * **It is here because it is the case construction cannot catch.** Appended
+    * in this file's order the wrong figure sits out of order and
+    * `UpgradeSchedule.of` refuses the whole schedule -- but a reader who took the
+    * figure from that row would file the entry in height order, between
+    * `homestead` and `gasReprice`, where nothing is out of order and the
+    * schedule builds. These two rows are what disagrees with it then.
+    *
+    * ==The pair at 14,524,999 and 14,525,000 is a boundary==
+    *
+    * The first under the rules that adopt Berlin's four proposals, the second
+    * under the two this network takes from the upgrade above it. Nothing in this
+    * network's configuration activates anywhere between them.
     */
   private val boundaries = Table(
     ("height", "rules"),
@@ -115,6 +137,8 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     (200000L, Upgrades.frontier),
     (1149999L, Upgrades.frontier),
     (1150000L, Upgrades.homestead),
+    (1452499L, Upgrades.homestead),
+    (1452500L, Upgrades.homestead),
     (1919999L, Upgrades.homestead),
     (1920000L, Upgrades.homestead),
     (2462999L, Upgrades.homestead),
@@ -142,7 +166,9 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     (11699999L, Upgrades.phoenix),
     (11700000L, Upgrades.thanos),
     (13189132L, Upgrades.thanos),
-    (13189133L, Upgrades.magneto)
+    (13189133L, Upgrades.magneto),
+    (14524999L, Upgrades.magneto),
+    (14525000L, Upgrades.mystique)
   )
 
   property("every upgrade activates at the block its own citation states") {

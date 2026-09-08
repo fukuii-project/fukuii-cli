@@ -49,16 +49,20 @@ import org.fukuii.evm.Proposal
   * `ethereumclassic/core-geth` @ `4185df450` sets `EIP3541FBlock` at 14,525,000
   * in `params/config_classic.go`, under a comment reading *"London (partially),
   * aka Mystique"*, alongside EIP-3529 and nothing else from this upgrade. The
-  * governing document is ECIP-1104, which records a reason for each omission:
-  * the fee market *"would conflict with the current monetary policy set in
-  * ECIP-1017"*, the base-fee operation *"depends on EIP-1559"*, and the bomb
-  * delay is *"not applicable to ETC due to difficulty bomb being defused"*.
+  * governing document is ECIP-1104 -- `ethereumclassic/ECIPs` @
+  * `f1077dbac954c1443d146fe6aa2ed44560dfb35f` (2026-09-08) -- which records a
+  * reason for each omission: the fee market *"would conflict with the current
+  * monetary policy set in ECIP-1017"*, the base-fee operation *"depends on
+  * EIP-1559"*, and the bomb delay, EIP-3554, is *"Not applicable to ETC due to
+  * difficulty bomb being defused"*.
   *
-  * **That document cites the bomb delay as EIP-3228, and no such proposal
-  * exists.** The sentence it quotes is EIP-3554's own summary, and the number it
-  * most plausibly garbles is EIP-3238 -- itself struck from this upgrade months
-  * before that document was written. The omission is right and its citation is
-  * not; cite EIP-3554.
+  * **That document named the bomb delay EIP-3228 until `f1077db`** -- a number
+  * `ethereum/EIPs` has never carried -- and the same commit replaced it in all
+  * three places it appeared, changing nothing else. Worth a sentence only
+  * because the old number outlives the fix: an older clone or a cached rendering
+  * still shows a link that resolves to nothing.
+  * `org.fukuii.chainspec.networks.ethereumclassic.Upgrades.mystique` carries the
+  * upgrade-level detail.
   */
 object Eip3541:
 

@@ -30,6 +30,8 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip2718,
   Eip2929,
   Eip2930,
+  Eip3529,
+  Eip3541,
   Eip658,
   Eip7
 }
@@ -1037,3 +1039,141 @@ object Upgrades:
     */
   val magneto: UpgradeRules =
     thanos.adopting(Eip2565.component, Eip2718.component, Eip2929.component, Eip2930.component)
+
+  /** [[magneto]] with EIP-3529 and EIP-3541 adopted.
+    *
+    * ==The order is immaterial, and the claim is the strong one about FIELDS==
+    *
+    * Read off the two components: EIP-3529 writes `refundNetStorageClear` and
+    * `refundSelfDestruct` on the machine's schedule and `maxRefundQuotient` on
+    * the settlement facet; EIP-3541 writes `reservedCodePrefix` on the machine
+    * and reaches nothing else. **No field is written by both.** Neither reads a
+    * field the other writes either -- every figure either one sets is a constant
+    * its own document publishes rather than a derivation over the base -- so
+    * this composition needs neither the narrowing [[phoenix]] had to make for
+    * deltas building an entry out of a schedule field, nor the weaker
+    * key-level claim [[atlantis]] and [[agharta]] settle for.
+    *
+    * ==Which document settles membership, and it admits two of five==
+    *
+    * **ECIP-1104** -- `ethereumclassic/ECIPs` @
+    * `f1077dbac954c1443d146fe6aa2ed44560dfb35f` (2026-09-08),
+    * `_specs/ecip-1104.md`, **`status: Final`, `type: Meta`** -- tabulates five
+    * proposals in its Abstract against an `omit or include` column and marks
+    * exactly two of them `Include`: EIP-3529 and EIP-3541. The same document
+    * repeats the division below that table under its own *Included* and
+    * *Omitted* headings, and the two lists agree.
+    *
+    * `ethereumclassic/core-geth` @ `4185df450` states the same two as
+    * per-proposal transitions rather than as a fork name -- `EIP3529FBlock` and
+    * `EIP3541FBlock` in `params/config_classic.go:96-97`, under the client's own
+    * comment `// London (partially), aka Mystique`, which is that client saying
+    * *a subset* in the place a fork name would go.
+    *
+    * ==Three omissions, and only the specification says why==
+    *
+    * The document gives a reason per omitted proposal, and each is a different
+    * kind of reason rather than one argument applied three times.
+    *
+    * **EIP-1559** is declined because the fee market *"would conflict with the
+    * current monetary policy set in ECIP-1017"* -- a collision with a proposal
+    * [[gotham]] adopted, so the ground is this network's own emission and not
+    * anything about the machine.
+    *
+    * **EIP-3198** follows it: *"It depends on EIP-1559. Behavior specifications
+    * for use in context without EIP-1559 are undefined."* The operation is not
+    * refused on its merits; it has nothing to read.
+    *
+    * **EIP-3554**, the bomb delay, is *"Not applicable to ETC due to difficulty
+    * bomb being defused"*, which is [[defuse]]. That is the same ground
+    * [[atlantis]] gives for declining EIP-649 and [[agharta]] for declining
+    * EIP-1234 -- the third bomb-delay proposal this network's upgrade documents
+    * turn down on the one reason that has held since 5,900,000.
+    *
+    * **What core-geth records is the absence and never the reason.**
+    * `EIP1559FBlock`, `EIP3198FBlock` and `EIP3554FBlock` are fields that
+    * client's own configuration type declares at
+    * `params/types/coregeth/chain_config.go` and `params/config_classic.go` sets
+    * nowhere, against a control of `EIP3529FBlock` present in the same file -- so
+    * the exclusions are attested there rather than merely unmentioned, in the
+    * same form [[atlantis]] reads EIP-649's. What no configuration can hold is a
+    * reason, which is why the three above are sourced to ECIP-1104 alone and
+    * corroborated by nothing.
+    *
+    * ==The bomb delay's number was corrected upstream, and the older one is
+    * still in front of readers==
+    *
+    * At `3d1e2b1bd384ca3927e7dc78b1ff79109fe0974d` (2022-07-15) the bomb-delay
+    * row, the omitted-proposal summary and the Specification all named
+    * **EIP-3228** -- a document absent from `ethereum/EIPs` @ `dbfa6bee` and from
+    * that repository's history on every branch, against controls that all
+    * resolve: EIP-3198, EIP-3238, EIP-3529, EIP-3541 and EIP-3554.
+    * `f1077dbac954c1443d146fe6aa2ed44560dfb35f` (2026-09-08) replaced the number
+    * in all three places and changed nothing else, so every reason quoted above
+    * is the same text at both refs.
+    *
+    * **Recorded because the old number outlives the fix**: an older clone, a
+    * cached rendering or the published site before it rebuilds still shows a
+    * link that resolves to nothing, and this is the explanation for it rather
+    * than a disagreement with the document. [[Eip3541]] carries the same note
+    * beside the proposal it belongs to.
+    *
+    * The row's own implementation references corroborate the number it now
+    * carries. At `ethereum/go-ethereum` @ `e9e35a42f`, `#22840` is the pull
+    * request implementing EIP-3554 and `#22870` the follow-up moving that
+    * proposal's exponential term from 9.5M to 9.7M. The controls hold: `#22733`
+    * and `#22809`, this document's references for the two proposals it includes,
+    * resolve to those proposals' own implementations.
+    *
+    * ==Nothing intervenes between this height and the one it builds on==
+    *
+    * `params/config_classic.go` at `4185df450` sets no transition strictly
+    * between `13_189_133` and `14_525_000`. That is exhaustive over every
+    * numeric literal in this network's configuration rather than a reading of
+    * the fields nearby, and the sweep discriminates: six figures this schedule
+    * carries are found by the same instrument and a figure inside the window is
+    * not. The next height above is `19_250_000`, under that client's own comment
+    * naming the upgrade after this one -- and what sits there is four proposals
+    * **plus `ECBP1100DeactivateFBlock`**, which is the retraction of the
+    * recommendation `Mainnet`'s own entry for it records. So the rules this
+    * composes over are [[magneto]]'s.
+    *
+    * ==Two facets move, and the settlement facet moves for only the second time
+    * on this network==
+    *
+    * EIP-3541 reaches the machine; EIP-3529 reaches the machine and
+    * **settlement**. The admission, consensus and header facets are
+    * [[magneto]]'s unchanged. [[atlantis]] is the only upgrade below this one at
+    * which the settlement facet moved -- EIP-161 clearing touched empty accounts
+    * and EIP-658 putting an outcome in a receipt -- and the member this
+    * composition writes is the third of the three that facet holds.
+    *
+    * **That member existed for this document.** [[Eip3529]] records why: the
+    * divisor bounding what a transaction hands back was written into the
+    * settlement arithmetic as a literal until this proposal needed to move it,
+    * so no earlier fork on either network could have reached it.
+    *
+    * ==What besu-etc corroborates, and the one thing it must not be cited for==
+    *
+    * `besu-eth/besu-etc` @ `eb4248c997` reaches the same membership by
+    * replacement rather than by composition:
+    * `ClassicProtocolSpecs.mystiqueDefinition` at `:336-358` builds on
+    * `magnetoDefinition` -- the same ordering [[magneto]] sits at here -- swaps
+    * in `LondonGasCalculator` for EIP-3529, and rebuilds the contract-creation
+    * processor so that its validation list runs `PrefixCodeRule.of()` beside the
+    * `MaxCodeSizeRule` that base already carried at `:210`. **The added rule is
+    * the prefix one**, which is EIP-3541 and nothing else.
+    *
+    * It corroborates the three omissions from its own shape as well. That
+    * definition installs no difficulty calculator, against a control of one in
+    * `defuseDifficultyBombDefinition`, so the bomb delay is absent there too; and
+    * it sets no fee-market parameter and adds no operation.
+    *
+    * **What it must not be cited for is the arithmetic**, which is the boundary
+    * [[magneto]] draws for the same client one upgrade below. `LondonGasCalculator`'s
+    * contents are besu's rather than an Ethereum Classic decision, so it is not a
+    * second reading of EIP-3529's figures; [[Eip3529]] sources those to the
+    * proposal and to two trees that implement it. Nor is it a reading of what
+    * the reserved byte is -- that client holds it inside its own rule class.
+    */
+  val mystique: UpgradeRules = magneto.adopting(Eip3529.component, Eip3541.component)

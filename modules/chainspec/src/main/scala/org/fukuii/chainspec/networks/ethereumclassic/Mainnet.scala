@@ -481,7 +481,7 @@ object Mainnet:
     * here cite -- `e36ef7f1` (2026-07-05) -- predates it and carries no row for
     * this upgrade at all, so citing that ref for this entry would resolve, for a
     * reader, to a table the row is missing from. The rows were added at
-    * `b3bda63a` (2026-07-24).
+    * `b3bda63a` (2026-07-23).
     */
   private val mess: UpgradeSchedule.Entry =
     UpgradeSchedule.Entry(atBlock(11380000), upgrade("MESS"), Upgrade.Unenforced)
@@ -552,6 +552,72 @@ object Mainnet:
   private val magneto: UpgradeSchedule.Entry =
     UpgradeSchedule.Entry(atBlock(13189133), upgrade("Magneto"), Upgrade.RuleChange(Upgrades.magneto))
 
+  /** Block 14,525,000.
+    *
+    * **ECIP-1104 states it** -- `ethereumclassic/ECIPs`, `_specs/ecip-1104.md`
+    * @ `f1077dbac954c1443d146fe6aa2ed44560dfb35f`, `status: Final`,
+    * `type: Meta` -- naming `14_525_000` for this network beside the two test
+    * networks it also schedules. That ref is the current head of that file rather
+    * than the commit that made the document Final, which is the same ref
+    * [[Upgrades.mystique]] reads membership at; the height is byte-identical at
+    * both, because the only change between them substitutes one proposal number. `ethereumclassic/core-geth` @ `4185df450`
+    * states it as two per-proposal transitions rather than the fork name, at
+    * `params/config_classic.go:96-97`, under the client's own comment
+    * `// London (partially), aka Mystique`. `besu-eth/besu-etc` @ `eb4248c997`
+    * states it as `"mystiqueBlock": 14525000` in
+    * `config/src/main/resources/classic.json`.
+    *
+    * **`openethereum/openethereum` @ `v3.0.1` is not a fourth reading here, and
+    * its silence is not a finding.** That tree carries neither this height nor
+    * [[magneto]]'s -- it predates both upgrades -- while carrying [[phoenix]]'s
+    * nine times, which is what makes the two absences a property of the tree's
+    * date rather than of this network's configuration. The entries that do cite
+    * it all sit below [[thanos]], and no entry from [[magneto]] up can.
+    *
+    * ==The label==
+    *
+    * ECIP-1066 -- `ethereumclassic/ECIPs` @
+    * `0adb4207b0dd07ac57722e90719897ccc9681efb` (2026-07-29) -- tabulates the
+    * name cell as `Mystique <br> <sub>London</sub>`, and the label is that cell
+    * less the subscripted counterpart, as every label on this schedule is.
+    * `besu-eth/besu-etc` @ `eb4248c997` states the label without it, as
+    * `MYSTIQUE(true, "Mystique")` in `HardforkId.ClassicHardforkId`, and the two
+    * agree to the character.
+    *
+    * ==THAT TABLE GAVE THIS ROW A HEIGHT OFF BY A FACTOR OF TEN, AND [[agharta]]
+    * RECORDS THE OTHER HALF OF THE SAME CORRECTION==
+    *
+    * Until `b3bda63ae61efd987778b4019b67e7d508538ca5` (2026-07-23) this row read
+    * **`1452500`** -- the figure above with its last digit dropped. That commit's
+    * subject is *"fix Mystique/Agharta block numbers"*: it corrected this row and
+    * the `9583000` defect [[agharta]] already documents, in one change.
+    *
+    * **So the tabulation was wrong in two of its rows at once**, which is the
+    * strongest available argument for the rule this schedule already follows --
+    * take a height from the specification and the implementations, and take only
+    * the label from ECIP-1066. [[agharta]] states that rule from a row whose
+    * error had no support anywhere; this row states it from an error of a
+    * different shape, and the shapes are what decide whether anything catches
+    * them. `1452500` lands between [[homestead]] and [[gasReprice]], so an entry
+    * carrying it would sit out of order at the end of this vector and
+    * [[UpgradeSchedule.of]] would return [[UpgradeSchedule.Error.OutOfOrder]]
+    * rather than a schedule. The same table's Agharta error was ten thousand
+    * blocks and ordered correctly against both its neighbours, so it would have
+    * been accepted in silence. **Only one of the two rows this commit fixed was
+    * refutable by construction**, which is why the rule is to take the height
+    * elsewhere rather than to rely on the schedule noticing.
+    *
+    * ==What this entry does not settle==
+    *
+    * [[Upgrades.mystique]] says which two proposals compose it, which three the
+    * governing document omits and why, and which two facets they move. **That is
+    * a statement about what the composition adopts, and not a conformance
+    * claim** -- the same division this schedule draws at every entry that names
+    * an upstream counterpart.
+    */
+  private val mystique: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(14525000), upgrade("Mystique"), Upgrade.RuleChange(Upgrades.mystique))
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -599,6 +665,7 @@ object Mainnet:
         phoenix,
         mess,
         thanos,
-        magneto
+        magneto,
+        mystique
       )
     )

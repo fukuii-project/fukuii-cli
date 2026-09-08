@@ -1,7 +1,18 @@
 package org.fukuii.chainspec.networks.ethereumclassic
 
 import org.fukuii.bytes.UInt256
-import org.fukuii.chainspec.proposals.eip.{Eip1234, Eip1283, Eip1884, Eip2200}
+import org.fukuii.chainspec.proposals.eip.{
+  Eip1234,
+  Eip1283,
+  Eip1559,
+  Eip1884,
+  Eip2200,
+  Eip2929,
+  Eip3198,
+  Eip3529,
+  Eip3541,
+  Eip3554
+}
 import org.fukuii.chainspec.{DifficultyAdjustment, ProposalId}
 import org.fukuii.evm.{
   Cost,
@@ -36,7 +47,8 @@ class UpgradesSpec extends AnyFlatSpec:
       Upgrades.agharta,
       Upgrades.phoenix,
       Upgrades.thanos,
-      Upgrades.magneto
+      Upgrades.magneto,
+      Upgrades.mystique
     )
 
   /** What a table charges for `opcode` before it runs, where that is settled. */
@@ -132,7 +144,9 @@ class UpgradesSpec extends AnyFlatSpec:
           ProposalId.Eip(2718),
           ProposalId.Eip(2929),
           ProposalId.Eip(2930)
-        ),
+        ) &&
+        Upgrades.mystique.components == Upgrades.magneto.components ++
+        Vector(ProposalId.Eip(3529), ProposalId.Eip(3541)),
       "a composition's recorded components are not the ones it adopted"
     )
 
@@ -486,3 +500,141 @@ class UpgradesSpec extends AnyFlatSpec:
           .contains(Precompile.AltBn128PairingCheck(BigInt(45000), BigInt(34000))),
       "a native this upgrade places or reprices is absent, or answers at the price the upgrade below it charged"
     )
+
+  "the composition this network calls Mystique" should
+    "refuse to deploy code beginning with the reserved byte" in
+    // The case only a composition can make: `Eip3541Spec` certifies the delta
+    // and passes with the component adopted by nothing. What the machine then
+    // DOES with the byte is certified where the rule is read; this is the
+    // schedule's side of it, that the rule set carries the byte at all.
+    assert(
+      Upgrades.mystique.evm.reservedCodePrefix.contains(0xef),
+      "the upgrade that adopts EIP-3541 does not reserve the byte its document names"
+    )
+
+  it should "have reserved no prefix at the upgrade before it" in
+    assert(
+      Upgrades.magneto.evm.reservedCodePrefix.isEmpty,
+      "an upgrade below the one adopting EIP-3541 already refused the byte"
+    )
+
+  it should "cut both refunds and the bound on what a transaction hands back" in
+    // Three fields by one document, and the third sits on a different facet from
+    // the other two. Read as the literals that document publishes rather than
+    // against the base: carrying a value forward unchanged and moving it to the
+    // right number are different claims, and only the second is this upgrade's.
+    assert(
+      Upgrades.mystique.evm.schedule.refundNetStorageClear == BigInt(4800) &&
+        Upgrades.mystique.evm.schedule.refundSelfDestruct == BigInt(0) &&
+        Upgrades.mystique.execution.maxRefundQuotient == BigInt(5),
+      "the upgrade that adopts EIP-3529 carries a figure other than that document's"
+    )
+
+  it should "have carried all three at their earlier values below it" in
+    // The negative control for the three above, stated as three clauses rather
+    // than one: a delta moving one field and missing the others would satisfy
+    // any check that read only the field it moved.
+    assert(
+      Upgrades.magneto.evm.schedule.refundNetStorageClear == BigInt(15000) &&
+        Upgrades.magneto.evm.schedule.refundSelfDestruct == BigInt(24000) &&
+        Upgrades.magneto.execution.maxRefundQuotient == BigInt(2),
+      "a figure EIP-3529 moves had already moved at the upgrade below the one adopting it"
+    )
+
+  it should "leave the legacy clearing refund alone, which is a field this network never spends" in
+    // The two fields hold the same 15,000 and only one of them is this
+    // document's. The legacy one belongs to the metering scheme this network
+    // left at `phoenix`, so a delta writing it instead would put the right
+    // number in a field nothing reads -- and every fixture would go on agreeing.
+    // The second clause is what makes the first a statement about an unspent
+    // field rather than about an unused one.
+    assert(
+      Upgrades.mystique.evm.schedule.refundStorageClear == Upgrades.genesisPrices.refundStorageClear &&
+        Upgrades.mystique.evm.storageMetering == StorageMetering.NetWithSentry,
+      "the delta reached the legacy metering field, or this network is still metering storage that way"
+    )
+
+  it should "write the machine's rules and settlement's, and no other facet" in
+    // Both components are confined to the machine and one also reaches
+    // settlement, so admission, consensus and the header facet survive as the
+    // SAME values rather than as equal copies -- which reference equality is
+    // what distinguishes. The last two clauses are the other direction: a
+    // component that reached nothing would satisfy the first three alone.
+    assert(
+      (Upgrades.mystique.admission eq Upgrades.magneto.admission) &&
+        (Upgrades.mystique.consensus eq Upgrades.magneto.consensus) &&
+        (Upgrades.mystique.header eq Upgrades.magneto.header) &&
+        (Upgrades.mystique.evm ne Upgrades.magneto.evm) &&
+        (Upgrades.mystique.execution ne Upgrades.magneto.execution),
+      "this upgrade rebuilt a facet its components do not name, or failed to reach one they do"
+    )
+
+  it should "decline all three proposals its own document omits, and be moved by each if it did not" in
+    // The rules' side of a decline, in the shape the Constantinople pair above
+    // uses: the second clause of each pair is what makes it an assertion rather
+    // than a coincidence, because without it a component whose delta did nothing
+    // would satisfy the first.
+    //
+    // All three components are built and adoptable, so this is a choice the
+    // composition makes rather than a gap in the vocabulary. Each lands on a
+    // different facet, which is why no one of them stands for the other two: the
+    // fee market reaches admission and the header, the operation that reads it
+    // reaches the machine, and the bomb delay reaches consensus.
+    assert(
+      !Upgrades.mystique.admission.admittedTypes.contains(TransactionType.DynamicFee) &&
+        Upgrades.mystique
+          .adopting(Eip1559.component)
+          .admission
+          .admittedTypes
+          .contains(TransactionType.DynamicFee) &&
+        Upgrades.mystique.header.feeMarket.isEmpty &&
+        Upgrades.mystique.adopting(Eip1559.component).header.feeMarket.isDefined &&
+        !Upgrades.mystique.evm.table.contains(Opcode.BaseFee) &&
+        Upgrades.mystique.adopting(Eip3198.component).evm.table.contains(Opcode.BaseFee) &&
+        Upgrades.mystique.consensus.difficultyBombDelay == BigInt(0) &&
+        Upgrades.mystique.adopting(Eip3554.component).consensus.difficultyBombDelay == BigInt(9700000),
+      "a proposal this upgrade's document omits is in force at it, or would not have changed it"
+    )
+
+  it should "still size an epoch by the calibration adopted two upgrades below it" in
+    // The case `magneto` carries, one upgrade further from its source. Neither of
+    // this upgrade's two documents mentions an epoch, so the value can only
+    // arrive by having composed from the upgrade that set it -- and it reaches a
+    // seal rather than a state root, so no certification tier in this build
+    // could report it absent.
+    assert(
+      Upgrades.mystique.consensus.ecip1099Activation.contains(BigInt(11700000)),
+      "this composition was built from an upgrade below the one that calibrated the epoch"
+    )
+
+  it should "reach the same rules whichever order its two components run in" in {
+    // The scaladoc's disjoint-fields claim, executed rather than restated. Two
+    // deltas touching one field compose to whichever ran last, so a composition
+    // that commutes is evidence they name none in common -- over this base,
+    // which is the only base this network composes them over.
+    //
+    // Facet by facet rather than on the whole value: `adopting` rebuilds the
+    // component record from the order it was passed, so the two records differ
+    // by construction and a whole-value comparison would fail for a reason that
+    // is not about the rules.
+    //
+    // THE LAST CLAUSE IS THE CALIBRATION, and without it this case is satisfied
+    // by a comparison that can never report a difference. EIP-2200 and EIP-2929
+    // both write `netStorageNoop`, `netStorageDirty`,
+    // `refundNetStorageResetFromZero` and `refundNetStorageReset`, so they are a
+    // pair that must NOT commute -- read over the same base and the same facet
+    // as the clauses above, which is what makes it a control for them rather
+    // than a separate fact.
+    val reversed = Upgrades.magneto.adopting(Eip3541.component, Eip3529.component)
+    val order = Upgrades.magneto.adopting(Eip2200.component, Eip2929.component).evm
+    val reverseOrder = Upgrades.magneto.adopting(Eip2929.component, Eip2200.component).evm
+    assert(
+      reversed.evm == Upgrades.mystique.evm &&
+        reversed.execution == Upgrades.mystique.execution &&
+        reversed.admission == Upgrades.mystique.admission &&
+        reversed.consensus == Upgrades.mystique.consensus &&
+        reversed.header == Upgrades.mystique.header &&
+        order != reverseOrder,
+      "the two components do not commute, or the comparison that says they do cannot see an order that matters"
+    )
+  }
