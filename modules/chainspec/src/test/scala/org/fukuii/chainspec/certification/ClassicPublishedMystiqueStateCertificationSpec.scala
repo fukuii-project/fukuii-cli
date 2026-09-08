@@ -285,11 +285,16 @@ class ClassicPublishedMystiqueStateCertificationSpec extends AnyFlatSpec:
     )
 
   it should "partition those divergences into the two observables, with neither set empty" in
-    // The arm that stops one predicate standing in for two findings. Written as
-    // a partition rather than as two independent `forall`s so that an entry
-    // moving between the sets, or appearing in neither, fails here -- which is
-    // what a state-root disagreement newly appearing on an exception-name entry
-    // would look like.
+    // The arm that stops one predicate standing in for two findings. It guards
+    // COVERAGE and non-vacuousness only: an entry appearing in neither set, or a
+    // set going empty, fails here.
+    //
+    // It does NOT catch an entry moving BETWEEN the two sets. The union is
+    // unchanged by that, so this assertion is symmetric in which vector holds
+    // which name and would pass with the two swapped wholesale. The two tests
+    // below are what catch it, by reading each entry's reason off the live
+    // report -- so a state-root disagreement newly appearing on an
+    // exception-name entry fails there, not here.
     assert(
       (StateRootDivergences ++ ExceptionNameDivergences).sorted == KnownDivergences.sorted &&
         StateRootDivergences.nonEmpty && ExceptionNameDivergences.nonEmpty,

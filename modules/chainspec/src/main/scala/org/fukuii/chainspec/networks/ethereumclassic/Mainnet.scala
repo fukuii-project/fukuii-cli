@@ -557,10 +557,15 @@ object Mainnet:
     * **ECIP-1104 states it** -- `ethereumclassic/ECIPs`, `_specs/ecip-1104.md`
     * @ `f1077dbac954c1443d146fe6aa2ed44560dfb35f`, `status: Final`,
     * `type: Meta` -- naming `14_525_000` for this network beside the two test
-    * networks it also schedules. That ref is the current head of that file rather
-    * than the commit that made the document Final, which is the same ref
-    * [[Upgrades.mystique]] reads membership at; the height is byte-identical at
-    * both, because the only change between them substitutes one proposal number. `ethereumclassic/core-geth` @ `4185df450`
+    * networks it also schedules. **That ref POSTDATES the commit that made the
+    * document Final**, and is the one [[Upgrades.mystique]] reads membership at;
+    * the height is byte-identical at both, because the only change between them
+    * substitutes one proposal number.
+    *
+    * **Stated as an ordering between two commits rather than as one of them being
+    * current**, because that repository is actively edited and a currency claim
+    * goes false without anything here changing. The file cited two paragraphs
+    * below took a further commit the same day this entry was written. `ethereumclassic/core-geth` @ `4185df450`
     * states it as two per-proposal transitions rather than the fork name, at
     * `params/config_classic.go:96-97`, under the client's own comment
     * `// London (partially), aka Mystique`. `besu-eth/besu-etc` @ `eb4248c997`

@@ -192,6 +192,21 @@ object ClassicPublishedStateCorpus:
     * because nothing was found against it -- so a directory nobody has made that
     * case for stays out, and the size of the differential it would contribute
     * does not make it.
+    *
+    * ==This list INHERITS the one below it, and that runs forward as well as
+    * back==
+    *
+    * The paragraphs above say why the two additions were not folded back into
+    * [[MagnetoDirectories]]. The other direction is worth stating too: this list
+    * is defined as that one plus two entries, so **editing that list moves this
+    * one**, and a later change made for a reason belonging to the upgrade below
+    * would reach this label's figures.
+    *
+    * **It cannot do so silently.** Both specs spell their file, outcome and
+    * certified counts as literals read from a live walk of the tree, so any drift
+    * fails in both rather than passing in either. The hazard is a reader
+    * regenerating one spec's literals and not the other's, which is why the
+    * coupling is named here rather than left to be inferred from the `++`.
     */
   val MystiqueDirectories: Vector[String] =
     MagnetoDirectories ++ Vector("stShift", "stCreate2")

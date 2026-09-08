@@ -57,12 +57,14 @@ import org.fukuii.evm.Proposal
   * difficulty bomb being defused"*.
   *
   * **That document named the bomb delay EIP-3228 until `f1077db`** -- a number
-  * `ethereum/EIPs` has never carried -- and the same commit replaced it in all
-  * three places it appeared, changing nothing else. Worth a sentence only
-  * because the old number outlives the fix: an older clone or a cached rendering
-  * still shows a link that resolves to nothing.
-  * `org.fukuii.chainspec.networks.ethereumclassic.Upgrades.mystique` carries the
-  * upgrade-level detail.
+  * absent from `ethereum/EIPs` @ `dbfa6bee` and from that repository's history on
+  * every branch, against controls that all resolve: EIP-3198, EIP-3238, EIP-3529,
+  * EIP-3541 and EIP-3554. The same commit replaced it in all three places it
+  * appeared, changing nothing else. Worth a sentence only because the old number
+  * outlives the fix: an older clone or a cached rendering still shows a link that
+  * resolves to nothing.
+  * [[org.fukuii.chainspec.networks.ethereumclassic.Upgrades.mystique]] carries
+  * the upgrade-level detail.
   */
 object Eip3541:
 
