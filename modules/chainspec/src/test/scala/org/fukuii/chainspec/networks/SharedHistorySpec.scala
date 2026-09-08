@@ -38,10 +38,11 @@ import org.scalatest.flatspec.AnyFlatSpec
   * *Specification* requires every block in `[1_920_000, 1_920_009]` to carry
   * `dao-hard-fork` in `extraData`, which is a header rule and which
   * `ethereum/go-ethereum` @ `6bb0588ad8e7f922e4ad5580f51265a4097af08f` enforces
-  * in `consensus/misc/dao.go`. `UpgradeRules` holds no header facet -- the
-  * facets it does hold settle the machine, settlement, admission and what a
-  * block owes its consensus mechanism -- so what is equal below is every rule
-  * this build models, not every rule a node validates.
+  * in `consensus/misc/dao.go`. `UpgradeRules` does hold a header facet, and it
+  * does not reach this: [[org.fukuii.chainspec.HeaderRules]] carries the fee
+  * market alone and refuses a cap on extra data outright, recording that no
+  * client of four varies one by fork. So what is equal below is every rule this
+  * build models, not every rule a node validates.
   *
   * So at block 1,920,000 the two networks began building different state under
   * rules that stayed equal for another 543,000 blocks, until Ethereum mainnet
@@ -111,6 +112,30 @@ import org.scalatest.flatspec.AnyFlatSpec
   * A reading of the sentence above as "the difference has stopped growing"
   * would be refuted by the case that states it.
   *
+  * ==Where the arc of realignments ENDS, and why that row reads differently==
+  *
+  * The four cases above all assert the same shape: three facets equal, the
+  * fourth not. The upgrade after the fourth is the first at which that shape
+  * fails, and it fails on the side the series had never tested -- the machines
+  * themselves part. The other network adopts a fee market, the operation that
+  * reads it and a delay to its exponential term; this one adopts neither the
+  * market nor the operation, so the other network's machine gains an operation
+  * this one has no counterpart for and its headers gain a field this one's do
+  * not carry.
+  *
+  * **One facet survives, and it is the interesting half of that row.** Both
+  * networks adopt the same refund reduction at their respective upgrades, and
+  * the settlement facet holds nothing else either of them moves there -- so the
+  * two settlement rules are equal at heights where the machines are not. A row
+  * asserting that the networks "diverge" without naming which facets would state
+  * something false about that one, which is why the case below reads the facets
+  * one at a time rather than comparing the rule sets.
+  *
+  * So this is not a fifth realignment and it is not the parting at 1,920,000
+  * either: that one left every modeled rule equal and moved only state, and this
+  * one moves the rules while the chains go on running the histories they already
+  * had.
+  *
   * `ethereumclassic/core-geth` @
   * `4185df450364973bbf99efa3923791f5ba40b351` carries it as
   * `// DAOForkBlock: big.NewInt(1920000),` in `params/config_classic.go`,
@@ -178,6 +203,17 @@ class SharedHistorySpec extends AnyFlatSpec:
   private val ethereumFourthRealignmentBlock: Long = 12244000L
 
   private val classicFourthRealignmentBlock: Long = 13189133L
+
+  /** The next height on each schedule, where the two machines part instead of
+    * realigning, sourced on the entry that carries it in each network's own
+    * `Mainnet`.
+    *
+    * Named for what happens rather than as a fifth realignment, because the
+    * shape the four pairs above assert is exactly what fails here.
+    */
+  private val ethereumMachineDivergenceBlock: Long = 12965000L
+
+  private val classicMachineDivergenceBlock: Long = 14525000L
 
   private def ethereumAt(height: Long) = ethereumSchedule.at(UInt64.fromBits(height), UInt64.Zero)
   private def classicAt(height: Long) = classicSchedule.at(UInt64.fromBits(height), UInt64.Zero)
@@ -542,4 +578,104 @@ class SharedHistorySpec extends AnyFlatSpec:
         classicAt(classicSecondRealignmentBlock).components
           .diff(ethereumAt(ethereumSecondRealignmentBlock).components),
       "the six proposals both networks adopted here did not cancel, so one of them adopted something the other did not"
+    )
+
+  "the two networks' machines" should "part at the upgrade above the fourth realignment, ending the series" in
+    // THE ROW THAT BREAKS THE ARC, and the first in this file to assert that a
+    // machine comparison FAILS. Every case above pairs an equality over three
+    // facets with an inequality over the fourth; here the equality is what goes.
+    //
+    // Read the three inequalities as one event rather than three. The other
+    // network adopts a fee market, which writes admission and the header facet,
+    // and the operation that pushes the charge that market derives, which writes
+    // the machine. This network adopts neither. So a single declined document
+    // and the operation that reads it move all three, and a comparison of whole
+    // rule sets would report one difference where there are three separable
+    // ones.
+    //
+    // The heights are stated rather than derived for the reason every pair above
+    // is: neither schedule's position tells you the other's.
+    assert(
+      classicAt(classicMachineDivergenceBlock).evm != ethereumAt(ethereumMachineDivergenceBlock).evm &&
+        classicAt(classicMachineDivergenceBlock).admission !=
+        ethereumAt(ethereumMachineDivergenceBlock).admission &&
+        classicAt(classicMachineDivergenceBlock).header !=
+        ethereumAt(ethereumMachineDivergenceBlock).header &&
+        classicAt(classicMachineDivergenceBlock).consensus !=
+        ethereumAt(ethereumMachineDivergenceBlock).consensus,
+      "the two networks' machines, admission rules or headers are still one at the upgrade where one of them " +
+        "adopts a fee market the other declines"
+    )
+
+  it should "have been one machine at the upgrade immediately below, so the parting is this upgrade's" in
+    // What stops the case above from reporting a divergence that was already
+    // there. The pair of heights one upgrade down is the fourth realignment,
+    // where all three of those facets are equal -- asserted there over evm,
+    // execution and admission, and asserted here over the header facet, which no
+    // case above reads.
+    //
+    // The header conjunct is the one worth stating separately: both networks
+    // carry no fee market at all through that upgrade, so the facets are equal
+    // by both being empty rather than by agreeing about a market. An equality
+    // that holds vacuously is still the right baseline for this comparison, and
+    // saying so is what keeps it from being read as more than it is.
+    assert(
+      classicAt(classicFourthRealignmentBlock).header == ethereumAt(ethereumFourthRealignmentBlock).header &&
+        ethereumAt(ethereumFourthRealignmentBlock).header.feeMarket.isEmpty &&
+        ethereumAt(ethereumMachineDivergenceBlock).header.feeMarket.isDefined &&
+        classicAt(classicMachineDivergenceBlock).header.feeMarket.isEmpty,
+      "the two networks' headers already differed one upgrade below, or neither network's fee market arrives here"
+    )
+
+  "one facet" should "survive the parting, because both networks adopt the same refund reduction there" in
+    // THE RESULT THAT MAKES THIS ROW WORTH READING. "The machines diverge" is
+    // true of three facets and false of this one: both networks adopt the same
+    // refund document at their respective upgrades, and neither moves anything
+    // else the settlement facet holds, so the two settlement rules are equal at
+    // heights where the machines are not.
+    //
+    // It is asserted rather than left implied because the natural summary of
+    // this upgrade -- one network took five documents, the other took two --
+    // predicts that everything parts, and that summary is wrong here. The two
+    // documents this network took are a strict subset of the five, and the one
+    // of them that reaches settlement is in both.
+    //
+    // Not vacuous: the value is the reduced ceiling on both sides rather than
+    // the launch figure neither has moved, which the second conjunct states.
+    assert(
+      classicAt(classicMachineDivergenceBlock).execution ==
+        ethereumAt(ethereumMachineDivergenceBlock).execution &&
+        classicAt(classicMachineDivergenceBlock).execution.maxRefundQuotient !=
+        classicAt(classicFourthRealignmentBlock).execution.maxRefundQuotient,
+      "the two networks' settlement rules parted where both adopted the same refund reduction, or neither moved"
+    )
+
+  "the two records at the parting" should "differ by three more proposals in one direction and none in the other" in
+    // The record's side, and the one asymmetric growth in this file. The four
+    // realignments above either cancel exactly or grow by one in EACH direction;
+    // here one network adopts five documents and this one adopts two of the same
+    // five, so the two shared documents cancel and the three unshared ones land
+    // entirely on one side.
+    //
+    // Stated as both differences rather than one, because a list growing on the
+    // left says nothing about whether the right also moved -- and the right not
+    // moving is half the claim.
+    assert(
+      ethereumAt(ethereumMachineDivergenceBlock).components
+        .diff(classicAt(classicMachineDivergenceBlock).components) ==
+        Vector(
+          ProposalId.Eip(649),
+          ProposalId.Eip(1234),
+          ProposalId.Eip(1283),
+          ProposalId.Eip(1716),
+          ProposalId.Eip(2384),
+          ProposalId.Eip(1559),
+          ProposalId.Eip(3198),
+          ProposalId.Eip(3554)
+        ) &&
+        classicAt(classicMachineDivergenceBlock).components
+          .diff(ethereumAt(ethereumMachineDivergenceBlock).components) ==
+        classicAt(classicFourthRealignmentBlock).components
+          .diff(ethereumAt(ethereumFourthRealignmentBlock).components),
+      "the two proposals both networks adopted here did not cancel, or this network adopted something alone"
     )

@@ -147,6 +147,77 @@ object ClassicPublishedStateCorpus:
   val MagnetoDirectories: Vector[String] =
     PhaseOneDirectories :+ "stEIP2930"
 
+  /** The subdirectories registered at the label one upgrade above.
+    *
+    * ==Two additions, and each is a direct target rather than a large tree==
+    *
+    * `stCreate2` is where this upgrade's creation-time code refusal is the
+    * subject. `CREATE2_FirstByte_loop` deploys a one-byte contract for every one
+    * of the 256 values a first byte can take and records at storage slot `i`
+    * each value whose deployment FAILED -- so the case's whole observable is
+    * which first bytes a rule set refuses. It states an expectation at this
+    * label and at the one below, and **the two state roots differ**, which is
+    * the property that makes this tier able to discriminate the upgrade at all.
+    *
+    * `stShift` is registered for a target no list here had reached: the three
+    * shift operations, whose results this tree asserts under non-zero operands
+    * rather than only at the identity. Its 42 files carry exactly three of this
+    * network's labels -- this one, the one below, and Phoenix, which is where
+    * the operations were adopted.
+    *
+    * **Neither is added to [[PhaseOneDirectories]] or [[MagnetoDirectories]]**,
+    * for the reason the definition above states: those lists are justified by
+    * their own upgrades' targets, and both spell their file, outcome and
+    * certified counts as literals, so widening either would rewrite a landed
+    * tier's figures for a reason having nothing to do with the upgrade it is
+    * named for.
+    *
+    * Two directories carrying larger disagreements between this label and the
+    * one below are deliberately absent, and `stCreateTest` is the one worth
+    * stating a reason for, because it looks like a candidate. Its
+    * `CreateAddressWarmAfterFail` does carry initcode returning code behind the
+    * reserved byte, and it carries an expectation at this label alone -- but the
+    * case's own `_info.comment` names its subject as whether a create address is
+    * warm in a following call *"as required by EIP-2929"*. The refusal is the
+    * INGREDIENT it uses to make a creation fail, not what it measures.
+    * `stWalletTest` carries the largest such disagreement anywhere in this tree
+    * and is excluded on the other half of the same test: **nothing has shown an
+    * entry there to take either of this upgrade's documents as its subject.**
+    * That is deliberately not written as a survey finding -- its 42 files record
+    * no `_info.comment` at all, so the tree states no subject for any of them
+    * and the question cannot be settled from this directory either way.
+    *
+    * Which is the point: selection here is a POSITIVE test. A directory joins
+    * because some entry is shown to take a proposal as its subject, never
+    * because nothing was found against it -- so a directory nobody has made that
+    * case for stays out, and the size of the differential it would contribute
+    * does not make it.
+    */
+  val MystiqueDirectories: Vector[String] =
+    MagnetoDirectories ++ Vector("stShift", "stCreate2")
+
+  /** The label this upgrade's expectations are filed under in this tree. */
+  val MystiqueFork: String = "ETC_Mystique"
+
+  /** The name a report of this upgrade's rules over those directories carries. */
+  val MystiqueCorpus: String = "tests-etc GeneralStateTests at Mystique"
+
+  /** The height this harness believes Mystique begins at.
+    *
+    * ECIP-1104 -- `status: Final`, `type: Meta` -- names `14_525_000` for this
+    * network, at `ethereumclassic/ECIPs` @
+    * `f1077dbac954c1443d146fe6aa2ed44560dfb35f`, which is on that repository's
+    * published master. `ethereumclassic/core-geth` @ `4185df450` sets this
+    * upgrade's two transitions there in `params/config_classic.go`, under a
+    * comment reading `// London (partially), aka Mystique`, and
+    * `besu-eth/besu-etc` @ `eb4248c997` states `"mystiqueBlock": 14525000`.
+    * Stated as a literal for the reason the others are.
+    *
+    * The height the fork below begins at is [[MagnetoStarts]], which serves both
+    * as that label's own resolution height and as this label's control input.
+    */
+  private[certification] val MystiqueStarts: Long = 14525000L
+
   /** The label this upgrade's expectations are filed under in this tree. */
   val MagnetoFork: String = "ETC_Magneto"
 
@@ -245,6 +316,12 @@ object ClassicPublishedStateCorpus:
     */
   lazy val magneto: Option[CorpusReport] =
     reportAt(MagnetoCorpus, MagnetoFork, MagnetoStarts, MagnetoDirectories, identity)
+
+  /** This upgrade's rules over its own directories, as the run every count in
+    * `ClassicPublishedMystiqueStateCertificationSpec` is read from.
+    */
+  lazy val mystique: Option[CorpusReport] =
+    reportAt(MystiqueCorpus, MystiqueFork, MystiqueStarts, MystiqueDirectories, identity)
 
   /** Every `.json` under the registered subdirectories, in the order the tree
     * is walked, so two runs report the same thing.
