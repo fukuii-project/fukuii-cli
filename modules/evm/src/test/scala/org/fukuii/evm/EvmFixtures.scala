@@ -186,6 +186,13 @@ object EvmFixtures:
     callStipend = BigInt(2302),
     newAccount = BigInt(25002),
     createBase = BigInt(32002),
+    // THE ONE FIGURE HERE HELD AT ZERO, against this schedule's own rule that no
+    // two prices agree. It is the rate a network below EIP-3860 charges, and
+    // these fixtures state a machine with no proposal adopted -- so every create
+    // spec that does not mention it is asserting that the metering is inert
+    // where the rate is nothing, which is the property that document has to have
+    // below its own fork. A spec about the metering overrides the schedule.
+    initcodePerWord = BigInt(0),
     codeDepositPerByte = BigInt(202),
     expBase = BigInt(12),
     expPerByte = BigInt(13),
@@ -251,6 +258,8 @@ object EvmFixtures:
     gasForwarded = GasForwarding.Whole,
     codeDepositMustSucceed = false,
     maxCodeSize = None,
+    maxInitcodeSize = None,
+    coinbaseStartsWarm = false,
     createdAccountNonce = UInt64.Zero,
     newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent,
     storageMetering = StorageMetering.Legacy,

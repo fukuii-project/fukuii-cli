@@ -120,7 +120,8 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
       available,
       None,
       ethereum.Upgrades.frontier.admission,
-      ethereum.Upgrades.genesisPrices
+      ethereum.Upgrades.genesisPrices,
+      ethereum.Upgrades.frontier.evm.maxInitcodeSize
     )
 
   /** What an admitted transaction of the shape above hands to settlement. */

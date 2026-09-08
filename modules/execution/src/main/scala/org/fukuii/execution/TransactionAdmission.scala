@@ -27,6 +27,19 @@ enum Refusal:
   /** The limit cannot pay the charge every transaction pays before it runs. */
   case IntrinsicGasTooLow
 
+  /** The transaction deploys, and the code it offers to initialize with is
+    * longer than these rules admit.
+    *
+    * A rule of its own rather than a shortfall of the charge above, though the
+    * document points at the resemblance -- *"Note that this is similar to
+    * transactions considered invalid for not meeting the intrinsic gas cost
+    * requirement"* (`ethereum/EIPs` @ `dbfa6bee8`, `EIPS/eip-3860.md`, Final,
+    * rule 1). **Similar is not the same**: a transaction can carry a limit
+    * covering every charge and still be refused here, so the two cannot be one
+    * branch, and the corpus states which of them refused.
+    */
+  case InitcodeTooLarge
+
   /** The transaction count is at the ceiling, so no successor could be signed
     * for.
     */
@@ -393,6 +406,20 @@ object TransactionAdmission:
     *   `check_transaction` opens `gas_available = block_env.block_gas_limit -
     *   block_output.block_gas_used` -- and a caller settling one transaction
     *   against an otherwise empty block passes the limit itself.
+    * @param maxInitcodeSize
+    *   the longest code a deploying transaction may offer, absent where the
+    *   rules bound none. **A value the MACHINE's rules hold, passed in rather
+    *   than duplicated here**, for the reason the schedule beside it is: one
+    *   number bounds both a create transaction's data and a create operation's
+    *   operand, and a copy on this facet would be a second definition for a fork
+    *   to keep in step.
+    *
+    *   `besu-eth/besu` @ `fdf1247c6d` threads it the same direction and from the
+    *   same place, constructing its transaction validator with
+    *   `evm.getMaxInitcodeSize()` at each fork definition that has one
+    *   (`MainnetProtocolSpecs.java:776`), against a
+    *   `private final int maxInitcodeSize` the validator then compares
+    *   (`MainnetTransactionValidator.java:63,131`).
     */
   def admit(
       offered: OfferedTransaction,
@@ -400,7 +427,8 @@ object TransactionAdmission:
       gasAvailable: BigInt,
       baseFeePerGas: Option[BigInt],
       rules: AdmissionRules,
-      schedule: GasSchedule
+      schedule: GasSchedule,
+      maxInitcodeSize: Option[Int]
   ): Admission =
     lazy val intrinsic = IntrinsicGas.of(schedule, offered.data, offered.to.isEmpty, offered.accessList)
     lazy val counted = world.nonceOf(offered.sender).toBigInt
@@ -421,6 +449,24 @@ object TransactionAdmission:
     val underCharge = charge.exists(offered.fee.cap < _)
     if !admitsFormat(offered.transactionType, rules) then Admission.Refused(Refusal.TypeNotAdmitted)
     else if intrinsic > offered.gasLimit then Admission.Refused(Refusal.IntrinsicGasTooLow)
+    // IMMEDIATELY AFTER THE INTRINSIC CHARGE, which is where the specification
+    // puts it: `ethereum/execution-specs` @ `20f7f6271a`
+    // `forks/shanghai/transactions.py:339-341` raises
+    // `InsufficientTransactionGasError` and then `InitCodeTooLargeError` on the
+    // next line, above the nonce ceiling. A transaction can break both at once
+    // -- oversized initcode is also data the limit may not cover -- so which is
+    // reported is the order's to decide and the corpus states it.
+    //
+    // Two clients settle it on the same side. `ethereumclassic/core-geth` @
+    // `4185df450` compares the intrinsic charge at
+    // `core/state_transition.go:426` and refuses the length at `:449`, and
+    // `ethereum/go-ethereum` @ `e9e35a42f` reaches
+    // `vm.CheckMaxInitCodeSize` at `core/state_transition.go:636`, likewise
+    // below its own intrinsic check. **Both put it on the settling path and not
+    // in the transaction pool alone** -- core-geth carries a second copy in
+    // `core/txpool/validation.go:79`, which is what a node relays by and would
+    // leave the rule unenforced on a block it received.
+    else if offersOversizedInitcode(offered, maxInitcodeSize) then Admission.Refused(Refusal.InitcodeTooLarge)
     else if tipExceedsCap(offered.fee) then Admission.Refused(Refusal.PriorityFeeAboveFeeCap)
     else if offered.nonce >= NonceLimit then Admission.Refused(Refusal.NonceIsMax)
     else if offered.gasLimit > gasAvailable then Admission.Refused(Refusal.GasAllowanceExceeded)
@@ -429,6 +475,34 @@ object TransactionAdmission:
     else if held < maximumFee + offered.value then Admission.Refused(Refusal.InsufficientAccountFunds)
     else if world.codeOf(offered.sender).nonEmpty then Admission.Refused(Refusal.SenderNotEoa)
     else Admission.Admitted(settling(offered, intrinsic, charge.getOrElse(BigInt(0))))
+
+  /** Whether the transaction deploys more code than the rules admit.
+    *
+    * ==Both halves of the condition are load-bearing==
+    *
+    * *"If length of transaction data (`initcode`) in a create transaction
+    * exceeds `MAX_INITCODE_SIZE`, transaction is invalid"* (`ethereum/EIPs` @
+    * `dbfa6bee8`, `EIPS/eip-3860.md`, Final, rule 1). **The bound is on a create
+    * transaction's data and on nothing else**, so a call carrying a longer
+    * payload is admitted at every fork -- reading the bound over every
+    * transaction would refuse calls no network refuses, and the data of a call
+    * is an argument rather than code.
+    *
+    * `ethereum/execution-specs` @ `20f7f6271a` writes the pair as
+    * `if tx.to == Bytes0(b"") and len(tx.data) > MAX_INIT_CODE_SIZE`
+    * (`forks/shanghai/transactions.py:340`), `besu-eth/besu` @ `fdf1247c6d` as
+    * `transaction.isContractCreation() && transaction.getPayload().size() >
+    * maxInitcodeSize` (`MainnetTransactionValidator.java:131`), and
+    * `NethermindEth/nethermind` @ `b92e2a4719` as
+    * `tx.IsContractCreation && spec.IsEip3860Enabled && tx.DataLength >
+    * spec.MaxInitCodeSize` (`TransactionExtensions.cs:57`).
+    *
+    * The comparison is strictly greater in all three, so data of exactly the
+    * bound is admitted -- which is one of the four cases the document's own test
+    * list names.
+    */
+  private def offersOversizedInitcode(offered: OfferedTransaction, maxInitcodeSize: Option[Int]): Boolean =
+    offered.to.isEmpty && maxInitcodeSize.exists(offered.data.length > _)
 
   /** Whether the tip offered exceeds the total the transaction will pay.
     *

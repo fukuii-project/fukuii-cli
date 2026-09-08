@@ -1,7 +1,7 @@
 package org.fukuii.execution
 
 import org.fukuii.bytes.Bytes
-import org.fukuii.evm.GasSchedule
+import org.fukuii.evm.{GasSchedule, Word}
 import org.fukuii.types.AccessTuple
 
 /** What a transaction is charged before any of it runs.
@@ -62,6 +62,26 @@ object IntrinsicGas:
     * reaching for `.distinct` here has confused the two halves of one field, and
     * the result undercharges every transaction that repeats an entry -- a state
     * root apart, on a transaction anyone can construct.
+    *
+    * ==THE PER-WORD TERM IS PAID ONLY BY A TRANSACTION THAT DEPLOYS==
+    *
+    * EIP-3860 extends *"the transaction data cost formula to include
+    * `initcode_cost(initcode)`"* **"For a create transaction"**
+    * (`ethereum/EIPs` @ `dbfa6bee8`, `EIPS/eip-3860.md`, Final, rule 2), where
+    * `initcode_cost(initcode) = INITCODE_WORD_COST * ceil(len(initcode) / 32)`.
+    * So it joins the surcharge for deploying rather than the data prices, over
+    * the same bytes the data prices already count -- a deploying transaction
+    * pays for its data twice, once per byte and once per word, and a calling
+    * transaction pays the word term not at all.
+    *
+    * `ethereum/execution-specs` @ `20f7f6271a` writes it inside the same branch
+    * as the surcharge, `create_cost = GasCosts.TX_CREATE +
+    * init_code_cost(ulen(tx.data))` (`forks/shanghai/transactions.py:385`), and
+    * `ethereum/go-ethereum` @ `e9e35a42f` adds it under
+    * `if isContractCreation && rules.IsShanghai`
+    * (`core/state_transition.go:115-119`). A term added outside the branch
+    * overcharges every ordinary call, which no state fixture of a deploying
+    * transaction can see.
     */
   def of(schedule: GasSchedule, data: Bytes, deploys: Boolean, accessList: Seq[AccessTuple]): BigInt =
     val raw = data.toIArray
@@ -73,8 +93,21 @@ object IntrinsicGas:
     val declared =
       schedule.transactionAccessListAddress * accessList.length +
         schedule.transactionAccessListStorageKey * accessList.map(_.storageKeys.length).sum
+    val creating =
+      if deploys then schedule.transactionCreate + schedule.initcodePerWord * wholeWords(raw.length)
+      else BigInt(0)
     schedule.transactionBase +
       schedule.transactionDataPerZeroByte * zeros +
       schedule.transactionDataPerNonZeroByte * (raw.length - zeros) +
-      (if deploys then schedule.transactionCreate else BigInt(0)) +
+      creating +
       declared
+
+  /** How many whole words `length` bytes occupy, rounding a partial word up.
+    *
+    * `ceil(len / 32)`, which is what the document's `initcode_cost` counts. The
+    * machine counts the same way over a region a create operation names, and the
+    * two arrive at one figure by the same arithmetic rather than by one calling
+    * the other -- they are handed different things, an operand there and a
+    * transaction's data here.
+    */
+  private def wholeWords(length: Int): BigInt = (BigInt(length) + Word.Width - 1) / Word.Width

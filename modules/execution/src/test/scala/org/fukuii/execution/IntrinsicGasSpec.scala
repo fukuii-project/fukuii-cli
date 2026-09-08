@@ -38,6 +38,18 @@ class IntrinsicGasSpec extends AnyFlatSpec:
   private def slot(last: Int): Hash =
     Hash.fromBytesTruncating(IArray.fill(31)(0.toByte) :+ last.toByte)
 
+  /** The same schedule with EIP-3860's rate turned on.
+    *
+    * The rate is distinct from every other price here, so a case naming the
+    * wrong field fails rather than agreeing by coincidence, and it is held at
+    * zero in the fixture -- which makes every case not naming it a control for
+    * the term being absent below the document that adds it.
+    */
+  private val metering = schedule.copy(initcodePerWord = BigInt(3))
+
+  private def meteredCharge(data: Bytes, deploys: Boolean): BigInt =
+    IntrinsicGas.of(metering, data, deploys, Seq.empty)
+
   "a transaction carrying nothing" should "be charged the base price alone" in
     assert(
       charged(Bytes.Empty) == schedule.transactionBase,
@@ -147,4 +159,38 @@ class IntrinsicGasSpec extends AnyFlatSpec:
       charged(EvmFixtures.bytesOf("0xff00"), declared = Seq.empty) ==
         schedule.transactionBase + schedule.transactionDataPerNonZeroByte + schedule.transactionDataPerZeroByte,
       "an empty declaration adds nothing at all"
+    )
+
+  "a deploying transaction under EIP-3860" should "pay the rate for each whole word of its data" in
+    // `initcode_cost(initcode) = INITCODE_WORD_COST * ceil(len(initcode) / 32)`
+    // over 33 bytes, which is two words.
+    assert(
+      meteredCharge(Bytes.fromArray(Array.fill(33)(1.toByte)), deploys = true) -
+        charged(Bytes.fromArray(Array.fill(33)(1.toByte)), deploys = true) == metering.initcodePerWord * 2,
+      "two words at the stated rate, on top of every charge the transaction already paid"
+    )
+
+  it should "round a partial word up" in
+    assert(
+      meteredCharge(Bytes.fromArray(Array.fill(1)(1.toByte)), deploys = true) -
+        charged(Bytes.fromArray(Array.fill(1)(1.toByte)), deploys = true) == metering.initcodePerWord,
+      "one byte is one word, which is the rounding `ceil(len / 32)` states"
+    )
+
+  it should "pay nothing for empty data" in
+    assert(
+      meteredCharge(Bytes.Empty, deploys = true) == charged(Bytes.Empty, deploys = true),
+      "zero bytes is zero words, so the rate multiplies nothing"
+    )
+
+  "a CALLING transaction under EIP-3860" should "pay the rate not at all" in
+    // The half most easily got wrong, because the term is naturally written
+    // beside the data prices, which every transaction pays. The document scopes
+    // it to a create transaction -- "For a create transaction, extend the
+    // transaction data cost formula" -- so a call of the same length is charged
+    // exactly what it was before the document existed.
+    assert(
+      meteredCharge(Bytes.fromArray(Array.fill(33)(1.toByte)), deploys = false) ==
+        charged(Bytes.fromArray(Array.fill(33)(1.toByte)), deploys = false),
+      "the rate rides with the surcharge for deploying, not with the data"
     )

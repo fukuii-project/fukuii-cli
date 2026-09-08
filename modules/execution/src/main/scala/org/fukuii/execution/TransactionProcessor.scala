@@ -287,14 +287,30 @@ object TransactionProcessor:
     * precompiles"* (`ethereum/EIPs` @ `dbfa6bee8`, `EIPS/eip-2929.md`, Final),
     * with EIP-2930's declaration added by its own document.
     *
-    * **THE BLOCK'S BENEFICIARY IS NOT WARM HERE**, and putting it in is a
-    * consensus divergence on every block whose transactions reach that account
-    * -- a `BALANCE` or a `CALL` to it would be charged the reduced figure a fork
-    * early. It becomes warm at a later proposal, EIP-3651, and
+    * **THE BLOCK'S BENEFICIARY IS THE FIFTH AND IS GATED**, where the four above
+    * are not. Putting it in unguarded is a consensus divergence on every block
+    * whose transactions reach that account -- a `BALANCE` or a `CALL` to it
+    * would be charged the reduced figure three forks early. EIP-3651 is what
+    * adds it: *"At the start of transaction execution, `accessed_addresses`
+    * shall be initialized to also include the address returned by `COINBASE`
+    * (`0x41`)"* (`ethereum/EIPs` @ `dbfa6bee8`, `EIPS/eip-3651.md`, Final), and
+    * `org.fukuii.evm.EvmRules.coinbaseStartsWarm` is which side of it these
+    * rules are on.
+    *
     * `ethereum/go-ethereum` @ `e9e35a42f` shows how easily the two are
     * conflated: its `StateDB.Prepare` takes the beneficiary in its signature and
     * warms it under `if rules.IsShanghai`, with the Berlin members listed
-    * unguarded above it.
+    * unguarded above it (`core/state/statedb.go:1518`).
+    *
+    * ==It joins the ADDRESSES and reaches no charge==
+    *
+    * `ethereum/execution-specs` @ `20f7f6271a` adds it to the set that seeds the
+    * warm addresses -- `access_list_addresses.add(block_env.coinbase)`,
+    * `forks/shanghai/fork.py:569` -- and the intrinsic charge beside it counts
+    * `tx.access_list` directly (`forks/shanghai/transactions.py:391`), never that
+    * set. So the beneficiary is warm and is not charged as though the
+    * transaction had declared it, and it seeds no storage slot: the sibling
+    * below has no counterpart to add.
     *
     * ==A set, where the same declaration is counted as a sequence for the
     * charge==
@@ -312,10 +328,12 @@ object TransactionProcessor:
     environment.rules.stateAccessMetering match
       case StateAccessMetering.Settled  => Set.empty
       case StateAccessMetering.WarmCold =>
-        environment.rules.precompiles.addresses +
-          transaction.sender +
-          target ++
-          transaction.accessList.map(_.address)
+        val seeded =
+          environment.rules.precompiles.addresses +
+            transaction.sender +
+            target ++
+            transaction.accessList.map(_.address)
+        if environment.rules.coinbaseStartsWarm then seeded + environment.block.coinbase else seeded
 
   /** The slots the same declaration names, keyed by the account each belongs to.
     *

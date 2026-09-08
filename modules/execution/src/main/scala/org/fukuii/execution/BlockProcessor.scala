@@ -292,7 +292,8 @@ object BlockProcessor:
           block.gasLimit - output.gasUsed,
           block.baseFee,
           admission,
-          evm.schedule
+          evm.schedule,
+          evm.maxInitcodeSize
         ) match
           case Admission.Refused(reason)    => Left(reason)
           case Admission.Admitted(settling) => Right(settling)

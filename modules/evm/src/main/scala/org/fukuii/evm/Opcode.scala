@@ -90,6 +90,7 @@ enum Opcode(val code: Int):
   case MSize extends Opcode(0x59)
   case Gas extends Opcode(0x5a)
   case JumpDest extends Opcode(0x5b)
+  case Push0 extends Opcode(0x5f)
   case Push1 extends Opcode(0x60)
   case Push2 extends Opcode(0x61)
   case Push3 extends Opcode(0x62)
@@ -167,6 +168,34 @@ enum Opcode(val code: Int):
   case Create2 extends Opcode(0xf5)
   case StaticCall extends Opcode(0xfa)
   case Revert extends Opcode(0xfd)
+
+  /** Ends the invocation and pays its balance out.
+    *
+    * ==A proposal deprecates it and settles no rule, which is why nothing here
+    * gates on that==
+    *
+    * EIP-6049 is `type: Meta` and its whole specification is documentary:
+    * *"Documentation of the `SELFDESTRUCT` opcode is updated to warn against its
+    * use and to note that a breaking change may be forthcoming"*, over a
+    * Backwards Compatibility section reading *"This EIP updates non-normative
+    * text in the Yellow Paper. No changes to clients is applicable"*
+    * (`ethereum/EIPs` @ `dbfa6bee8` (2026-08-26), `EIPS/eip-6049.md`, Final).
+    *
+    * **It is recorded here because a reader comparing this build's membership
+    * against the specification's would otherwise find it unaccounted for.**
+    * `ethereum/execution-specs` @ `20f7f6271a` lists it under *Notices* rather
+    * than *Changes* in `src/ethereum/forks/shanghai/__init__.py`, beside three
+    * documents that are changes -- so its absence from a rule set is the
+    * specification's own classification and not an omission.
+    *
+    * **One client does carry an activation for it, and it carries no rule
+    * either.** `ethereumclassic/core-geth` @ `4185df450` sets `EIP6049FBlock`
+    * on two networks with the comment `(noop)`, and a sweep of that tree for
+    * the symbol reaches only chain-configuration plumbing -- no site under
+    * `core/vm`, where the calibrating sweep for `EIP3855` in the same tree
+    * reaches `core/vm/jump_table.go`. So recording the adoption and recording
+    * nothing produce the same machine.
+    */
   case SelfDestruct extends Opcode(0xff)
 
 object Opcode:
@@ -184,6 +213,22 @@ object Opcode:
 
   /** True where the operation carries its operand in the bytes following it,
     * which is the one shape that makes a byte of code not an operation.
+    *
+    * ==[[Push0]] is deliberately outside this range, and widening it is the
+    * mistake to avoid==
+    *
+    * The family it is named for begins at [[Push1]], and this predicate is about
+    * an operand in the code rather than about a name. `PUSH0` carries none --
+    * *"jumpdest-analysis is unaffected, as `PUSH0` has no immediate data
+    * bytes"* (`ethereum/EIPs` @ `dbfa6bee8`, `EIPS/eip-3855.md`, Final) -- so a
+    * predicate that admitted it would be answering a question about spelling.
+    *
+    * **Two things break if it is widened, and only one of them is loud.**
+    * [[OpcodeTable.original]] prices this predicate's members at the very low
+    * tier, where that operation is priced at the base tier by its own document,
+    * so widening silently overcharges it by one gas at every execution. The
+    * other is that the operation would then be reached by the interpreter's push
+    * branch instead of its own, which is caught by the first test that runs it.
     */
   def isPush(op: Opcode): Boolean = op.code >= Push1.code && op.code <= Push32.code
 

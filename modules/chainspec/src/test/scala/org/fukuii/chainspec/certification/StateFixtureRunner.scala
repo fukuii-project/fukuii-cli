@@ -195,7 +195,8 @@ object StateFixtureRunner:
       fixture.block.gasLimit,
       fixture.block.baseFee,
       rules.admission,
-      rules.evm.schedule
+      rules.evm.schedule,
+      rules.evm.maxInitcodeSize
     ) match
       case Admission.Refused(reason)    => judge(fixture, base, trie, rules, Left(reason))
       case Admission.Admitted(admitted) =>

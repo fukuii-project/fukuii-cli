@@ -166,6 +166,31 @@ final case class GasSchedule(
     callStipend: BigInt,
     newAccount: BigInt,
     createBase: BigInt,
+    // What a creation pays for each whole word of the code that initializes it,
+    // rounded up. A network below EIP-3860 holds it at zero, where it charges
+    // nothing -- the same shape `transactionCreate` below is held at zero for,
+    // and what makes that document a repricing in place rather than a change to
+    // this record's shape.
+    //
+    // IT IS SPENT AT TWO SITES AND NO OTHER FIELD HERE IS, which is why it sits
+    // among the creation prices rather than among the intrinsic ones below: the
+    // create operations charge it over the region they are handed, and the
+    // charge every creating transaction pays before it runs charges it over the
+    // transaction's own data. Both count the same way and neither is the other's
+    // caller.
+    //
+    // `ethereum/go-ethereum` @ `e9e35a42f` writes both halves from one constant,
+    // `params.InitCodeWordGas` -- `core/vm/gas_table.go:340` for the operation
+    // and `core/state_transition.go:119` for the transaction --
+    // and `ethereum/execution-specs` @ `20f7f6271a` reaches the same shape with
+    // one function, `init_code_cost`, imported by `vm/instructions/system.py`
+    // and by `transactions.py`.
+    //
+    // The name is the ecosystem's read against this record's own convention.
+    // EIP-3860 calls the figure `INITCODE_WORD_COST` and the executable
+    // specification declares it `CODE_INIT_PER_WORD`, which is the per-word form
+    // every neighbouring field here already takes.
+    initcodePerWord: BigInt,
     codeDepositPerByte: BigInt,
     expBase: BigInt,
     expPerByte: BigInt,

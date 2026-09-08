@@ -391,6 +391,18 @@ object Interpreter:
           yield advance(frame)
         }
 
+      // Its own branch rather than the family's below, because it reads no
+      // operand out of the code and the family's branch is built entirely
+      // around reading one. `Opcode.isPush` excludes it for the same reason and
+      // states what widening that predicate would cost.
+      case Opcode.Push0 =>
+        priced(operation) { gas =>
+          for
+            _ <- frame.charge(gas)
+            _ <- frame.stack.push(Word.Zero)
+          yield advance(frame)
+        }
+
       case push if Opcode.isPush(push) =>
         val width = Opcode.immediateWidth(push)
         priced(operation) { gas =>
@@ -1097,12 +1109,46 @@ object Interpreter:
         // a creation that cannot afford itself has still consumed the same
         // operands as one that can.
         salt <- if salted then frame.stack.pop().map(Some(_)) else Right(None)
+        // EIP-3860's bound, refused as an exceptional abort rather than by
+        // pushing zero -- "instruction execution exceptionally aborts (as if it
+        // runs out of gas)" (`ethereum/EIPs` @ `dbfa6bee8`, `EIPS/eip-3860.md`,
+        // Final, rule 3).
+        //
+        // ABOVE the three refusals that hand the forwarded gas back, which is
+        // where the document puts it: it groups this with the checks that
+        // "precede the later 'light' checks: call depth and balance".
+        // `ethereum/execution-specs` @ `20f7f6271a` places it there too, at
+        // `forks/shanghai/vm/instructions/system.py:76`, before the split and
+        // before the balance, count and depth test.
+        //
+        // Placed before the charge, where the specification charges first and
+        // checks after. THE TWO ORDERS ARE INDISTINGUISHABLE: both ends are an
+        // exceptional abort, which keeps nothing, so a frame that fails the
+        // bound and one that cannot afford the charge leave the same state.
+        // `ethereum/go-ethereum` @ `e9e35a42f` checks first as well,
+        // `core/vm/gas_table.go:336` above the word charge at `:340`, and
+        // `ethereumclassic/core-geth` @ `4185df450` does the same at both create
+        // forms -- `core/vm/gas_table.go:320` and `:336` -- with a comment
+        // giving that order a second purpose, "Since size <=
+        // vars.MaxInitCodeSize, these multiplication cannot overflow".
+        _ <- refuseOversizedInitcode(environment.rules, size)
         // EIP-1014 charges the initialization code's hashing on top of the base,
         // at the per-word rate KECCAK256 itself uses, because the address
         // derivation hashes that code. CREATE derives from a count and hashes
         // nothing, so it pays nothing here.
-        hashing = if salted then schedule.keccak256PerWord * wholeWords(size) else BigInt(0)
-        _ <- reach(frame, schedule.createBase + hashing, (offset, size))
+        //
+        // EIP-3860 adds a second per-word rate that BOTH forms pay, over the
+        // same word count, which is why the two are summed into one rate rather
+        // than charged as two terms: "the same implementation may be used for
+        // `CREATE` and `CREATE2` with different cost constants: before
+        // activation `0` for `CREATE` and `6` for `CREATE2`, after activation
+        // `2` for `CREATE` and `6 + 2` for `CREATE2`" (same document,
+        // Rationale). go-ethereum writes exactly that sum,
+        // `(params.InitCodeWordGas + params.Keccak256WordGas) * words` at
+        // `core/vm/gas_table.go:589`.
+        perWord = schedule.initcodePerWord + (if salted then schedule.keccak256PerWord else BigInt(0))
+        initcodeCharge = perWord * wholeWords(size)
+        _ <- reach(frame, schedule.createBase + initcodeCharge, (offset, size))
         // A creation asks for nothing, so what it may be given is decided
         // against everything the creator holds. Whatever the rules keep back
         // stays with the creator while the deployment runs, on top of whatever
@@ -1843,6 +1889,20 @@ object Interpreter:
     * the copying operations are priced in.
     */
   private def wholeWords(size: Word): BigInt = (size.toBigInt + Word.Width - 1) / Word.Width
+
+  /** Nothing, or the abort a creation owes for being handed more code than the
+    * rules admit.
+    *
+    * Compares the OPERAND rather than the region the operand names, and the two
+    * are the same length by construction: `regionOf` returns exactly `size`
+    * bytes, zero-filling past the end of memory. Reading the region first would
+    * be the same comparison after expanding memory to hold a region the rules
+    * are about to refuse.
+    */
+  private def refuseOversizedInitcode(rules: EvmRules, size: Word): Either[Halt, Unit] =
+    rules.maxInitcodeSize match
+      case Some(bound) if size.toBigInt > BigInt(bound) => Left(Halt.OutOfGas)
+      case _                                            => Right(())
 
   /** The bytes of one region of memory, read after it has been paid for. */
   private def regionOf(frame: Frame, offset: Word, size: Word): Bytes =

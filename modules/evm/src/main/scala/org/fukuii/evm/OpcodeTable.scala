@@ -248,7 +248,8 @@ object OpcodeTable:
       Opcode.Create2,
       Opcode.ChainId,
       Opcode.SelfBalance,
-      Opcode.BaseFee
+      Opcode.BaseFee,
+      Opcode.Push0
     )
 
   /** The three families whose members differ only in a count, and which are

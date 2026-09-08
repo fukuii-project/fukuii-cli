@@ -71,7 +71,7 @@ class FeeOfferSpec extends AnyFlatSpec:
       charge: Option[BigInt],
       balance: BigInt = BigInt(10).pow(20)
   ): Admission =
-    TransactionAdmission.admit(offer(fee), world(balance), BigInt(30000000), charge, WithMarket, Schedule)
+    TransactionAdmission.admit(offer(fee), world(balance), BigInt(30000000), charge, WithMarket, Schedule, None)
 
   private def refusal(a: Admission): Option[Refusal] = a match
     case Admission.Refused(reason) => Some(reason)

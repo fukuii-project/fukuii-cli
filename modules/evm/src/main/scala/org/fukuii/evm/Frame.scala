@@ -165,9 +165,13 @@ final class Frame(
     * ==The outermost invocation is seeded by whatever settles the transaction==
     *
     * Not by anything here. What belongs in that seed is the sender, the
-    * recipient or the address being created, every precompile, and whatever the
-    * transaction declared ahead of running -- and NOT the block's beneficiary,
-    * which a later proposal adds.
+    * recipient or the address being created, every precompile, whatever the
+    * transaction declared ahead of running, and -- where
+    * [[EvmRules.coinbaseStartsWarm]] says so -- the account the block pays its
+    * fees to. **The last is a fork's answer and not a constant**: it joins the
+    * seed at EIP-3651 and is absent from it at every height below, so a seed
+    * that always includes it charges the reduced figure a fork early on every
+    * transaction that reaches that account.
     */
   var accessedAddresses: Set[Address] = reachedBeforeEntry
 

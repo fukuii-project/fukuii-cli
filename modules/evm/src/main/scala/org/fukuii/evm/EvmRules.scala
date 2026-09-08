@@ -543,6 +543,82 @@ enum BlockRandomness:
   *   the five named above read it from a chain configuration rather than from
   *   their own source. A case per value would
   *   have to be extended by a proposal that only moves a number.
+  * @param maxInitcodeSize
+  *   the longest code that may be handed to a creation to initialize it, where
+  *   the network bounds it at all. A creation given more than this fails; one
+  *   given exactly this succeeds, the proposal's comparison being strictly
+  *   greater. `None` is a network that bounds nothing, which is every height
+  *   before EIP-3860.
+  *
+  *   ==It is DERIVED from [[maxCodeSize]] and stored anyway, and the field
+  *   splits on which==
+  *
+  *   EIP-3860 defines it as `2 * MAX_CODE_SIZE` and requires EIP-170, so it is
+  *   not an independent quantity. Four implementations compute it rather than
+  *   holding it: `ethereum/execution-specs` @ `20f7f6271a` declares
+  *   `MAX_INIT_CODE_SIZE = 2 * MAX_CODE_SIZE` beside the bound it doubles
+  *   (`forks/shanghai/vm/interpreter.py:62`), `NethermindEth/nethermind` @
+  *   `b92e2a4719` makes it an extension property, `MaxInitCodeSize => 2 *
+  *   spec.MaxCodeSize` (`IReleaseSpecExtensions.cs:15`), and
+  *   `ethereum/go-ethereum` @ `e9e35a42f` writes `MaxInitCodeSize = 2 *
+  *   MaxCodeSize` (`params/protocol_params.go:161`), and
+  *   `ethereumclassic/core-geth` @ `4185df450` writes the same line at
+  *   `params/vars/protocol_params.go:61`. **`besu-eth/besu` @ `fdf1247c6d`
+  *   stores the pair instead**, carrying a code-size and an initcode-size limit
+  *   side by side at each entry of `EvmSpecVersion`.
+  *
+  *   **The doubling is not a fixed constant either, and go-ethereum is where
+  *   that shows**: the same file declares a second pair one line below for a
+  *   later fork, so the derived bound moves when the bound it derives from
+  *   does. A network is therefore not entitled to assume 49,152.
+  *
+  *   Stored here rather than computed at each read, because the two questions
+  *   *is a bound in force* and *what is it* are separate and only a stored
+  *   option answers the first. A computed `maxCodeSize.map(_ * 2)` would put a
+  *   bound on initcode at every height that bounds deployed code, which is every
+  *   height from EIP-170 -- three forks before the document that bounds
+  *   initcode. **The derivation still happens once, where the document that
+  *   defines it is adopted**, so there is no second figure to keep in step.
+  * @param coinbaseStartsWarm
+  *   whether the account a block pays its fees to is reached at the reduced
+  *   price from the first invocation of every transaction. It settles a
+  *   membership in the set seeded before the outermost invocation and never a
+  *   figure: what a reach costs stays [[GasSchedule.warmAccess]]'s and
+  *   [[GasSchedule.coldAccountAccess]]'s.
+  *
+  *   **It is read only where [[stateAccessMetering]] is [[StateAccessMetering.WarmCold]]**,
+  *   because below that scheme there is no set to be in. EIP-3651's frontmatter
+  *   is `requires: 2929` for that reason, and a network holding this true under
+  *   [[StateAccessMetering.Settled]] changes nothing -- which is a property of
+  *   the seed rather than a guard written anywhere.
+  *
+  *   ==A member here rather than a third case of [[StateAccessMetering]]==
+  *
+  *   That type settles *how a reach is priced*, and this changes no price: both
+  *   readings charge the same figures for the same reaches, and differ only in
+  *   what is already in the set when the transaction starts. A third case would
+  *   put a membership question inside the type that every pricing site matches
+  *   on, where the two new cases would be indistinguishable at all eleven of
+  *   them.
+  *
+  *   **The field splits on representation and agrees on the separation.**
+  *   `besu-eth/besu` @ `fdf1247c6d` carries `boolean warmCoinbase` on the
+  *   processor its fork constructs, set false at three of its definitions and
+  *   true at the later ones (`MainnetTransactionProcessor.java:81`,
+  *   `MainnetProtocolSpecs.java`) -- the same shape [[codeDepositMustSucceed]]
+  *   is modeled on, from the same client.
+  *   `NethermindEth/nethermind` @ `b92e2a4719` holds `IsEip3651Enabled` and
+  *   exposes it under the rule's own name,
+  *   `AddCoinbaseToTxAccessList => spec.IsEip3651Enabled`.
+  *   `bluealloy/revm` @ `08c17c162` takes the third shape, an
+  *   `Option<Address>` on its warm-address set, where absence is the network not
+  *   having adopted the document. **None of the three makes it a case of the
+  *   metering scheme.**
+  *
+  *   `ethereum/go-ethereum` @ `e9e35a42f` is the one that branches on a fork name
+  *   instead -- `if rules.IsShanghai { al.AddAddress(coinbase) }`
+  *   (`core/state/statedb.go:1518`) -- which is the shape these rules cannot
+  *   take, being what a fork resolved TO.
   * @param createdAccountNonce
   *   the transaction count an account is given when it is created, before the
   *   code that initializes it runs. Zero is the count an account has by simply
@@ -656,6 +732,8 @@ final case class EvmRules(
     gasForwarded: GasForwarding,
     codeDepositMustSucceed: Boolean,
     maxCodeSize: Option[Int],
+    maxInitcodeSize: Option[Int],
+    coinbaseStartsWarm: Boolean,
     createdAccountNonce: UInt64,
     newAccountCharge: NewAccountCharge,
     storageMetering: StorageMetering,

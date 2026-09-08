@@ -1,5 +1,6 @@
 package org.fukuii.evm
 
+import org.fukuii.bytes.Bytes
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** The numbering, checked at the boundaries that fix it.
@@ -13,7 +14,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 class OpcodeSpec extends AnyFlatSpec:
 
   "the vocabulary" should "hold every operation this build knows, across forks" in
-    // 142, counted in the file rather than recalled. **This is not a per-fork
+    // 143, counted in the file rather than recalled. **This is not a per-fork
     // figure**: a byte's meaning does not change once it has one, so the enum
     // accumulates across forks and a table selects from it. The number rises
     // with the first operation each proposal adds, and is a counted fact either
@@ -22,11 +23,12 @@ class OpcodeSpec extends AnyFlatSpec:
     // 134 until Constantinople, which added five: EIP-145's SHL, SHR and SAR,
     // EIP-1052's EXTCODEHASH and EIP-1014's CREATE2. 139 until Istanbul, which
     // added two: EIP-1344's CHAINID and EIP-1884's SELFBALANCE. 141 until
-    // London, which added one: EIP-3198's BASEFEE. Every one of the eight is
-    // also in `OpcodeTable.laterThanOriginal`, so the FRONTIER table's own size
-    // is unmoved -- the two counts answer different questions and only this one
+    // London, which added one: EIP-3198's BASEFEE. 142 until Shanghai, which
+    // added one: EIP-3855's PUSH0. Every one of the nine is also in
+    // `OpcodeTable.laterThanOriginal`, so the FRONTIER table's own size is
+    // unmoved -- the two counts answer different questions and only this one
     // rises when an operation is added.
-    assert(Opcode.values.length == 142, "the Ops enum has 142 members, counted in the file rather than recalled")
+    assert(Opcode.values.length == 143, "the Ops enum has 143 members, counted in the file rather than recalled")
 
   it should "give each operation a distinct byte" in
     assert(
@@ -62,6 +64,28 @@ class OpcodeSpec extends AnyFlatSpec:
     assert(
       Opcode.values.filterNot(Opcode.isPush).forall(Opcode.immediateWidth(_) == 0),
       "every other operation occupies exactly its own byte"
+    )
+
+  "the operation at 0x5f" should "sit one below the push family and outside it" in
+    // Both halves in one assertion because neither alone is the property: the
+    // byte is contiguous with the family -- "`0x5f` means it is in a
+    // 'contiguous' space with the rest of the `PUSH` implementations"
+    // (`ethereum/EIPs` @ `dbfa6bee8`, `EIPS/eip-3855.md`, Final) -- and the
+    // family is what `immediateWidth` reads. A build that admitted it would
+    // price it a tier too high at every execution.
+    assert(
+      Opcode.Push0.code == 0x5f && Opcode.Push0.code == Opcode.Push1.code - 1 && !Opcode.isPush(Opcode.Push0),
+      "PUSH0 = 0x5f, one below PUSH1, and not a member of the family that reads an operand"
+    )
+
+  it should "leave jump destinations exactly where they were" in
+    // "jumpdest-analysis is unaffected, as `PUSH0` has no immediate data bytes"
+    // (same document, Security Considerations). The code below is the case that
+    // would break: a JUMPDEST immediately after it, which an operand width of
+    // one would swallow as data.
+    assert(
+      new Code(Bytes.fromIArray(IArray(0x5f.toByte, 0x5b.toByte))).validJumpDestinations == Set(1),
+      "a JUMPDEST after PUSH0 is a destination, so PUSH0 consumes no byte beyond its own"
     )
 
   "the duplicating and exchanging families" should "occupy 0x80 to 0x9f without a gap" in

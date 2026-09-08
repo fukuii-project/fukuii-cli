@@ -134,6 +134,8 @@ class EvmRulesSpec extends AnyFlatSpec:
       gasForwarded = GasForwarding.Whole,
       codeDepositMustSucceed = false,
       maxCodeSize = None,
+      maxInitcodeSize = None,
+      coinbaseStartsWarm = false,
       createdAccountNonce = UInt64.Zero,
       newAccountCharge = NewAccountCharge.WhenTheDestinationIsAbsent,
       storageMetering = StorageMetering.Legacy,
