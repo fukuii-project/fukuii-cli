@@ -38,6 +38,8 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip3529,
   Eip3541,
   Eip3554,
+  Eip4345,
+  Eip5133,
   Eip649,
   Eip658,
   Eip7
@@ -736,3 +738,41 @@ object Upgrades:
       Eip3541.component,
       Eip3554.component
     )
+
+  /** [[london]] with EIP-4345 adopted.
+    *
+    * ==One member, and the membership statement is the fork module's own list==
+    *
+    * `ethereum/execution-specs` @ `20f7f6271` (2026-08-26) states what this
+    * fork changes in `src/ethereum/forks/arrow_glacier/__init__.py`, and the
+    * list has one entry. That is the same kind of source [[london]]'s
+    * membership rests on and a different kind from [[berlin]]'s, whose note
+    * records that no proposal states its membership at all.
+    *
+    * ==No order to state==
+    *
+    * A single component composes with nothing, so the caveat [[london]] carries
+    * about two deltas touching one field cannot arise. The one field this
+    * writes is the same one [[Eip3554]] wrote at [[london]], which is precisely
+    * why it is a delay rather than a new rule: it replaces a figure rather than
+    * adding a mechanism beside it.
+    */
+  val arrowGlacier: UpgradeRules = london.adopting(Eip4345.component)
+
+  /** [[arrowGlacier]] with EIP-5133 adopted.
+    *
+    * ==One member again, from the same kind of statement==
+    *
+    * `src/ethereum/forks/gray_glacier/__init__.py` at the same ref lists one
+    * entry. Two single-member upgrades in succession is this network's actual
+    * history rather than a decomposition chosen here: each was released on its
+    * own, months apart, to move one figure.
+    *
+    * ==The last rule set on this network whose difficulty is mined==
+    *
+    * Stated on the composition rather than only on the proposal, because it is
+    * the composition a later upgrade will extend and the point at which the
+    * extension stops being a delay. See [[Eip5133]] for the sweep that
+    * establishes it.
+    */
+  val grayGlacier: UpgradeRules = arrowGlacier.adopting(Eip5133.component)

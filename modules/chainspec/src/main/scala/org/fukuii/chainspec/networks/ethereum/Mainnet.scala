@@ -541,6 +541,79 @@ object Mainnet:
   private val london: UpgradeSchedule.Entry =
     UpgradeSchedule.Entry(atBlock(12965000), upgrade("London"), Upgrade.RuleChange(Upgrades.london))
 
+  /** Arrow Glacier, block 13,773,000.
+    *
+    * ==Four independent statements of the height, from four codebases==
+    *
+    * `ethereum/execution-specs` @ `20f7f6271` (2026-08-26) states it twice over
+    * in one module: `src/ethereum/forks/arrow_glacier/__init__.py` carries the
+    * upgrade schedule `| Mainnet | 13,773,000 | December 8, 2021 |` in prose and
+    * `FORK_CRITERIA: ForkCriteria = ByBlockNumber(13773000)` as the executable
+    * criterion beneath it. `ethereum/go-ethereum` @ `e9e35a42f` (2026-08-26)
+    * has `ArrowGlacierBlock: big.NewInt(13_773_000)` in `params/config.go`;
+    * `besu-eth/besu` @ `fdf1247c6` (2026-08-26) has `"arrowGlacierBlock":
+    * 13773000` in `config/src/main/resources/mainnet.json`; and
+    * `ethereumclassic/core-geth` @ `4185df450` (2025-01-23) carries the same
+    * figure on its Ethereum mainnet configuration, which is the reading that
+    * matters least here and is kept because it is the client this build reads
+    * for the other network.
+    *
+    * ==Nothing activates between this entry and the one below it==
+    *
+    * Checked with the instrument the two misses on this ladder had in common --
+    * EVERY numeric field in a client's mainnet configuration, not the fields
+    * named after an upgrade. Three clients read whole, and the window above
+    * London holds this height and the next and nothing else.
+    *
+    * The sweep is calibrated in three directions before its zero is read: it
+    * captures each configuration block to its closing brace rather than
+    * truncating; it returns non-fork-named fields where those exist, which is
+    * the exact shape a miss would take; and run against a window known to hold
+    * three upgrades it returns those three.
+    *
+    * ==The rules across this boundary differ in ONE figure==
+    *
+    * Which is what a delay is. [[Upgrades.arrowGlacier]] is [[Upgrades.london]]
+    * with one consensus field replaced, so every machine, execution and
+    * admission rule is the same value on both sides and only a header's
+    * difficulty can disagree.
+    */
+  private val arrowGlacier: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(
+      atBlock(13773000),
+      upgrade("Arrow Glacier"),
+      Upgrade.RuleChange(Upgrades.arrowGlacier)
+    )
+
+  /** Gray Glacier, block 15,050,000.
+    *
+    * ==The same four statements, at the same refs==
+    *
+    * `src/ethereum/forks/gray_glacier/__init__.py` gives `| Mainnet |
+    * 15,050,000 | June 29, 2022 |` and `ByBlockNumber(15050000)`;
+    * `GrayGlacierBlock: big.NewInt(15_050_000)` in go-ethereum;
+    * `"grayGlacierBlock": 15050000` in besu; the same figure in core-geth.
+    *
+    * ==The last height on this network at which a rule set is reached by mining==
+    *
+    * The upgrade above this one is a transition to proof-of-stake, so this is
+    * the boundary past which the difficulty figure this entry moves stops being
+    * something a miner competes over. Stated here because a reader arriving at
+    * the end of a run of bomb delays would reasonably expect a seventh, and the
+    * reason there is none is not that the mechanism was repealed.
+    *
+    * ==Nothing activates between this entry and the one below it==
+    *
+    * The same three-client sweep, over the same window, which covers both
+    * glaciers in one reading.
+    */
+  private val grayGlacier: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(
+      atBlock(15050000),
+      upgrade("Gray Glacier"),
+      Upgrade.RuleChange(Upgrades.grayGlacier)
+    )
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -578,6 +651,8 @@ object Mainnet:
         istanbul,
         muirGlacier,
         berlin,
-        london
+        london,
+        arrowGlacier,
+        grayGlacier
       )
     )

@@ -1,7 +1,7 @@
 package org.fukuii.chainspec.networks.ethereum
 
 import org.fukuii.bytes.UInt64
-import org.fukuii.chainspec.{Activation, Upgrade, UpgradeId, UpgradeSchedule}
+import org.fukuii.chainspec.{Activation, ProposalId, Upgrade, UpgradeId, UpgradeSchedule}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** What this network's schedule is made of, and the two entries that gate no
@@ -62,7 +62,9 @@ class MainnetSpec extends AnyFlatSpec:
           "Istanbul",
           "Muir Glacier",
           "Berlin",
-          "London"
+          "London",
+          "Arrow Glacier",
+          "Gray Glacier"
         ),
       "an enumeration missing an entry misnumbers every entry after it, which is silent rather than absent"
     )
@@ -138,7 +140,16 @@ class MainnetSpec extends AnyFlatSpec:
         // by any amount is caught.
         Activation.AtBlock(UInt64.fromBits(9200000L)),
         Activation.AtBlock(UInt64.fromBits(12244000L)),
-        Activation.AtBlock(UInt64.fromBits(12965000L))
+        Activation.AtBlock(UInt64.fromBits(12965000L)),
+        // Both glaciers reach the identifier, and that is not automatic
+        // for a bomb delay: what decides it is `Upgrade.RuleChange`, not
+        // the size of the change. Each moves one consensus figure and
+        // nothing else, so a node either side of one computes a different
+        // difficulty for the same header -- which is precisely the
+        // disagreement the identifier exists to surface at the handshake
+        // rather than at a block.
+        Activation.AtBlock(UInt64.fromBits(13773000L)),
+        Activation.AtBlock(UInt64.fromBits(15050000L))
       ),
       "genesis is excluded by EIP-2124 and thawing by enforcing nothing, leaving the ones that are neither"
     )
@@ -245,4 +256,67 @@ class MainnetSpec extends AnyFlatSpec:
             org.fukuii.types.TransactionType.AccessList
           ),
       "the format the upgrade admits is valid on the wrong side of its own activation"
+    )
+
+  // ── The two glaciers ──────────────────────────────────────────────────────
+
+  "the Arrow Glacier entry" should "resolve to the rules that adopt its one proposal" in
+    // Read at the height rather than at the composition, for the reason the
+    // Berlin case above states: every assertion that names a rule set is
+    // satisfied by an entry pointing at the wrong one.
+    assert(
+      schedule.at(UInt64.fromBits(13773000L), UInt64.Zero) == Upgrades.arrowGlacier,
+      "the entry at this network's Arrow Glacier height does not resolve to the rules that upgrade composes"
+    )
+
+  it should "resolve to London one block earlier" in
+    assert(
+      schedule.at(UInt64.fromBits(13772999L), UInt64.Zero) == Upgrades.london,
+      "a block below this network's Arrow Glacier height resolves to rules it does not run"
+    )
+
+  "the Gray Glacier entry" should "resolve to the rules that adopt its one proposal" in
+    assert(
+      schedule.at(UInt64.fromBits(15050000L), UInt64.Zero) == Upgrades.grayGlacier,
+      "the entry at this network's Gray Glacier height does not resolve to the rules that upgrade composes"
+    )
+
+  it should "resolve to Arrow Glacier one block earlier" in
+    assert(
+      schedule.at(UInt64.fromBits(15049999L), UInt64.Zero) == Upgrades.arrowGlacier,
+      "a block below this network's Gray Glacier height resolves to rules it does not run"
+    )
+
+  "each glacier" should "differ from the rule set below it in the bomb delay AND NOTHING ELSE" in {
+    // WHAT A DELAY IS, asserted rather than described. A bomb delay that also
+    // moved a gas price, an opcode or an admitted type would satisfy every
+    // other case in this file: each of those reads one facet or resolves one
+    // height, and none of them would notice a second field moving with the
+    // first.
+    //
+    // Written as `copy` on the lower rule set: if the only difference is the
+    // delay, then replacing that one field reconstructs the upper set exactly.
+    // The components vector is expected to differ and is excluded, since
+    // adopting a proposal records it there by construction.
+    val londonToArrow = Upgrades.london.copy(
+      components = Upgrades.arrowGlacier.components,
+      consensus = Upgrades.london.consensus.copy(difficultyBombDelay = BigInt(10700000))
+    )
+    val arrowToGray = Upgrades.arrowGlacier.copy(
+      components = Upgrades.grayGlacier.components,
+      consensus = Upgrades.arrowGlacier.consensus.copy(difficultyBombDelay = BigInt(11400000))
+    )
+    assert(
+      londonToArrow == Upgrades.arrowGlacier && arrowToGray == Upgrades.grayGlacier,
+      "a glacier moved something besides the exponential term's reference point"
+    )
+  }
+
+  it should "record its proposal in the components it carries" in
+    // The half the case above deliberately excludes, asserted on its own so the
+    // exclusion is not a hole.
+    assert(
+      Upgrades.arrowGlacier.components.diff(Upgrades.london.components) == Vector(ProposalId.Eip(4345)) &&
+        Upgrades.grayGlacier.components.diff(Upgrades.arrowGlacier.components) == Vector(ProposalId.Eip(5133)),
+      "a glacier adopted a different set of proposals than the one it is named for"
     )

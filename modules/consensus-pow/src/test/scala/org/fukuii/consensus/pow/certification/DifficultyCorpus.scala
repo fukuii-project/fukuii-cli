@@ -24,13 +24,27 @@ import org.fukuii.types.{BlockHeader, BlockNonce, Bloom, Seal}
   * whatsoever. The same reasoning `CertificationCorpora` gives for stating its
   * heights rather than reading them back.
   *
-  * **Only two of the names below correspond to rule sets this build composes.**
-  * The corpus reaches five further forks whose proposals `modules/chainspec`
-  * does not model, and their parameters are stated here so the algorithm can be
-  * certified against every published case rather than against the quarter of
-  * them this build's schedules currently reach. Certifying the ALGORITHM and
-  * certifying a network's SCHEDULE are different claims, and this file makes
-  * only the first.
+  * **Certifying the ALGORITHM and certifying a network's SCHEDULE are different
+  * claims, and this file makes only the first.** Every published fork name is
+  * wired below whether or not a schedule in this build reaches it, so the
+  * algorithm is certified against every published case rather than against the
+  * subset some schedule happens to cover.
+  *
+  * ==How many of these names a schedule reaches is deliberately NOT recorded
+  * here==
+  *
+  * It was, and the figure inverted without anyone editing the sentence: the
+  * text said two names were reachable and five were not, and by the time it was
+  * read that was five and two. A count of the build's own coverage belongs to
+  * whatever asserts that coverage, which can fail when it moves; a sentence in a
+  * scaladoc cannot, and goes on reading as sourced.
+  *
+  * **What is durable is the direction of the gap.** This file's set is fixed by
+  * what the corpus publishes; a schedule's is fixed by what this build has
+  * composed, which only grows. So a name here that no schedule reaches is an
+  * upgrade not yet built, never a defect in this file -- and the two sets
+  * coinciding is not an invariant either, because the corpus can publish a fork
+  * before anything here models it.
   *
   * ==Computed once, because running them is the expensive part==
   *
