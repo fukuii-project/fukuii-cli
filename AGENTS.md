@@ -834,10 +834,69 @@ real.
 
 **The wrapper's guard 3 gets this right because it compares mtimes rather than reading
 the log**, which is why it returned 0 and not 97. **A human skimming the log cannot tell
-the two apart.** The forensic that settles it: check mtimes on the compile outputs
+the two apart.**
+
+**A MTIME FORENSIC OVER THE COMPILE OUTPUTS DOES NOT SETTLE IT, AND THIS FILE SAID IT
+DID.** The retired instruction was to check mtimes on the compile outputs
 (`target/out/jvm/scala-3.3.8/fukuii-*/classes`) and confirm every `.class` falls inside
-the run's own window. Nothing surviving from before the invocation means `clean` was not
-a no-op. Recorded so the next validator does not re-derive it.
+the run's own window, on the premise that *"nothing surviving from before the invocation
+means `clean` was not a no-op."* **The premise is false**, so the check returns a clean
+zero for a run that really was clean, which is the same fails-toward-confidence shape as
+everything else in this section.
+
+Measured against `modules/bytes`, one instrument read immediately after each step: 34
+class files carrying mtimes in six distinct buckets, all a month old; `bytes/clean` takes
+the directory to **0**; `bytes/compile` returns **34 files in the identical six buckets**.
+So `clean` is doing its job and the rebuild is restoring outputs from sbt's machine-wide
+cache with their original mtimes preserved. **A clean rebuild of a module whose sources
+did not change CAN leave every output older than the invocation**, which is exactly what
+the retired check reads as proof it never happened. The condition is a warm build cache;
+a cold one recompiles and writes fresh mtimes, which is why the check looked sound for as
+long as it did.
+
+**`scripts/sbt-run.sh`'s guard 3 reads mtimes too, and it survives this for a reason worth
+stating exactly, because the obvious reason is wrong.** Its premise line is the same one
+just falsified -- *"a clean followed by a real compile always writes something new
+there"*.
+
+**It is NOT saved by reading more modules.** Both read the whole tree: the retired glob
+above matches every module's `classes`, and guard 3 globs `classes`, `test-classes`,
+`zinc` and `test-zinc` across all of them. Scope could not save it anyway -- a universal
+test over eleven modules fails the moment a warm cache restores one old `.class`.
+
+**What separates them is the quantifier and the reference point**, and each half matters:
+
+  - The retired check is **universal** -- *every* output must fall inside the window --
+    against **absolute wall-clock**, read after the fact. One restored file refutes it.
+  - Guard 3 is **existential**: it asks only whether the newest output advanced, against a
+    `BASELINE` it captures **before** sbt runs. One genuinely rebuilt file satisfies it,
+    whatever the rest of the tree restores.
+
+A section always changes at least one module, so guard 3's existential holds while every
+untouched module restores from cache. Verified both ways: it returned 0 on this project's
+real `clean testFull` runs, and it does fire `HOLLOW SUCCESS` on a `clean` with no compile
+after it, where the directories are gone and the maximum cannot advance.
+
+**What is NOT established is that it would survive a `clean` plus rebuild in which nothing
+changed.** On the single-module measurement above, neither the class outputs nor the
+`zinc` incremental-compilation state advanced -- 44 class files and one `zinc` file, all
+carrying mtimes from the previous month. Treat guard 3 as sound for the runs this project
+actually makes, and do not extend that to a no-change rebuild.
+
+**Do not reach for a different timestamp instrument either.** Two `find`-based readings of
+that same directory reported all 34 files as freshly written while a `stat` reading taken
+moments later reported all 34 as a month old, and a later `find` reported zero files in a
+directory holding 44. **The `find` a Claude Code session resolves is a shell-snapshot
+shadow, not the system one**: the shadow rejects `-newermt '-2 minutes'` outright as an
+invalid timestamp, while `/usr/bin/find` here is GNU findutils and accepts it. Which
+binary answers is therefore a property of who is asking, and an instrument that errors on
+one accepted format has not earned trust on another.
+
+**What still holds, and it is narrower than what it replaced:** the `clean` half is
+confirmed to work by the count going to zero and back, and guard 3 is confirmed to fire
+and to pass on the runs described above. **What is NOT established** is a general positive
+test that separates a clean run from a stale-server no-op after the fact. Neither this
+file nor this project has one.
 
 **An environment variable does NOT reach a task running in an already-detached sbt
 server, and the failure is silent.** The server inherits the environment of the shell
