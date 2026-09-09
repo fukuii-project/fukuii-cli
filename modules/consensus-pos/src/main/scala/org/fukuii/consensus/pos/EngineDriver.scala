@@ -135,7 +135,28 @@ enum GetPayloadRefusal:
 
   case UnknownPayload(payloadId: PayloadId)
 
-/** The three verbs an in-process consensus layer calls.
+/** The three verbs this seam models, driven in process.
+  *
+  * ==Three is what is MODELED here, and not what a consensus layer calls==
+  *
+  * Swept across the six consensus-layer clients in this project's corpus, main
+  * sources only with test trees excluded and a control on a verb that does not
+  * exist returning nothing: `engine_newPayload`, `engine_forkchoiceUpdated`,
+  * `engine_getPayload` and **`engine_getBlobs` are each named by all six**.
+  * Below them, `engine_getClientVersion` in five, and
+  * `engine_exchangeCapabilities` and `engine_getPayloadBodies` in four apiece.
+  *
+  * So a fourth verb is exactly as universal as these three, and describing this
+  * trait as what a consensus layer calls would state something about the
+  * calling side that the calling side contradicts.
+  *
+  * **`engine_getBlobs` is deferred for a reason of this side, not of that
+  * one.** It serves blobs out of the transaction pool, and neither a blob nor
+  * the pool it would come from is modeled anywhere in this build — so it could
+  * only be given a signature over types that do not exist. It became live at
+  * the upgrade that introduced blob-parameter-only forks, which is above the
+  * range this project's Ethereum schedule reaches, and the types arrive with
+  * the fork ladder rather than with this seam.
   *
   * ==In-process on purpose, and that is what makes it the analogue of a
   * consensus engine rather than of a server==

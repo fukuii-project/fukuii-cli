@@ -50,17 +50,34 @@ import org.fukuii.bytes.Hash
   * block be the head or one of its ancestors. Ancestry is a question about a
   * chain and this holds hashes, so nothing here can answer it.
   *
-  * **The interesting part is that having a chain would not be enough.** besu
-  * has one, and its own candidate check is a height comparison rather than a
-  * walk — `PostMergeContext.java:234-238` answers
-  * `candidateHeader.getNumber() >= finalized.getNumber()`, defaulting to true
-  * where nothing is finalized. So even the client that could walk compares
-  * numbers instead.
+  * **The tempting move is to let the caller be trusted for it, and the calling
+  * side is where that fails.** Two of the three consensus-layer clients read
+  * for this uphold the ancestry by construction: each resolves the justified
+  * node by root and then walks descendants from it, so a head is a descendant
+  * of the justified block rather than merely compared against it —
+  * `Consensys/teku` @ `488a89357e`
+  * `storage/.../protoarray/ProtoArray.java:297-311`, taking the justified
+  * node's best descendant, and `sigp/lighthouse` @ `e423a66763`
+  * `consensus/proto_array/src/proto_array.rs:1081-1090` resolving
+  * `justified_root` and walking from that index. The third does not.
   *
-  * A height comparison is out of reach here for the same reason a walk is: a
-  * hash carries no height. **So this checks nothing about the invariant, and
-  * the requirement stays where the specification puts it — on the verb, once
-  * something can resolve a hash.**
+  * `prysmaticlabs/prysm` @ `8512330b35` takes its safe hash from
+  * `beacon-chain/blockchain/service.go:467-478`, which falls through to
+  * `UnrealizedJustifiedPayloadBlockHash()` — a checkpoint the store raises
+  * whenever any inserted block computes a higher unrealized justified epoch
+  * (`beacon-chain/forkchoice/doubly-linked-tree/unrealized_justification.go:88-92`,
+  * `if uj.Epoch > s.unrealizedJustifiedCheckpoint.Epoch`). That is a maximum
+  * over everything inserted, with no test that the result is an ancestor of the
+  * head being reported or on the canonical chain at all. The branch above it
+  * that would confirm a root runs only when a feature flag is set
+  * (`config/features/config.go:282-285`, guarded by `ctx.IsSet`), so it is off
+  * unless an operator asks for it.
+  *
+  * **So an execution layer that trusted the caller would be trusting a property
+  * two lineages of three supply.** The requirement therefore stays where the
+  * specification puts it — on the verb, once something here can resolve a hash
+  * — and this type checks nothing about it, because a hash carries neither a
+  * parent nor a height.
   *
   * ==Durability is asymmetric, and this port promises neither half==
   *

@@ -85,6 +85,21 @@ final class PayloadStore(val capacity: Int = PayloadStore.DefaultCapacity):
     * `-38001: Unknown payload` where *"the build process identified by the
     * `payloadId` does not exist"* (`src/engine/paris.md:265`), which is what a
     * caller reports for either.
+    *
+    * ==Answering nothing is NORMAL OPERATION, not only an error path==
+    *
+    * A consensus layer holds identifiers of its own and can present one this
+    * store has already dropped. `sigp/lighthouse` @ `e423a66763` keeps a
+    * 512-entry cache of them (`beacon_node/execution_layer/src/engines.rs:21`,
+    * `PAYLOAD_ID_LRU_CACHE_SIZE`) with no time bound and no clearing on
+    * reconnection, and a hit there is enough for it to call `getPayload`
+    * without an intervening `forkchoiceUpdated` to re-establish the build.
+    *
+    * Two caches of different sizes, evicting independently, guarantee a window
+    * in which the caller believes in an identifier this side has forgotten. **So
+    * `-38001` is an ordinary answer on a healthy pair rather than a sign that
+    * something is wrong**, and a caller treating it as an error condition would
+    * be reporting normal operation as a fault.
     */
   def get(id: PayloadId): Option[BuiltPayload] =
     entries.collectFirst { case (stored, payload) if stored == id => payload }
