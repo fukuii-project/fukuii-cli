@@ -758,21 +758,28 @@ lazy val consensusPow = (project in file("modules/consensus-pow"))
 //           reads the ACTIVATION rather than the flat point, because both axes
 //           are unsigned 64-bit and a block height compared against a timestamp
 //           would answer confidently and never fire
-//   types   a payload and a build request both carry the withdrawal LIST, and a
-//           payload carries a logs bloom
+//   crypto  the commitment a block with no ommers makes is DERIVED here rather
+//           than written down as 32 bytes, so this names Keccak-256 to take it
+//   evm     the machine's view of the block is what a payload is translated
+//           INTO, and this module holds the first production site that builds
+//           one -- every earlier one is a test fixture
+//   execution
+//           the withdrawals root already has an implementation and its
+//           proposal's own words are why it is not written twice: the
+//           commitment "is constructed identically to the transactions root",
+//           so what differs is the encoding and that is the half that lives
+//           there
+//   rlp     the empty-ommers commitment is taken over the encoding of an empty
+//           sequence of headers, so this names the codec and runs it
+//   trie    the transactions root is the indexed-trie commitment, and the
+//           payload's own transaction bytes are already the form it keys on --
+//           so this reaches the trie and never the transaction decoder
+//   types   a payload and a build request both carry the withdrawal LIST, a
+//           payload carries a logs bloom, and the header a payload is
+//           translated into carries a seal whose one case this fills with the
+//           payload's randomness and a zero nonce
 //
-// ── Three edges the sibling declares and this does not ──
-//
-// `rlp` is absent because this seam is JSON-RPC. A payload is transported as a
-// JSON object of named fields, so nothing here encodes or decodes an RLP item,
-// and the encoder that eventually does belongs to the transport layer rather
-// than to the verb contract. That layer is also where a JSON dependency would
-// land; this module declares none, and reaching for one here would put a second
-// module in the position `build.sbt` currently reserves for `evm` alone.
-//
-// `crypto` is absent because nothing here digests anything. A payload's
-// `blockHash` arrives as a claim to be checked rather than a value to be
-// computed, and the check is the translation phase's, not this one's.
+// ── Two edges the sibling declares and this does not ──
 //
 // `consensus` is absent TODAY and is expected. It arrives with whatever here
 // implements `ConsensusEngine`; nothing in this module names that type yet, and
@@ -782,9 +789,19 @@ lazy val consensusPow = (project in file("modules/consensus-pow"))
 //
 // `evm % "test->test"` is absent for the reason the sibling declares it: that
 // edge exists so an emission test can observe an account coming into being, and
-// nothing in this module writes state.
+// nothing in this module writes state. This module reaches `evm` at compile
+// scope only, for one record type.
+//
+// ── The JSON note the `rlp` edge used to carry, kept because it still binds ──
+//
+// This seam is JSON-RPC, and the `rlp` edge above is NOT the transport arriving.
+// A payload is carried as a JSON object of named fields and nothing here encodes
+// or decodes one; what RLP is reached for is a commitment the header makes,
+// which is consensus rather than transport. The JSON codec stays with the layer
+// that owns the carrier, and this module still declares no JSON dependency --
+// `build.sbt` reserves that position for `evm` alone.
 lazy val consensusPos = (project in file("modules/consensus-pos"))
-  .dependsOn(bytes, types, chainspec)
+  .dependsOn(bytes, rlp, crypto, types, trie, evm, execution, chainspec)
   .settings(
     name := "fukuii-consensus-pos",
     libraryDependencies ++= testDeps
