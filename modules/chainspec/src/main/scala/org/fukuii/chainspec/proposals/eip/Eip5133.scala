@@ -7,7 +7,7 @@ import org.fukuii.chainspec.{Component, ConsensusRules, ProposalId}
   * ==THIS DOCUMENT STATES BOTH FRAMES, WHICH IS [[Eip2384]]'s SHAPE AND NOT
   * [[Eip3554]]'s==
   *
-  * The distinction is worth drawing because the two neighbouring records
+  * The distinction is worth drawing because the two neighboring records
   * resolve it in opposite directions, and reading this document as either one
   * of them gets the figure wrong by 10,700,000.
   *

@@ -189,7 +189,7 @@ final case class GasSchedule(
     // The name is the ecosystem's read against this record's own convention.
     // EIP-3860 calls the figure `INITCODE_WORD_COST` and the executable
     // specification declares it `CODE_INIT_PER_WORD`, which is the per-word form
-    // every neighbouring field here already takes.
+    // every neighboring field here already takes.
     initcodePerWord: BigInt,
     codeDepositPerByte: BigInt,
     expBase: BigInt,

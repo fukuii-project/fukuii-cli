@@ -140,7 +140,7 @@ enum Upgrade:
     * condition on accumulated work, that the event *"is now a historical
     * event"*, and then states `ByBlockNumber(15537394)`.
     *
-    * So the number is real, [[UpgradeSchedule.at]] must honour it, and only the
+    * So the number is real, [[UpgradeSchedule.at]] must honor it, and only the
     * identifier must not count it. **That is one fact about one entry, which is
     * why it is a case here rather than a rule about which upgrades are special.**
     *

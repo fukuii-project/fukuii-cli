@@ -11,7 +11,7 @@ import org.fukuii.types.{BlockHeader, BlockNonce, Bloom, Seal}
 /** The two bomb delays this network's last mined upgrades state, asked of the
   * engine through the rule sets the schedule actually resolves.
   *
-  * ==Why this is a THIRD position and not a duplicate of either neighbour==
+  * ==Why this is a THIRD position and not a duplicate of either neighbor==
   *
   * `EthashDifficultySpec` builds its rules inline, so it settles what the engine
   * does and says nothing about what any network states.

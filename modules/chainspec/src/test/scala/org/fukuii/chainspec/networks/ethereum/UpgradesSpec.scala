@@ -38,7 +38,42 @@ class UpgradesSpec extends AnyFlatSpec:
       Upgrades.petersburg,
       Upgrades.istanbul,
       Upgrades.muirGlacier,
-      Upgrades.berlin
+      Upgrades.berlin,
+      Upgrades.london,
+      Upgrades.arrowGlacier,
+      Upgrades.grayGlacier,
+      Upgrades.paris,
+      Upgrades.shanghai
+    )
+
+  /** Every rule set this network composed while it still paid a block reward.
+    *
+    * Named rather than derived from [[composed]], for the reason
+    * [[belowTheStatusByte]] gives: a filter expressing "below" begins including
+    * everything above it the moment a later composition is added, and the case
+    * reading this asserts a property that is **false** above -- the transition
+    * to proof of stake removes the payment rather than zeroing it, so
+    * `zeroRewardCreditsBeneficiary` is false from there upward and a filtered
+    * vector would have gone red without naming why.
+    *
+    * The ceiling is the last mined upgrade, and it is stated rather than
+    * computed because "the last one that pays" is exactly the fact that moves.
+    */
+  private val payingAReward =
+    Vector(
+      Upgrades.frontier,
+      Upgrades.homestead,
+      Upgrades.tangerineWhistle,
+      Upgrades.spuriousDragon,
+      Upgrades.byzantium,
+      Upgrades.constantinople,
+      Upgrades.petersburg,
+      Upgrades.istanbul,
+      Upgrades.muirGlacier,
+      Upgrades.berlin,
+      Upgrades.london,
+      Upgrades.arrowGlacier,
+      Upgrades.grayGlacier
     )
 
   /** The compositions below the one that adopts EIP-658.
@@ -314,7 +349,7 @@ class UpgradesSpec extends AnyFlatSpec:
       "a rule set below the upgrade that adopts EIP-658 already carries a status"
     )
 
-  it should "credit a beneficiary even where the amount is zero, at every height this build reaches" in
+  it should "credit a beneficiary even where the amount is zero, at every height that pays one" in
     // This build now reaches the fork besu flips this at:
     // .skipZeroBlockRewards(false) at its Frontier definition becomes true at
     // spuriousDragonDefinition, because from there an empty account a zero
@@ -327,7 +362,7 @@ class UpgradesSpec extends AnyFlatSpec:
     // amount of zero, so none of them can produce the case this member is
     // about, whatever it is set to.
     assert(
-      composed.forall(rules => rules.consensus.zeroRewardCreditsBeneficiary),
+      payingAReward.forall(rules => rules.consensus.zeroRewardCreditsBeneficiary),
       "declining to credit before empty accounts are deleted would leave a leaf out of the state trie"
     )
 

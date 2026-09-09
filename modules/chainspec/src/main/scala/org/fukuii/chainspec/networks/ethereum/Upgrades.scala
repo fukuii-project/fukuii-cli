@@ -858,10 +858,17 @@ object Upgrades:
     * ==Two facets move, and the machine is not the one a reader would expect
     * for the fourth==
     *
-    * [[Eip3651]] and [[Eip3855]] write `evm`; [[Eip3860]] writes `evm`,
-    * admission and the execution facet; [[Eip4895]] writes the header facet and
-    * nothing else. **The proposal this upgrade is named for in the
-    * specification's own summary reaches the machine nowhere at all** -- a
+    * [[Eip3651]], [[Eip3855]] and [[Eip3860]] all write `evm`, and
+    * [[Eip4895]] writes the header facet and nothing else.
+    *
+    * **[[Eip3860]] is the one whose reach exceeds what it writes**, and the two
+    * are different questions. Its component is built with
+    * [[org.fukuii.chainspec.Component.evm]], which can write no other facet --
+    * so admission and settlement are untouched here and a test asserts they are.
+    * What those layers do is READ two machine values this document sets, which
+    * is why its own record spends a section on the distinction. **The proposal
+    * this upgrade is named for in the specification's own summary reaches the
+    * machine nowhere at all** -- a
     * withdrawal adds no operation and moves no price, which is what its own
     * *"firewalls off generic EVM execution"* means where it lands here.
     *

@@ -79,7 +79,7 @@ import org.fukuii.evm.Proposal
   * `CREATE2`"* -- is satisfied by that sum being part of one charge taken before
   * the address is derived.
   *
-  * ==Rule 3 aborts where the neighbouring refusals push zero==
+  * ==Rule 3 aborts where the neighboring refusals push zero==
   *
   * A creation refused for its balance, its transaction count or its depth hands
   * the forwarded gas back and pushes zero. This one does not: it *"exceptionally
