@@ -623,6 +623,96 @@ object Mainnet:
   private val mystique: UpgradeSchedule.Entry =
     UpgradeSchedule.Entry(atBlock(14525000), upgrade("Mystique"), Upgrade.RuleChange(Upgrades.mystique))
 
+  /** Block 19,250,000.
+    *
+    * **ECIP-1109 states it** -- `ethereumclassic/ECIPs`, `_specs/ecip-1109.md`
+    * @ `51f6b145238ee7a60793378258f50fe7acc21dc5` (2025-07-04), `status: Final`,
+    * `type: Meta` -- naming `19_250_000` for this network beside the one test
+    * network it also schedules, and that ref is the one [[Upgrades.spiral]]
+    * reads membership at. `ethereumclassic/core-geth` @ `4185df450` states it as
+    * four per-proposal transitions rather than the fork name, at
+    * `params/config_classic.go:101-105`, under the client's own comment
+    * `// Spiral, aka Shanghai (partially)`.
+    *
+    * **`besu-eth/besu-etc` @ `eb4248c997` is a third reading and states it as
+    * `"spiralBlock": 19250000` in `config/src/main/resources/classic.json`.**
+    * ECIP-1109 names that client as one of the two expected to implement this
+    * upgrade, and it did -- which is worth saying because that expectation is a
+    * statement of intent, and intent is what a schedule must not take a height
+    * from.
+    *
+    * ==The label==
+    *
+    * ECIP-1066 -- `ethereumclassic/ECIPs` @
+    * `b1310074a01ba20679d5b07b907d52814e2b9f7f` (2026-09-08) -- tabulates the
+    * name cell as `Spiral <br> <sub>Shanghai</sub>`, and the label is that cell
+    * less the subscripted counterpart, as every label on this schedule is.
+    * `besu-eth/besu-etc` @ `eb4248c997` states the label without it, as
+    * `SPIRAL(true, "Spiral")` in `HardforkId.ClassicHardforkId`, and the two
+    * agree to the character.
+    *
+    * ==A second row sits at this height, and it gets no entry==
+    *
+    * The same table carries `MESS Default: Off <br> <sub>ECBP-1110</sub>` at
+    * `19_250_000`, beside the row above. [[mess]] already states why a row
+    * recording a default earns no entry here, and names the retraction this one
+    * is. **What this height adds is the test of that reasoning**: the two rows
+    * are at one height and only one of them changes what a node validates, so a
+    * schedule that took its entries from the table would carry two entries where
+    * one belongs.
+    *
+    * ==What this network was recommended to turn off, and what fukuii does==
+    *
+    * **ECBP-1110** -- `ethereumclassic/ECIPs`, `_specs/ecip-1110.md` @
+    * `3d2f3e5b120bcd455be49abbbae77069afcfe112` (2024-06-09), `status: Active`,
+    * `type: Standards Track`, `category: ECBP` -- specifies that *"MESS will be
+    * deactivated by default at block `19,250,000`"*, concurrent with this
+    * upgrade, and provides an override flag for operators who continue running
+    * it.
+    *
+    * **Fukuii declines the recommendation and ships MESS enabled.** *By default*
+    * is the whole of what that document moves: it changes a client's shipped
+    * setting, provides the flag that reverses it, and leaves the choice with
+    * whoever runs the node. Declining it is the discretion the document
+    * describes rather than a departure from it.
+    *
+    * **It is not a rule change, and that is why there is no entry for it.** The
+    * mechanism selects between chains that are each already valid, so no block
+    * is admissible to one node and inadmissible to another across this height on
+    * account of it -- [[mess]] states that reasoning in full, at the height the
+    * mechanism was scheduled. The reference implementation files the retraction
+    * the same way: `params/config_classic.go:86` sets
+    * `ECBP1100DeactivateFBlock` to this height, grouped with `ECBP1100FBlock`
+    * and `ECIP1099FBlock` and **outside** the Spiral comment block that its four
+    * proposal transitions sit in. Its comment notes the coincidence of heights;
+    * its placement says the deactivation is not part of this upgrade's
+    * membership.
+    *
+    * ==This is a fork point, and it is the twelfth==
+    *
+    * The peer layer separates the two things at this height as this schedule
+    * does. `params/confp/configurator.go:455` derives `BlockForks` by reflecting
+    * over transition getters and skipping any whose name matches `ECBP` or
+    * `EBP`, so the four proposal transitions here are counted and
+    * `GetECBP1100DeactivateTransition` is not. **Reading that client's classic
+    * configuration through its own rule yields twelve heights, and this entry is
+    * what takes this schedule's [[UpgradeSchedule.forkPoints]] from eleven to
+    * the same twelve** -- an agreement that could not be checked until the last
+    * of them was authored, and that [[mess]] already asserts the count of from
+    * the other side.
+    *
+    * ==What this entry does not settle==
+    *
+    * [[Upgrades.spiral]] says which three proposals compose it, which one its
+    * governing document includes without a rule behind it, which two that
+    * document omits and why, and which single facet they move. **That is a
+    * statement about what the composition adopts, and not a conformance claim**
+    * -- the same division this schedule draws at every entry that names an
+    * upstream counterpart.
+    */
+  private val spiral: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(atBlock(19250000), upgrade("Spiral"), Upgrade.RuleChange(Upgrades.spiral))
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -671,6 +761,7 @@ object Mainnet:
         mess,
         thanos,
         magneto,
-        mystique
+        mystique,
+        spiral
       )
     )

@@ -48,7 +48,8 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     ("MESS", 11380000L),
     ("Thanos", 11700000L),
     ("Magneto", 13189133L),
-    ("Mystique", 14525000L)
+    ("Mystique", 14525000L),
+    ("Spiral", 19250000L)
   )
 
   /** The last height under the old rules and the first under the new, per
@@ -129,6 +130,21 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     * The first under the rules that adopt Berlin's four proposals, the second
     * under the two this network takes from the upgrade above it. Nothing in this
     * network's configuration activates anywhere between them.
+    *
+    * ==The pair at 19,249,999 and 19,250,000 is a boundary, and the height it
+    * straddles carries a second thing that is not one==
+    *
+    * The first under the rules two proposals above Berlin's, the second under
+    * the three this network takes from the upgrade above that. The gap below it
+    * is 4,725,000 blocks with no transition in the reference client's
+    * configuration between them, so the lower row carries that whole span.
+    *
+    * **The upper row is also the answer to a question the schedule could get
+    * wrong in the other direction.** ECBP-1110 retracts a recommendation at this
+    * same height, and `Mainnet`'s entry records why that is not a rule change.
+    * If it were ever modeled as one, this row would still read `spiral` and
+    * would not report it -- which is why the assertion that catches that case is
+    * the fork-point count in `MainnetSpec` and not this table.
     */
   private val boundaries = Table(
     ("height", "rules"),
@@ -168,7 +184,9 @@ class MainnetPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     (13189132L, Upgrades.thanos),
     (13189133L, Upgrades.magneto),
     (14524999L, Upgrades.magneto),
-    (14525000L, Upgrades.mystique)
+    (14525000L, Upgrades.mystique),
+    (19249999L, Upgrades.mystique),
+    (19250000L, Upgrades.spiral)
   )
 
   property("every upgrade activates at the block its own citation states") {

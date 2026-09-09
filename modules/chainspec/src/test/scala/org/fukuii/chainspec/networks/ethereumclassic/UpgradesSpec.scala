@@ -11,10 +11,16 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip3198,
   Eip3529,
   Eip3541,
-  Eip3554
+  Eip3554,
+  Eip3651,
+  Eip3855,
+  Eip3860,
+  Eip4399,
+  Eip4895
 }
 import org.fukuii.chainspec.{DifficultyAdjustment, ProposalId}
 import org.fukuii.evm.{
+  BlockRandomness,
   Cost,
   Opcode,
   OpcodeTable,
@@ -48,7 +54,8 @@ class UpgradesSpec extends AnyFlatSpec:
       Upgrades.phoenix,
       Upgrades.thanos,
       Upgrades.magneto,
-      Upgrades.mystique
+      Upgrades.mystique,
+      Upgrades.spiral
     )
 
   /** What a table charges for `opcode` before it runs, where that is settled. */
@@ -146,7 +153,9 @@ class UpgradesSpec extends AnyFlatSpec:
           ProposalId.Eip(2930)
         ) &&
         Upgrades.mystique.components == Upgrades.magneto.components ++
-        Vector(ProposalId.Eip(3529), ProposalId.Eip(3541)),
+        Vector(ProposalId.Eip(3529), ProposalId.Eip(3541)) &&
+        Upgrades.spiral.components == Upgrades.mystique.components ++
+        Vector(ProposalId.Eip(3651), ProposalId.Eip(3855), ProposalId.Eip(3860)),
       "a composition's recorded components are not the ones it adopted"
     )
 
@@ -636,5 +645,139 @@ class UpgradesSpec extends AnyFlatSpec:
         reversed.header == Upgrades.mystique.header &&
         order != reverseOrder,
       "the two components do not commute, or the comparison that says they do cannot see an order that matters"
+    )
+  }
+
+  "the composition this network calls Spiral" should "start the beneficiary warm" in
+    // The schedule's side of EIP-3651: `Eip3651Spec` certifies the delta and
+    // passes with the component adopted by nothing. This is that the rule set
+    // carries it at all.
+    assert(
+      Upgrades.spiral.evm.coinbaseStartsWarm,
+      "the upgrade that adopts EIP-3651 charges cold access for the address every block already names"
+    )
+
+  it should "have started it cold at the upgrade before it" in
+    assert(
+      !Upgrades.mystique.evm.coinbaseStartsWarm,
+      "an upgrade below the one adopting EIP-3651 already warmed the beneficiary"
+    )
+
+  it should "carry PUSH0 at the cheapest tier" in
+    // Read as the literal that document publishes rather than against the base:
+    // an operation added at the wrong price is present and wrong, which is the
+    // failure a presence check alone cannot see.
+    assert(
+      settledCost(Upgrades.spiral.evm.table, Opcode.Push0).contains(BigInt(2)),
+      "the upgrade that adopts EIP-3855 lacks the operation or charges other than the base tier"
+    )
+
+  it should "have had no operation at that code below it" in
+    assert(
+      !Upgrades.mystique.evm.table.contains(Opcode.Push0),
+      "an upgrade below the one adopting EIP-3855 already answered at that code"
+    )
+
+  it should "bound initcode at twice the deployed-code bound, and meter it" in
+    // Two fields by one document. The bound is stated as the literal ECIP-1109's
+    // own summary of EIP-3860 publishes -- 49,152 -- rather than as the
+    // derivation that produces it, because a derivation restated is not a second
+    // reading of it. The second clause pins the base the derivation runs over,
+    // which is what makes the first a figure rather than a coincidence.
+    assert(
+      Upgrades.spiral.evm.maxInitcodeSize.contains(49152) &&
+        Upgrades.spiral.evm.maxCodeSize.contains(24576) &&
+        Upgrades.spiral.evm.schedule.initcodePerWord == BigInt(2),
+      "the upgrade that adopts EIP-3860 carries a bound or a rate other than that document's"
+    )
+
+  it should "have bounded neither at the upgrade before it" in
+    // The negative control for both, and the deployed-code bound is deliberately
+    // NOT in it: that one is `atlantis`'s and is unchanged here, so a clause
+    // asserting it absent below would be false.
+    assert(
+      Upgrades.mystique.evm.maxInitcodeSize.isEmpty &&
+        Upgrades.mystique.evm.schedule.initcodePerWord == BigInt(0),
+      "an upgrade below the one adopting EIP-3860 already bounded or metered initcode"
+    )
+
+  it should "still report the block's own difficulty at 0x44" in
+    // The machine half of ECIP-1109's first omission, and the reason it is an
+    // omission rather than a withheld operation: the code answers here as it
+    // answered below, and what EIP-4399 would have changed is the quantity it
+    // reports. Three clauses -- the operation present, the quantity unchanged,
+    // and the delta that would change it -- because the first two alone are
+    // satisfied by a rule set on which the field cannot move at all.
+    assert(
+      Upgrades.spiral.evm.table.contains(Opcode.Difficulty) &&
+        Upgrades.spiral.evm.blockRandomness == BlockRandomness.Unavailable &&
+        Upgrades.spiral.adopting(Eip4399.component).evm.blockRandomness == BlockRandomness.Eip4399,
+      "this network supplanted the quantity 0x44 reports, or the field it reports from cannot move"
+    )
+
+  it should "commit to no withdrawals list in its header" in
+    // The header half of the second omission, in the same three-clause shape:
+    // a network granting rewards only to miners has no validator exits to
+    // credit, so the field stays absent, and the adopting clause is what proves
+    // the absence is this composition's rather than the field's.
+    assert(
+      !Upgrades.spiral.header.carriesWithdrawalsRoot &&
+        Upgrades.spiral.adopting(Eip4895.component).header.carriesWithdrawalsRoot,
+      "this network committed to a withdrawals list, or the field cannot be set at all"
+    )
+
+  it should "write the machine's rules and no other facet" in
+    // All three components are machine-scoped, so every other facet survives as
+    // the SAME value rather than as an equal copy -- which reference equality is
+    // what distinguishes. The last clause is the calibration: without it the
+    // case is satisfied by a composition that changed nothing anywhere.
+    assert(
+      (Upgrades.spiral.admission eq Upgrades.mystique.admission) &&
+        (Upgrades.spiral.consensus eq Upgrades.mystique.consensus) &&
+        (Upgrades.spiral.header eq Upgrades.mystique.header) &&
+        (Upgrades.spiral.execution eq Upgrades.mystique.execution) &&
+        (Upgrades.spiral.evm ne Upgrades.mystique.evm),
+      "a component reached past the machine, or none of them reached it"
+    )
+
+  it should "still size an epoch by the calibration adopted three upgrades below it" in
+    // The case `mystique` carries, one upgrade further from its source. None of
+    // this upgrade's three documents mentions an epoch, so the value can only
+    // arrive by having composed from the upgrade that set it -- and it reaches a
+    // seal rather than a state root, so no certification tier in this build
+    // could report it absent.
+    assert(
+      Upgrades.spiral.consensus.ecip1099Activation.contains(BigInt(11700000)),
+      "this composition was built from an upgrade below the one that calibrated the epoch"
+    )
+
+  it should "reach the same rules whichever order its three components run in" in {
+    // The scaladoc's disjoint-fields claim, executed rather than restated, over
+    // the reversal rather than over all six permutations: reversing is what
+    // exposes an order dependency between any pair, since every pair's relative
+    // order is inverted by it.
+    //
+    // Facet by facet rather than on the whole value: `adopting` rebuilds the
+    // component record from the order it was passed, so the two records differ
+    // by construction and a whole-value comparison would fail for a reason that
+    // is not about the rules.
+    //
+    // THE LAST CLAUSE IS THE CALIBRATION, and without it this case is satisfied
+    // by a comparison that can never report a difference. EIP-2200 and EIP-2929
+    // both write `netStorageNoop`, `netStorageDirty`,
+    // `refundNetStorageResetFromZero` and `refundNetStorageReset`, so they are a
+    // pair that must NOT commute -- read over the same facet as the clauses
+    // above, which is what makes it a control for them.
+    val reversed = Upgrades.mystique.adopting(Eip3860.component, Eip3855.component, Eip3651.component)
+    val order = Upgrades.magneto.adopting(Eip2200.component, Eip2929.component).evm
+    val reverseOrder = Upgrades.magneto.adopting(Eip2929.component, Eip2200.component).evm
+    assert(
+      reversed.evm == Upgrades.spiral.evm &&
+        reversed.execution == Upgrades.spiral.execution &&
+        reversed.admission == Upgrades.spiral.admission &&
+        reversed.consensus == Upgrades.spiral.consensus &&
+        reversed.header == Upgrades.spiral.header &&
+        order != reverseOrder,
+      "the three components do not commute, or the comparison that says they do cannot see an order that matters"
     )
   }

@@ -32,6 +32,9 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip2930,
   Eip3529,
   Eip3541,
+  Eip3651,
+  Eip3855,
+  Eip3860,
   Eip658,
   Eip7
 }
@@ -1186,3 +1189,133 @@ object Upgrades:
     * the reserved byte is -- that client holds it inside its own rule class.
     */
   val mystique: UpgradeRules = magneto.adopting(Eip3529.component, Eip3541.component)
+
+  /** [[mystique]] with EIP-3651, EIP-3855 and EIP-3860 adopted.
+    *
+    * ==Which document settles membership, and it admits four while three are
+    * written==
+    *
+    * **ECIP-1109** -- `ethereumclassic/ECIPs` @
+    * `51f6b145238ee7a60793378258f50fe7acc21dc5` (2025-07-04),
+    * `_specs/ecip-1109.md`, **`status: Final`, `type: Meta`** -- tabulates six
+    * proposals in its Abstract against a `Status` column and marks four of them
+    * `Include`: EIP-3651, EIP-3855, EIP-3860 and EIP-6049.
+    *
+    * **The fourth settles no rule, and the same document says so from its own
+    * side.** Below that table the division is repeated under *Included* and
+    * *Omitted* headings, and the *Included* list carries three bullets rather
+    * than four: EIP-3651, EIP-3855 and EIP-3860, with no entry for EIP-6049.
+    * `org.fukuii.evm.Opcode.SelfDestruct` records why adopting that document
+    * and adopting nothing produce the same machine, beside the operation it
+    * deprecates. So this composition is three terms under a table that admits
+    * four, and the difference is accounted for rather than dropped.
+    *
+    * `ethereumclassic/core-geth` @ `4185df450` states the same four as
+    * per-proposal transitions rather than as a fork name -- `EIP3651FBlock`,
+    * `EIP3855FBlock`, `EIP3860FBlock` and `EIP6049FBlock` in
+    * `params/config_classic.go:101-105`, under the client's own comment
+    * `// Spiral, aka Shanghai (partially)`, which is that client saying *a
+    * subset* in the place a fork name would go. **It reaches the same
+    * three-of-four reading from the other direction**: the one field it sets
+    * without a rule behind it carries that client's own comment `(noop)`.
+    *
+    * ==Two omissions, and the reasons are different in kind==
+    *
+    * **EIP-4399 is declined on a machine fact, and the fact is that the
+    * operation stays.** The document records that Solidity's rename of
+    * `block.difficulty` *"still compiles to the same EVM opcode, i.e. `0x44`,
+    * which in the Ethereum Classic network will continue to evaluate as the
+    * aforementioned block difficulty value"*. So nothing is withheld from the
+    * machine here: `0x44` is present at this height as it was below it, and
+    * what the proposal would have replaced is the quantity it reads. A network
+    * still selecting blocks by work has that quantity; the beacon value the
+    * proposal substitutes is what it does not have.
+    *
+    * **EIP-4895 has nothing to credit.** *"Ethereum Classic network only grants
+    * rewards through Proof of Work mining on the canonical chain, there are no
+    * validators, so this doesn't apply."* The document states the same thing
+    * once more directly under its table, of withdrawals alone among the two
+    * omissions. `org.fukuii.chainspec.proposals.eip.Eip4895` carries the client
+    * evidence for the same division read from that proposal's side.
+    *
+    * **core-geth attests both rather than merely lacking them.**
+    * `params/config_classic.go:100` and `:104` carry `EIP4399FBlock` and
+    * `EIP4895FBlock` as commented-out lines *inside* the block the four set
+    * fields sit in -- the first with that client's own reason, *"ETC does not
+    * spec 4399 because it's still PoW, and 4399 is only applicable for the PoS
+    * system"*. Those four fields are the control that makes the two comments an
+    * attested exclusion rather than a configuration that simply stops early.
+    *
+    * ==The order is immaterial, and one component is why it is worth saying==
+    *
+    * Read off the three: EIP-3651 writes `coinbaseStartsWarm`; EIP-3855 adds one
+    * operation to the machine's table; EIP-3860 writes `maxInitcodeSize` and
+    * `initcodePerWord`. **No field is written by two, and none reads a field
+    * another writes.**
+    *
+    * **EIP-3860 does read the base, which is the case that makes the ordering
+    * claim non-trivial.** Its bound is DERIVED as twice the deployed-code bound
+    * rather than published as a constant, so a composition placing it below the
+    * upgrade that sets that bound would evaluate to a different figure while
+    * compiling. [[atlantis]] is where this network set it, at 24,576 -- so the
+    * bound here is 49,152, which is the figure ECIP-1109's own summary of that
+    * document publishes independently of the derivation.
+    *
+    * ==One facet moves==
+    *
+    * All three are built through `org.fukuii.chainspec.Component.evm`, which can
+    * write no other facet, so admission, settlement, consensus and the header
+    * facet are [[mystique]]'s as the SAME values rather than as equal copies.
+    * **One facet is not the fewest this schedule has seen** -- [[gotham]]'s two
+    * components leave every facet as it was, and its entry records why that is
+    * still a rule change -- so this is a narrow movement rather than a minimal
+    * one, and the interesting part is which facet rather than how many.
+    *
+    * ==Three proposals of an upstream upgrade, separable from its fourth==
+    *
+    * These three need no beacon chain and no validator set: one names an
+    * address every block already has, one adds an operation, and one bounds and
+    * meters a size this network already bounds. That is why this network takes
+    * them while taking none of the withdrawals work that shipped beside them,
+    * and why they are adopted here as three terms with no component holding the
+    * group -- a bundle of the four could not express the split, and a bundle of
+    * the three would put one name in front of two networks' membership at once.
+    *
+    * ==What besu-etc corroborates, and it reaches three from three deltas==
+    *
+    * `besu-eth/besu-etc` @ `eb4248c997` reaches the same membership by
+    * replacement rather than by composition:
+    * `ClassicProtocolSpecs.spiralDefinition` at `:360-402` builds on
+    * `mystiqueDefinition` -- the same ordering [[mystique]] sits at here -- and
+    * applies exactly three changes, each annotated with the proposal it is.
+    * `// EIP-3860` swaps in `ShanghaiGasCalculator`; `// EIP-3855` swaps the
+    * machine for `ClassicEVMs.spiral`; `// EIP-3651` rebuilds the transaction
+    * processor with `warmCoinbase(true)`. **There is no fourth change and no
+    * mention of EIP-6049**, which is a second implementation reaching
+    * independently the reading the *Included* list above gives.
+    *
+    * It corroborates both omissions from its own shape as well. That definition
+    * installs neither `withdrawalsProcessor` nor `withdrawalsValidator`, against
+    * a control of both in the same tree's
+    * `MainnetProtocolSpecs.shanghaiDefinition` -- so EIP-4895's absence there is
+    * attested rather than merely unmentioned; and it substitutes no operation at
+    * `0x44`.
+    *
+    * **What it must not be cited for is the arithmetic**, which is the boundary
+    * [[mystique]] draws for the same client one upgrade below.
+    * `ShanghaiGasCalculator`'s contents are besu's rather than an Ethereum
+    * Classic decision, so it is not a second reading of EIP-3860's rate or of
+    * the bound it derives.
+    *
+    * ==Nothing intervenes between this height and the one it builds on==
+    *
+    * `params/config_classic.go` at `4185df450` sets no transition strictly
+    * between `14_525_000` and `19_250_000`. That is exhaustive over every
+    * numeric literal in this network's configuration rather than a reading of
+    * the fields nearby, and the sweep discriminates three ways: six heights this
+    * schedule carries are found by the same instrument, a different window known
+    * to hold upgrades -- 8,772,000 to 14,525,000 -- returns exactly its five,
+    * and a figure planted inside the empty window is reported. So the rules this
+    * composes over are [[mystique]]'s.
+    */
+  val spiral: UpgradeRules = mystique.adopting(Eip3651.component, Eip3855.component, Eip3860.component)

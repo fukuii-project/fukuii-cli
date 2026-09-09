@@ -49,7 +49,8 @@ class MainnetSpec extends AnyFlatSpec:
           "MESS",
           "Thanos",
           "Magneto",
-          "Mystique"
+          "Mystique",
+          "Spiral"
         ),
       "an enumeration missing an entry misnumbers every entry after it, which is silent rather than absent"
     )
@@ -108,9 +109,24 @@ class MainnetSpec extends AnyFlatSpec:
           Activation.AtBlock(UInt64.fromBits(10500839L)),
           Activation.AtBlock(UInt64.fromBits(11700000L)),
           Activation.AtBlock(UInt64.fromBits(13189133L)),
-          Activation.AtBlock(UInt64.fromBits(14525000L))
+          Activation.AtBlock(UInt64.fromBits(14525000L)),
+          Activation.AtBlock(UInt64.fromBits(19250000L))
         ),
       "genesis is excluded by EIP-2124 and the two unenforced entries by enforcing nothing, leaving the rest"
+    )
+
+  it should "number twelve, which is what the reference client's own rule yields" in
+    // The agreement could not be checked until the last of them was authored.
+    // `params/confp/configurator.go:455` derives `BlockForks` by reflecting over
+    // transition getters, skipping any whose name matches `ECBP` or `EBP`,
+    // discarding genesis and deduplicating heights. Read that way,
+    // `params/config_classic.go` at `4185df450` yields twelve -- the eleven
+    // above plus this upgrade's -- and 19,250,000 is the one height where that
+    // rule has to do work, because the same height also carries
+    // `ECBP1100DeactivateFBlock`, which it skips.
+    assert(
+      schedule.forkPoints.length == 12,
+      "this schedule counts a different number of divergence points than the reference client's own rule does"
     )
 
   "Gotham" should "be a fork point even though it moves no value a rule set holds" in
