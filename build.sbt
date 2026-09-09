@@ -726,6 +726,65 @@ lazy val consensusPow = (project in file("modules/consensus-pow"))
     libraryDependencies ++= testDeps
   )
 
+// consensus-pos -- the proof-of-stake mechanism, as the second leaf.
+//
+// It is a SIBLING of consensus-pow and not a tenant in it, which is the whole
+// reason that module's comment gives for the seam being a module of its own.
+// Neither names the other and neither can: an ommer, a seal digest and a mining
+// nonce have no meaning on this side, and an execution payload has none on
+// that. The build graph is what enforces it, so the guard is a compile error
+// rather than a review note.
+//
+// The extra word is again the MECHANISM FAMILY rather than a network. Ethereum
+// mainnet and Sepolia are both served from this one leaf, and a rollup that
+// reuses the same driver seam would be too -- see the family-extension slot on
+// the payload and attribute types, which is what keeps that possible without a
+// second leaf.
+//
+// ── The dependency list is DERIVED, and is shorter than the sibling's ──
+//
+// Same test as every edge above: a source here names the type. Applying it
+// honestly rather than by analogy is what makes the list evidence.
+//
+//   bytes   a payload names a parent, a state root and a block hash, so it
+//           names the 32-byte value; a fee recipient is an address; the base
+//           fee is the protocol's 256-bit quantity; four header quantities and
+//           a build timestamp are the 64-bit machine word; extra data and a
+//           transaction are arbitrary-length byte strings
+//   types   a payload and a build request both carry the withdrawal LIST, and a
+//           payload carries a logs bloom
+//
+// ── Four edges the sibling declares and this does not ──
+//
+// `rlp` is absent because this seam is JSON-RPC. A payload is transported as a
+// JSON object of named fields, so nothing here encodes or decodes an RLP item,
+// and the encoder that eventually does belongs to the transport layer rather
+// than to the verb contract. That layer is also where a JSON dependency would
+// land; this module declares none, and reaching for one here would put a second
+// module in the position `build.sbt` currently reserves for `evm` alone.
+//
+// `crypto` is absent because nothing here digests anything. A payload's
+// `blockHash` arrives as a claim to be checked rather than a value to be
+// computed, and the check is the translation phase's, not this one's.
+//
+// `chainspec` and `consensus` are both absent TODAY and both are expected. The
+// first arrives with the fork gate, which resolves an activation from an
+// upgrade schedule; the second arrives with whatever here implements
+// `ConsensusEngine`. Neither is named by any source in this module yet, and
+// declaring an edge ahead of the source that needs it would make the list
+// describe an intention rather than the code -- which is the one property that
+// makes every list above worth reading.
+//
+// `evm % "test->test"` is absent for the reason the sibling declares it: that
+// edge exists so an emission test can observe an account coming into being, and
+// nothing in this module writes state.
+lazy val consensusPos = (project in file("modules/consensus-pos"))
+  .dependsOn(bytes, types)
+  .settings(
+    name := "fukuii-consensus-pos",
+    libraryDependencies ++= testDeps
+  )
+
 // The aggregate. `aggregate` makes a task at the root fan out to every module;
 // it is NOT a dependency edge, so the root gains nothing on its classpath.
 //
@@ -734,7 +793,20 @@ lazy val consensusPow = (project in file("modules/consensus-pow"))
 // org.fukuii:fukuii_3, so the repo name must not leak into it. Lowercase
 // because this is a Maven artifactId, not a display name.
 lazy val root = (project in file("."))
-  .aggregate(bytes, rlp, crypto, types, storage, trie, evm, execution, chainspec, consensus, consensusPow)
+  .aggregate(
+    bytes,
+    rlp,
+    crypto,
+    types,
+    storage,
+    trie,
+    evm,
+    execution,
+    chainspec,
+    consensus,
+    consensusPow,
+    consensusPos
+  )
   .settings(
     name := "fukuii",
     libraryDependencies ++= testDeps
