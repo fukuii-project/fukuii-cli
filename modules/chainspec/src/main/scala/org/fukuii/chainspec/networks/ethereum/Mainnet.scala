@@ -38,6 +38,15 @@ object Mainnet:
     */
   private def atBlock(number: Long): Activation = Activation.AtBlock(UInt64.fromBits(number))
 
+  /** A timestamp stated as a literal from a specification.
+    *
+    * Separate from [[atBlock]] rather than a second call to one helper, because
+    * the two quantities are unrelated and [[Activation]] keeps the axis in the
+    * value precisely so that a transposition is a type error rather than a
+    * plausible number.
+    */
+  private def atTimestamp(seconds: Long): Activation = Activation.AtTimestamp(UInt64.fromBits(seconds))
+
   /** Chain id 1.
     *
     * EIP-155 § *List of Chain ID's* gives `1 | Ethereum mainnet`
@@ -623,7 +632,7 @@ object Mainnet:
     * one was not: the trigger was a condition on accumulated work, so no
     * participant could state the height until the chain had reached it.
     * [[Upgrade.RetrospectiveRuleChange]] carries what that costs -- the height is
-    * real, `UpgradeSchedule.at` honours it, and EIP-2124's fork identifier must
+    * real, `UpgradeSchedule.at` honors it, and EIP-2124's fork identifier must
     * not count it -- and that case's documentation holds the evidence rather than
     * this entry.
     *
@@ -635,7 +644,7 @@ object Mainnet:
     * recording that the trigger was the accumulated work reaching a terminal
     * value and that the event *"is now a historical event"*.
     *
-    * **A neighbouring figure is one below and is a different client's index, not
+    * **A neighboring figure is one below and is a different client's index, not
     * this height.** `NethermindEth/nethermind` @ `b92e2a471` (2026-08-26) carries
     * `ParisBlockNumber = 15_537_393` in
     * `Nethermind.Specs/MainnetSpecProvider.cs:24`, with `postMergeBlock:
@@ -711,6 +720,65 @@ object Mainnet:
       Upgrade.RetrospectiveRuleChange(Upgrades.paris)
     )
 
+  /** Shanghai, timestamp 1,681,338,455.
+    *
+    * ==THE FIRST ENTRY ON ANY NETWORK IN THIS BUILD THAT ACTIVATES ON A
+    * TIMESTAMP==
+    *
+    * [[Activation.AtTimestamp]] has existed since that type was written and has
+    * had no authored consumer until this line. So this entry is the first real
+    * exercise of three things that were previously carried only by that type's
+    * own tests: the axis being part of the value, the cross-axis ordering rule,
+    * and [[UpgradeSchedule.at]] reading a timestamp at all.
+    *
+    * ==The ordering against the entry below it is a specification MUST, not a
+    * consequence of the numbers==
+    *
+    * 1,681,338,455 is larger than 15,537,394, so a schedule comparing bare
+    * integers would accept this entry for the wrong reason and would go on
+    * accepting it right up until a network configured a fork at a low
+    * timestamp. EIP-6122 § Additional rules is what actually governs: *"Forks by
+    * timestamp MUST be scheduled at or after the forks by block (on mainnet as
+    * well as on private networks)."* `UpgradeSchedule.Error.TimestampBeforeBlock`
+    * is that rule, and this entry is the first thing to satisfy it non-vacuously.
+    *
+    * ==Four independent statements of the figure==
+    *
+    * `ethereum/execution-specs` @ `20f7f6271` (2026-08-26) states it twice in one
+    * module: `src/ethereum/forks/shanghai/__init__.py` gives the schedule row
+    * `| Mainnet | 1681338455 | 2023-04-12 22:27:35 |` and
+    * `FORK_CRITERIA: ForkCriteria = ByTimestamp(1681338455)` beneath it.
+    * `ethereum/go-ethereum` @ `e9e35a42f` (2026-08-26) has
+    * `ShanghaiTime: newUint64(1681338455)` in `params/config.go`;
+    * `besu-eth/besu` @ `fdf1247c6` (2026-08-26) has `"shanghaiTime": 1681338455`
+    * in `config/src/main/resources/mainnet.json`; and
+    * `ethereumclassic/core-geth` @ `4185df450` (2025-01-23) carries the same
+    * figure on its Ethereum mainnet configuration.
+    *
+    * ==Nothing activates between this entry and the one below it==
+    *
+    * The same instrument the glaciers were checked with -- every numeric field
+    * in three clients' mainnet configurations, not the fields named after an
+    * upgrade. **Note what that sweep has to span here**: the window runs from a
+    * block number to a timestamp, so a reading that compared them as one
+    * quantity would have nothing to report and would be right by accident. The
+    * fields between are read on their own axes, and there are none.
+    *
+    * ==This one DOES reach the fork identifier, unlike the entry below it==
+    *
+    * A [[Upgrade.RuleChange]] rather than the retrospective case: this
+    * activation was published in advance and every peer could compute it before
+    * reaching it, which is exactly the property the case below lacks. The two
+    * entries sitting next to each other, taking different cases for that reason,
+    * is the clearest statement of what separates them.
+    */
+  private val shanghai: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(
+      atTimestamp(1681338455),
+      upgrade("Shanghai"),
+      Upgrade.RuleChange(Upgrades.shanghai)
+    )
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -751,6 +819,7 @@ object Mainnet:
         london,
         arrowGlacier,
         grayGlacier,
-        paris
+        paris,
+        shanghai
       )
     )

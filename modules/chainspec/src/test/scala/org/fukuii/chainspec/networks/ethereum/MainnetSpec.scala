@@ -65,7 +65,8 @@ class MainnetSpec extends AnyFlatSpec:
           "London",
           "Arrow Glacier",
           "Gray Glacier",
-          "Paris"
+          "Paris",
+          "Shanghai"
         ),
       "an enumeration missing an entry misnumbers every entry after it, which is silent rather than absent"
     )
@@ -150,7 +151,12 @@ class MainnetSpec extends AnyFlatSpec:
         // disagreement the identifier exists to surface at the handshake
         // rather than at a block.
         Activation.AtBlock(UInt64.fromBits(13773000L)),
-        Activation.AtBlock(UInt64.fromBits(15050000L))
+        Activation.AtBlock(UInt64.fromBits(15050000L)),
+        // The first timestamp point on this network, and it sits directly
+        // above an entry that is absent -- one counted, one not, adjacent,
+        // and both changing the rules. That pair is what the fourth upgrade
+        // case exists to express, and it is only visible here.
+        Activation.AtTimestamp(UInt64.fromBits(1681338455L))
         // AND NOTHING FOR 15,537,394, which is the one exclusion here that
         // drops an entry that DOES change the rules. EIP-3675 requires it: a
         // fork identifier is exchanged before either peer has the other's
@@ -397,3 +403,62 @@ class MainnetSpec extends AnyFlatSpec:
         (Upgrades.paris.execution eq Upgrades.grayGlacier.execution),
       "a document confined to three facets reached a fourth"
     )
+
+  // ── The first entry on this network that activates on a timestamp ─────────
+
+  "the Shanghai entry" should "activate on a TIMESTAMP, not a height" in
+    // The axis, asserted on its own. Every other entry on this schedule is a
+    // block number, so an activation written with the wrong helper would be a
+    // plausible figure in the wrong quantity -- and 1,681,338,455 read as a
+    // height is a block this network will not reach for decades, which resolves
+    // to the upgrade below for ever and fails nothing else here.
+    assert(
+      entryNamed("Shanghai").activation == Activation.AtTimestamp(UInt64.fromBits(1681338455L)),
+      "the first timestamp activation on this network was written on the wrong axis"
+    )
+
+  it should "resolve to the rules that adopt its four proposals" in
+    // Read at a height past every block activation, with the timestamp doing
+    // the work. The height is deliberately large: it must not be what selects
+    // the answer.
+    assert(
+      schedule.at(UInt64.fromBits(99999999L), UInt64.fromBits(1681338455L)) == Upgrades.shanghai,
+      "the entry at this network's Shanghai timestamp does not resolve to the rules that upgrade composes"
+    )
+
+  it should "resolve to the upgrade below it one SECOND earlier" in
+    // The control, on the timestamp axis rather than the block axis. Without it
+    // the case above holds for an entry activating at any earlier timestamp.
+    assert(
+      schedule.at(UInt64.fromBits(99999999L), UInt64.fromBits(1681338454L)) == Upgrades.paris,
+      "a block one second below this network's Shanghai timestamp resolves to rules it does not run"
+    )
+
+  it should "NOT come into force on height alone, however far the chain has run" in
+    // THE CASE THAT SEPARATES THE TWO AXES, and the reason the activation type
+    // keeps the axis in the value. A schedule collapsing both into one integer
+    // would resolve this to Shanghai, because 99,999,999 exceeds every block
+    // activation here and the comparison would not know the entry's figure was
+    // seconds. Reading with a zero timestamp is what makes that observable.
+    assert(
+      schedule.at(UInt64.fromBits(99999999L), UInt64.Zero) == Upgrades.paris,
+      "a timestamp activation came into force on a block number, so the two axes are being compared as one quantity"
+    )
+
+  "this network's schedule" should "put every block activation before every timestamp activation" in {
+    // EIP-6122's MUST, asserted over the whole schedule rather than at the one
+    // boundary. The construction check already refuses a violation, so what
+    // this adds is that the authored order satisfies it NON-VACUOUSLY: there is
+    // now at least one activation of each axis, which was not true of this
+    // network before this entry existed.
+    val axes = schedule.entries.flatMap(_.activation.axis)
+    val ranked = axes.map {
+      case Activation.Axis.Block     => 0
+      case Activation.Axis.Timestamp => 1
+    }
+    assert(
+      axes.contains(Activation.Axis.Block) && axes.contains(Activation.Axis.Timestamp) &&
+        ranked == ranked.sorted,
+      "a timestamp activation is written above a block activation, which EIP-6122 forbids"
+    )
+  }
