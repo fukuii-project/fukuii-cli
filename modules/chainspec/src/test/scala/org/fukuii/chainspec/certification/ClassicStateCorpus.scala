@@ -223,6 +223,45 @@ object ClassicStateCorpus:
   lazy val phoenix: Option[CorpusReport] =
     reportAt(PhoenixCorpus, PhoenixFork, PhoenixStarts, identity)
 
+  /** The label Spiral's expectations are filed under.
+    *
+    * The corpus's own spelling, for [[DieHardFork]]'s reason: a name this
+    * chain's fixtures do not use would find nothing and report every file as
+    * stating no expectation, which is a silence indistinguishable from
+    * agreement.
+    */
+  val SpiralFork: String = "ETC_Spiral"
+
+  /** The name a report of Spiral's rules over this tree carries. */
+  val SpiralCorpus: String = "fukuii-tests ethereumclassic/mainnet state at Spiral"
+
+  /** The height this harness believes Spiral begins at.
+    *
+    * `ethereumclassic/core-geth` @ `4185df450` states this network's three
+    * transitions for that upgrade at `big.NewInt(19_250_000)` in
+    * `params/config_classic.go:101-103`, under the client's own comment
+    * `// Spiral, aka Shanghai (partially)`, and `besu-eth/besu-etc` @
+    * `eb4248c997` states it as `"spiralBlock": 19250000` in
+    * `config/src/main/resources/classic.json:16`. ECIP-1109 names the figure
+    * itself, and `org.fukuii.chainspec.networks.ethereumclassic.Mainnet`
+    * carries the full sourcing. Stated as a literal for the reason above.
+    */
+  private[certification] val SpiralStarts: Long = 19250000L
+
+  /** The height the fork before it begins at, carried so a control can resolve
+    * Spiral's expectations under the previous fork's rules.
+    *
+    * `EIP3529FBlock` and `EIP3541FBlock` at `big.NewInt(14_525_000)` in the
+    * same file at `:96-97`, and `"mystiqueBlock": 14525000` in the same besu
+    * resource at `:15`. It is a control input rather than a corpus of its own,
+    * for [[GasRepriceStarts]]'s reason.
+    */
+  private[certification] val MystiqueStarts: Long = 14525000L
+
+  /** Spiral's rules over this tree, as the run every count is read from. */
+  lazy val spiral: Option[CorpusReport] =
+    reportAt(SpiralCorpus, SpiralFork, SpiralStarts, identity)
+
   private def assemble(
       name: String,
       under: Path,
