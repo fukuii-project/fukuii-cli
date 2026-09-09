@@ -787,10 +787,19 @@ lazy val consensusPow = (project in file("modules/consensus-pow"))
 // describe an intention rather than the code -- which is the one property that
 // makes every list above worth reading.
 //
-// `evm % "test->test"` is absent for the reason the sibling declares it: that
-// edge exists so an emission test can observe an account coming into being, and
-// nothing in this module writes state. This module reaches `evm` at compile
-// scope only, for one record type.
+// The `test->test` half of the evm edge is NOT the sibling's reason, and the
+// difference is worth stating so neither is read as the other. That module
+// declares it so an emission test can observe an account coming into being;
+// nothing here writes state. What this module reaches for instead is the
+// published-corpus harness -- the skip taxonomy, the verdict, the per-corpus
+// report and the corpus locator all live in `evm`'s test tree, beside the
+// module that declares the JSON parser, and a certification tier here reports
+// through exactly those types. The proof-of-work leaf's own certification tier
+// reaches them the same way.
+//
+// So the edge is one seam serving two unrelated purposes, which is what a test
+// tree holding a harness rather than only doubles amounts to. It is named here
+// for the harness alone.
 //
 // ── The JSON note the `rlp` edge used to carry, kept because it still binds ──
 //
@@ -801,7 +810,7 @@ lazy val consensusPow = (project in file("modules/consensus-pow"))
 // that owns the carrier, and this module still declares no JSON dependency --
 // `build.sbt` reserves that position for `evm` alone.
 lazy val consensusPos = (project in file("modules/consensus-pos"))
-  .dependsOn(bytes, rlp, crypto, types, trie, evm, execution, chainspec)
+  .dependsOn(bytes, rlp, crypto, types, trie, execution, chainspec, evm % "compile->compile;test->test")
   .settings(
     name := "fukuii-consensus-pos",
     libraryDependencies ++= testDeps
