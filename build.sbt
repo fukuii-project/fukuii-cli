@@ -751,10 +751,17 @@ lazy val consensusPow = (project in file("modules/consensus-pow"))
 //           fee is the protocol's 256-bit quantity; four header quantities and
 //           a build timestamp are the 64-bit machine word; extra data and a
 //           transaction are arbitrary-length byte strings
+//   chainspec
+//           the fork gate resolves a bounding upgrade's activation out of an
+//           UpgradeSchedule at the moment a verb is called, matching the entry
+//           by its UpgradeId label and reading the Activation off it -- and it
+//           reads the ACTIVATION rather than the flat point, because both axes
+//           are unsigned 64-bit and a block height compared against a timestamp
+//           would answer confidently and never fire
 //   types   a payload and a build request both carry the withdrawal LIST, and a
 //           payload carries a logs bloom
 //
-// ── Four edges the sibling declares and this does not ──
+// ── Three edges the sibling declares and this does not ──
 //
 // `rlp` is absent because this seam is JSON-RPC. A payload is transported as a
 // JSON object of named fields, so nothing here encodes or decodes an RLP item,
@@ -767,10 +774,8 @@ lazy val consensusPow = (project in file("modules/consensus-pow"))
 // `blockHash` arrives as a claim to be checked rather than a value to be
 // computed, and the check is the translation phase's, not this one's.
 //
-// `chainspec` and `consensus` are both absent TODAY and both are expected. The
-// first arrives with the fork gate, which resolves an activation from an
-// upgrade schedule; the second arrives with whatever here implements
-// `ConsensusEngine`. Neither is named by any source in this module yet, and
+// `consensus` is absent TODAY and is expected. It arrives with whatever here
+// implements `ConsensusEngine`; nothing in this module names that type yet, and
 // declaring an edge ahead of the source that needs it would make the list
 // describe an intention rather than the code -- which is the one property that
 // makes every list above worth reading.
@@ -779,7 +784,7 @@ lazy val consensusPow = (project in file("modules/consensus-pow"))
 // edge exists so an emission test can observe an account coming into being, and
 // nothing in this module writes state.
 lazy val consensusPos = (project in file("modules/consensus-pos"))
-  .dependsOn(bytes, types)
+  .dependsOn(bytes, types, chainspec)
   .settings(
     name := "fukuii-consensus-pos",
     libraryDependencies ++= testDeps
