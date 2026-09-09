@@ -11,6 +11,15 @@ layer can never be the authority for a value. The *shape* of the work here is
 policy and does not expire; the values do not have that standing. Checked
 2026-08-17.
 
+**One exception, dated separately from that check: the fork-set membership in
+"The fork sets, and the opcode question" and "The checkable negative" below
+was checked against `ethereum/execution-specs`, `ethereum/go-ethereum` and
+`besu-eth/besu` at refs cited in those two sections, 2026-09-09 — the first
+values in this file to clear the bar the paragraph above describes.** Every
+other fact in this file remains exactly the unverified lead that paragraph
+states; this note marks the one place that has stopped being one, and it does
+not extend past those two sections.
+
 **No frontmatter, and none is possible.** A file under `.claude/protocols/` does
 not auto-load — Claude Code discovers `.claude/rules/`, not this directory — so
 `paths:` here would do nothing. **Something has to reach this file by name**,
@@ -109,19 +118,46 @@ places.
 **Prague adds no new opcode.** Its execution-layer change of that kind is the
 EIP-7702 set-code transaction type, which is a transaction type rather than an
 opcode. The rest of its execution-layer set: EIP-2537 (BLS12-381 precompiles at
-`0x0b` through `0x11`), EIP-7623 (calldata floor gas), EIP-7691 (blob
-throughput), EIP-7685 (execution requests), EIP-6110 (deposit processing),
-EIP-7251 (maximum effective balance), EIP-7002 (execution-layer-triggered
-validator exits).
+`0x0b` through `0x11`), EIP-2935 (serves historical block hashes from state),
+EIP-7623 (calldata floor gas), EIP-7691 (blob throughput), EIP-7685 (execution
+requests), EIP-6110 (deposit processing), EIP-7251 (maximum effective
+balance), EIP-7002 (execution-layer-triggered validator exits), EIP-7840
+(moves the blob schedule into execution-layer client config instead of
+hardcoding it per fork).
+
+**EIP-2935 is a write, not a query path.** Its system-contract call runs every
+block from Prague's first block onward and mutates state; model it as
+read-only and the state root diverges there. `besu-eth/besu @ b330564a9`
+implements it the same way, as `PraguePreExecutionProcessor`.
 
 **Osaka is Prague plus one opcode.** EIP-7939 (CLZ) at `0x1e` is **the only new
 opcode in the set**. Alongside it: EIP-7823 and EIP-7883 (MODEXP input bounds and
 gas), EIP-7951 (a P256VERIFY precompile at `0x100`), EIP-7918 (blob base-fee
-reserve pricing), EIP-7892 (blob-parameter-only forks).
+reserve pricing), EIP-7825 (a transaction gas cap), EIP-7934 (an RLP-encoded
+block-size limit), EIP-7892 (blob-parameter-only forks).
+
+**EIP-7825 and EIP-7934 are validity gates, not cost changes.** A transaction
+over the gas cap or a block over the size limit is invalid at Osaka, the same
+way an underpriced transaction already is — not merely expensive, and not
+merely large. `besu-eth/besu @ b330564a9` enforces both the same way, in
+`MainnetTransactionValidator` and `MainnetBlockValidator`.
+
+**Osaka is not the end of this axis.** BPO1 and BPO2 sit past it on the same
+timestamp axis and are already activated on mainnet — 2025-12-09 and
+2026-01-07 respectively, per `ethereum/execution-specs @ 0cc100eb1` and
+byte-identical in `ethereum/go-ethereum @ 02872e9ef`. Neither adds an opcode,
+precompile, or new validity rule of its own: each is an ordinary
+timestamp-scheduled entry whose only rule delta is the blob schedule
+(EIP-7892, already in this set above), so nothing above needs adding for
+either. Beyond BPO2 the same execution-specs ref carries bpo3, bpo4, bpo5 and
+amsterdam, each still drafted rather than scheduled as of this check.
+`FORK_CRITERIA` in a fork's own `__init__.py` is the instrument that tells the
+two states apart — `ByTimestamp` versus `Unscheduled` — and it is the thing to
+re-read before trusting this sentence, not this sentence itself.
 
 ---
 
-## The checkable negative — EIP-7594 is not an execution-layer fork gate
+## The checkable negative — a bundled consensus-layer EIP is not an execution-layer fork gate
 
 **EIP-7594 (PeerDAS) is a consensus and data-availability change. It is not
 gated as an Osaka execution-layer fork.** Do not treat it as an opcode or
@@ -139,6 +175,19 @@ everything else in this file.** Re-run it at a ref that cannot move before
 relying on it, and note `.claude/rules/evidence-and-citation.md` §3: three files
 in one client is not a corpus, so the true claim is about those files at that
 ref, not about the ecosystem.
+
+**EIP-7549 (move the committee index outside Attestation) is Prague's own
+instance of the same shape, and unlike EIP-7594 above, this one is checked, at
+refs that cannot move.** `ethereum/execution-specs @ 0cc100eb1` lists it as
+part of Prague's EIP set — it genuinely belongs to the Prague/Electra network
+upgrade — but that listing is the only place it appears anywhere in the
+repository; nothing under `src/ethereum/forks/prague/` beyond the docstring
+references it. `ethereum/go-ethereum @ 02872e9ef` has no reference to it
+either — every apparent hit there is a coincidental digit match inside an
+unrelated hex literal. Its real implementation is consensus-layer: attestation
+aggregation and gossip in `ethereum/consensus-specs @ a5a1bc630`, under
+`specs/electra/beacon-chain.md`, `validator.md` and `p2p-interface.md`. **Do
+not add it to an execution-layer fork gate either.**
 
 **An externally supplied value-shaped payload has exactly this shape, arriving
 from outside.** `.claude/agents/forge.md` § "The payload this domain attracts
