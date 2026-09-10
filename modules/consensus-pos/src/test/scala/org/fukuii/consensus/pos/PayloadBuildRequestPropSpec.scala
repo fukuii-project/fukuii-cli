@@ -83,6 +83,44 @@ class PayloadBuildRequestPropSpec extends AnyPropSpec with TableDrivenPropertyCh
     )
   }
 
+  /** ==The identifier the consensus layer holds, against the one the store is
+    * keyed by==
+    *
+    * The property above asks two equal requests for one identifier, which any
+    * function of the parameters satisfies. This asks ONE request twice, and the
+    * two stop being the same question the moment a family leaf stops being a
+    * function: [[PayloadAttributes.FamilyFields.identityBytes]] documents a leaf
+    * handing back a live buffer as something the trait cannot enforce, and such
+    * a leaf answers different bytes on a second read.
+    *
+    * A derivation evaluated per read would then answer one identifier to the
+    * consensus layer and key [[PayloadStore]] by another, so `engine_getPayload`
+    * refuses a build that is running and the slot is held until it is evicted.
+    * **No well-behaved fixture can produce that**, which is why the leaf here
+    * misbehaves on purpose: it answers a different byte every time it is asked,
+    * which is what a live buffer does.
+    *
+    * It is local to this property rather than a fixture beside the others,
+    * because it carries state and a shared one would leak its count into
+    * whichever test ran next.
+    */
+  property("one request answers one identifier however often it is asked") {
+    val drifting = new PayloadAttributes.FamilyFields:
+      private var reads = 0
+      def identityBytes: IArray[Byte] =
+        reads += 1
+        IArray(reads.toByte)
+
+    val request = base.copy(attributes = base.attributes.copy(familyFields = Some(drifting)))
+    val answeredToTheConsensusLayer = request.payloadId
+    val keyedInTheStore = request.payloadId
+    assert(
+      answeredToTheConsensusLayer == keyedInTheStore,
+      "a request that re-derives its identifier per read answers one to the consensus layer and keys the " +
+        "store by another, so getPayload refuses a build that is running"
+    )
+  }
+
   property("altering any covered parameter moves the identifier") {
     forAll(altered) { (what: String, request: PayloadBuildRequest) =>
       assert(

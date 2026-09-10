@@ -2,7 +2,7 @@ package org.fukuii.consensus.pos
 
 import org.scalatest.flatspec.AnyFlatSpec
 
-import org.fukuii.bytes.BytesError
+import org.fukuii.bytes.{BytesError, Hash}
 
 class PayloadIdSpec extends AnyFlatSpec:
 
@@ -51,4 +51,29 @@ class PayloadIdSpec extends AnyFlatSpec:
     assert(
       idOf(IArray[Byte](0, 0, 0, 0, 0, 0, 0, 1)) != idOf(IArray[Byte](0, 0, 0, 0, 0, 0, 0, 2)),
       "every byte is part of the identifier, since nothing here reads any of them as a tag"
+    )
+
+  /** ==The relation that makes [[PayloadBuildRequest.payloadId]]'s truncation
+    * total==
+    *
+    * That derivation takes the leading [[PayloadId.Width]] bytes of a SHA-256
+    * digest and hands them to a constructor requiring exactly that many. It is
+    * total only because the digest is wider, and nothing in either type says
+    * so: the two constants live in different modules and no signature relates
+    * them.
+    *
+    * ==It is asserted here rather than beside the derivation, and that is
+    * measured rather than tidy==
+    *
+    * Widening the identifier past the digest makes `PosFixtures` throw while
+    * its own fields initialize, which aborts every suite built on it —
+    * including the derivation's. A check placed there never runs in the one
+    * case it exists to report. This suite builds no identifier at field level,
+    * so it survives to say which constant moved and why it cannot.
+    */
+  "PayloadId.Width" should "be no wider than the digest a build identifier is taken from" in
+    assert(
+      PayloadId.Width <= Hash.Width,
+      "the build identifier is the leading bytes of a SHA-256 digest, so a width past the digest leaves that " +
+        "truncation short of what this type's own constructor requires and refuses every build request"
     )

@@ -105,8 +105,31 @@ final case class PayloadBuildRequest(head: Hash, attributes: PayloadAttributes):
     * distinct builds collide at around 2^32 of them by the birthday bound,
     * which is far beyond a node's lifetime of slots and is a property of the
     * field the protocol chose rather than of this derivation.
+    *
+    * ==Held, so that one request cannot answer two identifiers==
+    *
+    * A build's identifier is read more than once on the ordinary path: once to
+    * answer the consensus layer, and once to key the [[PayloadStore]] slot the
+    * payload is collected from. Deriving it per read would consult
+    * [[PayloadAttributes.FamilyFields.identityBytes]] again each time, and that
+    * member documents a leaf handing back a live buffer as a thing it cannot
+    * enforce. Such a leaf answers different bytes to the two reads, so the
+    * consensus layer holds one identifier and the store is keyed by another,
+    * and `engine_getPayload` then refuses a build that is running while the
+    * slot stays occupied until it is evicted.
+    *
+    * Holding the value makes it stable per request whatever the leaf does,
+    * which leaves one identifier that may be wrong rather than two that
+    * disagree — and a wrong-but-stable identifier is a state [[PayloadStore]]
+    * already handles. **It does not repair the leaf**, whose obligation stands
+    * where it is stated: two requests a network would treat as equal can still
+    * take different identifiers. What it removes is the pair that disagree
+    * about one request.
+    *
+    * A body member is outside a case class's `equals`, `hashCode` and `copy`,
+    * so two equal requests remain equal and a copy still re-derives.
     */
-  def payloadId: PayloadId =
+  lazy val payloadId: PayloadId =
     val withdrawals = attributes.withdrawals.map(preimageOf).getOrElse(IArray.empty[Byte])
     val beaconRoot = attributes.parentBeaconBlockRoot.map(_.toBytes).getOrElse(IArray.empty[Byte])
     val preimage =
