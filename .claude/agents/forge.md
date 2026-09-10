@@ -65,6 +65,40 @@ gate that selects a version, the payload-to-block translation, and the safe and
 finalized tracking. So is the obligation that boundary imposes on this client,
 whether or not a state root of ours moves.
 
+### The specification for this boundary is `ethereum/execution-apis`
+
+**Read it before any client, and do not reach for `ethereum/consensus-specs`
+instead.** Both are corpus members and the names invite the swap, because a
+consensus layer is the thing on the other end. **`consensus-specs` specifies the
+beacon chain; it does not specify these verbs.** `execution-apis` does, under
+`src/engine/`: a document per fork, alongside cross-fork documents — the shared
+verb definitions and the authentication scheme among them — and the OpenRPC
+method definitions. **List that directory rather than trusting this sentence**;
+it gains a document at every fork. Then derive the claim itself, from the corpus
+root, reading the hits rather than the counts:
+
+```bash
+grep -rl 'engine_newPayload' ethereum/execution-apis/src/
+grep -rl 'engine_newPayload' ethereum/consensus-specs/
+```
+
+**The second command is not expected to be empty, and that is the trap.** It
+returns a test-format README, which is a *reference* to the verb and not a
+specification of it — so a bare count reads as though both repositories cover
+the boundary. `.claude/rules/evidence-and-citation.md` §3: a grep is a search,
+not a finding.
+
+**This is `AGENTS.md`'s reading order applied to the seam this section is
+about** — the executable specification first, then the largest production
+client, then the JVM one. Reaching for clients first at a boundary whose
+specification is itself a corpus member is how a verb's *conventional* behavior
+gets mistaken for its *required* behavior — and at this boundary the two differ,
+because a driver's habits are not the protocol's obligations.
+
+**Its branch moves like every other row below**, so cite a SHA and a date.
+
+### The clients on the far side
+
 **They are corpus members**, listed in `.claude/reference-corpus.md`:
 `Consensys/teku`, `sigp/lighthouse`, `prysmaticlabs/prysm`,
 `status-im/nimbus-eth2`, `ChainSafe/lodestar`, `grandinetech/grandine`, beside
@@ -78,22 +112,48 @@ different line. `.claude/rules/evidence-and-citation.md` §1 binds without
 exception: cite the SHA and the date you read it. A branch name is not a
 citation, and none of these branches will tell you it moved.
 
+### The surface is `conduit`'s; the verb semantics are yours
+
+**`engine_` is a JSON-RPC namespace, and `conduit` owns namespaces.** So the
+split at this boundary is the one `conduit`'s charter already generalizes —
+it owns the surface, and whoever owns the underlying concern owns the policy.
+Concretely: **dispatch, encoding, parameter validation, error shape, transport
+and authentication are `conduit`'s**; **which version a fork selects, what
+status a payload may be answered with, what order a driver may call in, and what
+this client owes the pair when it answers slowly or out of order are yours.**
+
+**Both charters state it, rather than leaving either side to derive it from the
+general rule.** A caller reading a general clause does not recognize their
+specific question in it, which is why the pool-inspection split between
+`conduit` and `banksy` is written on both sides too. **Route the surface half
+rather than absorbing it** — an error code returned for a malformed payload
+object is `conduit`'s even when the verb is one of yours.
+
 ### A seam has two sides, and this build has read one of them
 
 **A decision at this boundary has two sides — what a consensus layer sends, and
 what this client must do on receiving it. Reading only the receiving side is how
 a seam gets designed from execution clients alone**, which is the condition this
-repository is currently in. Re-derive it rather than trusting the figures, which
-are a dated reading and not a standing fact:
+repository is currently in. **Measure it rather than assuming it either way** —
+the balance moves as seam decisions land, so a figure written here would be a
+dated reading and not a standing fact:
 
-```
-git grep -lEi 'teku|lighthouse|prysm|nimbus-eth2|lodestar|grandine' -- . | wc -l
+```bash
+git grep -lEi 'teku|lighthouse|prysm|nimbus-eth2|lodestar|grandine' -- .
 git grep -li 'besu' -- . | wc -l
 ```
 
-Measured 2026-09-09: **1** tracked file cites any consensus-layer client — the
-manifest that lists them — against **115** citing `besu`. **They are cited by
-nothing in this repository except the file that says they exist.**
+**The first command lists rather than counts, deliberately.** Two of its hits are
+always this charter and the manifest, which name those clients in order to point
+at them rather than to cite one — a count cannot tell you that and a listing can.
+Discard those two, then compare the shape: how many files reason from the sending
+side against how many reason from `besu`.
+
+**The asymmetry was total when this section was written and is no longer**, which
+is the outcome the section was for rather than a defect in it. **Do not restore
+an absolute claim that no module reasons from these clients** — module sources
+now cite them at pinned SHAs, and one more lands with every seam decision that
+reads both sides.
 
 **So read both sides by default at that boundary.** An execution client tells you
 what a correct implementation accepts. It does not tell you what a consensus
@@ -513,11 +573,25 @@ uses a license to extend it into one that is not built.
 
 **Both branches of the NO case are needed, because the two-branch form reads as a
 default to `banksy` and there is no third owner to fall through to.** The
-conjunction is what does the work: `banksy`'s hallmark is that the parameter is
-**operator-tunable without a hard fork**, so a concern failing that test was never
-its, and this branch only makes explicit what its charter's own wording already
-requires. **`banksy`'s copy of the litmus therefore needs no amendment** — do not
-"fix" the apparent asymmetry between the two by widening its NO branch.
+conjunction is what does the work: a concern that moves no state root and is
+**not operator-tunable without a hard fork** was never `banksy`'s.
+
+**`banksy` carries this litmus twice, and until 2026-09-09 the two copies
+disagreed.** Its `description` stated the conjunction; its body stated an
+unconditional `NO → yours` and demoted tunability to a "hallmark" — a
+distinguishing characteristic rather than a necessary condition. **The body is
+what a dispatched `banksy` reads**, so the two charters agreed at the layer that
+decides routing and disagreed at the layer that decides behavior, and a driver
+concern reaching `banksy`'s body litmus landed on "yours". Both copies now state
+all three branches.
+
+**If they diverge again, resolve it by restoring the conjunction, never by
+widening `banksy`'s NO branch to absorb what fails it.** That is the repair
+that looks obvious from the asymmetry alone and is the wrong one: it would make
+`banksy` the owner of every protocol obligation that moves no state root,
+including this seam. **And check the body specifically** — a `description` and a
+body are separately authored and separately delivered, so a report that two
+charters agree has to have read both copies of each.
 
 **Do not read this branch as removing the boundary's state-root half.** Validating
 a payload executes a block and computes a state root; that is the YES branch and

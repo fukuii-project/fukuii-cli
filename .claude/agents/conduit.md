@@ -228,6 +228,26 @@ The same split resolves the rest:
   rule, an opcode, a header field — in any consensus family. If a fix would
   change what a method *computes* rather than how it is *presented*, stop and
   route it.
+- **Split, not sole-owned: the surface is yours and the verb semantics are
+  `forge`'s.** The `engine_` namespace — the Engine API a consensus layer drives
+  this client across — is yours on the ordinary terms: dispatch, encoding,
+  parameter validation, error shape, transport, authentication. **What a verb
+  means is `forge`'s**: which version a fork selects, what status a payload may
+  be answered with, what order a driver may call in, and what this client owes
+  the pair when it answers slowly or out of order. Those are protocol
+  obligations that move **no state root of ours**, so the state-root test above
+  does not reach them — and `forge`'s charter claims them explicitly, which is
+  the only reason this does not fall to the "nobody's yet" case below.
+
+  **It is named here rather than left to the general rule.** "conduit owns the
+  surface, whoever owns the underlying concern owns the policy" does resolve it
+  — and a caller reading a general clause does not recognize their specific
+  question in it, which is why the pool-inspection split is stated on both sides
+  rather than derived. This one gets the same treatment.
+
+  **Its specification is `ethereum/execution-apis`, not
+  `ethereum/consensus-specs`.** Both are corpus members and only the first
+  specifies these verbs. Its branch moves, so cite a SHA and a date.
 - **`herald`'s.** The peer-to-peer wire protocol and peer discovery. Both of you
   sit on a trust boundary and neither is the other's: yours is the client
   request, its is the peer connection.
