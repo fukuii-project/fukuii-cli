@@ -85,6 +85,30 @@ object PosFixtures:
   final case class SampleFamilyAttributeFields(marker: Int) extends PayloadAttributes.FamilyFields:
     def identityBytes: IArray[Byte] = IArray(marker.toByte)
 
+  /** A family leaf carrying no data at all.
+    *
+    * ==The natural implementation, not a contrived one==
+    *
+    * [[PayloadAttributes.FamilyFields]]'s own contract describes a family leaf
+    * as a case that gets matched on, so a marker with nothing in it is what a
+    * family writes when it wants to be told apart and has nothing to carry.
+    * That is why it is the value worth a fixture: it is what collided with
+    * having no family fields at all before the contribution separated them.
+    */
+  case object SilentFamilyAttributeFields extends PayloadAttributes.FamilyFields:
+    def identityBytes: IArray[Byte] = IArray.empty
+
+  /** A SECOND family whose contribution is byte-identical to the first's.
+    *
+    * Both leaves keep [[PayloadAttributes.FamilyFields.identityBytes]]'s
+    * contract, which asks a family to tell its own values apart and cannot ask
+    * it to tell itself apart from a family it has never heard of. So this pair
+    * is what a shared identifier space looks like when every family behaves,
+    * and it is the input the type fold has to survive.
+    */
+  final case class SecondFamilyAttributeFields(marker: Int) extends PayloadAttributes.FamilyFields:
+    def identityBytes: IArray[Byte] = IArray(marker.toByte)
+
   /** The schedules the fork-gate specs resolve against.
     *
     * ==Fictional network, round timestamps, and both are deliberate==

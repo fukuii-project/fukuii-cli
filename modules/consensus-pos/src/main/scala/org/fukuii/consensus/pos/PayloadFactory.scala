@@ -1,5 +1,7 @@
 package org.fukuii.consensus.pos
 
+import java.nio.charset.StandardCharsets
+
 import org.fukuii.bytes.Hash
 import org.fukuii.crypto.Sha256
 import org.fukuii.rlp.RlpCodec
@@ -73,16 +75,16 @@ final case class PayloadBuildRequest(head: Hash, attributes: PayloadAttributes):
     * outside the preimage is one two builds can differ in while sharing an
     * identifier, and the second build would then be served the first one's
     * payload. `ethereum-optimism/op-geth` @ `7da4560d1` folds its own five
-    * appended attributes in for that reason
+    * appended attributes into the same kind of preimage
     * (`miner/payload_building.go:62-98`).
     *
-    * **What is NOT copied is appending them raw.** That client appends each of
-    * its optional parts at its own width with no length ahead of it, which is
-    * unambiguous over the combinations its own networks produce — an argument
-    * available to a client that knows what its family appends and not to this
-    * one, which takes whatever a family returns. So the contribution here is a
-    * SHA-256 of those bytes, unconditionally thirty-two wide and present even
-    * where there are no family fields at all.
+    * **What is not available here is appending them raw at their own widths.**
+    * That form needs the set of parts to be known, so that no two combinations
+    * of present and absent lay down the same bytes — an argument a client can
+    * make about attributes it defines itself and this one cannot make about
+    * bytes an unknown family returns. So the contribution is
+    * [[familyContribution]]: a SHA-256, unconditionally thirty-two wide, and
+    * present even where there are no family fields at all.
     *
     * That is what keeps the argument above intact: after the withdrawals RLP,
     * which declares its own length, what remains is thirty-two bytes or
@@ -93,8 +95,9 @@ final case class PayloadBuildRequest(head: Hash, attributes: PayloadAttributes):
     * family fields would break it.** The beacon root is optional and also
     * thirty-two wide, so a remainder of thirty-two would then mean either a
     * root with no family contribution or a family contribution with no root —
-    * two different requests with one preimage, which is the collision this
-    * whole section exists to rule out.
+    * two different requests with one preimage. That pair is constructible, so
+    * it is a property beside this rather than a paragraph: a beacon root set to
+    * what a family contributes must still not collide with it.
     *
     * ==Truncation, and what it costs==
     *
@@ -106,7 +109,6 @@ final case class PayloadBuildRequest(head: Hash, attributes: PayloadAttributes):
   def payloadId: PayloadId =
     val withdrawals = attributes.withdrawals.map(preimageOf).getOrElse(IArray.empty[Byte])
     val beaconRoot = attributes.parentBeaconBlockRoot.map(_.toBytes).getOrElse(IArray.empty[Byte])
-    val family = attributes.familyFields.map(_.identityBytes).getOrElse(IArray.empty[Byte])
     val preimage =
       head.toBytes ++
         attributes.timestamp.toBytes ++
@@ -114,11 +116,94 @@ final case class PayloadBuildRequest(head: Hash, attributes: PayloadAttributes):
         attributes.suggestedFeeRecipient.toBytes ++
         withdrawals ++
         beaconRoot ++
-        Sha256.hash(family).toBytes
+        familyContribution.toBytes
     PayloadId.fromBytes(Sha256.hash(preimage).toBytes.take(PayloadId.Width)).toOption.get
+
+  /** The thirty-two bytes a family's own appended attributes contribute.
+    *
+    * ==Absent and empty are different, and hashing the bytes alone made them
+    * the same==
+    *
+    * A leaf returning no bytes is the shape this seam's own contract invites —
+    * a marker case a family matches on, carrying nothing. Folding
+    * `identityBytes` directly gave it the same digest as having no family
+    * fields at all, so a network whose leaf carried no data minted one
+    * identifier for two different requests, [[PayloadStore]] replaced on it,
+    * and `engine_getPayload` served the wrong block. **That is the same hazard
+    * the contribution was added to close, reached through the fix.**
+    *
+    * A leading byte separates the two cases and costs nothing: absence hashes
+    * one byte that no present case can produce, because a present case always
+    * hashes at least thirty-three.
+    *
+    * **The two separations below OVERLAP, and neither is decoration.** The type
+    * fold alone would already separate them — a present case hashes at least
+    * the thirty-two bytes of a type digest where absence hashes none — so with
+    * both in place, removing the leading byte breaks no property. Removing the
+    * TYPE fold instead leaves the leading byte carrying that separation by
+    * itself. Each backs the other up against the other's removal, which is why
+    * the byte stays: it is what a reader tidying the type fold away would
+    * otherwise take with it.
+    *
+    * ==The leaf's own type is folded in as well, and it is not the same
+    * question==
+    *
+    * [[PayloadAttributes.FamilyFields.identityBytes]] asks a family to
+    * distinguish its own values from each other, which is all a family can
+    * promise: it does not know what any other family returns. **The identifier
+    * space is shared and the contract is per-family**, so two families whose
+    * leaves happened to return the same bytes would collide with both of them
+    * keeping their promise.
+    *
+    * The leaf's fully-qualified class name closes it without asking a family
+    * for anything and without a family being able to forget. It is hashed to a
+    * fixed thirty-two bytes first, so that a long name and a short one followed
+    * by the start of some contribution cannot lay down the same preimage.
+    *
+    * **It is a build-local name, and that is sufficient here.** An identifier
+    * is minted by this node, handed to the consensus layer, and handed back to
+    * this node — nothing compares one across two builds, so a rename moving
+    * every identifier for a family costs nothing. [[PayloadId]] carries the
+    * evidence for that: nothing specifies the derivation, and one of the two
+    * clients read for it reads a private tag out of its own identifier. A
+    * build-local input is the kind of input this field already takes, rather
+    * than one that happens to be harmless in it.
+    *
+    * ==`private[pos]` rather than hidden==
+    *
+    * A property beside this constructs the collision an omitted contribution
+    * would admit, by setting a parent beacon block root to exactly what a
+    * family contributes. Naming the value is what lets it do that without
+    * copying this method's own byte layout into a test, where a change here
+    * would leave the test passing and no longer constructing anything.
+    */
+  private[pos] def familyContribution: Hash =
+    attributes.familyFields match
+      case None         => Sha256.hash(IArray(PayloadBuildRequest.NoFamilyFields))
+      case Some(fields) =>
+        Sha256.hash(
+          IArray(PayloadBuildRequest.SomeFamilyFields) ++ typeIdentityOf(fields) ++ fields.identityBytes
+        )
+
+  private def typeIdentityOf(fields: PayloadAttributes.FamilyFields): IArray[Byte] =
+    val name = fields.getClass.getName.getBytes(StandardCharsets.UTF_8)
+    Sha256.hash(IArray.unsafeFromArray(name)).toBytes
 
   private def preimageOf(withdrawals: Seq[Withdrawal]): IArray[Byte] =
     RlpCodec.encodeTo(withdrawals)
+
+object PayloadBuildRequest:
+
+  /** The byte [[PayloadBuildRequest.familyContribution]] hashes where there are
+    * no family fields.
+    *
+    * One byte alone, so it cannot be the prefix of any present case: those
+    * carry the other byte and thirty-two more behind it.
+    */
+  private val NoFamilyFields: Byte = 0x00
+
+  /** The byte that opens a present family's contribution. */
+  private val SomeFamilyFields: Byte = 0x01
 
 /** Building the block a consensus layer asked for.
   *

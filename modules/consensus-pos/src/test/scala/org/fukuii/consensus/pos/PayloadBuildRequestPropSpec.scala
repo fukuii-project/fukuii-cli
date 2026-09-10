@@ -20,10 +20,19 @@ import org.fukuii.types.Withdrawal
   * parameter and requires the identifier to move; a derivation that dropped that
   * parameter fails that row and nothing else.
   *
-  * The negative control is the last property: a field the derivation
-  * deliberately does not cover must NOT move it. Without that, a table of
-  * "everything changes it" would also pass for a derivation that hashed random
-  * bytes, and the rows would be measuring nothing.
+  * ==The negative control is determinism, because no field sits outside the
+  * preimage any more==
+  *
+  * This paragraph used to point at a property asserting that a field the
+  * derivation deliberately did not cover must NOT move the identifier. **No such
+  * field is left**: a family's own appended attributes were the last of them and
+  * they are folded in now, so no property here can assert that anything fails to
+  * move it, and the description outlived the thing it described.
+  *
+  * What stops a table of "everything changes it" from also passing for a
+  * derivation that hashed random bytes is the property requiring the same
+  * request to answer the same identifier twice. Random bytes satisfy every
+  * differential row and fail that one.
   */
 class PayloadBuildRequestPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
@@ -129,5 +138,85 @@ class PayloadBuildRequestPropSpec extends AnyPropSpec with TableDrivenPropertyCh
     assert(
       one.payloadId != two.payloadId,
       "folding a family's contribution in buys nothing if every family value contributes the same bytes"
+    )
+  }
+
+  /** ==A leaf that carries nothing is a family, not the absence of one==
+    *
+    * Folding a family's bytes straight into the preimage made these two the
+    * same request: a leaf returning no bytes hashed to what having no family
+    * fields hashed to. **A marker case carrying nothing is the implementation
+    * the trait's own contract invites**, so the collision sat on the ordinary
+    * path rather than a contrived one — [[PayloadStore]] would replace on the
+    * shared identifier and `engine_getPayload` would serve the other build's
+    * block.
+    */
+  property("a family leaf carrying nothing is not the same as having no family fields") {
+    val silent =
+      base.copy(attributes = base.attributes.copy(familyFields = Some(PosFixtures.SilentFamilyAttributeFields)))
+    assert(
+      silent.payloadId != base.payloadId,
+      "a family that appends a marker and nothing else must still be told apart from a network that appends nothing"
+    )
+  }
+
+  /** ==Two families keeping the same promise, colliding anyway==
+    *
+    * [[PayloadAttributes.FamilyFields.identityBytes]] asks a family to tell its
+    * own values apart, which is the most a family can promise: it has never
+    * heard of the other one. So two leaves returning the same bytes are two
+    * correct implementations, and the identifier space they share is what has
+    * to survive them.
+    */
+  property("two families contributing the same bytes are told apart") {
+    val first =
+      base.copy(attributes = base.attributes.copy(familyFields = Some(PosFixtures.SampleFamilyAttributeFields(1))))
+    val second =
+      base.copy(attributes = base.attributes.copy(familyFields = Some(PosFixtures.SecondFamilyAttributeFields(1))))
+    assert(
+      first.payloadId != second.payloadId,
+      "the contract is per-family and the identifier space is shared, so the derivation and not the family is " +
+        "what has to separate them"
+    )
+  }
+
+  /** ==The collision an OMITTED contribution admits, constructed rather than
+    * argued==
+    *
+    * [[PayloadBuildRequest.payloadId]] folds the family contribution in
+    * unconditionally, and the reason is that the parent beacon block root ahead
+    * of it is optional and the same width. Contribute only when there are
+    * family fields, and a request carrying a root and no family lays down the
+    * same trailing thirty-two bytes as a request carrying a family and no root.
+    *
+    * That pair is buildable, so it is built: the root is set to exactly what
+    * the other request's family contributes. **This passes today and fails the
+    * moment the contribution becomes conditional**, which is what the paragraph
+    * on its own could not do.
+    *
+    * The root is read from [[PayloadBuildRequest.familyContribution]] rather
+    * than recomputed here. Recomputing it would copy that method's byte layout
+    * into this file, where changing the layout would leave this property green
+    * and no longer constructing a collision.
+    */
+  property("a beacon root equal to what a family contributes does not collide with it") {
+    val withFamily = PayloadBuildRequest(
+      head,
+      PosFixtures.attributesWithWithdrawals.copy(familyFields = Some(PosFixtures.SampleFamilyAttributeFields(3)))
+    )
+    val withRootInstead = PayloadBuildRequest(
+      head,
+      PosFixtures.bareAttributes.copy(
+        appended = Some(
+          AttributesWithdrawals(
+            Seq(PosFixtures.withdrawal),
+            Some(AttributesBeaconRoot(withFamily.familyContribution))
+          )
+        )
+      )
+    )
+    assert(
+      withFamily.payloadId != withRootInstead.payloadId,
+      "a contribution folded in only when there are family fields would make these two the same build"
     )
   }

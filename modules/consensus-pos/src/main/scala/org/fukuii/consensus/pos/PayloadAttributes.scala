@@ -154,12 +154,27 @@ object PayloadAttributes:
     * "extend" something the compiler asks for rather than something a family
     * has to remember.
     *
-    * ==The payload's own family slot has no counterpart, deliberately==
+    * ==The payload's own family slot has no counterpart, and the reason is not
+    * that the block hash covers it==
     *
-    * [[ExecutionPayload.FamilyFields]] stays empty. A payload is a block that
-    * has already been built and is identified by its block hash, which is a
-    * commitment over the header rather than over the fields a family appends —
-    * so there is nothing for a contribution to protect.
+    * [[ExecutionPayload.FamilyFields]] stays empty. **The block hash commits
+    * over the header and not over a payload's family fields, which on its own
+    * is an argument FOR a contribution rather than against one** — two payloads
+    * differing only there hash alike.
+    *
+    * What settles it is that the two ways such a field can exist are both
+    * already answered. A field that SHAPES the header has to be wired into
+    * [[PayloadTranslation.headerOf]], and a family that appends one without
+    * doing so gets a derived hash that misses the stated one and a payload
+    * refused loudly — the check every payload already goes through. A field
+    * that does NOT shape the header is not part of the block: two payloads
+    * differing only there describe the same block, and answering that they are
+    * the same block is right rather than a collision.
+    *
+    * **The attributes side is different because a build request is not yet a
+    * block.** Nothing has been committed to, so the parameters are the only
+    * thing telling two requests apart, and that is why they carry a
+    * contribution and a payload does not.
     */
   trait FamilyFields:
 
@@ -176,5 +191,33 @@ object PayloadAttributes:
       * different attributes return different bytes, and that one value returns
       * the same bytes every time. A field left out here is a field two builds
       * can differ in and share an identifier.
+      *
+      * ==Two things this member is deliberately NOT asked for==
+      *
+      * **Telling this family apart from another one.** A family knows its own
+      * values and not anybody else's, so it could not promise it.
+      * [[PayloadBuildRequest.familyContribution]] folds the leaf's own type in
+      * to close that, which is why returning nothing is admissible here.
+      *
+      * **Distinguishing itself from having no family fields at all.** That is
+      * the same method's, for the same reason: a marker leaf carrying no data
+      * is a legitimate implementation of this trait and must not have to know
+      * what absence hashes to.
+      *
+      * ==What it MUST do, and neither is enforceable by the type==
+      *
+      * **Return.** A leaf that throws takes the build request's identifier with
+      * it, so the build cannot be started and cannot be collected.
+      *
+      * **Return bytes nobody goes on to write.** `IArray` is immutable by type
+      * and [[IArray.unsafeFromArray]] can be handed an array the caller still
+      * holds — the hazard `org.fukuii.bytes.Bytes` states for its own
+      * constructor. A leaf handing back a live buffer answers one identifier
+      * now and a different one later for the same attributes, so
+      * `engine_getPayload` looks for a build under an identifier nothing minted.
+      *
+      * Both run the opposite way from a collision: a wasted build slot and a
+      * lookup that finds nothing, rather than a lookup that finds the wrong
+      * block.
       */
     def identityBytes: IArray[Byte]
