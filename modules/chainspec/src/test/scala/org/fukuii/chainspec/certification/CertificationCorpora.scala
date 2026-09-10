@@ -8,6 +8,7 @@ import scala.util.control.NonFatal
 import org.fukuii.bytes.UInt64
 import org.fukuii.chainspec.{Network, UpgradeRules, UpgradeSchedule}
 import org.fukuii.chainspec.networks.{KnownNetworks, ethereum, ethereumclassic}
+import org.fukuii.chainspec.proposals.eip.{Eip1153, Eip5656}
 import org.fukuii.evm.EvmRules
 
 /** The published corpora this layer is certified against, run once and reported
@@ -382,6 +383,80 @@ object CertificationCorpora:
     */
   val GeneratedShanghaiCorpus: String = "execution-specs-fixtures state_tests/for_shanghai"
 
+  /** The generated tier's memory-copying directory, read under the fork below
+    * with two proposals added.
+    *
+    * ==The rules are named directly, and NOT for the reason the other such
+    * corpus here is==
+    *
+    * [[LegacyConstantinopleStateCorpus]] names a composition directly because
+    * its rule set is unreachable by construction. This one is named directly
+    * for a different reason, and the two must not be read as the same case: the
+    * fork these files are filled for is being BUILT, one proposal at a time,
+    * and a rule set carrying two of its six is not that fork. There is no
+    * `Upgrades.cancun` to resolve to yet, and writing one holding two members
+    * would put a value in the chain configuration whose NAME asserted a
+    * completeness it did not have -- which is the defect a schedule entry ahead
+    * of its rules is, one layer down.
+    *
+    * So the name says which rules these files are read under, in full, and it
+    * stops being accurate on the commit that changes them. That is a property a
+    * corpus resolved through a schedule does not need and this one does.
+    *
+    * ==Reading a Cancun directory under something other than Cancun is only
+    * sound where the directory cannot tell==
+    *
+    * These files are filled for the whole fork, not for the proposal they are
+    * named after, so nothing about the directory guarantees that its cases turn
+    * on this phase's two proposals alone. What guarantees it is the run: every
+    * case here agrees, and
+    * [[org.fukuii.chainspec.certification.TransientStorageAndMemoryCopyCertificationSpec]]
+    * records what that does and does not establish. **The sibling directory
+    * `cancun/eip1153_tstore` fails that test and is deliberately absent** --
+    * see that spec for the measurement and for which phase it belongs to.
+    */
+  val GeneratedCancunMemoryCopyCorpus: String =
+    "execution-specs-fixtures state_tests/for_cancun/cancun/eip5656_mcopy at Shanghai with EIP-1153 and EIP-5656"
+
+  /** The legacy static suite's transient-storage directory, ported and filled
+    * for this fork, under the same rules.
+    *
+    * ==This is EIP-1153's whole state-tier evidence at this phase, and it is
+    * here because the directory named for the proposal could not be==
+    *
+    * `cancun/eip1153_tstore` is the directory a reader would expect. Two of its
+    * 123 cases are decided by a proposal this rule set does not carry, so
+    * admitting it would mean either a failing tier or a per-corpus allowance for
+    * known divergences -- and such an allowance, once it exists, absorbs a real
+    * divergence as readily as an expected one.
+    *
+    * These 4 files carry 48 cases of the same subject and every one of them
+    * agrees, so the proposal is certified against published material rather than
+    * against this build's own unit cases alone.
+    *
+    * ==It overlaps the tier a later phase wires, and that is the ordinary shape
+    * here rather than a collision==
+    *
+    * The `ported_static` tree is read again at the whole fork's rules once that
+    * fork exists, which is a different question over the same files -- exactly
+    * what the legacy tier already does at five forks. A name stating the rules
+    * is what keeps the two apart.
+    */
+  val PortedStaticCancunTransientStorageCorpus: String =
+    "execution-specs-fixtures state_tests/for_cancun/ported_static/stEIP1153_transientStorage " +
+      "at Shanghai with EIP-1153 and EIP-5656"
+
+  /** The same suite's memory-copying directory, under the same rules.
+    *
+    * A second independent directory for the same proposal, and the reason to
+    * carry it rather than rest on the one above: 106 cases against 99, filled
+    * by a different generator from a different source suite, so an error in
+    * either one's fixtures is not an error in both.
+    */
+  val PortedStaticCancunMemoryCopyCorpus: String =
+    "execution-specs-fixtures state_tests/for_cancun/ported_static/stEIP5656_MCOPY " +
+      "at Shanghai with EIP-1153 and EIP-5656"
+
   /** The same directory as the Tangerine Whistle tier, resolved through the
     * other network's schedule instead.
     *
@@ -627,6 +702,16 @@ object CertificationCorpora:
     // block-activated entry so the clock is read at all.
     val shanghai = rulesAt(ethereumSchedule, ethereumShanghai)
 
+    // NOT from the schedule, and not because no height resolves to it. The fork
+    // these two directories are filled for is under construction, so what a
+    // schedule would resolve to at its activation is a rule set that does not
+    // exist yet -- and the two corpora's own names say which proposals stand in
+    // for it. `Upgrades.cancun` is what this becomes once the fork is whole,
+    // and until then a value under that name would claim a completeness it did
+    // not have.
+    val transientStorageAndMemoryCopy =
+      shanghai.adopting(Eip1153.component, Eip5656.component)
+
     val gasReprice = rulesAt(classicSchedule, classicGasReprice)
 
     // Taken from the same schedule the rules are taken from, so the pair cannot
@@ -760,6 +845,27 @@ object CertificationCorpora:
         "TangerineWhistle",
         classicChain,
         gasReprice
+      ),
+      StateCorpus(
+        GeneratedCancunMemoryCopyCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_cancun/cancun/eip5656_mcopy"),
+        "Cancun",
+        ethereumChain,
+        transientStorageAndMemoryCopy
+      ),
+      StateCorpus(
+        PortedStaticCancunTransientStorageCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_cancun/ported_static/stEIP1153_transientStorage"),
+        "Cancun",
+        ethereumChain,
+        transientStorageAndMemoryCopy
+      ),
+      StateCorpus(
+        PortedStaticCancunMemoryCopyCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_cancun/ported_static/stEIP5656_MCOPY"),
+        "Cancun",
+        ethereumChain,
+        transientStorageAndMemoryCopy
       )
     )
 

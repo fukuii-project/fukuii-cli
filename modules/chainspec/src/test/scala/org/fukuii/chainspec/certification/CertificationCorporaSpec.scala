@@ -125,7 +125,15 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     // transaction and the producer is credited the price less it.
     CertificationCorpora.GeneratedLondonCorpus -> CorpusCensus(files = 130, cases = 3010, skipped = 0),
     CertificationCorpora.GeneratedParisCorpus -> CorpusCensus(files = 134, cases = 3029, skipped = 0),
-    CertificationCorpora.GeneratedShanghaiCorpus -> CorpusCensus(files = 151, cases = 3220, skipped = 0)
+    CertificationCorpora.GeneratedShanghaiCorpus -> CorpusCensus(files = 151, cases = 3220, skipped = 0),
+    // The three read under a composition rather than through a schedule, which
+    // is what their names say. Nothing is skipped in any of them: every case
+    // carries a section under this fork's key, and every transaction in all
+    // three is a format these rules admit.
+    CertificationCorpora.GeneratedCancunMemoryCopyCorpus -> CorpusCensus(files = 7, cases = 99, skipped = 0),
+    CertificationCorpora.PortedStaticCancunTransientStorageCorpus ->
+      CorpusCensus(files = 4, cases = 48, skipped = 0),
+    CertificationCorpora.PortedStaticCancunMemoryCopyCorpus -> CorpusCensus(files = 3, cases = 106, skipped = 0)
   )
 
   /** Every censused corpus, as the rows the four properties below drive.
@@ -197,7 +205,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     assert(names == census.keySet, s"assembled ${names.toString} against a census of ${census.keySet.toString}")
   }
 
-  property("the census covers nineteen corpora, counted") {
+  property("the census covers twenty-two corpora, counted") {
     // THE REMOVAL CASE, which the pairing cannot see. Dropping a corpus from the
     // census AND from what the harness assembles leaves those two agreeing with
     // each other, leaves the same six properties registered, and leaves the
@@ -217,7 +225,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     //
     // Raising this is adding a corpus. Lowering it is dropping certified cases,
     // and that is a decision rather than a tidy-up.
-    assert(census.size == 19, s"the census covers ${census.size.toString} corpora rather than nineteen")
+    assert(census.size == 22, s"the census covers ${census.size.toString} corpora rather than twenty-two")
   }
 
   property("every censused corpus holds the files the census records") {

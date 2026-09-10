@@ -31,6 +31,39 @@ import scala.collection.mutable
   * with no way to undo cannot run one. The base beneath is any `WorldState`, so
   * what varies -- a trie, a test double, a view at an earlier block -- varies
   * where it should.
+  *
+  * ==One kind of write is held here and never passed down==
+  *
+  * [[transientStorageAt]] and [[setTransientStorage]] answer a keyspace that
+  * exists for the length of one transaction and reaches no account. It is held
+  * beside the writes above because it needs the same undo and none of the
+  * commit: EIP-1153 requires that *"if a frame reverts, all writes to transient
+  * storage that took place between entry to the frame and the return are
+  * reverted, including those that took place in inner calls"* and that *"all
+  * values in transient storage are discarded at the end of the transaction"*
+  * (`ethereum/EIPs` @ `d2a64c2d4`, `EIPS/eip-1153.md`, Final).
+  *
+  * **Both fall out of where it sits rather than from anything written for
+  * them.** The first is [[snapshot]] and [[restore]], which `Interpreter.run`
+  * already drives around every invocation. The second is this object's own
+  * lifetime -- one is built per transaction -- and [[commit]] not carrying it
+  * down.
+  *
+  * The executable specification puts it in exactly this place, as a member of
+  * the same record as the pending writes: `ethereum/execution-specs` @
+  * `0cc100eb1` `forks/cancun/state_tracker.py:76` declares it on
+  * `TransactionState`, `copy_tx_state` at `:637` copies it beside the storage
+  * writes, `restore_tx_state` at `:658` puts it back, and
+  * `incorporate_tx_into_block` merges the other three into the block and at
+  * `:690` clears this one instead.
+  *
+  * **The field disagrees about the home and not about the behavior.**
+  * `ethereum/go-ethereum` @ `02872e9ef` puts it on the `core/vm` `StateDB`
+  * interface; `besu-eth/besu` @ `b330564a9` holds an
+  * `UndoTable<Address, Bytes32, Bytes32>` on `TxValues`, beside the frame stack,
+  * undone by the same `undoChanges(mark)` that undoes its warm sets. Each is
+  * that client's transaction-lifetime record, which is what this type already
+  * is.
   */
 final class JournaledWorldState(base: WorldState) extends WorldState:
 
@@ -39,6 +72,7 @@ final class JournaledWorldState(base: WorldState) extends WorldState:
   private val nonces: mutable.LinkedHashMap[Address, UInt64] = mutable.LinkedHashMap.empty
   private val codes: mutable.LinkedHashMap[Address, Bytes] = mutable.LinkedHashMap.empty
   private val brought: mutable.LinkedHashSet[Address] = mutable.LinkedHashSet.empty
+  private val transient: mutable.LinkedHashMap[(Address, Word), Word] = mutable.LinkedHashMap.empty
 
   def balanceOf(address: Address): Word = balances.getOrElse(address, base.balanceOf(address))
 
@@ -89,6 +123,44 @@ final class JournaledWorldState(base: WorldState) extends WorldState:
 
   def touch(address: Address): Unit = bringIntoBeing(address)
 
+  /** What `address` holds at `slot` in the keyspace this transaction is
+    * discarding, which is zero until something writes there.
+    *
+    * ==Which account owns the keyspace is the CALLER's answer, not this
+    * type's==
+    *
+    * The proposal makes it the account the code is running AS -- *"when
+    * transient storage is used in the context of `DELEGATECALL` or `CALLCODE`,
+    * then the owning contract of the transient storage is the contract that
+    * issued"* the operation, and the target under `CALL` or `STATICCALL`
+    * (`ethereum/EIPs` @ `d2a64c2d4`, `EIPS/eip-1153.md`, Final) -- which is the
+    * same account [[storageAt]] is asked for and is named at the one call site
+    * that has it. Deriving it here would need a frame this type cannot see.
+    *
+    * ==It reads nothing beneath, which is what separates it from every other
+    * read here==
+    *
+    * Every accessor above falls through to [[base]] where it holds nothing.
+    * This one cannot: there is no committed transient storage anywhere for it
+    * to fall through to, and a keyspace that answered from the state beneath
+    * would be persistent storage under another name.
+    */
+  def transientStorageAt(address: Address, slot: Word): Word =
+    transient.getOrElse((address, slot), Word.Zero)
+
+  /** Writes `value` at `address`'s `slot` in that keyspace.
+    *
+    * A zero is written rather than erased, which the specification's own
+    * `set_transient_storage` does the other way round. **The two are
+    * indistinguishable**: a key holding zero and an absent key both answer zero
+    * through [[transientStorageAt]], and nothing enumerates this map -- there is
+    * no counterpart to [[hasStorage]], because no account's emptiness turns on
+    * it. So the specification's erasure is a saving rather than a rule, and
+    * neither form is a state root apart from the other.
+    */
+  def setTransientStorage(address: Address, slot: Word, value: Word): Unit =
+    transient((address, slot)) = value
+
   private def bringIntoBeing(address: Address): Unit =
     if !base.accountExists(address) then
       val _ = brought.add(address)
@@ -100,7 +172,8 @@ final class JournaledWorldState(base: WorldState) extends WorldState:
       balances.toMap,
       nonces.toMap,
       codes.toMap,
-      brought.toSet
+      brought.toSet,
+      transient.toMap
     )
 
   /** Returns the held writes to what they were when `taken` was made.
@@ -120,6 +193,8 @@ final class JournaledWorldState(base: WorldState) extends WorldState:
     val _ = codes ++= taken.codes
     brought.clear()
     val _ = brought ++= taken.brought
+    transient.clear()
+    val _ = transient ++= taken.transient
 
   /** Passes every held write down to the state beneath and stops holding them.
     *
@@ -152,6 +227,23 @@ final class JournaledWorldState(base: WorldState) extends WorldState:
     * Within each kind the order is not a property anything below depends on: a
     * trie commits to the mapping it ends up holding and not to the order it was
     * built in.
+    *
+    * ==One map is cleared and not carried down, which is the whole of what
+    * "discarded" means==
+    *
+    * [[setTransientStorage]]'s writes reach no account and no trie. The
+    * specification's own `incorporate_tx_into_block` merges its other three
+    * write maps into the block and clears this one instead
+    * (`ethereum/execution-specs` @ `0cc100eb1`,
+    * `forks/cancun/state_tracker.py:690`).
+    *
+    * **The clear is not redundant with this object's lifetime, and that is why
+    * it is written.** One journal is built per transaction today, so an
+    * uncleared map would be collected with the journal and nothing would
+    * observe it. A journal reused across two transactions would instead carry
+    * the first transaction's transient writes into the second -- readable by
+    * `TLOAD`, and a state root apart from every other client. The clear costs
+    * nothing and closes that without the caller having to know it is owed.
     */
   def commit(): Unit =
     storage.foreach((slot, value) => base.setStorage(slot._1, slot._2, value))
@@ -164,6 +256,7 @@ final class JournaledWorldState(base: WorldState) extends WorldState:
     nonces.clear()
     codes.clear()
     brought.clear()
+    transient.clear()
 
 object JournaledWorldState:
 
@@ -178,5 +271,6 @@ object JournaledWorldState:
       private[evm] val balances: Map[Address, Word],
       private[evm] val nonces: Map[Address, UInt64],
       private[evm] val codes: Map[Address, Bytes],
-      private[evm] val brought: Set[Address]
+      private[evm] val brought: Set[Address],
+      private[evm] val transient: Map[(Address, Word), Word]
   )

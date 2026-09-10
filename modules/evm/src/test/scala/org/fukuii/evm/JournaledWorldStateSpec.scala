@@ -9,6 +9,15 @@ import org.scalatest.flatspec.AnyFlatSpec
   * `state_tracker.copy_tx_state` and `restore_tx_state`, called from
   * `vm/interpreter.py`'s `process_message` around the run of a frame and
   * applied when it ends in error.
+  *
+  * ==One keyspace here is held for the undo and NOT for the commit==
+  *
+  * The transient cases at the foot are what makes that difference a property
+  * rather than a description: every other kind of write is asserted to reach
+  * the state beneath, and this one is asserted not to. [[TransientStorageSpec]]
+  * asserts the same rule through the two operations that use it; this asserts
+  * it against the type that keeps it, which is where a commit can be asked for
+  * directly.
   */
 class JournaledWorldStateSpec extends AnyFlatSpec:
 
@@ -203,4 +212,72 @@ class JournaledWorldStateSpec extends AnyFlatSpec:
     journal.commit()
     base.setStorage(owner, slot, EvmFixtures.word(7))
     assert(journal.storageAt(owner, slot) == EvmFixtures.word(7), "a write still held would shadow the state beneath")
+  }
+
+  "a transient write" should "be visible through the journal that made it" in {
+    val journal = new JournaledWorldState(new EvmFixtures.MapWorldState)
+    journal.setTransientStorage(owner, slot, EvmFixtures.word(42))
+    assert(journal.transientStorageAt(owner, slot) == EvmFixtures.word(42), "an invocation reads what it wrote")
+  }
+
+  it should "answer zero where nothing has been written" in {
+    val base = new EvmFixtures.MapWorldState
+    base.setStorage(owner, slot, EvmFixtures.word(7))
+    assert(
+      new JournaledWorldState(base).transientStorageAt(owner, slot) == Word.Zero,
+      "there is no committed transient storage to fall through to, so the state beneath cannot answer this"
+    )
+  }
+
+  it should "not answer that the account has storage" in {
+    val journal = new JournaledWorldState(new EvmFixtures.MapWorldState)
+    journal.setTransientStorage(owner, slot, EvmFixtures.word(42))
+    assert(
+      !journal.hasStorage(owner),
+      "a creation may deploy over an account whose only writes were transient, since none of them is stored"
+    )
+  }
+
+  "a restore" should "drop a transient write made after the snapshot" in {
+    val journal = new JournaledWorldState(new EvmFixtures.MapWorldState)
+    val taken = journal.snapshot()
+    journal.setTransientStorage(owner, slot, EvmFixtures.word(42))
+    journal.restore(taken)
+    assert(
+      journal.transientStorageAt(owner, slot) == Word.Zero,
+      "a snapshot that skipped this keyspace would leave a failed invocation's transient writes readable"
+    )
+  }
+
+  it should "keep a transient write made before the snapshot" in {
+    val journal = new JournaledWorldState(new EvmFixtures.MapWorldState)
+    journal.setTransientStorage(owner, slot, EvmFixtures.word(7))
+    val taken = journal.snapshot()
+    journal.setTransientStorage(owner, slot, EvmFixtures.word(42))
+    journal.restore(taken)
+    assert(
+      journal.transientStorageAt(owner, slot) == EvmFixtures.word(7),
+      "only what the failed invocation did is undone, here as everywhere else"
+    )
+  }
+
+  "a commit" should "pass no transient write down" in {
+    val base = new EvmFixtures.MapWorldState
+    val journal = new JournaledWorldState(base)
+    journal.setTransientStorage(owner, slot, EvmFixtures.word(42))
+    journal.commit()
+    assert(
+      base.storageAt(owner, slot) == Word.Zero && base.slots.get((owner, slot)).isEmpty,
+      "a transient write reaching the state beneath would survive the transaction and move a state root"
+    )
+  }
+
+  it should "stop holding a transient write" in {
+    val journal = new JournaledWorldState(new EvmFixtures.MapWorldState)
+    journal.setTransientStorage(owner, slot, EvmFixtures.word(42))
+    journal.commit()
+    assert(
+      journal.transientStorageAt(owner, slot) == Word.Zero,
+      "\"all values in transient storage are discarded at the end of the transaction\", and a commit ends one"
+    )
   }

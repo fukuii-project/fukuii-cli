@@ -249,7 +249,10 @@ object OpcodeTable:
       Opcode.ChainId,
       Opcode.SelfBalance,
       Opcode.BaseFee,
-      Opcode.Push0
+      Opcode.Push0,
+      Opcode.TLoad,
+      Opcode.TStore,
+      Opcode.MCopy
     )
 
   /** The three families whose members differ only in a count, and which are

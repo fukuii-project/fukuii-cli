@@ -381,6 +381,41 @@ object Interpreter:
             advance(frame)
         )
 
+      // THE ONE COPYING OPERATION WHOSE SOURCE IS MEMORY, which is what keeps
+      // it out of `copyInto`: that helper charges for one region because its
+      // source is a buffer outside memory, and this addresses two.
+      //
+      // The two are charged as one through `reach`, which prices the furthest
+      // byte any of them addresses -- the same sum the specification reaches by
+      // extending for each in turn (`ethereum/execution-specs` @ `0cc100eb1`,
+      // `forks/cancun/vm/gas.py`, `calculate_gas_extend_memory` over
+      // `[(source, length), (destination, length)]`).
+      //
+      // Overlap is the property this operation is defined by -- "copying takes
+      // place as if an intermediate buffer was used, allowing the destination
+      // and source to overlap" (`ethereum/EIPs` @ `d2a64c2d4`,
+      // `EIPS/eip-5656.md`, Final) -- and it is `Memory.read`'s doing rather
+      // than this expression's: it copies into a fresh array before `write`
+      // touches anything, so the buffer the document asks for already exists.
+      // An implementation that moved bytes in place would agree with this one
+      // on every non-overlapping case and diverge only where the ranges cross.
+      case Opcode.MCopy =>
+        exceptional(
+          for
+            destination <- frame.stack.pop()
+            source <- frame.stack.pop()
+            size <- frame.stack.pop()
+            _ <- reach(
+              frame,
+              schedule.veryLow + schedule.copyPerWord * wholeWords(size),
+              (source, size),
+              (destination, size)
+            )
+          yield
+            frame.memory.write(startOf(destination, size), regionOf(frame, source, size))
+            advance(frame)
+        )
+
       // Charged before it is read, so what is pushed is what remains once this
       // operation has been paid for.
       case Opcode.Gas =>
@@ -665,6 +700,61 @@ object Interpreter:
             environment.world.setStorage(target, slot, value)
             advance(frame)
         )
+
+      // ── Transient storage ──────────────────────────────────────────────────
+      //
+      // The keyspace one transaction writes and no block keeps.
+      // `JournaledWorldState` states where it lives and why the discard and the
+      // rollback need nothing written for them.
+      //
+      // Both are settled prices, so neither reads the warm-and-cold scheme the
+      // two operations above read. That is the proposal's own arrangement
+      // rather than a simplification: it fixes the charge by REFERENCE to that
+      // scheme's warm figure -- "gas cost for `TSTORE` is the same as a warm
+      // `SSTORE` of a dirty slot... and gas cost of `TLOAD` is the same as a hot
+      // `SLOAD`" (`ethereum/EIPs` @ `d2a64c2d4`, `EIPS/eip-1153.md`, Final) --
+      // and a settled figure is what that reference resolves to, since a
+      // keyspace with no committed value has no cold state to be in. So the
+      // price rides in the table, and which figure the table was built from is
+      // the adopting document's answer.
+
+      case Opcode.TLoad =>
+        priced(operation) { gas =>
+          for
+            slot <- frame.stack.pop()
+            _ <- frame.charge(gas)
+            _ <- frame.stack.push(environment.world.transientStorageAt(frame.message.currentTarget, slot))
+          yield advance(frame)
+        }
+
+      // The charge comes before the refusal, and both sources put it there:
+      // `charge_gas` precedes `if evm.message.is_static` in
+      // `ethereum/execution-specs` @ `0cc100eb1`
+      // (`forks/cancun/vm/instructions/storage.py`), and
+      // `ethereum/go-ethereum` @ `02872e9ef` takes `constantGas` in the
+      // interpreter before `opTstore` tests `evm.readOnly`.
+      // `besu-eth/besu` @ `b330564a9` refuses first instead. Nothing observable
+      // separates the two -- every exceptional halt here keeps nothing, so a
+      // frame too poor to pay ends identically either way -- and the order
+      // decides only which reason a divergence is diagnosed from.
+      //
+      // WHAT IS ABSENT IS THE POINT: there is no `storageSentry` above this.
+      // "The behavior of the opcodes for transient storage differs from the
+      // opcodes for storage in that `TSTORE` does not require _gasleft_, as
+      // defined in EIP-2200, to be less than or equal to the gas stipend"
+      // (same document). A build that reused the storage branch would inherit
+      // that sentry and refuse a call this fork admits.
+      case Opcode.TStore =>
+        priced(operation) { gas =>
+          for
+            slot <- frame.stack.pop()
+            value <- frame.stack.pop()
+            _ <- frame.charge(gas)
+            _ <- mayChangeState(frame)
+          yield
+            environment.world.setTransientStorage(frame.message.currentTarget, slot, value)
+            advance(frame)
+        }
 
       // ── The digest of a region of memory ───────────────────────────────────
 
