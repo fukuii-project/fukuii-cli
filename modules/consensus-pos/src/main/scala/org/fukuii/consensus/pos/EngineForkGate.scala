@@ -214,10 +214,22 @@ final class EngineForkGate(val schedule: UpgradeSchedule):
     * The rungs ascend, so a timestamp at or past a rung's upper bound belongs to
     * a later one and the walk continues. **Every other refusal is a fact about
     * the network's schedule rather than about which rung we are on**, and
-    * treating it as "not this rung" would walk past a misconfigured bound, run
-    * out of rungs, and report the structure as unmodeled — a wrong answer
-    * naming the wrong cause, from an input that should have been refused
-    * outright.
+    * treating it as "not this rung" would walk straight past a misconfigured
+    * bound.
+    *
+    * ==Where that lands depends on which rung carries the defect, and one of
+    * the two outcomes is not a refusal at all==
+    *
+    * With the defect at the top of the ladder the walk runs out of rungs and
+    * reports the structure as unmodeled — a refusal naming the wrong cause,
+    * which is a bad diagnostic. With a dated rung above the defect the walk
+    * reaches it and ANSWERS, returning a structure version resolved over a
+    * schedule no version can be served against.
+    *
+    * The second is the one worth guarding against, and it is invisible to a
+    * test asserting only that the result is a refusal. Both arrangements are
+    * exercised by this module's structure-ladder properties, each against the
+    * refusal it must produce rather than against the fact of one.
     */
   private def structureAt(
       ladder: Vector[(Int, ForkWindow)],
@@ -226,7 +238,8 @@ final class EngineForkGate(val schedule: UpgradeSchedule):
     @annotation.tailrec
     def walk(remaining: Vector[(Int, ForkWindow)]): Either[ForkGateRefusal, Int] =
       remaining.headOption match
-        case None                    => Left(ForkGateRefusal.StructureNotModeled(EngineForkGate.LastModeled, timestamp))
+        case None =>
+          Left(ForkGateRefusal.StructureNotModeled(EngineForkGate.FirstUnmodeled, timestamp))
         case Some((version, window)) =>
           admits(window, timestamp) match
             case Right(_)                                                 => Right(version)
@@ -284,14 +297,24 @@ final class EngineForkGate(val schedule: UpgradeSchedule):
 
 object EngineForkGate:
 
-  /** The last upgrade whose structures this build models.
+  /** The FIRST upgrade whose structures this build does not model.
     *
-    * Beyond it the payload gains a block access list and a slot number and the
+    * At it the payload gains a block access list and a slot number and the
     * attributes gain two fields, and neither link is built — see the closing
     * note on [[PayloadBlobGas]]. Naming it here keeps the ladders below and the
     * refusal they produce agreeing about where the modeling stops.
+    *
+    * ==Named for the boundary rather than for the last rung, because both uses
+    * want the boundary==
+    *
+    * The ladders below top out at `[Cancun, Amsterdam)`, so the last upgrade
+    * whose structures ARE modeled is Cancun. Both readers of this value want
+    * the other end: the ladders use it as an upper bound, which is exclusive,
+    * and [[ForkGateRefusal.StructureNotModeled]] reports it as the point a
+    * timestamp is at or beyond. A name stating the last modeled upgrade would
+    * have to hold Cancun and be wrong for both.
     */
-  val LastModeled: EngineUpgrade = EngineUpgrade.Amsterdam
+  val FirstUnmodeled: EngineUpgrade = EngineUpgrade.Amsterdam
 
   /** Which `ExecutionPayloadVN` each span of a network's history requires.
     *

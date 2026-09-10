@@ -66,6 +66,36 @@ final case class PayloadBuildRequest(head: Hash, attributes: PayloadAttributes):
     * does not exist. The chain was built to exclude states the protocol does
     * not define, and this is a second thing it excludes.
     *
+    * ==A family's own appended attributes are folded in, at a FIXED width==
+    *
+    * They have to be folded in at all for the reason
+    * [[PayloadAttributes.FamilyFields.identityBytes]] states: a parameter
+    * outside the preimage is one two builds can differ in while sharing an
+    * identifier, and the second build would then be served the first one's
+    * payload. `ethereum-optimism/op-geth` @ `7da4560d1` folds its own five
+    * appended attributes in for that reason
+    * (`miner/payload_building.go:62-98`).
+    *
+    * **What is NOT copied is appending them raw.** That client appends each of
+    * its optional parts at its own width with no length ahead of it, which is
+    * unambiguous over the combinations its own networks produce — an argument
+    * available to a client that knows what its family appends and not to this
+    * one, which takes whatever a family returns. So the contribution here is a
+    * SHA-256 of those bytes, unconditionally thirty-two wide and present even
+    * where there are no family fields at all.
+    *
+    * That is what keeps the argument above intact: after the withdrawals RLP,
+    * which declares its own length, what remains is thirty-two bytes or
+    * sixty-four, and the two are told apart by the length rather than by
+    * anything inside them.
+    *
+    * **Unconditional is what makes that work, and omitting it when there are no
+    * family fields would break it.** The beacon root is optional and also
+    * thirty-two wide, so a remainder of thirty-two would then mean either a
+    * root with no family contribution or a family contribution with no root —
+    * two different requests with one preimage, which is the collision this
+    * whole section exists to rule out.
+    *
     * ==Truncation, and what it costs==
     *
     * Sixty-four bits, because that is the width the specification fixes. Two
@@ -76,13 +106,15 @@ final case class PayloadBuildRequest(head: Hash, attributes: PayloadAttributes):
   def payloadId: PayloadId =
     val withdrawals = attributes.withdrawals.map(preimageOf).getOrElse(IArray.empty[Byte])
     val beaconRoot = attributes.parentBeaconBlockRoot.map(_.toBytes).getOrElse(IArray.empty[Byte])
+    val family = attributes.familyFields.map(_.identityBytes).getOrElse(IArray.empty[Byte])
     val preimage =
       head.toBytes ++
         attributes.timestamp.toBytes ++
         attributes.prevRandao.toBytes ++
         attributes.suggestedFeeRecipient.toBytes ++
         withdrawals ++
-        beaconRoot
+        beaconRoot ++
+        Sha256.hash(family).toBytes
     PayloadId.fromBytes(Sha256.hash(preimage).toBytes.take(PayloadId.Width)).toOption.get
 
   private def preimageOf(withdrawals: Seq[Withdrawal]): IArray[Byte] =

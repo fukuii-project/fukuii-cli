@@ -131,7 +131,50 @@ object PayloadAttributes:
     * so that building one later is an addition rather than a change to the type
     * every verb in this module takes.
     *
-    * Empty by design: the core reads nothing from it. A family leaf declares its
-    * own case and recovers it by matching on that case.
+    * ==One member, and it is required rather than optional==
+    *
+    * The core reads nothing else from a family's fields: a family leaf declares
+    * its own case and recovers it by matching on that case. It does read
+    * [[FamilyFields.identityBytes]], because
+    * [[PayloadBuildRequest.payloadId]] derives a build's identifier from the
+    * parameters that describe it — and a parameter left out of that derivation
+    * is one two different builds can differ in while sharing an identifier.
+    *
+    * **Required, because optional is the same defect with a longer fuse.** A
+    * family that appended parameters and did not contribute them would get a
+    * collision reported by nothing: the second build would resolve to the first
+    * one's entry in the store, and the payload served would be built to
+    * somebody else's attributes.
+    *
+    * `ethereum-optimism/op-geth` @ `7da4560d1` folds exactly its own five
+    * appended attributes into the same SHA-256 preimage after the
+    * specification's parameters, under the comment *"extend if extra payload
+    * attributes are used"* (`miner/payload_building.go:62-98`). So the shape is
+    * the surveyed one; what differs is that a required member is what makes
+    * "extend" something the compiler asks for rather than something a family
+    * has to remember.
+    *
+    * ==The payload's own family slot has no counterpart, deliberately==
+    *
+    * [[ExecutionPayload.FamilyFields]] stays empty. A payload is a block that
+    * has already been built and is identified by its block hash, which is a
+    * commitment over the header rather than over the fields a family appends —
+    * so there is nothing for a contribution to protect.
     */
-  trait FamilyFields
+  trait FamilyFields:
+
+    /** What this family contributes to a build identifier's preimage.
+      *
+      * ==Any bytes, provided the same attributes always give the same ones==
+      *
+      * The derivation hashes them, so neither their length nor their encoding
+      * matters to it — [[PayloadBuildRequest.payloadId]] takes a fixed-width
+      * digest of whatever is returned, which is what keeps its own preimage
+      * unambiguous without knowing anything about this value.
+      *
+      * What DOES matter is that two family values a network would treat as
+      * different attributes return different bytes, and that one value returns
+      * the same bytes every time. A field left out here is a field two builds
+      * can differ in and share an identifier.
+      */
+    def identityBytes: IArray[Byte]

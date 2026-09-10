@@ -98,23 +98,36 @@ class PayloadBuildRequestPropSpec extends AnyPropSpec with TableDrivenPropertyCh
     )
   }
 
-  /** ==The stated boundary, asserted rather than left to be discovered==
+  /** ==A tripwire pointed at the hazard rather than at the fix==
     *
-    * A network family's own appended attributes are not covered. For the
-    * families this build serves that is correct — the derivation covers the
-    * parameters the specification defines and there are no others — but a
-    * rollup that appended its own would find two different builds sharing an
-    * identifier.
+    * These two asserted the opposite until the derivation folded a family's
+    * fields in, and the shape of that mistake is worth recording: a test
+    * pinning a known gap fires on the commit that CLOSES the gap and never on
+    * the one that makes it dangerous. Its failure message then argues the
+    * reader out of the fix, which is worse than having no test at all.
     *
-    * Asserting it is what makes the boundary a decision rather than an
-    * oversight: whoever adds the first family fields has a failing expectation
-    * to update, and the alternative is a collision nothing reports.
+    * What makes them dangerous is a family appending build parameters, and
+    * that is what these two now catch — one that a contribution reaches the
+    * identifier, one that two different contributions do not collapse onto the
+    * same one.
     */
-  property("a family's own appended attributes do NOT move the identifier") {
+  property("a family's own appended attributes move the identifier") {
     val withFamilyFields =
       base.copy(attributes = base.attributes.copy(familyFields = Some(PosFixtures.SampleFamilyAttributeFields(1))))
     assert(
-      withFamilyFields.payloadId == base.payloadId,
-      "the derivation covers the specification's parameters only, which is a boundary and not a defect here"
+      withFamilyFields.payloadId != base.payloadId,
+      "a build parameter outside the preimage is one two builds can differ in while sharing an identifier, and " +
+        "the second would be served the first one's payload"
+    )
+  }
+
+  property("two family values a network would treat as different attributes get different identifiers") {
+    val one =
+      base.copy(attributes = base.attributes.copy(familyFields = Some(PosFixtures.SampleFamilyAttributeFields(1))))
+    val two =
+      base.copy(attributes = base.attributes.copy(familyFields = Some(PosFixtures.SampleFamilyAttributeFields(2))))
+    assert(
+      one.payloadId != two.payloadId,
+      "folding a family's contribution in buys nothing if every family value contributes the same bytes"
     )
   }

@@ -33,6 +33,19 @@ class StructureLadderPropSpec extends AnyPropSpec with TableDrivenPropertyChecks
     ("BPO2", S.bpo2, 3, 3)
   )
 
+  /** Both ladders, so a property about how a ladder is SHAPED runs over each.
+    *
+    * Above the first registration deliberately: a table `val` below one is read
+    * during construction by an already-registered body, which Scala 3's
+    * initialization checker rejects with a diagnostic naming the first test in
+    * the class rather than the field.
+    */
+  private val ladders = Table(
+    ("which ladder", "rungs"),
+    ("payload structures", EngineForkGate.PayloadStructures),
+    ("attributes structures", EngineForkGate.AttributesStructures)
+  )
+
   property("the payload structure required at each upgrade is the one the specification defines") {
     forAll(required) { (what: String, at: Long, payload: Int, _: Int) =>
       assert(
@@ -69,7 +82,7 @@ class StructureLadderPropSpec extends AnyPropSpec with TableDrivenPropertyChecks
   property("a timestamp past the last modeled upgrade is refused rather than answered") {
     assert(
       gate.requiredPayloadStructure(S.at(S.amsterdam)) ==
-        Left(ForkGateRefusal.StructureNotModeled(EngineForkGate.LastModeled, S.at(S.amsterdam))),
+        Left(ForkGateRefusal.StructureNotModeled(EngineForkGate.FirstUnmodeled, S.at(S.amsterdam))),
       "letting the newest modeled structure stand in for one it is not would accept a payload missing fields"
     )
   }
@@ -81,9 +94,56 @@ class StructureLadderPropSpec extends AnyPropSpec with TableDrivenPropertyChecks
     )
   }
 
-  property("a bound on the wrong axis is refused rather than walked past") {
+  /** ==Two arrangements, because a refusal is only one of the two ways the walk
+    * can go wrong==
+    *
+    * The ladder continues past exactly one refusal — the timestamp being at or
+    * after a rung's upper bound — and must propagate every other. A guard that
+    * continued past all of them fails differently depending on which rung
+    * carries the defect, and only one of the two shapes is a refusal at all.
+    *
+    * **So neither of these asserts `isLeft`.** This one carries the defect at
+    * the ladder's top, where a wrong walk exhausts the rungs and refuses with
+    * the wrong cause — so the refusal's identity is the whole assertion, and
+    * `isLeft` would hold under the defect it exists to catch. The next carries
+    * it at the bottom, where a wrong walk answers.
+    */
+  property("a bound on the wrong axis is refused for that reason rather than walked past") {
     assert(
-      EngineForkGate(S.cancunOnTheBlockAxis).requiredPayloadStructure(S.at(999999L)).isLeft,
+      EngineForkGate(S.cancunOnTheBlockAxis).requiredPayloadStructure(S.at(999999L)) ==
+        Left(ForkGateRefusal.UpgradeNotOnTheTimestampAxis(EngineUpgrade.Cancun, S.wrongAxisActivation)),
       "walking past a misconfigured bound would run out of rungs and blame the modeling for a schedule defect"
     )
+  }
+
+  property("a wrong-axis bound below a dated rung is refused rather than answered") {
+    assert(
+      EngineForkGate(S.shanghaiOnTheBlockAxis).requiredPayloadStructure(S.at(S.cancun + 500L)) ==
+        Left(ForkGateRefusal.UpgradeNotOnTheTimestampAxis(EngineUpgrade.Shanghai, S.wrongAxisActivation)),
+      "every rung is bounded by Shanghai or by something above it, so walking past this defect reaches a rung " +
+        "that admits and returns a structure resolved over a schedule no version can serve"
+    )
+  }
+
+  /** ==The refusal's constant and the ladder's top rung are the same fact==
+    *
+    * [[EngineForkGate.FirstUnmodeled]] is what an exhausted walk reports, and
+    * the top rung's own `firstUnsupported` is what exhausts the walk. Nothing
+    * in the types makes them agree, so a rung added without moving the constant
+    * would refuse a timestamp past the NEW top while naming the OLD one — a
+    * refusal that is correct about there being no structure and wrong about
+    * where the modeling stops.
+    *
+    * Asserting the coupling is cheaper than removing it. Deriving the constant
+    * from the ladder would need an answer for a ladder with no rungs, which is
+    * a state no ladder is in and no test could reach.
+    */
+  property("the upgrade the unmodeled refusal names is the top rung's own upper bound") {
+    forAll(ladders) { (which: String, rungs: Vector[(Int, ForkWindow)]) =>
+      assert(
+        rungs.lastOption.flatMap(_._2.firstUnsupported).contains(EngineForkGate.FirstUnmodeled),
+        which + " tops out somewhere other than " + EngineForkGate.FirstUnmodeled.toString +
+          ", so a timestamp past it would be refused naming an upgrade that is not where the modeling stops"
+      )
+    }
   }

@@ -78,7 +78,12 @@ object PosFixtures:
     */
   final case class SampleFamilyPayloadFields(marker: Int) extends ExecutionPayload.FamilyFields
 
-  final case class SampleFamilyAttributeFields(marker: Int) extends PayloadAttributes.FamilyFields
+  /** The attributes counterpart, whose marker is also what it contributes to a
+    * build identifier — so a test can change one number and require the
+    * identifier to move.
+    */
+  final case class SampleFamilyAttributeFields(marker: Int) extends PayloadAttributes.FamilyFields:
+    def identityBytes: IArray[Byte] = IArray(marker.toByte)
 
   /** The schedules the fork-gate specs resolve against.
     *
@@ -164,11 +169,21 @@ object PosFixtures:
     val cancunRefused: UpgradeSchedule =
       build(Vector(timestamped(shanghai, "Shanghai"), entry(Activation.Never, "Cancun")))
 
-    /** Cancun mis-configured onto the block-number axis.
+    /** The height both wrong-axis fixtures misconfigure their upgrade at.
       *
-      * The height is small, which is the arrangement a cross-axis comparison
-      * fails silently on: every timestamp a caller could offer exceeds it, so a
-      * gate reading the flat point would admit all of them and never fire.
+      * Small deliberately, because that is the arrangement a cross-axis
+      * comparison fails silently on: every timestamp a caller could offer
+      * exceeds it, so a gate reading the flat point would admit all of them and
+      * never fire.
+      */
+    val wrongAxisHeight: Long = 12L
+
+    /** The activation those fixtures carry, named once so an assertion can
+      * state the refusal it expects rather than repeating the literal.
+      */
+    val wrongAxisActivation: Activation = Activation.AtBlock(UInt64.fromBits(wrongAxisHeight))
+
+    /** Cancun mis-configured onto the block-number axis.
       *
       * **Shanghai is here so the structure ladder can reach the defect.** That
       * ladder walks upward and stops at the first rung admitting the timestamp,
@@ -180,12 +195,40 @@ object PosFixtures:
       * block activations to precede timestamp ones and
       * [[org.fukuii.chainspec.UpgradeSchedule]] enforces it. The ordering is
       * forced; the misconfiguration under test is the axis.
+      *
+      * **The defect is at the TOP of the structure ladder here**, so a walk
+      * that wrongly continued past it exhausts the rungs and still refuses —
+      * with the wrong cause. That makes this fixture unable to catch the walk
+      * on its own, which is what [[shanghaiOnTheBlockAxis]] is for.
       */
     val cancunOnTheBlockAxis: UpgradeSchedule =
       build(
         Vector(
-          entry(Activation.AtBlock(UInt64.fromBits(12L)), "Cancun"),
+          entry(wrongAxisActivation, "Cancun"),
           timestamped(shanghai, "Shanghai")
+        )
+      )
+
+    /** Shanghai mis-configured onto the block-number axis, with Cancun dated
+      * above it.
+      *
+      * ==The arrangement where walking past a wrong-axis bound ANSWERS==
+      *
+      * Every structure rung is bounded by Shanghai or by something above it, so
+      * a walk that treated the wrong-axis refusal as "not this rung" reaches
+      * `[Cancun, Amsterdam)` — whose lower bound is dated and whose upper bound
+      * is absent from this schedule and therefore supersedes nothing. It
+      * admits, and the ladder returns a structure version over a schedule no
+      * version can be served against.
+      *
+      * That is the direction worth a fixture of its own: a refusal naming the
+      * wrong cause is a bad diagnostic, and a `Right` here is a wrong answer.
+      */
+    val shanghaiOnTheBlockAxis: UpgradeSchedule =
+      build(
+        Vector(
+          entry(wrongAxisActivation, "Shanghai"),
+          timestamped(cancun, "Cancun")
         )
       )
 

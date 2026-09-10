@@ -10,12 +10,20 @@ import org.fukuii.types.{BaseFeeTail, BeaconRootTail, BlobGasTail, BlockHeader, 
 
 /** Why a payload could not be turned into a header.
   *
-  * ==All three precede execution, and none is an exception==
+  * ==Every one precedes execution, and none is an exception==
   *
   * The Engine API's answer to each is `{status: INVALID}` rather than a thrown
   * error, so each is a value the translation returns. That is the same shape as
   * [[ForkGateRefusal]] one layer down: this module answers the distinguishable
   * reason and the transport attaches the number.
+  *
+  * ==One case is RESERVED and is never returned==
+  *
+  * [[BlobVersionedHashesNotChecked]] names a check this build does not perform,
+  * and it is here rather than in a comment because the register is what a
+  * caller reads to learn what can go wrong — a gap recorded only beside the
+  * field it concerns is invisible from the side that would have to handle it.
+  * Its own note states what would make it live.
   */
 enum TranslationRefusal:
 
@@ -86,6 +94,54 @@ enum TranslationRefusal:
     * real defect is not reported as a hash mismatch.
     */
   case ExecutionRequestsNotDerived
+
+  /** RESERVED, and returned by nothing today: the call carries expected blob
+    * versioned hashes, which this build does not check.
+    *
+    * ==The one argument on this seam the block-hash check cannot back up==
+    *
+    * Every other field the caller supplies is either committed to by the header
+    * this build derives, and so covered by comparing that header's hash against
+    * the one the payload states, or refused outright. This one is not: the
+    * versioned hashes are derived from the blob transactions INSIDE the
+    * payload: the specification requires the actual array be obtained by
+    * *"concatenating blob versioned hashes lists (`tx.blob_versioned_hashes`)
+    * of each blob transaction included in the payload"* and `INVALID` returned
+    * *"if the expected and the actual arrays don't match"*
+    * (`ethereum/execution-apis` @ `6570b55` `src/engine/cancun.md:115-117`).
+    * Nothing about that comparison moves a header field, so a payload whose
+    * blob transactions disagree with the argument derives a header that hashes
+    * correctly and passes every check this module makes.
+    *
+    * **It is a standing obligation, not a fork-conditional one.** The same
+    * clause closes *"This validation MUST be instantly run in all cases even
+    * during active sync process"* (`:119`) — the wording that makes
+    * [[EmptyTransaction]] a check this module runs without a decoder. The
+    * difference is that this one cannot be run without one.
+    *
+    * ==Why it is declared rather than returned==
+    *
+    * The check needs the payload's transactions DECODED, and this module
+    * decodes none — the transactions root is taken over the encoded bytes for
+    * the reason [[PayloadTranslation.headerOf]] records. So performing it here
+    * would mean putting a decoder on a path built not to need one, and
+    * refusing every blob-bearing payload instead would refuse payloads whose
+    * headers this build derives correctly.
+    *
+    * **Neither is a translation-layer decision.** Whether an unperformable
+    * check refuses the payload or is deferred to the layer that decodes the
+    * transactions anyway is the verb's to settle, and the verb's own refusal
+    * set is where a `-32602` for a wrong parameter set would live too. The case
+    * is here so the gap is registered rather than resolved.
+    *
+    * ==What would make it live==
+    *
+    * The check being performed somewhere — which is the same trigger as
+    * execution reaching blob transactions, since that is where the decoded
+    * transactions exist. Until then this build must not be read as having
+    * checked it.
+    */
+  case BlobVersionedHashesNotChecked
 
 /** Turning what the consensus layer sends into what this client executes.
   *

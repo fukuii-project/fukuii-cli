@@ -92,6 +92,29 @@ class EnginePayloadCertificationSpec extends AnyFlatSpec:
   private def shanghai: CorpusReport = reportFor("for_shanghai")
   private def both: Vector[CorpusReport] = Vector(paris, shanghai)
 
+  /** Payloads the corpus expects to be ACCEPTED, which is neither the payload
+    * count nor the agreed count.
+    *
+    * The agreed count includes the payloads correctly refused for their block
+    * hash, so it is one group wider than this. Stated as a derivation of the
+    * three pinned figures rather than as a fourth literal, so a label that
+    * changes size cannot leave two of the four disagreeing.
+    */
+  private def accepted(label: String): Int = Payloads(label) - Skips(label) - HashRefusals(label)
+
+  private def under(arm: EnginePayloadCorpus.Arm): Map[String, CorpusReport] =
+    EnginePayloadCorpus
+      .reportsUnder(arm)
+      .getOrElse(fail("no run under " + arm.toString + " from a corpus that reported"))
+      .map((report, _) => report.corpus -> report)
+      .toMap
+
+  private def divergedUnder(arm: EnginePayloadCorpus.Arm, label: String): Int =
+    under(arm).getOrElse(label, fail("no " + label + " report under " + arm.toString)).diverged.length
+
+  private def agreedUnder(arm: EnginePayloadCorpus.Arm, label: String): Int =
+    under(arm).getOrElse(label, fail("no " + label + " report under " + arm.toString)).agreed.length
+
   private def coverage: Map[String, Coverage] =
     EnginePayloadCorpus.coverage.getOrElse(fail("no coverage from a corpus that reported")).toMap
 
@@ -240,4 +263,112 @@ class EnginePayloadCertificationSpec extends AnyFlatSpec:
       coverage("for_paris").decided == paris.agreed.length + paris.diverged.length &&
         coverage("for_shanghai").decided == shanghai.agreed.length + shanghai.diverged.length,
       "coverage counted over a different set than the verdicts would describe reach the assertions do not have"
+    )
+
+  /** ==The skipped payloads were translated too, and the answer is asserted==
+    *
+    * The tier declines to call these valid or invalid, because the defect the
+    * corpus states is a transaction-level or gas-level one this layer does not
+    * reach. **It does not decline to translate them**, and the block hash each
+    * states is a commitment about this layer exactly as much as it is for the
+    * payloads above.
+    *
+    * Leaving that answer uncounted left a region of the input on which the
+    * tier's central assertion could not fail: a derivation defect reachable
+    * only from the malformed transaction shapes these fixtures carry would have
+    * produced a wrong header for precisely them, and every count here would
+    * have been unchanged.
+    *
+    * **The verdict is still `Skipped`.** Asserting the block hash says nothing
+    * about the validity question the corpus asked of another layer, so the tier
+    * still claims to decide only what it decided.
+    */
+  "the tier's undecided payloads" should "reproduce every stated block hash under Paris" in
+    assert(
+      coverage("for_paris").undecidedDerivingHeader == Skips("for_paris"),
+      "derived " + coverage("for_paris").undecidedDerivingHeader.toString + " matching headers across " +
+        Skips("for_paris").toString + " skipped payloads: " + coverage("for_paris").toString
+    )
+
+  it should "reproduce every stated block hash under Shanghai" in
+    assert(
+      coverage("for_shanghai").undecidedDerivingHeader == Skips("for_shanghai"),
+      "derived " + coverage("for_shanghai").undecidedDerivingHeader.toString + " matching headers across " +
+        Skips("for_shanghai").toString + " skipped payloads: " + coverage("for_shanghai").toString
+    )
+
+  it should "be refused by the translation nowhere" in
+    assert(
+      coverage("for_paris").undecidedRefused == 0 && coverage("for_shanghai").undecidedRefused == 0,
+      "a refusal here is this build disagreeing with a published block hash on the payloads most likely to " +
+        "break a derivation, and nothing about the corpus makes zero the expected answer: " + coverage.toString
+    )
+
+  /** ==The calibration, run rather than recorded==
+    *
+    * Every assertion above is satisfied by a tier that agrees. None of them is
+    * satisfied only by a tier that can also DISAGREE — a derivation that had
+    * quietly stopped deriving would report the same counts. So the identical
+    * corpus is classified under two deliberately wrong translations, and each
+    * is required to diverge by an exact amount.
+    *
+    * **An exact count rather than a non-zero one**, because an arm accepting
+    * any divergence cannot tell the defect it seeded from an unrelated
+    * breakage — and an arm that has stopped reaching the corpus at all diverges
+    * zero times, which reads as the tier being unusually robust.
+    *
+    * The two bracket the range: one commitment reached by a few dozen payloads,
+    * one reached by every payload.
+    */
+  "the tier's calibration" should "move no Paris payload when a withdrawal is dropped" in
+    assert(
+      divergedUnder(EnginePayloadCorpus.Arm.WithdrawalDropped, "for_paris") == 0,
+      "the label predates the proposal, so no payload under it carries a list for the arm to shorten"
+    )
+
+  /** Forty-five, and the decomposition is the same one the coverage assertion
+    * above states: forty-seven decided payloads carry a non-empty withdrawals
+    * list, and two of them are among the three the corpus expects to be refused
+    * for their block hash — a shortened list leaves those refused, so they go
+    * on agreeing.
+    */
+  it should "move exactly the forty-five accepted Shanghai payloads carrying a withdrawal" in
+    assert(
+      divergedUnder(EnginePayloadCorpus.Arm.WithdrawalDropped, "for_shanghai") == 45,
+      "diverged " + divergedUnder(EnginePayloadCorpus.Arm.WithdrawalDropped, "for_shanghai").toString +
+        " rather than 45, so the arm is no longer seeding the defect it names"
+    )
+
+  it should "move every accepted Paris payload when the ommers hash is substituted" in
+    assert(
+      divergedUnder(EnginePayloadCorpus.Arm.OmmersSubstituted, "for_paris") == accepted("for_paris"),
+      "diverged " + divergedUnder(EnginePayloadCorpus.Arm.OmmersSubstituted, "for_paris").toString +
+        " rather than " + accepted("for_paris").toString + ": a constant every header commits to should " +
+        "leave nothing standing"
+    )
+
+  it should "move every accepted Shanghai payload when the ommers hash is substituted" in
+    assert(
+      divergedUnder(EnginePayloadCorpus.Arm.OmmersSubstituted, "for_shanghai") == accepted("for_shanghai"),
+      "diverged " + divergedUnder(EnginePayloadCorpus.Arm.OmmersSubstituted, "for_shanghai").toString +
+        " rather than " + accepted("for_shanghai").toString
+    )
+
+  /** ==The arm has to be DISCRIMINATING, not merely destructive==
+    *
+    * An arm that broke every case equally would satisfy the two above and prove
+    * only that something changed. These three payloads are the ones the corpus
+    * expects to be refused for their block hash, and a header damaged further
+    * still fails that hash — so they go on agreeing under an arm that moves
+    * everything else.
+    *
+    * That is what separates a seeded defect from a harness that stopped
+    * working: a broken harness cannot leave exactly these three alone.
+    */
+  it should "leave the three block-hash refusals agreeing under the ommers arm" in
+    assert(
+      agreedUnder(EnginePayloadCorpus.Arm.OmmersSubstituted, "for_shanghai") == HashRefusals("for_shanghai"),
+      "agreed " + agreedUnder(EnginePayloadCorpus.Arm.OmmersSubstituted, "for_shanghai").toString +
+        " rather than " + HashRefusals("for_shanghai").toString +
+        ", so the arm is not discriminating between a wrong header and a payload already expected to fail"
     )
