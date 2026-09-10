@@ -6,6 +6,34 @@ import org.fukuii.bytes.{Address, Bytes, Hash}
 import org.fukuii.evm.BlockContext
 import org.fukuii.types.{AccessTuple, TransactionType}
 
+/** What a fixture states this transaction will pay, in the shape its format
+  * states it in.
+  *
+  * ==A sum, because the two are different quantities rather than two spellings
+  * of one==
+  *
+  * A format predating the fee market states one price it pays whatever the
+  * block charges; a fee-market format states the most it will pay in total and
+  * the most it will pay above that charge. Collapsing them loses which was
+  * stated, and what was stated is what a refusal is compared against.
+  *
+  * ==It is the reader's own vocabulary, and it has to be==
+  *
+  * `org.fukuii.execution.FeeOffer` is the same distinction one module up, where
+  * admission can resolve it against a base fee. This module sits below that one
+  * and cannot name it, which is the layering
+  * [[org.fukuii.evm.fixtures.ExpectedRejection]] already records for a
+  * refusal's vocabulary: the reader states what the file said, and whoever runs
+  * the case maps it onto what the layer under test accepts.
+  */
+enum StatedFee:
+
+  /** A format stating one price. */
+  case Fixed(gasPrice: BigInt)
+
+  /** A format stating a ceiling and a tip, under EIP-1559's own field names. */
+  case Capped(maxFeePerGas: BigInt, maxPriorityFeePerGas: BigInt)
+
 /** The transaction a state fixture asks to be executed, with one combination of
   * its data, gas and value arrays already selected.
   *
@@ -29,7 +57,7 @@ import org.fukuii.types.{AccessTuple, TransactionType}
   */
 final case class StateTransaction(
     nonce: BigInt,
-    gasPrice: BigInt,
+    fee: StatedFee,
     gasLimit: BigInt,
     to: Option[Address],
     value: BigInt,
@@ -192,12 +220,14 @@ object StateFixture:
       timestamp <- FixtureValues.quantityAt(json, "currentTimestamp")
       difficulty <- FixtureValues.quantityAt(json, "currentDifficulty")
       gasLimit <- FixtureValues.quantityAt(json, "currentGasLimit")
-    // The corpus publishes the beacon chain's randomness as `currentRandom`
-    // beside `currentDifficulty`, and this harness reads neither into the
-    // randomness member because it runs no fork that reports one. The trigger
-    // for reading it is the first post-merge fork this harness certifies; until
-    // then a filled member would be a value no case here can observe.
-    yield BlockContext(coinbase, number, timestamp, difficulty, gasLimit, baseFee = None, prevRandao = None)
+      // Both are read where the file states them and left absent where it does
+      // not, which is what a directory filled for a fork below either member
+      // publishes. The machine refuses to substitute a zero for either -- zero
+      // is a legal charge and a legal randomness value, so a default would be a
+      // plausible answer for a block that supplied none.
+      baseFee <- FixtureValues.optionally(json, "currentBaseFee")(FixtureValues.quantity)
+      prevRandao <- FixtureValues.optionally(json, "currentRandom")(FixtureValues.hashOf)
+    yield BlockContext(coinbase, number, timestamp, difficulty, gasLimit, baseFee, prevRandao)
 
   /** The signed transaction a combination was built from, where the corpus
     * publishes it.
@@ -219,14 +249,14 @@ object StateFixture:
       signed <- signedBytesOf(entry)
       kind = kindOf(json, signed, indexes)
       nonce <- FixtureValues.quantityAt(json, "nonce")
-      gasPrice <- priceOf(json, kind)
+      fee <- feeOf(json, kind)
       gasLimit <- selected(json, "gasLimit", indexes.gas).flatMap(FixtureValues.quantity)
       value <- selected(json, "value", indexes.value).flatMap(FixtureValues.quantity)
       data <- selected(json, "data", indexes.data).flatMap(FixtureValues.bytesOf)
       declared <- declarationAt(json, indexes.data)
       sender <- FixtureValues.addressAt(json, "sender")
       to <- recipientOf(json)
-    yield StateTransaction(nonce, gasPrice, gasLimit, to, value, data, declared, sender, signed, kind)
+    yield StateTransaction(nonce, fee, gasLimit, to, value, data, declared, sender, signed, kind)
 
   /** What `accessLists` declares for one combination.
     *
@@ -402,14 +432,51 @@ object StateFixture:
       .flatMap(_.lift(index))
       .exists(!_.isNull)
 
-  /** A fee-market transaction states no gas price. It is invalid at this fork
-    * whatever it states, so the price it is charged at never matters and zero
-    * keeps the reader total rather than making an unreadable field fatal.
+  /** What the format decided above states it will pay.
+    *
+    * ==The FORMAT decides which shape is required==
+    *
+    * Not which field happens to be present, which is a second reading of the
+    * same file that can disagree with the first. The match is exhaustive over
+    * [[org.fukuii.types.TransactionType]], so a format added later stops this
+    * compiling rather than silently falling into the shape below it. Within the
+    * fee-market arm the fields are consulted again, for the one reason the
+    * third section below gives.
+    *
+    * ==A missing field is a decode failure and not a zero==
+    *
+    * A format that must state a fee and does not is a malformed fixture, which
+    * this reports as a skip a report can count. Standing a zero in would settle
+    * the case against a price nothing published -- and below a fee market that
+    * price is what the sender is charged and the producer credited, so the run
+    * would agree or disagree for a reason no reader could see.
+    *
+    * ==A fee-market FORMAT stating no fee-market field states a price==
+    *
+    * The format can come from a published tag while the fee can only come from
+    * the fields, so the two are not always answered by the same part of the
+    * file. Where the fields name neither ceiling nor tip, what the case states
+    * is a price and that is what is recorded -- reporting the case undecodable
+    * instead would drop a combination whose format is exactly what it was
+    * written to settle. Where either fee-market field IS stated, both are
+    * required: a ceiling without a tip is a fee-market transaction the
+    * specification does not describe.
     */
-  private def priceOf(json: Json, kind: TransactionType): Either[String, BigInt] =
-    if json.hcursor.downField("gasPrice").focus.isDefined then FixtureValues.quantityAt(json, "gasPrice")
-    else if kind == TransactionType.Legacy then Left("no gasPrice on a legacy transaction")
-    else Right(BigInt(0))
+  private def feeOf(json: Json, kind: TransactionType): Either[String, StatedFee] =
+    kind match
+      case TransactionType.Legacy | TransactionType.AccessList =>
+        FixtureValues.quantityAt(json, "gasPrice").map(StatedFee.Fixed(_))
+      case TransactionType.DynamicFee | TransactionType.Blob | TransactionType.SetCode =>
+        val cursor = json.hcursor
+        val marketed =
+          cursor.downField("maxFeePerGas").focus.isDefined ||
+            cursor.downField("maxPriorityFeePerGas").focus.isDefined
+        if !marketed then FixtureValues.quantityAt(json, "gasPrice").map(StatedFee.Fixed(_))
+        else
+          for
+            cap <- FixtureValues.quantityAt(json, "maxFeePerGas")
+            tip <- FixtureValues.quantityAt(json, "maxPriorityFeePerGas")
+          yield StatedFee.Capped(cap, tip)
 
   private def recipientOf(json: Json): Either[String, Option[Address]] =
     FixtureValues.stringAt(json, "to").flatMap { text =>

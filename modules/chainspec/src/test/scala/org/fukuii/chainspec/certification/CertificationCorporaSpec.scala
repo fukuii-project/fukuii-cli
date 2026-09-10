@@ -2,7 +2,23 @@ package org.fukuii.chainspec.certification
 
 import org.fukuii.bytes.UInt64
 import org.fukuii.chainspec.networks.{KnownNetworks, ethereum}
-import org.fukuii.chainspec.proposals.eip.{Eip2565, Eip2718, Eip2929, Eip2930}
+import org.fukuii.chainspec.proposals.eip.{
+  Eip1559,
+  Eip2565,
+  Eip2718,
+  Eip2929,
+  Eip2930,
+  Eip3198,
+  Eip3529,
+  Eip3541,
+  Eip3554,
+  Eip3651,
+  Eip3675,
+  Eip3855,
+  Eip3860,
+  Eip4399,
+  Eip4895
+}
 import org.fukuii.chainspec.{Activation, Component, DifficultyAdjustment, Network, Registry, UpgradeRules}
 import org.fukuii.evm.fixtures.*
 import org.fukuii.evm.{Cost, Operation, Precompile, PrecompileSet, StorageMetering, Opcode}
@@ -100,7 +116,16 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     // envelope, 154 of which the rules admit and execute. A typed entry the
     // rules refused would still be a verdict rather than a skip, so a zero here
     // is not evidence that the format is admitted -- the coverage rows are.
-    CertificationCorpora.GeneratedBerlinCorpus -> CorpusCensus(files = 132, cases = 2742, skipped = 0)
+    CertificationCorpora.GeneratedBerlinCorpus -> CorpusCensus(files = 132, cases = 2742, skipped = 0),
+    // 268 of these entries state a ceiling and a tip rather than a price, and
+    // the fork admits every one of them -- against the single such entry one
+    // fork below, which is refused for its format. The count carrying the
+    // format is not what the fork reaches, though: the matrix row beneath puts
+    // that at 2858 of these entries, because the charge is levied on every
+    // transaction and the producer is credited the price less it.
+    CertificationCorpora.GeneratedLondonCorpus -> CorpusCensus(files = 130, cases = 3010, skipped = 0),
+    CertificationCorpora.GeneratedParisCorpus -> CorpusCensus(files = 134, cases = 3029, skipped = 0),
+    CertificationCorpora.GeneratedShanghaiCorpus -> CorpusCensus(files = 151, cases = 3220, skipped = 0)
   )
 
   /** Every censused corpus, as the rows the four properties below drive.
@@ -124,8 +149,8 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
   private val registry: Registry =
     KnownNetworks.registry.getOrElse(fail("the authored networks do not form a registry"))
 
-  /** Every network-and-height pair the harness resolves rules at. */
-  private val resolutions = Table(("network", "height"), CertificationCorpora.resolutionPoints*)
+  /** Every network-and-coordinate pair the harness resolves rules at. */
+  private val resolutions = Table(("network", "point"), CertificationCorpora.resolutionPoints*)
 
   /** The assembled reports, or a canceled test where there is no corpus.
     *
@@ -172,7 +197,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     assert(names == census.keySet, s"assembled ${names.toString} against a census of ${census.keySet.toString}")
   }
 
-  property("the census covers sixteen corpora, counted") {
+  property("the census covers nineteen corpora, counted") {
     // THE REMOVAL CASE, which the pairing cannot see. Dropping a corpus from the
     // census AND from what the harness assembles leaves those two agreeing with
     // each other, leaves the same six properties registered, and leaves the
@@ -192,7 +217,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     //
     // Raising this is adding a corpus. Lowering it is dropping certified cases,
     // and that is a decision rather than a tidy-up.
-    assert(census.size == 16, s"the census covers ${census.size.toString} corpora rather than sixteen")
+    assert(census.size == 19, s"the census covers ${census.size.toString} corpora rather than nineteen")
   }
 
   property("every censused corpus holds the files the census records") {
@@ -545,6 +570,42 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
         )
       )
 
+  /** The five proposals the first fee-market fork adopts, in the order its
+    * composition takes them.
+    */
+  private val theLondonFive: Vector[Component] =
+    Vector(Eip1559.component, Eip3198.component, Eip3529.component, Eip3541.component, Eip3554.component)
+
+  /** The two the consensus transition adopts. */
+  private val theParisTwo: Vector[Component] = Vector(Eip3675.component, Eip4399.component)
+
+  /** The four the fork above it adopts. */
+  private val theShanghaiFour: Vector[Component] =
+    Vector(Eip3651.component, Eip3855.component, Eip3860.component, Eip4895.component)
+
+  /** Each fork below with all but one of its own adopted.
+    *
+    * Recomposed rather than reverted field by field, for the reason
+    * [[berlinWithout]] gives: adoption has no inverse, and hand-reverting a
+    * proposal restates its delta beside it. Two of these thirteen defeat the
+    * field-by-field shape outright -- the fee market moves one member of the
+    * admission facet and one of the header facet together, and the initcode
+    * bound moves a bound and a metering rule.
+    *
+    * **Each recomposition is asserted equal to what the schedule resolves at
+    * the matching tier's own coordinate**, by a property below, so a
+    * differential here is a statement about the upgrade rather than about a
+    * composition that resembles it.
+    */
+  private def londonWithout(dropped: Component): UpgradeRules => UpgradeRules =
+    _ => ethereum.Upgrades.berlin.adopting(theLondonFive.filterNot(_.id == dropped.id)*)
+
+  private def parisWithout(dropped: Component): UpgradeRules => UpgradeRules =
+    _ => ethereum.Upgrades.grayGlacier.adopting(theParisTwo.filterNot(_.id == dropped.id)*)
+
+  private def shanghaiWithout(dropped: Component): UpgradeRules => UpgradeRules =
+    _ => ethereum.Upgrades.paris.adopting(theShanghaiFour.filterNot(_.id == dropped.id)*)
+
   /** How many cases each censused tier decides on each proposal of the two
     * forks either tier is read at, measured by removing the proposal and
     * rerunning.
@@ -686,6 +747,46 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     * So the row is a floor on what the corpus decides about the declaration and
     * not a census of what declares: a differential over a repricing can only see
     * a case whose OUTCOME the figure changes.
+    *
+    * ==Four rows above the tagged-format fork are ZERO, and they are zero for
+    * THREE different reasons==
+    *
+    * A zero is the matrix's most consequential entry, because a reader takes a
+    * certified fork to be one whose every proposal the corpora exercise. These
+    * four are the counter-example, and collapsing them into one explanation
+    * would hide the only one of the three that a better corpus would fix:
+    *
+    *   - **A rule no state fixture can reach at all.** The bomb delay of the
+    *     first fee-market fork, and the withdrawals commitment two forks above
+    *     it, are both read off a header; a state fixture settles one
+    *     transaction against a block it is handed and states no header for the
+    *     next one. This is the same structural bound already recorded for a
+    *     producer's credit and for the next block's difficulty, arriving at two
+    *     further proposals -- and no state corpus at any fork moves it.
+    *   - **A rule whose only effect is on a quantity this tier never settles.**
+    *     The consensus transition takes the producer's reward to nothing and
+    *     fixes three header fields. A state fixture credits the producer a tip
+    *     and never a block reward, so withdrawing the whole proposal leaves
+    *     every case here settling to the same root.
+    *   - **A rule the corpus DOES execute and cannot distinguish, which is the
+    *     one that is a property of the FILES rather than of the tier.**
+    *     EIP-4399 supplants what one operation reports without moving it or
+    *     repricing it, and this directory names that operation in three of its
+    *     own cases -- one of which asserts what it costs -- so the operation is
+    *     reached. What defeats the differential is the value: every one of the
+    *     134 files states the mined difficulty as `0x00` and the randomness as
+    *     thirty-two zero bytes, one distinct pair across the whole directory,
+    *     so both readings push the same word and a machine reading the wrong
+    *     one agrees with every case. **The corpus filled two forks above this
+    *     one does state the two differently**, which is where that row can
+    *     first be non-zero.
+    *
+    * ==Every one of the four sits beside a non-zero from the same machinery==
+    *
+    * The two tiers carrying three of the zeros carry the widest rows in this
+    * group as well -- an initcode bound at 1113 cases and an operation pushing
+    * a constant at 151 -- so the reruns are shown working over those same
+    * directories at the moment the zeros are read.
     */
   private val coverageRows: Vector[(String, String, UpgradeRules => UpgradeRules, Int)] =
     Vector(
@@ -729,7 +830,18 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
       ("EIP-2718", CertificationCorpora.GeneratedBerlinCorpus, berlinWithout(Eip2718.component), 0),
       ("EIP-2929", CertificationCorpora.GeneratedBerlinCorpus, berlinWithout(Eip2929.component), 2109),
       ("EIP-2930", CertificationCorpora.GeneratedBerlinCorpus, berlinWithout(Eip2930.component), 297),
-      ("EIP-2930 declaration charge", CertificationCorpora.GeneratedBerlinCorpus, withoutTheDeclarationCharge, 154)
+      ("EIP-2930 declaration charge", CertificationCorpora.GeneratedBerlinCorpus, withoutTheDeclarationCharge, 154),
+      ("EIP-1559", CertificationCorpora.GeneratedLondonCorpus, londonWithout(Eip1559.component), 2858),
+      ("EIP-3198", CertificationCorpora.GeneratedLondonCorpus, londonWithout(Eip3198.component), 3),
+      ("EIP-3529", CertificationCorpora.GeneratedLondonCorpus, londonWithout(Eip3529.component), 977),
+      ("EIP-3541", CertificationCorpora.GeneratedLondonCorpus, londonWithout(Eip3541.component), 2),
+      ("EIP-3554", CertificationCorpora.GeneratedLondonCorpus, londonWithout(Eip3554.component), 0),
+      ("EIP-3675", CertificationCorpora.GeneratedParisCorpus, parisWithout(Eip3675.component), 0),
+      ("EIP-4399", CertificationCorpora.GeneratedParisCorpus, parisWithout(Eip4399.component), 0),
+      ("EIP-3651", CertificationCorpora.GeneratedShanghaiCorpus, shanghaiWithout(Eip3651.component), 12),
+      ("EIP-3855", CertificationCorpora.GeneratedShanghaiCorpus, shanghaiWithout(Eip3855.component), 151),
+      ("EIP-3860", CertificationCorpora.GeneratedShanghaiCorpus, shanghaiWithout(Eip3860.component), 1113),
+      ("EIP-4895", CertificationCorpora.GeneratedShanghaiCorpus, shanghaiWithout(Eip4895.component), 0)
     )
 
   /** One group of the rows above rerun, once each, keyed by the proposal and
@@ -989,16 +1101,148 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     )
   }
 
-  property("no corpus is resolved through a height that is not an activation on its network") {
-    // What stops the heights above being quietly slid to somewhere convenient
-    // after a divergence. Each one must be a point the network actually forks
-    // at, which the schedule states and the harness does not.
-    forAll(resolutions) { (network: Network, height: Long) =>
-      val schedule = registry.at(network.chainId).getOrElse(fail("no schedule for " + network.name))
+  /** Each fork whose tier withdraws a proposal by recomposition, as the rules
+    * that recomposition produces against the coordinate its tier is resolved
+    * at.
+    *
+    * One row per fork, because the three differ only in which upgrade and which
+    * coordinate -- and because a body holding three assertions does not compile
+    * here, a discarded `Assertion` being a hard error.
+    */
+  private val recompositions =
+    Table(
+      ("fork", "recomposed", "resolved at"),
+      (
+        "London",
+        ethereum.Upgrades.berlin.adopting(theLondonFive*),
+        CertificationCorpora.ResolutionPoint(CertificationCorpora.EthereumLondonStarts, 0L)
+      ),
+      (
+        "Paris",
+        ethereum.Upgrades.grayGlacier.adopting(theParisTwo*),
+        CertificationCorpora.ResolutionPoint(CertificationCorpora.EthereumParisStarts, 0L)
+      ),
+      (
+        "Shanghai",
+        ethereum.Upgrades.paris.adopting(theShanghaiFour*),
+        CertificationCorpora.ResolutionPoint(
+          CertificationCorpora.EthereumParisStarts,
+          CertificationCorpora.EthereumShanghaiStartsAtSecond
+        )
+      )
+    )
+
+  property("the proposals recomposed from each fork below are the rules that tier is resolved to") {
+    // What the recompositions above have to be paid for. A recomposition is
+    // right by construction and says nothing about the schedule, so without
+    // this the eleven differentials over those three tiers would each be a
+    // statement about a composition that merely resembles what this network
+    // runs.
+    val schedule = registry
+      .at(ethereum.Mainnet.network.chainId)
+      .getOrElse(fail("no schedule for " + ethereum.Mainnet.network.name))
+    forAll(recompositions) { (fork: String, recomposed: UpgradeRules, at: CertificationCorpora.ResolutionPoint) =>
       assert(
-        height == 0L || schedule.forkPoints.contains(Activation.AtBlock(UInt64.fromBits(height))),
-        network.name + " is asked for its rules at block " + height.toString +
-          ", which is not an activation on its schedule: " + schedule.forkPoints.toString
+        recomposed == schedule.at(UInt64.fromBits(at.number), UInt64.fromBits(at.timestamp)),
+        "the proposals withdrawn from below do not recompose to what this network resolves for " + fork +
+          " at block " + at.number.toString + " second " + at.timestamp.toString
+      )
+    }
+  }
+
+  property("the height the London tier is resolved at holds that fork's rules and not its neighbours'") {
+    val schedule = registry
+      .at(ethereum.Mainnet.network.chainId)
+      .getOrElse(fail("no schedule for " + ethereum.Mainnet.network.name))
+    assert(
+      schedule.at(UInt64.fromBits(CertificationCorpora.EthereumLondonStarts), UInt64.Zero) ==
+        ethereum.Upgrades.london,
+      "the London tier is resolved at block " + CertificationCorpora.EthereumLondonStarts.toString +
+        ", which does not hold this network's London rules"
+    )
+  }
+
+  property("the height the Paris tier is resolved at holds that fork's rules and not its neighbours'") {
+    // The two upgrades between this height and the one above each move a
+    // difficulty delay and nothing a state fixture settles, so this tier
+    // resolved at either of them would run under rules the corpus cannot tell
+    // from these and every case would still pass. That makes it the second
+    // height in this harness whose neighbours a divergence could not catch --
+    // the Berlin note beside this one records the first.
+    val schedule = registry
+      .at(ethereum.Mainnet.network.chainId)
+      .getOrElse(fail("no schedule for " + ethereum.Mainnet.network.name))
+    assert(
+      schedule.at(UInt64.fromBits(CertificationCorpora.EthereumParisStarts), UInt64.Zero) ==
+        ethereum.Upgrades.paris,
+      "the Paris tier is resolved at block " + CertificationCorpora.EthereumParisStarts.toString +
+        ", which does not hold this network's Paris rules"
+    )
+  }
+
+  property("the second the Shanghai tier is resolved at holds that fork's rules, over the block below it") {
+    // Both axes together, because neither answers alone: the second on its own
+    // is read against a schedule that has not yet passed the block-activated
+    // entry beneath it, and the block on its own resolves to that entry's own
+    // rules. A tier resolved from one axis would therefore certify the fork
+    // BELOW this one while naming this one, and every case filled for the fork
+    // below would agree with it.
+    val schedule = registry
+      .at(ethereum.Mainnet.network.chainId)
+      .getOrElse(fail("no schedule for " + ethereum.Mainnet.network.name))
+    assert(
+      schedule.at(
+        UInt64.fromBits(CertificationCorpora.EthereumParisStarts),
+        UInt64.fromBits(CertificationCorpora.EthereumShanghaiStartsAtSecond)
+      ) == ethereum.Upgrades.shanghai,
+      "the Shanghai tier is resolved at second " + CertificationCorpora.EthereumShanghaiStartsAtSecond.toString +
+        " over block " + CertificationCorpora.EthereumParisStarts.toString +
+        ", which does not hold this network's Shanghai rules"
+    )
+  }
+
+  property("the block the Shanghai tier is resolved over holds only the rules below that fork") {
+    // The negative control for the property above. Without it, a coordinate
+    // whose second was ignored entirely would still satisfy that assertion the
+    // moment the block alone happened to resolve to these rules -- so this
+    // states that it does not, and therefore that the second is what carried
+    // the answer.
+    val schedule = registry
+      .at(ethereum.Mainnet.network.chainId)
+      .getOrElse(fail("no schedule for " + ethereum.Mainnet.network.name))
+    assert(
+      schedule.at(UInt64.fromBits(CertificationCorpora.EthereumParisStarts), UInt64.Zero) !=
+        ethereum.Upgrades.shanghai,
+      "block " + CertificationCorpora.EthereumParisStarts.toString +
+        " already holds this network's Shanghai rules with no second read, so the Shanghai tier's" +
+        " coordinate does not establish that the clock axis is read at all"
+    )
+  }
+
+  property("no corpus is resolved through a coordinate that is not an activation on its network") {
+    // What stops the coordinates above being quietly slid to somewhere
+    // convenient after a divergence. Each axis must name a point the network
+    // actually forks at, which the schedule states and the harness does not.
+    //
+    // READ AGAINST `entries` AND NOT `forkPoints`, WHICH ANSWERS A DIFFERENT
+    // QUESTION. `forkPoints` is EIP-2124's set -- the activations a peer can
+    // compute in advance -- and it deliberately omits an upgrade whose point
+    // was not knowable before the chain reached it. The two sets coincided for
+    // every corpus registered below a consensus transition and come apart at
+    // the first one above it, where the narrower set would report a real
+    // activation as no activation at all.
+    forAll(resolutions) { (network: Network, point: CertificationCorpora.ResolutionPoint) =>
+      val schedule = registry.at(network.chainId).getOrElse(fail("no schedule for " + network.name))
+      val stated = schedule.entries.map(_.activation)
+      // Both axes, each excused only where it is unstated. Requiring one of the
+      // two would let a wrong height ride into the schedule on a right second.
+      val atABlock = point.number == 0L || stated.contains(Activation.AtBlock(UInt64.fromBits(point.number)))
+      val atASecond =
+        point.timestamp == 0L || stated.contains(Activation.AtTimestamp(UInt64.fromBits(point.timestamp)))
+      assert(
+        atABlock && atASecond,
+        network.name + " is asked for its rules at block " + point.number.toString + " second " +
+          point.timestamp.toString + ", which is not an activation on its schedule: " + stated.toString
       )
     }
   }

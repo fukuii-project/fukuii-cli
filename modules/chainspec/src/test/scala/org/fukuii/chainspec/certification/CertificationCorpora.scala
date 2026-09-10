@@ -322,6 +322,66 @@ object CertificationCorpora:
     */
   val GeneratedBerlinCorpus: String = "execution-specs-fixtures state_tests/for_berlin"
 
+  /** The generated tier filled for the first fork that charges a base fee.
+    *
+    * ==The first corpus here whose transactions state a CEILING rather than a
+    * price==
+    *
+    * 268 of its entries carry EIP-1559's format, which states the most it will
+    * pay in total and the most it will pay above the block's charge rather than
+    * one price. The directory below this one carries exactly one entry of that
+    * format and cannot reach any of it: the fork does not admit the tag, so the
+    * entry is refused for its format before a fee is read at all.
+    *
+    * ==What the fork reaches is the whole tier and not those 268==
+    *
+    * The charge is levied on every transaction whatever format it states, and
+    * the producer is credited the price LESS that charge -- so a tier run
+    * without the fee market settles a different beneficiary balance, and
+    * therefore a different root, on every case that spends gas at all. The
+    * coverage matrix measures it at 2858 of these 3010 entries against 268
+    * carrying the format, which is the widest gap in this harness between what
+    * a proposal is written into and what it decides.
+    */
+  val GeneratedLondonCorpus: String = "execution-specs-fixtures state_tests/for_london"
+
+  /** The generated tier filled for the first fork whose blocks are not mined.
+    *
+    * ==The corpus states both randomness readings as ZERO, so this tier cannot
+    * decide the proposal the fork is named for==
+    *
+    * Measured over all 134 files of the directory at the `tests@v20.0.1`
+    * release: every entry states `currentDifficulty` `0x00` and `currentRandom`
+    * thirty-two zero bytes, one distinct pair across the whole directory. The
+    * one operation EIP-4399 changes reports the first below the fork and the
+    * second above it, and both are zero here -- so a machine reading the wrong
+    * one of the two agrees with every case in this corpus. **That is a
+    * structural blindness of the tier and not a shortfall to be closed by
+    * running more of it**, and what would decide it is a corpus stating the two
+    * differently, which the directory filled two forks later does.
+    *
+    * What this tier DOES reach is the rest of the fork: it is filled under a
+    * rule set whose difficulty is not mined, and every case's balances, gas and
+    * root are settled against it.
+    */
+  val GeneratedParisCorpus: String = "execution-specs-fixtures state_tests/for_paris"
+
+  /** The generated tier filled for the fork above that one.
+    *
+    * The largest generated directory below the one that carries the ported
+    * legacy suite, and the first whose rules admit an operation pushing a
+    * constant, bound the initcode a transaction may deploy, and start the
+    * producer's account warm.
+    *
+    * **Its fourth proposal is not reachable here at all.** A withdrawal is
+    * credited by a block rather than by a transaction, and a state fixture
+    * settles one transaction against a block it is handed -- so no case in this
+    * directory can state one. That is the same structural bound the coverage
+    * matrix already records for a producer's credit and for the next block's
+    * difficulty, arriving at a third proposal.
+    */
+  val GeneratedShanghaiCorpus: String = "execution-specs-fixtures state_tests/for_shanghai"
+
   /** The same directory as the Tangerine Whistle tier, resolved through the
     * other network's schedule instead.
     *
@@ -390,37 +450,98 @@ object CertificationCorpora:
   private[certification] val EthereumConstantinopleStarts: Long = 7280000L
   private[certification] val EthereumIstanbulStarts: Long = 9069000L
   private[certification] val EthereumBerlinStarts: Long = 12244000L
+  private[certification] val EthereumLondonStarts: Long = 12965000L
+  private[certification] val EthereumParisStarts: Long = 15537394L
   private[certification] val ClassicGasRepriceStarts: Long = 2500000L
 
-  /** Every network-and-height pair the corpora above are resolved at.
+  /** Where the harness believes the first fork on this network that activates
+    * on a CLOCK begins, in seconds rather than in blocks.
     *
-    * Built from the same constants [[assemble]] uses, so a figure moved for one
-    * is moved for both -- which is the intent, because the figure is the thing
-    * under test. No count is stated here: it rises whenever a corpus is
-    * resolved at a height none of the others uses, and a figure would rot on
-    * that commit rather than on this one.
-    *
-    * What this does NOT close is a corpus added later at a height never listed
-    * here; the count property beside the census is what makes adding a corpus a
-    * visible act. **That gap was live rather than hypothetical**: the three
-    * corpora filled at this network's Constantinople-era label were resolved at
-    * a height this vector did not carry, so nothing checked that an activation
-    * was there at all.
+    * Held apart from the figures above and named for its axis, because the two
+    * are not comparable and nothing in a bare integer says which it is. A
+    * timestamp mistaken for a height resolves to the rules at block
+    * 1,681,338,455, which is above every activation this network has and so
+    * answers plausibly with the latest rules it holds -- the wrong answer that
+    * looks most like the right one.
     */
-  private[certification] val resolutionPoints: Vector[(Network, Long)] =
+  private[certification] val EthereumShanghaiStartsAtSecond: Long = 1681338455L
+
+  /** The coordinate a corpus asks its network's schedule about: a block number
+    * and a clock reading together.
+    *
+    * ==Both axes, because a schedule answers on both and stops at the first
+    * entry that has not activated==
+    *
+    * [[UpgradeSchedule.at]] takes the entries in order and stops at the first
+    * one that has not fired, so a fork activating on a clock is only reached
+    * from a coordinate whose NUMBER has already carried every block-activated
+    * entry below it. Naming one axis and defaulting the other would therefore
+    * resolve a clock-activated corpus to the rules of the last fork before the
+    * axis changed -- silently, because that is a rule set the schedule really
+    * holds.
+    *
+    * A record rather than a pair of numbers: two adjacent `Long`s of the same
+    * type transpose without complaint, and the two that get transposed here are
+    * a six-figure height and a ten-figure second.
+    */
+  final private[certification] case class ResolutionPoint(number: Long, timestamp: Long)
+
+  private val ethereumFrontier = ResolutionPoint(EthereumFrontierStarts, 0L)
+  private val ethereumHomestead = ResolutionPoint(EthereumHomesteadStarts, 0L)
+  private val ethereumTangerineWhistle = ResolutionPoint(EthereumTangerineWhistleStarts, 0L)
+  private val ethereumSpuriousDragon = ResolutionPoint(EthereumSpuriousDragonStarts, 0L)
+  private val ethereumByzantium = ResolutionPoint(EthereumByzantiumStarts, 0L)
+  private val ethereumConstantinople = ResolutionPoint(EthereumConstantinopleStarts, 0L)
+  private val ethereumIstanbul = ResolutionPoint(EthereumIstanbulStarts, 0L)
+  private val ethereumBerlin = ResolutionPoint(EthereumBerlinStarts, 0L)
+  private val ethereumLondon = ResolutionPoint(EthereumLondonStarts, 0L)
+  private val ethereumParis = ResolutionPoint(EthereumParisStarts, 0L)
+
+  /** The earliest coordinate at which the clock-activated fork's rules can be
+    * in force on this network: its own second, over the block the last
+    * block-activated entry begins at.
+    *
+    * The number is that entry's figure rather than a second one written here,
+    * so a wrong height there is wrong in both places at once rather than in
+    * one -- and it is the entry the schedule must already have passed for the
+    * clock to be read at all.
+    */
+  private val ethereumShanghai = ResolutionPoint(EthereumParisStarts, EthereumShanghaiStartsAtSecond)
+
+  private val classicGasReprice = ResolutionPoint(ClassicGasRepriceStarts, 0L)
+
+  /** Every network-and-coordinate pair the corpora above are resolved at.
+    *
+    * Built from the same values [[assemble]] uses, so a figure moved for one is
+    * moved for both -- which is the intent, because the figure is the thing
+    * under test. No count is stated here: it rises whenever a corpus is
+    * resolved at a coordinate none of the others uses, and a figure would rot
+    * on that commit rather than on this one.
+    *
+    * What this does NOT close is a corpus added later at a coordinate never
+    * listed here; the count property beside the census is what makes adding a
+    * corpus a visible act. **That gap was live rather than hypothetical**: the
+    * three corpora filled at this network's Constantinople-era label were
+    * resolved at a height this vector did not carry, so nothing checked that an
+    * activation was there at all.
+    */
+  private[certification] val resolutionPoints: Vector[(Network, ResolutionPoint)] =
     Vector(
-      ethereum.Mainnet.network -> EthereumFrontierStarts,
-      ethereum.Mainnet.network -> EthereumHomesteadStarts,
-      ethereum.Mainnet.network -> EthereumTangerineWhistleStarts,
-      ethereum.Mainnet.network -> EthereumSpuriousDragonStarts,
-      ethereum.Mainnet.network -> EthereumByzantiumStarts,
-      ethereum.Mainnet.network -> EthereumConstantinopleStarts,
-      ethereum.Mainnet.network -> EthereumIstanbulStarts,
-      ethereum.Mainnet.network -> EthereumBerlinStarts,
-      ethereumclassic.Mainnet.network -> ClassicGasRepriceStarts
+      ethereum.Mainnet.network -> ethereumFrontier,
+      ethereum.Mainnet.network -> ethereumHomestead,
+      ethereum.Mainnet.network -> ethereumTangerineWhistle,
+      ethereum.Mainnet.network -> ethereumSpuriousDragon,
+      ethereum.Mainnet.network -> ethereumByzantium,
+      ethereum.Mainnet.network -> ethereumConstantinople,
+      ethereum.Mainnet.network -> ethereumIstanbul,
+      ethereum.Mainnet.network -> ethereumBerlin,
+      ethereum.Mainnet.network -> ethereumLondon,
+      ethereum.Mainnet.network -> ethereumParis,
+      ethereum.Mainnet.network -> ethereumShanghai,
+      ethereumclassic.Mainnet.network -> classicGasReprice
     )
 
-  /** What a network runs at a height, taken from that network's schedule.
+  /** What a network runs at a coordinate, taken from that network's schedule.
     *
     * The whole of the indirection between a corpus and the rules it runs under.
     * Nothing downstream names a composition, so every corpus below is certifying
@@ -431,8 +552,8 @@ object CertificationCorpora:
     * admits a transaction as well as under what executes it, and taking one
     * facet here would put the two resolutions in different places.
     */
-  private def rulesAt(schedule: UpgradeSchedule, height: Long): UpgradeRules =
-    schedule.at(UInt64.fromBits(height), UInt64.Zero)
+  private def rulesAt(schedule: UpgradeSchedule, point: ResolutionPoint): UpgradeRules =
+    schedule.at(UInt64.fromBits(point.number), UInt64.fromBits(point.timestamp))
 
   /** One state corpus: where its files are, which fork's expectations they are
     * read under, which network is asked, and the rules they are resolved to.
@@ -460,40 +581,53 @@ object CertificationCorpora:
       ethereumSchedule: UpgradeSchedule,
       classicSchedule: UpgradeSchedule
   ): Vector[StateCorpus] =
-    val frontier = rulesAt(ethereumSchedule, EthereumFrontierStarts)
-    val homestead = rulesAt(ethereumSchedule, EthereumHomesteadStarts)
+    val frontier = rulesAt(ethereumSchedule, ethereumFrontier)
+    val homestead = rulesAt(ethereumSchedule, ethereumHomestead)
 
     // Bound once, because the two tiers below reach these rules through corpora
     // that name the fork differently -- `TangerineWhistle` in the generated
     // tier, `EIP150` in the legacy one. Two resolutions would let the two drift
     // into certifying different machines under one section's name.
-    val tangerineWhistle = rulesAt(ethereumSchedule, EthereumTangerineWhistleStarts)
+    val tangerineWhistle = rulesAt(ethereumSchedule, ethereumTangerineWhistle)
 
-    val spuriousDragon = rulesAt(ethereumSchedule, EthereumSpuriousDragonStarts)
+    val spuriousDragon = rulesAt(ethereumSchedule, ethereumSpuriousDragon)
 
-    val byzantium = rulesAt(ethereumSchedule, EthereumByzantiumStarts)
+    val byzantium = rulesAt(ethereumSchedule, ethereumByzantium)
 
     // Resolves to PETERSBURG's rules, because two entries share that height and
     // a schedule answers with the last one to activate. That is what this
     // network runs there, and it is what both `ConstantinopleFix` tiers are
     // filled against.
-    val constantinopleFix = rulesAt(ethereumSchedule, EthereumConstantinopleStarts)
+    val constantinopleFix = rulesAt(ethereumSchedule, ethereumConstantinople)
 
     // NOT from the schedule, and it cannot be: no height resolves to it. The
     // composition is named directly so the legacy tier's other label has
     // something to run against.
     val constantinople = ethereum.Upgrades.constantinople
 
-    val istanbul = rulesAt(ethereumSchedule, EthereumIstanbulStarts)
+    val istanbul = rulesAt(ethereumSchedule, ethereumIstanbul)
 
     // Resolved at this network's Berlin activation and not at Muir Glacier's,
     // even though the corpus is the first thing here that could tell the two
     // apart on a header: no state fixture settles one, so what separates them
     // for this tier is the four proposals rather than the bomb delay between
     // them.
-    val berlin = rulesAt(ethereumSchedule, EthereumBerlinStarts)
+    val berlin = rulesAt(ethereumSchedule, ethereumBerlin)
 
-    val gasReprice = rulesAt(classicSchedule, ClassicGasRepriceStarts)
+    val london = rulesAt(ethereumSchedule, ethereumLondon)
+
+    // Resolved at this network's own transition and not at either glacier
+    // between it and the fork below: both move a difficulty delay alone, which
+    // no state fixture settles, so what separates these rules from London's for
+    // this tier is the two proposals rather than anything between them.
+    val paris = rulesAt(ethereumSchedule, ethereumParis)
+
+    // The one resolution here whose CLOCK decides the answer. Its number is the
+    // entry above's, which is what carries the schedule past every
+    // block-activated entry so the clock is read at all.
+    val shanghai = rulesAt(ethereumSchedule, ethereumShanghai)
+
+    val gasReprice = rulesAt(classicSchedule, classicGasReprice)
 
     // Taken from the same schedule the rules are taken from, so the pair cannot
     // drift into asking one network's rules as though it were the other.
@@ -600,6 +734,27 @@ object CertificationCorpora:
         berlin
       ),
       StateCorpus(
+        GeneratedLondonCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_london"),
+        "London",
+        ethereumChain,
+        london
+      ),
+      StateCorpus(
+        GeneratedParisCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_paris"),
+        "Paris",
+        ethereumChain,
+        paris
+      ),
+      StateCorpus(
+        GeneratedShanghaiCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_shanghai"),
+        "Shanghai",
+        ethereumChain,
+        shanghai
+      ),
+      StateCorpus(
         ClassicTangerineWhistleCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_tangerinewhistle"),
         "TangerineWhistle",
@@ -638,7 +793,7 @@ object CertificationCorpora:
       ethereumSchedule: UpgradeSchedule,
       classicSchedule: UpgradeSchedule
   ): Vector[CorpusReport] =
-    val frontier = rulesAt(ethereumSchedule, EthereumFrontierStarts)
+    val frontier = rulesAt(ethereumSchedule, ethereumFrontier)
     vmReport(FixtureCorpus.legacy(root).resolve("VMTests"), frontier.evm) +:
       stateCorporaAt(root, ethereumSchedule, classicSchedule).map(stateReport)
 

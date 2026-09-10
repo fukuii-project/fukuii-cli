@@ -80,6 +80,21 @@ object FixtureValues:
   def addressAt(json: Json, field: String): Either[String, Address] =
     stringAt(json, field).flatMap(addressOf)
 
+  /** A field a fixture states only where the fork it was filled for has one.
+    *
+    * ==Absent and unreadable are kept apart, and folding them would fail
+    * open==
+    *
+    * A block below the fork that introduced a member states nothing for it, and
+    * that absence is a fact about the corpus. A member that is present and does
+    * not parse is a broken fixture. Answering `None` for both would let a
+    * malformed base fee read as a block that predates the fee market, which is
+    * a value the machine goes on to charge against.
+    */
+  def optionally[A](json: Json, field: String)(read: String => Either[String, A]): Either[String, Option[A]] =
+    if json.hcursor.downField(field).focus.isEmpty then Right(None)
+    else stringAt(json, field).flatMap(read).map(Some(_))
+
   /** An `address -> account` map, which is how both corpora write a pre-state
     * and an expected post-state.
     */

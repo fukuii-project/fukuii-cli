@@ -226,7 +226,8 @@ class StateFixtureSpec extends AnyFlatSpec:
     // Both fields are stated together throughout the published corpora, because
     // a fee-market transaction may carry an access list. Whichever is tested
     // first decides, so the two orderings are distinguishable only here.
-    val both = statingOnly(""""maxFeePerGas": "0x07", "accessLists": [ [], [], [] ]""")
+    val both =
+      statingOnly(""""maxFeePerGas": "0x07", "maxPriorityFeePerGas": "0x01", "accessLists": [ [], [], [] ]""")
     assert(kindAt(both, 0) == Some(TransactionType.DynamicFee), decoded(both))
   }
 

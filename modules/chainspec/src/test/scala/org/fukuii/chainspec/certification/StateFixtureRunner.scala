@@ -5,7 +5,7 @@ import org.fukuii.evm.fixtures.*
 import org.fukuii.bytes.{Address, Bytes, Hash, UInt64}
 import org.fukuii.chainspec.UpgradeRules
 import org.fukuii.crypto.Keccak256
-import org.fukuii.evm.{JournaledWorldState, StateTrieWorldState}
+import org.fukuii.evm.{BlockContext, BlockRandomness, JournaledWorldState, StateTrieWorldState}
 import org.fukuii.execution.{
   FeeOffer,
   Admission,
@@ -69,6 +69,7 @@ object StateFixtureRunner:
       "TransactionException.TYPE_3_TX_PRE_FORK" -> Refusal.TypeNotAdmitted,
       "TransactionException.TYPE_4_TX_PRE_FORK" -> Refusal.TypeNotAdmitted,
       "TransactionException.INTRINSIC_GAS_TOO_LOW" -> Refusal.IntrinsicGasTooLow,
+      "TransactionException.INITCODE_SIZE_EXCEEDED" -> Refusal.InitcodeTooLarge,
       "TransactionException.NONCE_IS_MAX" -> Refusal.NonceIsMax,
       "TransactionException.GAS_ALLOWANCE_EXCEEDED" -> Refusal.GasAllowanceExceeded,
       "TransactionException.NONCE_MISMATCH_TOO_LOW" -> Refusal.NonceMismatch,
@@ -101,7 +102,35 @@ object StateFixtureRunner:
     val base = new StateTrieWorldState(trie)
     FixtureValues.seed(base, fixture.pre) match
       case Left(error) => Verdict.Skipped(SkipReason.Undecodable(error))
-      case Right(())   => executeSeeded(fixture, chainId, rules, trie, base)
+      case Right(())   =>
+        executeSeeded(fixture.copy(block = blockUnder(fixture.block, rules)), chainId, rules, trie, base)
+
+  /** The block the fixture describes, holding only the members a block at these
+    * rules can carry.
+    *
+    * ==A stated field is what the GENERATOR wrote, not what the fork has==
+    *
+    * One corpus here writes both of these on every case whatever fork it
+    * publishes an expectation for: every one of the 2617 cases in the published
+    * Ethereum Classic tree states a base fee and a randomness value, and **no
+    * upgrade on that network adopts a fee market at all** -- so every tier read
+    * from it is read under rules whose headers carry neither. The presence of a
+    * field is therefore a fact about the generator's one env shape and says
+    * nothing about the block; the rules are the only thing that can answer.
+    *
+    * **Reading the base fee from presence alone moves every root at such a
+    * fork**, because what the producer is credited is the price less the
+    * block's charge -- so a charge that should not exist is subtracted from
+    * every case's beneficiary and every case diverges. The randomness member is
+    * inert below the fork that reads it and is narrowed on the same rule
+    * anyway, because a block that predates a beacon carries no such value and
+    * filling one models a block that never existed.
+    */
+  private def blockUnder(block: BlockContext, rules: UpgradeRules): BlockContext =
+    block.copy(
+      baseFee = if rules.header.feeMarket.isDefined then block.baseFee else None,
+      prevRandao = if rules.evm.blockRandomness == BlockRandomness.Eip4399 then block.prevRandao else None
+    )
 
   /** What reading the published signature established.
     *
@@ -212,6 +241,19 @@ object StateFixtureRunner:
         )
         judge(fixture, base, trie, rules, Right(settlement))
 
+  /** The fee the fixture stated, as the offer admission reads.
+    *
+    * The two enumerations hold the same distinction on either side of a module
+    * boundary, so this is the whole of the translation and it is exhaustive:
+    * a shape added to either stops it compiling. What it must never become is a
+    * collapse to one case -- a capped offer resolved as a fixed price pays the
+    * ceiling where it should pay the tip plus the block's charge, which settles
+    * to a root the fixture does not publish.
+    */
+  private def offerOf(stated: StatedFee): FeeOffer = stated match
+    case StatedFee.Fixed(gasPrice)                      => FeeOffer.Fixed(gasPrice)
+    case StatedFee.Capped(maxFee, maxPriorityFeePerGas) => FeeOffer.Capped(maxFee, maxPriorityFeePerGas)
+
   /** The fixture's transaction as the values admission reads.
     *
     * Every quantity crosses unchanged and unnarrowed. A corpus states a nonce, a
@@ -240,14 +282,7 @@ object StateFixtureRunner:
       transactionType = transaction.kind,
       sender = sender,
       nonce = transaction.nonce,
-      // A fee-market fixture states a cap and a tip and this model carries one
-      // price, so what arrives here is the CAP and the tip is lost. That is
-      // correct for every label this runner is wired to today, none of which
-      // carries a fee market -- and it is wrong the moment one does, because a
-      // capped offer resolved as a fixed price pays the cap where it should pay
-      // the tip plus the charge. Extending the fixture model is what a
-      // fee-market tier needs before it can be believed.
-      fee = FeeOffer.Fixed(transaction.gasPrice),
+      fee = offerOf(transaction.fee),
       gasLimit = transaction.gasLimit,
       to = transaction.to,
       value = transaction.value,
