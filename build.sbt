@@ -348,6 +348,58 @@ lazy val bouncyCastleVersion = "1.85"
 // Licenses: circe Apache-2.0, matching this project; cats and jawn MIT.
 lazy val circeVersion = "0.14.16"
 
+// jc-kzg-4844 -- the KZG point-evaluation primitive EIP-4844's precompile
+// (0x0A) needs, and this build's FIRST NATIVE dependency.
+//
+// WHY AT ALL. Point evaluation verifies a KZG proof against a blob commitment,
+// which is arithmetic over a BLS12-381 pairing -- outside BouncyCastle's
+// surface and outside anything this project would hand-roll for one
+// precompile. jc-kzg-4844 is a thin JNI wrapper around the reference
+// C-KZG-4844 implementation; the alternative was re-deriving pairing
+// arithmetic from scratch, which this project declines here for the same
+// reason BLAKE2F's F function above is hand-rolled ONLY where no library
+// reaches low enough -- here, one does.
+//
+// GATE 0 DOES NOT BIND, confirmed rather than inferred from the missing
+// `_3`/`%%`: the shipped jar carries only `.class` files, no `.tasty` entry
+// anywhere -- the same instrument that clears BouncyCastle above.
+//
+// ZERO TRANSITIVES, checked on the artifact's own published metadata rather
+// than assumed from "no obvious need for one": the POM carries no
+// <dependencies> block, and the richer Gradle module metadata the POM
+// defers to declares none on either the api or the runtime variant. It
+// arrives alone.
+//
+// FIVE NATIVE LIBRARIES ARE BUNDLED IN THE JAR ITSELF, one per platform/arch
+// pair (amd64 .so/.dll, x86_64 .dylib, aarch64 .so/.dylib) -- linux/amd64,
+// what this build runs on, is covered. The trusted setup is NOT bundled; the
+// repository must ship one, and doing so, like the precompile itself, is
+// later work this entry does not do.
+//
+// LOADING IT CALLS `System.load`, a JEP 472 restricted method on this
+// project's JDK 25: unless native access is granted, the call still succeeds
+// but prints a warning naming this library by class and jar path. Verified
+// directly, outside sbt: with `--enable-native-access=ALL-UNNAMED`, silent;
+// without it, exactly that warning. `.jvmopts` carries the grant -- see the
+// note there for why that file, and not `Test / javaOptions`, is where it has
+// to live given this project's current `fork` setting.
+//
+// PLACEMENT: compile scope, in `evm`, where `PrecompileSet` and every other
+// precompile already live -- not in `crypto` beside BouncyCastle, because
+// nothing in `crypto` needs it. A general-purpose provider earns a home
+// beside the primitives every layer reaches for; a single-precompile native
+// wrapper does not, and declaring it there would be a dependency held against
+// a type that might someday want it, which this project does not do.
+//
+// 2.1.8 IS THE NEWEST STABLE, confirmed live against Maven Central's own
+// metadata at adoption time -- no RC/milestone entry anywhere in the version
+// list, published 2026-07-10, long past any cooldown. Apache-2.0, matching
+// this project. The publishing org renamed between publish and adoption
+// (Consensys -> Consensys-Incorporated); same repository, same history, not
+// a fork -- GitHub's redirect confirms the identity, and the repo is neither
+// archived nor disabled.
+lazy val kzgVersion = "2.1.8"
+
 // Test dependencies are identical in every module, so they are defined once.
 // A per-module copy is how one module silently ends up on a different test
 // stack than its siblings.
@@ -518,7 +570,11 @@ lazy val evm = (project in file("modules/evm"))
     libraryDependencies ++= Seq(
       "io.circe" %% "circe-core"   % circeVersion % Test,
       "io.circe" %% "circe-parser" % circeVersion % Test
-    )
+    ),
+    // jc-kzg-4844, compile scope -- see the entry above for the full
+    // reasoning. A plain Java artifact (`%`, not `%%`), matching the
+    // BouncyCastle line in `crypto`.
+    libraryDependencies += "io.consensys.protocols" % "jc-kzg-4844" % kzgVersion
   )
 
 // L4 -- what settling a transaction does around the machine, and what makes a

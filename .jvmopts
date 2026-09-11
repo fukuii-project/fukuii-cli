@@ -3,3 +3,9 @@
 -XX:ReservedCodeCacheSize=1024m
 -XX:MaxMetaspaceSize=1g
 -Xss4M
+# jc-kzg-4844 (build.sbt, evm) calls System.load, a JEP 472 restricted method
+# on JDK 25+. Ungranted, the call still succeeds but warns on every load.
+# This file, not Test/javaOptions, is where the grant belongs: Test/fork is
+# false in every module, so tests run in this JVM rather than a forked one --
+# see build.sbt's jc-kzg-4844 entry for how that was checked.
+--enable-native-access=ALL-UNNAMED
