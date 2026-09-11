@@ -14,7 +14,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 class OpcodeSpec extends AnyFlatSpec:
 
   "the vocabulary" should "hold every operation this build knows, across forks" in
-    // 146, counted in the file rather than recalled. **This is not a per-fork
+    // 147, counted in the file rather than recalled. **This is not a per-fork
     // figure**: a byte's meaning does not change once it has one, so the enum
     // accumulates across forks and a table selects from it. The number rises
     // with the first operation each proposal adds, and is a counted fact either
@@ -24,12 +24,15 @@ class OpcodeSpec extends AnyFlatSpec:
     // EIP-1052's EXTCODEHASH and EIP-1014's CREATE2. 139 until Istanbul, which
     // added two: EIP-1344's CHAINID and EIP-1884's SELFBALANCE. 141 until
     // London, which added one: EIP-3198's BASEFEE. 142 until Shanghai, which
-    // added one: EIP-3855's PUSH0. 143 until Cancun, which added three:
-    // EIP-1153's TLOAD and TSTORE and EIP-5656's MCOPY. Every one of the twelve
-    // is also in `OpcodeTable.laterThanOriginal`, so the FRONTIER table's own
-    // size is unmoved -- the two counts answer different questions and only this
-    // one rises when an operation is added.
-    assert(Opcode.values.length == 146, "the Ops enum has 146 members, counted in the file rather than recalled")
+    // added one: EIP-3855's PUSH0. 143 until Cancun, which has added four so
+    // far: EIP-1153's TLOAD and TSTORE, EIP-5656's MCOPY and EIP-7516's
+    // BLOBBASEFEE. **The fork is unfinished, so this number is not its final
+    // one** -- EIP-4844's BLOBHASH at 0x49 is a member of that fork's set and is
+    // not here, because nothing in this build runs it yet. Every one of the
+    // thirteen is also in `OpcodeTable.laterThanOriginal`, so the FRONTIER
+    // table's own size is unmoved -- the two counts answer different questions
+    // and only this one rises when an operation is added.
+    assert(Opcode.values.length == 147, "the Ops enum has 147 members, counted in the file rather than recalled")
 
   it should "give each operation a distinct byte" in
     assert(
@@ -75,6 +78,17 @@ class OpcodeSpec extends AnyFlatSpec:
     assert(
       Seq(Opcode.TLoad, Opcode.TStore, Opcode.MCopy).forall(op => !Opcode.isPush(op) && Opcode.immediateWidth(op) == 0),
       "TLOAD = 0x5c, TSTORE = 0x5d and MCOPY = 0x5e each occupy exactly their own byte"
+    )
+
+  it should "leave 0x4a outside every family that reads an operand" in
+    // The byte Cancun's charge-reporting operation occupies sits two above the
+    // one the fee market's does, with a gap at 0x49 that a later phase fills.
+    // A build that widened a family to reach it would swallow the byte after it
+    // as operand data.
+    assert(
+      Opcode.BlobBaseFee.code == 0x4a && !Opcode.isPush(Opcode.BlobBaseFee) &&
+        Opcode.immediateWidth(Opcode.BlobBaseFee) == 0,
+      "BLOBBASEFEE = 0x4a and occupies exactly its own byte"
     )
 
   "the operation at 0x5f" should "sit one below the push family and outside it" in

@@ -143,7 +143,8 @@ class EvmRulesSpec extends AnyFlatSpec:
       touchSurvivesFailure = Set.empty,
       reservedCodePrefix = None,
       blockRandomness = BlockRandomness.Unavailable,
-      selfDestructScope = SelfDestructScope.AnyAccount
+      selfDestructScope = SelfDestructScope.AnyAccount,
+      blobBaseFeeUpdateFraction = None
     )
     assert(rebuilt == base, "two identical configurations built separately compared as different rules")
   }

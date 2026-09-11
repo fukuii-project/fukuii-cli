@@ -249,6 +249,7 @@ object OpcodeTable:
       Opcode.ChainId,
       Opcode.SelfBalance,
       Opcode.BaseFee,
+      Opcode.BlobBaseFee,
       Opcode.Push0,
       Opcode.TLoad,
       Opcode.TStore,

@@ -298,7 +298,8 @@ object Upgrades:
         touchSurvivesFailure = Set.empty,
         reservedCodePrefix = None,
         blockRandomness = BlockRandomness.Unavailable,
-        selfDestructScope = SelfDestructScope.AnyAccount
+        selfDestructScope = SelfDestructScope.AnyAccount,
+        blobBaseFeeUpdateFraction = None
       ),
       execution = ExecutionRules(
         touchedEmptyAccountsAreDeleted = false,

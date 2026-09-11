@@ -129,7 +129,18 @@ object StateFixtureRunner:
   private def blockUnder(block: BlockContext, rules: UpgradeRules): BlockContext =
     block.copy(
       baseFee = if rules.header.feeMarket.isDefined then block.baseFee else None,
-      prevRandao = if rules.evm.blockRandomness == BlockRandomness.Eip4399 then block.prevRandao else None
+      prevRandao = if rules.evm.blockRandomness == BlockRandomness.Eip4399 then block.prevRandao else None,
+      // The third member to need this, and the one the corpus happens to write
+      // consistently -- which is why the narrowing is defensive rather than
+      // load-bearing. Measured across the generated tree: 39,930 of its 59,966
+      // cases state `currentExcessBlobGas`, and the 20,036 that do not are
+      // exactly the cases of the twelve directories where the field appears
+      // nowhere at all; the four where it appears state it on every case. So
+      // unlike the base fee above, presence here agrees with the rules today. It
+      // is narrowed anyway, because agreement between a generator's env shape
+      // and a fork's rules is a property of this corpus rather than of the
+      // question.
+      excessBlobGas = if rules.header.blobSchedule.isDefined then block.excessBlobGas else None
     )
 
   /** What reading the published signature established.

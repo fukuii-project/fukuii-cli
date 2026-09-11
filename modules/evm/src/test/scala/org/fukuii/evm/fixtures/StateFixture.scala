@@ -220,14 +220,20 @@ object StateFixture:
       timestamp <- FixtureValues.quantityAt(json, "currentTimestamp")
       difficulty <- FixtureValues.quantityAt(json, "currentDifficulty")
       gasLimit <- FixtureValues.quantityAt(json, "currentGasLimit")
-      // Both are read where the file states them and left absent where it does
-      // not, which is what a directory filled for a fork below either member
-      // publishes. The machine refuses to substitute a zero for either -- zero
-      // is a legal charge and a legal randomness value, so a default would be a
-      // plausible answer for a block that supplied none.
+      // All three are read where the file states them and left absent where it
+      // does not, which is what a directory filled for a fork below any of them
+      // publishes. The machine refuses to substitute a zero for any -- zero is a
+      // legal charge, a legal randomness value and a legal excess, so a default
+      // would be a plausible answer for a block that supplied none.
       baseFee <- FixtureValues.optionally(json, "currentBaseFee")(FixtureValues.quantity)
       prevRandao <- FixtureValues.optionally(json, "currentRandom")(FixtureValues.hashOf)
-    yield BlockContext(coinbase, number, timestamp, difficulty, gasLimit, baseFee, prevRandao)
+      // Stated by every case of every fork from the one that introduced it, and
+      // read by nothing until an operation existed to ask. **Modelling it is not
+      // additive for a corpus already certified**: a field a reader ignores
+      // cannot move a root, and a field it fills can -- so every corpus that
+      // states it is re-measured rather than assumed unaffected.
+      excessBlobGas <- FixtureValues.optionally(json, "currentExcessBlobGas")(FixtureValues.uint64)
+    yield BlockContext(coinbase, number, timestamp, difficulty, gasLimit, baseFee, prevRandao, excessBlobGas)
 
   /** The signed transaction a combination was built from, where the corpus
     * publishes it.

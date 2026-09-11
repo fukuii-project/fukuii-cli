@@ -54,6 +54,74 @@ final case class FeeMarket(
     maxChangeDenominator: BigInt
 )
 
+/** What a fork settles about the blob gas its headers account for.
+  *
+  * ==A record and not a flag, because every source parameterizes it and three
+  * forks past the first have already moved the figures==
+  *
+  * `ethereum/go-ethereum` @ `02872e9ef` (2026-09-11) carries a per-fork
+  * `BlobConfig{Target, Max, UpdateFraction}` (`params/config.go:675-679`) and
+  * fills it differently at four of them -- `params/config.go:337-360` gives
+  * Cancun 3/6/3338477, Prague 6/9/5007716, BPO1 10/15/8346193 and BPO2
+  * 14/21/11684671. `besu-eth/besu` @ `b330564a9` (2026-09-11) carries the same
+  * three under the same names (`config/.../BlobSchedule.java:22-40`) with the
+  * same Cancun and Prague figures. `ethereum/execution-specs` @ `0cc100eb1`
+  * (2026-09-11) states them as per-fork constants instead --
+  * `src/ethereum/forks/cancun/vm/gas.py:83-86` against
+  * `forks/prague/vm/gas.py:93-96` and `forks/bpo1/vm/gas.py:94-100` -- and
+  * moves all three across the same forks. **A published state fixture states the
+  * record itself**: a Cancun case's own `config` carries
+  * `blobSchedule.Cancun = {target 0x03, max 0x06, baseFeeUpdateFraction
+  * 0x32f0ed}`.
+  *
+  * ==Blobs and not gas, which is the unit three of the four sources state==
+  *
+  * go-ethereum, besu and the fixture's own `config` all state a count of blobs
+  * and multiply by a per-blob figure where a derivation needs gas. The
+  * executable specification states gas directly at Cancun and Prague and then
+  * switches to blobs itself from Osaka
+  * (`forks/osaka/vm/gas.py:95-96`, `PER_BLOB * BLOB_SCHEDULE_TARGET`). Holding
+  * blobs keeps the stored figure the one a configuration file states and leaves
+  * the gas a derivation -- `org.fukuii.consensus.HeaderValidator` holds the
+  * per-blob figure, because no fork varies it.
+  *
+  * ==Two of the published record's three members are absent, for two different
+  * reasons==
+  *
+  * `baseFeeUpdateFraction` is read by no header rule at any fork this build has
+  * surveyed: it prices blob gas, and the layers that need a price are the
+  * machine and the settlement of a blob-carrying transaction. It sits on
+  * `org.fukuii.evm.EvmRules` where the operation that reads it is, so that one
+  * number is held once rather than in two facets.
+  *
+  * `max` is a header rule, and its reader is not built. Both production clients
+  * check a header's own `blobGasUsed` against it in the SAME rule that checks
+  * the excess -- `ethereum/go-ethereum` @ `02872e9ef`
+  * `consensus/misc/eip4844/eip4844.go:111-116` and `besu-eth/besu` @
+  * `b330564a9`
+  * `ethereum/core/.../headervalidationrules/BlobGasValidationRule.java:67-78`,
+  * each also requiring the figure to be a whole number of blobs. Neither check
+  * needs a body, so neither is the block-level comparison against what the
+  * transactions actually carried. **The member arrives with them**, on
+  * [[HeaderRules]]'s own admission test.
+  *
+  * ==So it holds one member today, and that is still not a flag==
+  *
+  * The obvious objection is that a one-member record is an `Option[BigInt]` with
+  * ceremony. Two things answer it. The published object is a record of three,
+  * two of which have identified readers and named triggers above, so this grows
+  * rather than being a shape chosen against nothing. And a bare number on
+  * [[HeaderRules]] would read as a quantity of something unstated at every use
+  * site, where every source in the field gives this figure a name.
+  *
+  * @param targetBlobs
+  *   how many blobs a block is expected to carry. The parent's own excess plus
+  *   what the parent spent is measured against it: the difference is this
+  *   block's excess, and the figure is floored at zero rather than going
+  *   negative.
+  */
+final case class BlobSchedule(targetBlobs: BigInt)
+
 /** Which header fields a fork holds at a constant, rather than leaving them for
   * a block's producer to choose and its consensus mechanism to check.
   *
@@ -143,14 +211,24 @@ enum HeaderConstants:
   * being fork-INVARIANT is the argument for keeping it off a fork-resolved
   * record, not for putting it there where it can be read once.
   *
-  * ==What a later fork adds, and why the shape admits it==
+  * ==What a later fork adds, and what the forecast got wrong about the first of
+  * them==
   *
   * A blob-gas schedule and a beacon root each arrive as a further trailing
-  * header element with its own proposal.
-  * [[org.fukuii.types.BlockHeader]] already encodes both, so what each needs
-  * here is a member saying whether this fork requires it -- exactly the shape
-  * [[feeMarket]] takes, and the shape [[carriesWithdrawalsRoot]] took when the
-  * first of the three arrived. Neither is built, because no layer reads one.
+  * header element with its own proposal, and
+  * [[org.fukuii.types.BlockHeader]] already encodes both. This section forecast
+  * that each would need *"a member saying whether this fork requires it"*, and
+  * for the blob-gas pair that is half the answer and the wrong half to state
+  * alone: presence IS resolved per fork, and so are figures the field has
+  * already moved three times past the fork that introduced them.
+  * [[blobSchedule]] is therefore an option over a record rather than a flag --
+  * the option answers presence, as a flag would, and the record answers what a
+  * header at this fork must derive. [[BlobSchedule]] carries the evidence.
+  *
+  * **The beacon root is still forecast and still unbuilt**, and it is the case
+  * the original sentence describes correctly: the proposal parameterizes
+  * nothing, so a flag is the shape it wants, exactly as
+  * [[carriesWithdrawalsRoot]] took.
   *
   * @param feeMarket
   *   the fee market this fork runs, absent where it runs none. A header under a
@@ -186,11 +264,22 @@ enum HeaderConstants:
   *   pair per fork, selecting between a `WithdrawalsValidator.ProhibitedWithdrawals`
   *   whose check is *"withdrawalsRoot must be null when Withdrawals are
   *   prohibited"* and an `AllowedWithdrawals` whose check is the converse.
+  * @param blobSchedule
+  *   what a header at this fork must account for in blob gas, absent where the
+  *   fork accounts for none. [[BlobSchedule]] carries the evidence for the
+  *   record and for the two published members that are not in it.
+  *
+  *   **Both directions are rules, as with [[feeMarket]] and
+  *   [[carriesWithdrawalsRoot]]**, and here the pair of header fields arrives as
+  *   one link -- `org.fukuii.types.BlobGasTail` holds `blobGasUsed` and
+  *   `excessBlobGas` together because no header carries one without the other --
+  *   so presence is a single question rather than two.
   */
 final case class HeaderRules(
     feeMarket: Option[FeeMarket],
     constants: HeaderConstants,
-    carriesWithdrawalsRoot: Boolean
+    carriesWithdrawalsRoot: Boolean,
+    blobSchedule: Option[BlobSchedule]
 )
 
 object HeaderRules:
@@ -199,4 +288,9 @@ object HeaderRules:
     * first fee market.
     */
   val Unset: HeaderRules =
-    HeaderRules(feeMarket = None, constants = HeaderConstants.Unconstrained, carriesWithdrawalsRoot = false)
+    HeaderRules(
+      feeMarket = None,
+      constants = HeaderConstants.Unconstrained,
+      carriesWithdrawalsRoot = false,
+      blobSchedule = None
+    )

@@ -126,24 +126,29 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     CertificationCorpora.GeneratedLondonCorpus -> CorpusCensus(files = 130, cases = 3010, skipped = 0),
     CertificationCorpora.GeneratedParisCorpus -> CorpusCensus(files = 134, cases = 3029, skipped = 0),
     CertificationCorpora.GeneratedShanghaiCorpus -> CorpusCensus(files = 151, cases = 3220, skipped = 0),
-    // The five read under a composition rather than through a schedule, which
-    // is what their names say. Nothing is skipped in any of them: every case
-    // carries a section under this fork's key, and every transaction in all
-    // five is a format these rules admit.
+    // The six read under a composition rather than through a schedule, which is
+    // what their names say. Nothing is skipped in any of them: every case
+    // carries a section under this fork's key, and every transaction in all six
+    // is a format these rules admit -- which includes the blob-charge directory,
+    // whose own transactions predate blob carriage entirely.
     //
-    // TWO OF THESE ROWS ARE THIS PHASE'S WHOLE CENSUS EVIDENCE, and no test
-    // total can carry them: a corpus is one table-driven row, so admitting one
-    // moves this map and the count below and moves the suite total by nothing.
-    // The transient-storage row in particular was measured under the previous
-    // composition, found to be 121 of 123, and deliberately left out; it is
-    // admitted here because the rules can now answer the two cases it decides.
+    // THE LAST ROW IS THIS PHASE'S CENSUS EVIDENCE, and no test total can carry
+    // it: a corpus is one table-driven row, so admitting one moves this map and
+    // the count below and moves the suite total by nothing.
+    //
+    // **The five rows above it are evidence of a different kind this phase.**
+    // Their figures are unchanged and their subject is unchanged, and the reader
+    // that produced them is not: it now fills a block member from a field every
+    // case in all five states and nothing read before. Five rows holding still
+    // is what says that filling it moved no root.
     CertificationCorpora.GeneratedCancunMemoryCopyCorpus -> CorpusCensus(files = 7, cases = 99, skipped = 0),
     CertificationCorpora.PortedStaticCancunTransientStorageCorpus ->
       CorpusCensus(files = 4, cases = 48, skipped = 0),
     CertificationCorpora.PortedStaticCancunMemoryCopyCorpus -> CorpusCensus(files = 3, cases = 106, skipped = 0),
     CertificationCorpora.GeneratedCancunSelfDestructCorpus -> CorpusCensus(files = 15, cases = 136, skipped = 0),
     CertificationCorpora.GeneratedCancunTransientStorageCorpus ->
-      CorpusCensus(files = 19, cases = 123, skipped = 0)
+      CorpusCensus(files = 19, cases = 123, skipped = 0),
+    CertificationCorpora.GeneratedCancunBlobGasFeeCorpus -> CorpusCensus(files = 2, cases = 4, skipped = 0)
   )
 
   /** Every censused corpus, as the rows the four properties below drive.
@@ -235,7 +240,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     //
     // Raising this is adding a corpus. Lowering it is dropping certified cases,
     // and that is a decision rather than a tidy-up.
-    assert(census.size == 24, s"the census covers ${census.size.toString} corpora rather than twenty-four")
+    assert(census.size == 25, s"the census covers ${census.size.toString} corpora rather than twenty-five")
   }
 
   property("every censused corpus holds the files the census records") {

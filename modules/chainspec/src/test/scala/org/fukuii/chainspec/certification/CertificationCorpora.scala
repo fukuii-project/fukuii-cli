@@ -8,7 +8,7 @@ import scala.util.control.NonFatal
 import org.fukuii.bytes.UInt64
 import org.fukuii.chainspec.{Network, UpgradeRules, UpgradeSchedule}
 import org.fukuii.chainspec.networks.{KnownNetworks, ethereum, ethereumclassic}
-import org.fukuii.chainspec.proposals.eip.{Eip1153, Eip5656, Eip6780}
+import org.fukuii.chainspec.proposals.eip.{Eip1153, Eip4844, Eip5656, Eip6780, Eip7516}
 import org.fukuii.evm.EvmRules
 
 /** The published corpora this layer is certified against, run once and reported
@@ -404,7 +404,8 @@ object CertificationCorpora:
     * rows -- and that spec's `ordinary`/`heavy` split, keyed on what a rerun
     * costs, is then what decides which run they belong to.
     */
-  private val ComposedForCancun: String = " at Shanghai with EIP-1153, EIP-5656 and EIP-6780"
+  private val ComposedForCancun: String =
+    " at Shanghai with EIP-1153, EIP-5656, EIP-6780, EIP-4844's blob-gas accounting and EIP-7516"
 
   /** The generated tier's memory-copying directory, read under the fork below
     * with the fork's built proposals added.
@@ -518,6 +519,30 @@ object CertificationCorpora:
     */
   val GeneratedCancunTransientStorageCorpus: String =
     "execution-specs-fixtures state_tests/for_cancun/cancun/eip1153_tstore" + ComposedForCancun
+
+  /** The generated tier's directory for the blob-charge operation, under the
+    * same rules.
+    *
+    * ==The smallest directory here, and the one whose limits have to be stated
+    * loudest==
+    *
+    * Two files and four cases, against directories of a hundred and more. Its
+    * subject is an operation that reports a number, and **every case in it
+    * states a zero excess** -- so the charge it reports is the minimum in all
+    * four, and the whole directory is satisfied by a build that pushes the
+    * constant one. `org.fukuii.chainspec.certification.CancunBlobGasCertificationSpec`
+    * measures that rather than describing it, and
+    * `org.fukuii.evm.BlobGasPriceSpec` is what certifies the arithmetic the
+    * directory cannot reach.
+    *
+    * **It is still worth registering**, for what a state tier does that a unit
+    * spec cannot: the operation is reached through a published transaction, at a
+    * published gas limit, against a published post-state root -- so a build
+    * pricing it at the wrong tier, or leaving the stack wrong, diverges here
+    * without anyone having written a case for it.
+    */
+  val GeneratedCancunBlobGasFeeCorpus: String =
+    "execution-specs-fixtures state_tests/for_cancun/cancun/eip7516_blobgasfee" + ComposedForCancun
 
   /** The same directory as the Tangerine Whistle tier, resolved through the
     * other network's schedule instead.
@@ -771,7 +796,13 @@ object CertificationCorpora:
     // `Upgrades.cancun` is what this becomes once the fork is whole, and until
     // then a value under that name would claim a completeness it did not have.
     val composedForCancun =
-      shanghai.adopting(Eip1153.component, Eip5656.component, Eip6780.component)
+      shanghai.adopting(
+        Eip1153.component,
+        Eip5656.component,
+        Eip6780.component,
+        Eip4844.component,
+        Eip7516.component
+      )
 
     val gasReprice = rulesAt(classicSchedule, classicGasReprice)
 
@@ -938,6 +969,13 @@ object CertificationCorpora:
       StateCorpus(
         GeneratedCancunTransientStorageCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_cancun/cancun/eip1153_tstore"),
+        "Cancun",
+        ethereumChain,
+        composedForCancun
+      ),
+      StateCorpus(
+        GeneratedCancunBlobGasFeeCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_cancun/cancun/eip7516_blobgasfee"),
         "Cancun",
         ethereumChain,
         composedForCancun

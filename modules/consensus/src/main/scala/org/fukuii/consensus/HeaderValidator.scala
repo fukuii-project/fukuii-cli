@@ -1,7 +1,7 @@
 package org.fukuii.consensus
 
-import org.fukuii.bytes.{Hash, UInt256}
-import org.fukuii.chainspec.{FeeMarket, HeaderConstants, UpgradeRules}
+import org.fukuii.bytes.{Hash, UInt256, UInt64}
+import org.fukuii.chainspec.{BlobSchedule, FeeMarket, HeaderConstants, UpgradeRules}
 import org.fukuii.crypto.Keccak256
 import org.fukuii.types.{BlockHeader, BlockNonce, Seal}
 
@@ -116,6 +116,35 @@ enum HeaderFault:
     */
   case BaseFeeNotRepresentable(derived: BigInt)
 
+  /** A block at a fork that accounts for blob gas, carrying no such account.
+    *
+    * One reason for the pair rather than one each, because
+    * `org.fukuii.types.BlobGasTail` holds both fields on one link: a header
+    * stating one of them and not the other is unencodable rather than invalid.
+    */
+  case BlobGasMissing
+
+  /** A block below any blob-gas proposal, carrying an account of it.
+    *
+    * The excess alone names the link, for [[BlobGasMissing]]'s reason: the two
+    * fields are one link and cannot be present separately, so reporting one
+    * reports both.
+    */
+  case BlobGasUnexpected(excessBlobGas: UInt64)
+
+  /** A block whose stated excess is not the one its parent requires. */
+  case ExcessBlobGasMismatch(stated: UInt64, required: BigInt)
+
+  /** An excess whose derivation does not fit what a header can state.
+    *
+    * Reachable only from a parent that was never itself validated, for the
+    * reason [[BaseFeeNotRepresentable]] is: two fields near the top of the range
+    * sum past it, and a header cannot state the result. Returned rather than
+    * raised, because a header arriving from a peer is exactly the caller this
+    * type promises an answer to.
+    */
+  case ExcessBlobGasNotRepresentable(derived: BigInt)
+
 /** A header together with the rules its own height resolves to.
   *
   * ==One parameter where four invited a transposition==
@@ -151,9 +180,9 @@ final case class Resolved(header: BlockHeader, rules: UpgradeRules)
   * block where a market begins, and which therefore could not be left unbuilt.
   *
   * **What is checked: succession, the gas figure against its own limit, the
-  * gas-limit bound, the charge, the fields a fork fixes to constants, and
-  * whether a commitment over the block's withdrawals is present where its fork
-  * requires one.**
+  * gas-limit bound, the charge, the fields a fork fixes to constants, whether a
+  * commitment over the block's withdrawals is present where its fork requires
+  * one, and the blob-gas excess against the one its parent requires.**
   * Against `ethereum/execution-specs` @ `20f7f6271a` `forks/london/fork.py`'s
   * `validate_header`, what remains there is the extra-data cap, the difficulty,
   * the seal, the commitments -- and the PARENT HASH, at `:364-366`, which is the
@@ -281,6 +310,24 @@ object HeaderValidator:
     */
   val MinGasLimit: BigInt = BigInt(5000)
 
+  /** The blob gas one blob costs, which no fork varies.
+    *
+    * `ethereum/EIPs` @ `d2a64c2d4` (2026-09-11), `EIPS/eip-4844.md:53` states
+    * `GAS_PER_BLOB` as `2**17`, and `ethereum/execution-specs` @ `0cc100eb1`
+    * (2026-09-11) repeats `PER_BLOB: Final[U64] = U64(2**17)` unchanged in every
+    * fork module that has a blob schedule at all --
+    * `forks/cancun/vm/gas.py:83` through `forks/bpo5/vm/gas.py:94`.
+    * `ethereum/go-ethereum` @ `02872e9ef` holds it as the package constant
+    * `params.BlobTxBlobGasPerBlob` and multiplies its per-fork blob COUNTS by
+    * it, which is the same split this object takes.
+    *
+    * **Held here rather than on the fork's schedule for the reason
+    * [[GasLimitBoundDivisor]] and [[MinGasLimit]] are**: a fork-invariant figure
+    * on a fork-resolved record is a member nothing can vary, and
+    * `org.fukuii.chainspec.UpgradeRules`'s own admission test refuses it.
+    */
+  val BlobGasPerBlob: BigInt = BigInt(1) << 17
+
   /** What a header commits to when it includes no ommers.
     *
     * ==Derived from the two facts the document states, rather than transcribed==
@@ -332,6 +379,7 @@ object HeaderValidator:
       _ <- checkBaseFee(block, parent)
       _ <- checkConstants(block)
       _ <- checkWithdrawalsRoot(block)
+      _ <- checkBlobGas(block, parent)
     yield ()
 
   /** A header states a commitment over its block's withdrawals exactly where
@@ -364,6 +412,85 @@ object HeaderValidator:
       case (false, Some(stated)) => Left(HeaderFault.WithdrawalsRootUnexpected(stated))
       case (true, None)          => Left(HeaderFault.WithdrawalsRootMissing)
       case (true, Some(_))       => Right(())
+
+  /** A header accounts for blob gas exactly where its fork does, and states the
+    * excess its parent requires.
+    *
+    * ==Presence and absence, then a derivation, which is [[checkBaseFee]]'s
+    * shape with one difference==
+    *
+    * The pair is the same one that object already checks twice, and the fields
+    * arrive as one link so presence is one question rather than two. What
+    * differs is the transition: a fee market states an opening charge, because
+    * there is no parent under the market to derive from. This has no opening
+    * value at all -- the derivation is total over a parent with no blob fields,
+    * reading both as zero, and answers zero there because zero is below every
+    * target. `ethereum/EIPs` @ `d2a64c2d4` (2026-09-11),
+    * `EIPS/eip-4844.md:162` says so in terms: *"For the first post-fork block,
+    * both `parent.blob_gas_used` and `parent.excess_blob_gas` are evaluated as
+    * `0`."*
+    *
+    * **So this rule needs no `beginsBlobSchedule`, and adding one would be a
+    * second source of truth for something the arithmetic already settles.** Both
+    * production clients read the parent's absent fields as zero rather than
+    * comparing rule sets -- `ethereum/go-ethereum` @ `02872e9ef`
+    * `consensus/misc/eip4844/eip4844.go:139-141` guards on
+    * `parent.ExcessBlobGas != nil`, and `besu-eth/besu` @ `b330564a9`
+    * `ethereum/core/.../headervalidationrules/BlobGasValidationRule.java:53-54`
+    * takes `.orElse(0L)` for each.
+    *
+    * ==What is NOT checked here, and one half of it is a header rule==
+    *
+    * A block's stated `blobGasUsed` against what its transactions actually
+    * carried is a commitment, and is deferred for the reason every other
+    * commitment is: it needs an executed block. **The two BOUNDS on the same
+    * field are not that**, and both production clients check them in this same
+    * rule from the header alone -- that the figure is a whole number of blobs,
+    * and that it is no more than the fork's maximum. They are unbuilt here
+    * because `org.fukuii.chainspec.BlobSchedule` carries no maximum yet, and
+    * that record says what brings one.
+    */
+  private def checkBlobGas(block: Resolved, parent: Resolved): Either[HeaderFault, Unit] =
+    // Matched on the excess alone rather than on both fields, because
+    // `org.fukuii.types.BlobGasTail` holds the pair and a header carrying one
+    // without the other is unencodable. Asking twice would add two arms for
+    // states no header can reach.
+    (block.rules.header.blobSchedule, block.header.excessBlobGas) match
+      case (None, None)                   => Right(())
+      case (None, Some(stated))           => Left(HeaderFault.BlobGasUnexpected(stated))
+      case (Some(_), None)                => Left(HeaderFault.BlobGasMissing)
+      case (Some(schedule), Some(stated)) =>
+        val required = excessBlobGasFor(parent, schedule)
+        UInt64.fromBigInt(required) match
+          case Left(_)     => Left(HeaderFault.ExcessBlobGasNotRepresentable(required))
+          case Right(fits) =>
+            if stated == fits then Right(()) else Left(HeaderFault.ExcessBlobGasMismatch(stated, required))
+
+  /** What a block's excess must be, derived from its parent.
+    *
+    * The parent's own excess plus what it spent, less the target, floored at
+    * zero. `ethereum/execution-specs` @ `0cc100eb1`
+    * `src/ethereum/forks/cancun/vm/gas.py:384-413` and `ethereum/EIPs` @
+    * `d2a64c2d4` `EIPS/eip-4844.md:155-159` state the identical three lines.
+    *
+    * ==Arbitrary precision, because the sum can leave the range the fields have==
+    *
+    * Both addends are 64-bit and their sum need not be, so the arithmetic runs
+    * wider than the fields and the caller decides what to do when the answer
+    * does not fit back into one. A sum taken in the field's own width would wrap
+    * and produce a small excess for a parent claiming an enormous one, which is
+    * a wrong answer rather than a refusal.
+    *
+    * ==It reads the parent and never the block==
+    *
+    * For [[baseFeeFor]]'s reason: what a block MUST state cannot depend on what
+    * it DOES state.
+    */
+  private def excessBlobGasFor(parent: Resolved, schedule: BlobSchedule): BigInt =
+    val spent = parent.header.excessBlobGas.map(_.toBigInt).getOrElse(BigInt(0)) +
+      parent.header.blobGasUsed.map(_.toBigInt).getOrElse(BigInt(0))
+    val target = schedule.targetBlobs * BlobGasPerBlob
+    if spent < target then BigInt(0) else spent - target
 
   /** The header fields a fork holds at a constant, against those constants.
     *

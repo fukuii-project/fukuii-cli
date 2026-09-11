@@ -318,7 +318,8 @@ object Upgrades:
         // narrowing would be this network's own decision rather than an
         // inheritance, which is why the value is written here rather than
         // defaulted.
-        selfDestructScope = SelfDestructScope.AnyAccount
+        selfDestructScope = SelfDestructScope.AnyAccount,
+        blobBaseFeeUpdateFraction = None
       ),
       execution = ExecutionRules(
         touchedEmptyAccountsAreDeleted = false,

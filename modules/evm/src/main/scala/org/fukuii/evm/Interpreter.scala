@@ -190,6 +190,21 @@ object Interpreter:
         environment.block.number.toString
     )
 
+  /** A rule set holding the blob-charge operation without the pair that prices
+    * it, which is a configuration rather than a chain state.
+    *
+    * Two halves can be missing and the message says which, because they are
+    * different mistakes: a block with no excess is a caller that built a context
+    * from a header below the proposal, and rules with no update fraction are a
+    * composition that adopted the operation's document without the one defining
+    * the charge.
+    */
+  private def unfilledBlobGasPrice(environment: Environment, missing: String): Nothing =
+    throw new IllegalStateException(
+      "the blob-charge operation is in this table with no " + missing + ", at number " +
+        environment.block.number.toString
+    )
+
   /** Refused rather than defaulted, for the reason [[unfilledBaseFee]] is.
     *
     * A zero randomness value is legal and indistinguishable from an absent one,
@@ -516,6 +531,24 @@ object Interpreter:
       // field, and the two are adopted together.
       case Opcode.BaseFee =>
         pushing(frame, operation)(Word(environment.block.baseFee.getOrElse(unfilledBaseFee(environment))))
+
+      // The one block value that is DERIVED rather than stated. Every other
+      // entry in this group is pushed as the header carries it; this one runs
+      // the expansion in `BlobGasPrice` over the excess the header states and
+      // the fraction the fork resolves, which is why two things can be absent
+      // here where the operation above has one.
+      case Opcode.BlobBaseFee =>
+        pushing(frame, operation)(
+          Word(
+            BlobGasPrice.at(
+              environment.block.excessBlobGas
+                .getOrElse(unfilledBlobGasPrice(environment, "excess blob gas on the block"))
+                .toBigInt,
+              environment.rules.blobBaseFeeUpdateFraction
+                .getOrElse(unfilledBlobGasPrice(environment, "blob base-fee update fraction in these rules"))
+            )
+          )
+        )
 
       case Opcode.BlockHash =>
         priced(operation) { gas =>

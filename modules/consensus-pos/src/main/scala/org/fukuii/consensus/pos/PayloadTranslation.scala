@@ -203,7 +203,13 @@ object PayloadTranslation:
       difficulty = BigInt(0),
       gasLimit = payload.gasLimit.toBigInt,
       baseFee = Some(payload.baseFeePerGas.toBigInt),
-      prevRandao = Some(payload.prevRandao)
+      prevRandao = Some(payload.prevRandao),
+      // Forwarded where the payload's structure carries it and left absent where
+      // it does not, which is the same reading the header rule takes of the same
+      // field. The version ladder is what decides presence -- a V2 payload has no
+      // blob link at all -- so this is a transcription rather than a version
+      // question asked a second way.
+      excessBlobGas = payload.excessBlobGas
     )
 
   /** The header the payload describes, with every commitment it omits derived.

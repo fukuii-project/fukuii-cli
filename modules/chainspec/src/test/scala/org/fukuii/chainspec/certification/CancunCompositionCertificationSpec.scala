@@ -3,55 +3,76 @@ package org.fukuii.chainspec.certification
 import org.scalatest.flatspec.AnyFlatSpec
 
 import org.fukuii.chainspec.networks.ethereum
-import org.fukuii.chainspec.proposals.eip.{Eip1153, Eip5656, Eip6780}
+import org.fukuii.chainspec.proposals.eip.{Eip1153, Eip4844, Eip5656, Eip6780, Eip7516}
 import org.fukuii.chainspec.{Component, ProposalId, UpgradeRules}
 import org.fukuii.evm.fixtures.{CorpusReport, FixtureCorpus}
 
-/** The Cancun documents this build has adopted, against five published state
+/** The Cancun documents this build has adopted, against six published state
   * directories.
   *
   * ==The rules these are read under are a COMPOSITION, and that is the whole of
   * what makes this spec unusual==
   *
   * Every other state tier here is resolved through a network's schedule at a
-  * height, so it certifies an activation as well as a machine. These five
+  * height, so it certifies an activation as well as a machine. These six
   * cannot be: the fork their files are filled for is being built one proposal
-  * at a time, and there is no activation for a rule set holding three of its
-  * six. So they name `Upgrades.shanghai` with the adopted components, and the
-  * first registration below is what makes that mean anything -- without it,
-  * five corpora would be certifying a composition nothing had checked was the
-  * one their names describe.
+  * at a time, and there is no activation for a rule set holding some of its
+  * documents. So they name `Upgrades.shanghai` with the adopted components, and
+  * the first registration below is what makes that mean anything -- without it,
+  * six corpora would be certifying a composition nothing had checked was the one
+  * their names describe.
   *
   * **This is not the same case as `LegacyConstantinopleStateCorpus`.** That one
   * names a composition because its rule set is unreachable by construction.
   * This one names a composition because the fork is unfinished, and it stops
   * being the right shape the moment that fork exists.
   *
-  * ==The five DECIDE three proposals, and the figures are the deliverable==
+  * ==The six DECIDE four proposals, and the figures are the deliverable==
   *
   * Every count below is a differential -- how many cases answer differently
   * once a proposal is withdrawn -- rather than a size. A directory named for a
   * proposal is routinely taken to certify it, and the figures show why that is
   * not free.
   *
-  * | directory | cases | w/o EIP-1153 | w/o EIP-5656 | w/o EIP-6780 | w/o all three |
-  * |---|---|---|---|---|---|
-  * | `cancun/eip5656_mcopy` | 99 | 0 | 61 | 0 | 61 |
-  * | `ported_static/stEIP5656_MCOPY` | 106 | 0 | 90 | 0 | 90 |
-  * | `ported_static/stEIP1153_transientStorage` | 48 | 48 | 0 | 0 | 48 |
-  * | `cancun/eip6780_selfdestruct` | 136 | 0 | 0 | 48 | 48 |
-  * | `cancun/eip1153_tstore` | 123 | 121 | 0 | 2 | 121 |
+  * | directory | cases | w/o EIP-1153 | w/o EIP-5656 | w/o EIP-6780 | w/o EIP-7516 | w/o all |
+  * |---|---|---|---|---|---|---|
+  * | `cancun/eip5656_mcopy` | 99 | 0 | 61 | 0 | 0 | 61 |
+  * | `ported_static/stEIP5656_MCOPY` | 106 | 0 | 90 | 0 | 0 | 90 |
+  * | `ported_static/stEIP1153_transientStorage` | 48 | 48 | 0 | 0 | 0 | 48 |
+  * | `cancun/eip6780_selfdestruct` | 136 | 0 | 0 | 48 | 0 | 48 |
+  * | `cancun/eip1153_tstore` | 123 | 121 | 0 | 2 | 0 | 121 |
+  * | `cancun/eip7516_blobgasfee` | 4 | 0 | 0 | 0 | **2** | 2 |
   *
-  * **The nine zeroes are the load-bearing half.** Reading a directory filled
-  * for a whole fork under a rule set carrying three of its proposals is sound
-  * only where the directory cannot tell the difference, and a zero is what says
-  * the proposal it is measured against is inert over those files. Each zero
+  * **The seventeen zeroes are the load-bearing half.** Reading a directory
+  * filled for a whole fork under a rule set carrying some of its proposals is
+  * sound only where the directory cannot tell the difference, and a zero is what
+  * says the proposal it is measured against is inert over those files. Each zero
   * sits beside a non-zero from the same machinery over the same corpus, so none
   * of them is a rerun that silently failed to apply its change.
   *
+  * **The last row is the one where the figure is smaller than the directory and
+  * that is not a rounding.** Two of its four cases are expected to fail -- one
+  * out of gas, one on a stack overflow -- and a case that exhausts its allowance
+  * reaches the same state whether the byte ran an operation or named none. So
+  * the directory certifies the operation over two cases, not four, and the rows
+  * below name which two.
+  *
+  * ==One proposal in the composition has no column, and that is a property of
+  * the rules rather than a gap==
+  *
+  * EIP-4844's blob-gas accounting is adopted here and cannot be withdrawn on its
+  * own: doing so leaves EIP-7516's operation in the table with nothing to derive
+  * a charge from, and `org.fukuii.evm.Interpreter` refuses that configuration
+  * rather than answering it. The pair is what a fork adopts and the pair is what
+  * the all-withdrawn column removes. What the accounting's own figures are
+  * asserted against instead is
+  * `org.fukuii.chainspec.proposals.eip.Eip4844Spec`, which is the only place
+  * this build's target and update fraction are compared with the published
+  * ones.
+  *
   * **The last row is the one that is not a partition, and it is the point of
   * this phase.** Everywhere else the withdrawal sets are disjoint and the
-  * all-three figure is their sum. In `cancun/eip1153_tstore` the two cases
+  * all-withdrawn figure is their sum. In `cancun/eip1153_tstore` the two cases
   * EIP-6780 decides are INSIDE the 121 EIP-1153 decides, so the union is 121
   * rather than 123. Those two cases are why that directory could not be
   * certified before this phase: they were its only divergences under the
@@ -66,15 +87,23 @@ import org.fukuii.evm.fixtures.{CorpusReport, FixtureCorpus}
   *
   * ==What this tier CANNOT see, stated rather than left to be assumed==
   *
-  *   - **The other three proposals of the fork.** None of them is in the
-  *     composition, so no case here is evidence about EIP-4844, EIP-7516 or
-  *     EIP-4788. A pass here says nothing about any of them.
-  *   - **`currentExcessBlobGas`.** Every case in all five states it in its `env`
-  *     and the reader models no such field. Nothing here reads it: every
-  *     transaction in all five directories is a format predating blob carriage,
-  *     and no operation that would consult it is in the table. So the agreement
-  *     below is not evidence that the field can go on being ignored -- it is
-  *     evidence that these files never ask.
+  *   - **What EIP-4844 is besides its blob-gas accounting.** The transaction
+  *     format, the operation reporting a blob's hash and the point-evaluation
+  *     precompile are all that document's and none is in the composition, so no
+  *     case here is evidence about any of them. EIP-4788 is not in the
+  *     composition at all.
+  *   - **The blob CHARGE above its floor.** Every case in all six states a zero
+  *     excess in its `env`, so the operation reports the minimum wherever it
+  *     runs. **This directory is satisfied by a build that pushes the constant
+  *     one**, and the expansion that would distinguish the two is certified in
+  *     `org.fukuii.evm.BlobGasPriceSpec` against a published table instead.
+  *     Measured across the whole generated tier: of 39,930 cases stating the
+  *     field, 37,201 state zero, and every one of the 2,729 stating anything
+  *     else is in a blob-transaction directory this composition does not read.
+  *   - **The header rule that derives that excess.** A state fixture states the
+  *     excess rather than deriving one, so it agrees with any derivation
+  *     whatsoever -- which is the same limit the fee market's own charge has
+  *     here. `org.fukuii.consensus.HeaderValidatorSpec` is what checks it.
   *   - **The gas figure any of these operations costs, as a figure.** A `post`
   *     entry states a root and no gas, so a wrong charge is visible here only
   *     through what the sender keeps and the producer is credited. That is a
@@ -106,7 +135,7 @@ class CancunCompositionCertificationSpec extends AnyFlatSpec:
     * takes them.
     */
   private val Adopted: Vector[Component] =
-    Vector(Eip1153.component, Eip5656.component, Eip6780.component)
+    Vector(Eip1153.component, Eip5656.component, Eip6780.component, Eip4844.component, Eip7516.component)
 
   private val TransientStorage: ProposalId = ProposalId.Eip(1153)
 
@@ -114,7 +143,24 @@ class CancunCompositionCertificationSpec extends AnyFlatSpec:
 
   private val SelfDestructScope: ProposalId = ProposalId.Eip(6780)
 
-  /** The rules the five corpora name, rebuilt here.
+  private val BlobGasAccounting: ProposalId = ProposalId.Eip(4844)
+
+  private val BlobCharge: ProposalId = ProposalId.Eip(7516)
+
+  /** The proposals whose withdrawal leaves a rule set the machine will still
+    * run, which is not all five.
+    *
+    * Withdrawing the accounting alone leaves the charge-reporting operation in
+    * the table with nothing to derive a charge from, and
+    * `org.fukuii.evm.Interpreter` refuses that rather than answering -- so a
+    * rerun under it would raise out of this spec instead of reporting a
+    * divergence. **The pair is what a fork adopts and the pair is what is
+    * withdrawn**, which is why the accounting has no column of its own below.
+    */
+  private val Withdrawable: Vector[ProposalId] =
+    Vector(TransientStorage, MemoryCopy, SelfDestructScope, BlobCharge)
+
+  /** The rules the six corpora name, rebuilt here.
     *
     * Adoption has no inverse -- a component is an arbitrary function over the
     * whole rule set -- so a proposal is withdrawn by rebuilding without it
@@ -136,7 +182,10 @@ class CancunCompositionCertificationSpec extends AnyFlatSpec:
 
   private val Transient: String = CertificationCorpora.GeneratedCancunTransientStorageCorpus
 
-  private val corpora: Vector[String] = Vector(Copying, PortedCopying, PortedTransient, Destroying, Transient)
+  private val Charging: String = CertificationCorpora.GeneratedCancunBlobGasFeeCorpus
+
+  private val corpora: Vector[String] =
+    Vector(Copying, PortedCopying, PortedTransient, Destroying, Transient, Charging)
 
   /** Files and cases, stated as literals so a corpus that shrank is a failure
     * rather than a smaller pass.
@@ -147,7 +196,8 @@ class CancunCompositionCertificationSpec extends AnyFlatSpec:
       PortedCopying -> (3, 106),
       PortedTransient -> (4, 48),
       Destroying -> (15, 136),
-      Transient -> (19, 123)
+      Transient -> (19, 123),
+      Charging -> (2, 4)
     )
 
   private val Differential: Map[(ProposalId, String), Int] =
@@ -157,26 +207,47 @@ class CancunCompositionCertificationSpec extends AnyFlatSpec:
       (TransientStorage, PortedTransient) -> 48,
       (TransientStorage, Destroying) -> 0,
       (TransientStorage, Transient) -> 121,
+      (TransientStorage, Charging) -> 0,
       (MemoryCopy, Copying) -> 61,
       (MemoryCopy, PortedCopying) -> 90,
       (MemoryCopy, PortedTransient) -> 0,
       (MemoryCopy, Destroying) -> 0,
       (MemoryCopy, Transient) -> 0,
+      (MemoryCopy, Charging) -> 0,
       (SelfDestructScope, Copying) -> 0,
       (SelfDestructScope, PortedCopying) -> 0,
       (SelfDestructScope, PortedTransient) -> 0,
       (SelfDestructScope, Destroying) -> 48,
-      (SelfDestructScope, Transient) -> 2
+      (SelfDestructScope, Transient) -> 2,
+      (SelfDestructScope, Charging) -> 0,
+      (BlobCharge, Copying) -> 0,
+      (BlobCharge, PortedCopying) -> 0,
+      (BlobCharge, PortedTransient) -> 0,
+      (BlobCharge, Destroying) -> 0,
+      (BlobCharge, Transient) -> 0,
+      (BlobCharge, Charging) -> 2
     )
 
   /** How many cases move when every adopted document is withdrawn at once.
     *
-    * The union of the three columns above rather than their sum, and the two
-    * are equal in every corpus but the last -- where two cases are decided
-    * twice, so 121 + 2 sums to 123 and unions to 121.
+    * The union of the withdrawable columns above rather than their sum, and the
+    * two are equal in every corpus but `cancun/eip1153_tstore` -- where two
+    * cases are decided twice, so 121 + 2 sums to 123 and unions to 121.
+    *
+    * **The accounting is withdrawn here and has no column**, for the reason
+    * [[Withdrawable]] states: with the operation already gone from the table,
+    * removing the fraction beside it changes nothing further, so this column is
+    * the four withdrawable documents' union either way.
     */
   private val WithoutAnyOfThem: Map[String, Int] =
-    Map(Copying -> 61, PortedCopying -> 90, PortedTransient -> 48, Destroying -> 48, Transient -> 121)
+    Map(
+      Copying -> 61,
+      PortedCopying -> 90,
+      PortedTransient -> 48,
+      Destroying -> 48,
+      Transient -> 121,
+      Charging -> 2
+    )
 
   private val reports: Vector[CorpusReport] =
     CertificationCorpora.reports.getOrElse(
@@ -223,12 +294,14 @@ class CancunCompositionCertificationSpec extends AnyFlatSpec:
     */
   private lazy val moved: Map[(ProposalId, String), Vector[String]] =
     (for
-      dropped <- Vector(TransientStorage, MemoryCopy, SelfDestructScope)
+      dropped <- Withdrawable
       corpus <- corpora
     yield (dropped, corpus) -> measure(corpus, withoutAll(Set(dropped)))).toMap
 
   private lazy val movedWithoutAnyOfThem: Map[String, Vector[String]] =
-    corpora.map(corpus => corpus -> measure(corpus, withoutAll(Differential.keySet.map(_._1)))).toMap
+    corpora
+      .map(corpus => corpus -> measure(corpus, withoutAll(Withdrawable.toSet + BlobGasAccounting)))
+      .toMap
 
   // ── What the figures below are figures ABOUT ──────────────────────────────
 
@@ -240,9 +313,10 @@ class CancunCompositionCertificationSpec extends AnyFlatSpec:
         "measurements about some third rule set"
     )
 
-  it should "record all three adoptions, in order" in
+  it should "record all five adoptions, in order" in
     assert(
-      composed.components.takeRight(3) == Vector(TransientStorage, MemoryCopy, SelfDestructScope),
+      composed.components.takeRight(5) ==
+        Vector(TransientStorage, MemoryCopy, SelfDestructScope, BlobGasAccounting, BlobCharge),
       "the journal states which documents produced these rules, and every differential names one of them"
     )
 
@@ -272,7 +346,7 @@ class CancunCompositionCertificationSpec extends AnyFlatSpec:
 
   // ── The differentials ─────────────────────────────────────────────────────
 
-  "withdrawing each document" should "move the stated cases in every directory" in
+  "withdrawing each withdrawable document" should "move the stated cases in every directory" in
     assert(
       Differential.forall((key, expected) => moved(key).length == expected),
       "measured: " +
@@ -284,7 +358,7 @@ class CancunCompositionCertificationSpec extends AnyFlatSpec:
           .mkString("; ")
     )
 
-  "withdrawing all three at once" should "move the union and not the sum" in
+  "withdrawing all of them at once" should "move the union and not the sum" in
     // The property that rules out a case moving only when several are gone, and
     // the one place the union and the sum come apart is the last corpus.
     assert(
@@ -293,27 +367,24 @@ class CancunCompositionCertificationSpec extends AnyFlatSpec:
         corpora.map(corpus => corpus + " -> " + movedWithoutAnyOfThem(corpus).length.toString).mkString("; ")
     )
 
-  it should "move exactly what the three move between them" in
+  it should "move exactly what they move between them" in
     assert(
       corpora.forall { corpus =>
-        val union = Vector(TransientStorage, MemoryCopy, SelfDestructScope)
-          .flatMap(proposal => moved((proposal, corpus)))
-          .toSet
+        val union = Withdrawable.flatMap(proposal => moved((proposal, corpus))).toSet
         movedWithoutAnyOfThem(corpus).toSet == union
       },
-      "a case that moved only when all three were withdrawn would be decided by an interaction rather than " +
+      "a case that moved only when all were withdrawn would be decided by an interaction rather than " +
         "by any one document, and no figure above would name it"
     )
 
-  "the three documents" should "decide disjoint sets of cases in four of the five directories" in
-    // NOT a general property, which is what the previous composition's spec
-    // asserted and what this phase falsified. Stated as the measured split so
+  "the withdrawable documents" should "decide disjoint sets of cases in five of the six directories" in
+    // NOT a general property, which is what an earlier composition's spec
+    // asserted and what a later phase falsified. Stated as the measured split so
     // that a new overlap is a failure rather than a silently widened claim.
     assert(
       corpora.filterNot(_ == Transient).forall { corpus =>
-        val sets =
-          Vector(TransientStorage, MemoryCopy, SelfDestructScope).map(proposal => moved((proposal, corpus)).toSet)
-        sets(0).intersect(sets(1)).isEmpty && sets(0).intersect(sets(2)).isEmpty && sets(1).intersect(sets(2)).isEmpty
+        val sets = Withdrawable.map(proposal => moved((proposal, corpus)).toSet)
+        sets.combinations(2).forall(pair => pair(0).intersect(pair(1)).isEmpty)
       },
       "an overlap outside the directory named below would mean two documents reach one case somewhere this " +
         "spec claims they cannot"
@@ -329,6 +400,37 @@ class CancunCompositionCertificationSpec extends AnyFlatSpec:
       "the two cases this directory could not be certified for are a destruction of an account that predates " +
         "the transaction, reached from a re-entrant call that also writes transient storage -- measured: " +
         both.toVector.sorted.mkString(", ")
+    )
+  }
+
+  "the directory named for the blob charge" should "decide only the two cases that run the operation to completion" in {
+    // **Half the directory cannot tell whether the operation exists**, and that
+    // is the figure worth having rather than the size. Its two files each pair a
+    // case that succeeds with one that is expected to fail -- out of gas, and a
+    // stack overflow -- and a failing case reaches the same state whether the
+    // byte ran an operation or named none, because both consume the whole
+    // allowance. So the directory's own name overstates what it certifies by a
+    // factor of two, which no reading of the files would have said.
+    val decided = moved((BlobCharge, Charging))
+    assert(
+      decided.length == 2 &&
+        decided.exists(_.contains("enough_gas")) &&
+        decided.exists(_.contains("no_stack_overflow")),
+      "measured: " + decided.sorted.mkString(", ")
+    )
+  }
+
+  it should "name the two cases it cannot decide, which are the two expected to fail" in {
+    // The control for the row above: the complement, named, so that "only two
+    // move" is a measured split rather than a rerun that half failed to apply.
+    // A case exhausting its allowance reaches the same state whether the byte
+    // ran an operation or named none, which is why these two are the pair.
+    val undecided = report(Charging).outcomes.map(_.name).filterNot(moved((BlobCharge, Charging)).contains)
+    assert(
+      undecided.length == 2 &&
+        undecided.exists(_.contains("state_test-out_of_gas]")) &&
+        undecided.exists(_.contains("state_test-stack_overflow]")),
+      "measured: " + undecided.sorted.mkString(", ")
     )
   }
 

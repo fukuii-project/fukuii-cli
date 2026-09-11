@@ -65,6 +65,37 @@ import org.fukuii.bytes.{Address, Hash, UInt64}
   *   `besu-eth/besu` @ `fdf1247c6d` (2026-08-26) keeps one accessor named for
   *   both readings, `getMixHashOrPrevRandao()`, and picks by which operation its
   *   fork-resolved registry holds.
+  * @param excessBlobGas
+  *   how much blob gas the chain has run past its target by the time this block
+  *   starts, absent below the fork whose headers carry the field.
+  *
+  *   ==The EXCESS and not the price, which is where two production clients go
+  *   the other way==
+  *
+  *   `ethereum/go-ethereum` @ `02872e9ef` carries a precomputed
+  *   `BlobBaseFee *big.Int` on its block context and fills it in
+  *   `core/evm.go:60-61` by calling `eip4844.CalcBlobFee(chain.Config(), header)`;
+  *   `besu-eth/besu` @ `b330564a9` likewise has its operation read
+  *   `frame.getBlobGasPrice()`. Both therefore hold a value their own fork
+  *   configuration produced. **This type cannot do that without giving up the
+  *   rule that decided its membership** -- its own note above states that every
+  *   member is read off a header, which is what put a base fee here and kept a
+  *   chain id out, and a blob charge is DERIVED from a header rather than stated
+  *   by one. `org.fukuii.consensus.pos.PayloadTranslation.contextOf` is the
+  *   measurable consequence: it builds one of these from a payload alone, and a
+  *   precomputed charge would make it need the fork's rules as well.
+  *
+  *   `ethereum/execution-specs` @ `0cc100eb1` splits it the same way this does,
+  *   putting `excess_blob_gas` on the block environment and deriving the charge
+  *   inside the operation
+  *   (`src/ethereum/forks/cancun/vm/instructions/environment.py:599-601`).
+  *
+  *   ==Optional for [[baseFee]]'s reason and not [[prevRandao]]'s==
+  *
+  *   The header field is absent below the fork that adds it, so there is no
+  *   number to carry. Zero is a legal excess -- it is what every block at the
+  *   fork's own start states -- so a default would answer plausibly and wrongly
+  *   for a block that had no field at all.
   */
 final case class BlockContext(
     coinbase: Address,
@@ -73,7 +104,8 @@ final case class BlockContext(
     difficulty: BigInt,
     gasLimit: BigInt,
     baseFee: Option[BigInt],
-    prevRandao: Option[Hash]
+    prevRandao: Option[Hash],
+    excessBlobGas: Option[UInt64]
 )
 
 /** The transaction an invocation is running inside, as the values it can read.

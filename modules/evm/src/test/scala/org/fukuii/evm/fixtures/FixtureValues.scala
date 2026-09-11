@@ -46,6 +46,17 @@ object FixtureValues:
       else Left("not a quantity: " + trimmed)
     parsed.filterOrElse(_ <= Word.MaxValue.toBigInt, "quantity wider than a word: " + trimmed.take(24) + "...")
 
+  /** A quantity a header states in sixty-four bits rather than in a word.
+    *
+    * Narrower than [[quantity]] because the field it reads is: a blob-gas
+    * account is a `U64` in the header it comes from, so a fixture stating
+    * something wider is malformed rather than merely large, and widening it here
+    * would let a value the machine can hold reach a comparison against a header
+    * that could never state it.
+    */
+  def uint64(text: String): Either[String, UInt64] =
+    quantity(text).flatMap(UInt64.fromBigInt(_).left.map(_ => "quantity wider than sixty-four bits: " + text.trim))
+
   /** A byte string. An odd number of digits is left-padded rather than
     * rejected, because a fixture writes a storage value and a byte string in
     * the same spelling and only one of the two is required to be whole bytes.

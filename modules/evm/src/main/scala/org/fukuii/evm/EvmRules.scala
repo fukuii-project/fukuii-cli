@@ -823,6 +823,33 @@ enum SelfDestructScope:
   *   `besu-eth/besu` @ `b330564a9` takes the shape this member does, a value on
   *   the operation its fork constructs
   *   (`evm/.../operation/SelfDestructOperation.java:124`).
+  * @param blobBaseFeeUpdateFraction
+  *   what scales the exponent the blob charge is derived through, absent below
+  *   the first fork that prices blob gas at all.
+  *
+  *   ==One member of a schedule whose other members are not here, and the split
+  *   is by reader rather than by accident==
+  *
+  *   A fork's blob schedule is published as one object of three --
+  *   `ethereum/go-ethereum` @ `02872e9ef` `params/config.go:675-679` carries
+  *   `BlobConfig{Target, Max, UpdateFraction}`, `besu-eth/besu` @ `b330564a9`
+  *   `config/.../BlobSchedule.java:22-40` carries the same three, and a
+  *   published state fixture states `blobSchedule` with `target`, `max` and
+  *   `baseFeeUpdateFraction` inside its own `config`. **This is the only one of
+  *   the three the machine reads**, and the other two are read by a header rule
+  *   rather than by anything running inside a block, so they sit on
+  *   `org.fukuii.chainspec.HeaderRules` where that rule resolves them. Holding
+  *   all three in both places would be one number stated twice, which is the one
+  *   arrangement a rule set comparing two networks cannot recover from.
+  *
+  *   ==Absent below the fork that sets it, and the operation refuses rather
+  *   than defaulting==
+  *
+  *   The same obligation [[org.fukuii.evm.BlockContext.baseFee]] carries: the
+  *   operation at `0x4a` joins [[table]] at the fork that fills this, so a value
+  *   of `None` under a table holding it describes a rule set this project would
+  *   have had to write. Zero is not a usable stand-in either -- it divides by
+  *   zero rather than pricing anything.
   */
 final case class EvmRules(
     table: OpcodeTable,
@@ -840,7 +867,8 @@ final case class EvmRules(
     touchSurvivesFailure: Set[Address],
     reservedCodePrefix: Option[Int],
     blockRandomness: BlockRandomness,
-    selfDestructScope: SelfDestructScope
+    selfDestructScope: SelfDestructScope,
+    blobBaseFeeUpdateFraction: Option[BigInt]
 ):
 
   /** These rules with each proposal applied, in the order given.

@@ -1,10 +1,10 @@
 package org.fukuii.consensus
 
 import org.fukuii.bytes.{Bytes, Hash, UInt256, UInt64}
-import org.fukuii.chainspec.{FeeMarket, HeaderConstants, HeaderRules, UpgradeRules}
+import org.fukuii.chainspec.{BlobSchedule, FeeMarket, HeaderConstants, HeaderRules, UpgradeRules}
 import org.fukuii.chainspec.networks.ethereum
 import org.fukuii.evm.EvmFixtures
-import org.fukuii.types.{BaseFeeTail, BlockHeader, BlockNonce, Bloom, Seal, WithdrawalsTail}
+import org.fukuii.types.{BaseFeeTail, BlobGasTail, BlockHeader, BlockNonce, Bloom, Seal, WithdrawalsTail}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** What a header must satisfy against its parent, at and around a fee market.
@@ -44,7 +44,9 @@ class HeaderValidatorSpec extends AnyFlatSpec:
 
   private val under: UpgradeRules =
     ethereum.Upgrades.berlin
-      .copy(header = HeaderRules(Some(market), HeaderConstants.Unconstrained, carriesWithdrawalsRoot = false))
+      .copy(header =
+        HeaderRules(Some(market), HeaderConstants.Unconstrained, carriesWithdrawalsRoot = false, blobSchedule = None)
+      )
 
   private val below: UpgradeRules = ethereum.Upgrades.berlin
 
@@ -94,7 +96,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
     * beside it.
     */
   private val withWithdrawals: UpgradeRules =
-    ethereum.Upgrades.berlin.copy(header = HeaderRules(Some(market), HeaderConstants.Unconstrained, true))
+    ethereum.Upgrades.berlin
+      .copy(header = HeaderRules(Some(market), HeaderConstants.Unconstrained, true, blobSchedule = None))
 
   /** A commitment over some list, whose value no rule at this layer reads. */
   private val SomeWithdrawalsRoot: Hash = EvmFixtures.hash(0x77)
@@ -128,7 +131,9 @@ class HeaderValidatorSpec extends AnyFlatSpec:
 
   private val fixed: UpgradeRules =
     ethereum.Upgrades.berlin
-      .copy(header = HeaderRules(Some(market), HeaderConstants.Eip3675, carriesWithdrawalsRoot = false))
+      .copy(header =
+        HeaderRules(Some(market), HeaderConstants.Eip3675, carriesWithdrawalsRoot = false, blobSchedule = None)
+      )
 
   /** The commitment EIP-3675's table states, as the 32-byte literal rather than
     * as the derivation the validator holds.
@@ -150,6 +155,59 @@ class HeaderValidatorSpec extends AnyFlatSpec:
     BlockNonce
       .fromHex("0x0000000000000001")
       .getOrElse(throw new IllegalStateException("an eight-byte nonce literal did not parse"))
+
+  // ── The blob gas a header accounts for ────────────────────────────────────
+
+  /** [[withWithdrawals]] with a blob schedule as well.
+    *
+    * Built over that rather than beside it for the same reason it was built
+    * over [[under]]: the blob pair is a header element behind the withdrawals
+    * commitment, so a header cannot carry one without the other, and a fork
+    * requiring the pair necessarily requires the root.
+    */
+  private val withBlobGas: UpgradeRules =
+    ethereum.Upgrades.berlin.copy(
+      header = HeaderRules(Some(market), HeaderConstants.Unconstrained, true, Some(BlobSchedule(BigInt(3))))
+    )
+
+  /** Three blobs' worth of gas, which is this fork's target restated as the
+    * derivation reads it.
+    *
+    * Stated as the product rather than as 393,216 so that a change to either
+    * factor moves it, and so that the two figures the derivation multiplies are
+    * both visible here.
+    */
+  private val TargetBlobGas: BigInt = BigInt(3) * HeaderValidator.BlobGasPerBlob
+
+  /** [[carrying]] with a blob-gas account attached behind the commitment. */
+  private def accounting(header: BlockHeader, used: BigInt, excess: BigInt): BlockHeader =
+    header.copy(tail =
+      header.tail.map(fee =>
+        fee.copy(next = Some(WithdrawalsTail(SomeWithdrawalsRoot, Some(BlobGasTail(count(used), count(excess))))))
+      )
+    )
+
+  /** A child stating `excess`, over a parent that spent `parentUsed` at
+    * `parentExcess`.
+    *
+    * The parent is at the same rules as the child, so the case is about the
+    * derivation rather than about a transition.
+    */
+  private def childExcess(parentExcess: BigInt, parentUsed: BigInt, excess: BigInt): Either[HeaderFault, Unit] =
+    HeaderValidator.validate(
+      Resolved(
+        accounting(carrying(headerOf(2, Limit, 0, Some(ParentFee)), SomeWithdrawalsRoot), 0, excess),
+        withBlobGas
+      ),
+      Resolved(
+        accounting(
+          carrying(headerOf(1, Limit, Target, Some(ParentFee)), SomeWithdrawalsRoot),
+          parentUsed,
+          parentExcess
+        ),
+        withBlobGas
+      )
+    )
 
   /** A header satisfying every other rule this object checks, with the three
     * constrained fields open.
@@ -523,4 +581,132 @@ class HeaderValidatorSpec extends AnyFlatSpec:
       childCommitting(withWithdrawals, Some(EvmFixtures.hash(0x11))) ==
         childCommitting(withWithdrawals, Some(EvmFixtures.hash(0x22))),
       "a header-only pass cannot know which list a root commits to"
+    )
+
+  // ── The blob-gas account ──────────────────────────────────────────────────
+
+  "a block at a fork that accounts for blob gas" should "be refused when it carries no account" in
+    assert(
+      HeaderValidator.validate(
+        Resolved(carrying(headerOf(2, Limit, 0, Some(ParentFee)), SomeWithdrawalsRoot), withBlobGas),
+        Resolved(carrying(headerOf(1, Limit, Target, Some(ParentFee)), SomeWithdrawalsRoot), withBlobGas)
+      ) == Left(HeaderFault.BlobGasMissing),
+      "a header at this fork states both fields or neither, and neither is not an option here"
+    )
+
+  it should "be refused when a block BELOW any such fork carries one" in
+    // The half a check written only for the required direction drops, exactly
+    // as the withdrawals commitment's absence rule is. A header accounting for
+    // blob gas at a fork that prices none is a block this network never
+    // produced.
+    assert(
+      HeaderValidator.validate(
+        Resolved(
+          accounting(carrying(headerOf(2, Limit, 0, Some(ParentFee)), SomeWithdrawalsRoot), 0, 7),
+          withWithdrawals
+        ),
+        Resolved(carrying(headerOf(1, Limit, Target, Some(ParentFee)), SomeWithdrawalsRoot), withWithdrawals)
+      ) == Left(HeaderFault.BlobGasUnexpected(count(BigInt(7)))),
+      "absence is a rule, exactly as presence is"
+    )
+
+  "the first block accounting for blob gas" should "state a zero excess over a parent that stated none" in
+    // No opening value is read, unlike the fee market's. The derivation is total
+    // over a parent with no blob fields, reads both as zero, and answers zero
+    // because zero is below every target -- which is what the proposal means by
+    // evaluating the parent's two fields as zero at the first post-fork block.
+    assert(
+      HeaderValidator.validate(
+        Resolved(accounting(carrying(headerOf(2, Limit, 0, Some(ParentFee)), SomeWithdrawalsRoot), 0, 0), withBlobGas),
+        Resolved(carrying(headerOf(1, Limit, Target, Some(ParentFee)), SomeWithdrawalsRoot), withWithdrawals)
+      ) == Right(()),
+      "a parent below the fork contributes nothing to the sum rather than requiring a stated opening value"
+    )
+
+  it should "be refused when it states anything else" in
+    assert(
+      HeaderValidator.validate(
+        Resolved(accounting(carrying(headerOf(2, Limit, 0, Some(ParentFee)), SomeWithdrawalsRoot), 0, 1), withBlobGas),
+        Resolved(carrying(headerOf(1, Limit, Target, Some(ParentFee)), SomeWithdrawalsRoot), withWithdrawals)
+      ) == Left(HeaderFault.ExcessBlobGasMismatch(count(BigInt(1)), BigInt(0))),
+      "the transition has one answer, and a check that skipped it would accept any"
+    )
+
+  "a parent at or below the target" should "leave the excess at zero" in
+    // Both arms of the floor: exactly at the target, and under it. A derivation
+    // that subtracted without the floor would answer a negative here, and a
+    // derivation that floored at the wrong place would answer the difference.
+    assert(
+      childExcess(BigInt(0), TargetBlobGas, BigInt(0)) == Right(()) &&
+        childExcess(BigInt(0), TargetBlobGas - HeaderValidator.BlobGasPerBlob, BigInt(0)) == Right(()),
+      "at target and one blob under it, the excess is zero either way"
+    )
+
+  "a parent above the target" should "raise the excess by exactly what it ran over" in
+    assert(
+      childExcess(BigInt(0), TargetBlobGas + HeaderValidator.BlobGasPerBlob, HeaderValidator.BlobGasPerBlob) ==
+        Right(()),
+      "one blob over target is one blob of excess, and no scaling sits between them"
+    )
+
+  it should "add the parent's own excess to what it spent" in
+    // The member of the sum a derivation reading only the parent's spend would
+    // drop. Without this case such a build passes every case above.
+    assert(
+      childExcess(
+        HeaderValidator.BlobGasPerBlob,
+        TargetBlobGas + HeaderValidator.BlobGasPerBlob,
+        HeaderValidator.BlobGasPerBlob * 2
+      ) == Right(()),
+      "the excess is carried forward, which is what makes the charge persistent rather than per-block"
+    )
+
+  it should "be refused when the child states an excess one unit off" in
+    // The negative control for every case above. A build whose derivation is
+    // never read would accept these as readily as the right figures.
+    assert(
+      childExcess(BigInt(0), TargetBlobGas + HeaderValidator.BlobGasPerBlob, HeaderValidator.BlobGasPerBlob + 1) ==
+        Left(
+          HeaderFault.ExcessBlobGasMismatch(count(HeaderValidator.BlobGasPerBlob + 1), HeaderValidator.BlobGasPerBlob)
+        ),
+      "one unit off is a different charge on every blob in the block"
+    )
+
+  "the target the derivation subtracts" should "come from the fork's schedule rather than from a constant" in {
+    // What makes the schedule a member of the rules rather than a literal in
+    // the checker: the same parent requires a different excess under a later
+    // fork's target. Six blobs is the figure two sources give for the fork
+    // after this one.
+    val sixBlobs: UpgradeRules =
+      ethereum.Upgrades.berlin.copy(
+        header = HeaderRules(Some(market), HeaderConstants.Unconstrained, true, Some(BlobSchedule(BigInt(6))))
+      )
+    val parent =
+      accounting(carrying(headerOf(1, Limit, Target, Some(ParentFee)), SomeWithdrawalsRoot), TargetBlobGas * 2, 0)
+    val child = accounting(carrying(headerOf(2, Limit, 0, Some(ParentFee)), SomeWithdrawalsRoot), 0, TargetBlobGas)
+    assert(
+      HeaderValidator.validate(Resolved(child, withBlobGas), Resolved(parent, withBlobGas)) == Right(()) &&
+        HeaderValidator.validate(Resolved(child, sixBlobs), Resolved(parent, sixBlobs)) ==
+        Left(HeaderFault.ExcessBlobGasMismatch(count(TargetBlobGas), BigInt(0))),
+      "the same two headers are valid at one target and invalid at another, so the figure is read and not assumed"
+    )
+  }
+
+  "the blob-gas rule" should "not read the child's own spend" in
+    // What a block MUST state cannot depend on what it DOES state, which is the
+    // property the charge derivation already holds. Two children differing only
+    // in their own blobGasUsed answer alike.
+    assert(
+      childExcess(BigInt(0), TargetBlobGas, BigInt(0)) ==
+        HeaderValidator.validate(
+          Resolved(
+            accounting(carrying(headerOf(2, Limit, 0, Some(ParentFee)), SomeWithdrawalsRoot), TargetBlobGas, 0),
+            withBlobGas
+          ),
+          Resolved(
+            accounting(carrying(headerOf(1, Limit, Target, Some(ParentFee)), SomeWithdrawalsRoot), TargetBlobGas, 0),
+            withBlobGas
+          )
+        ),
+      "the child's own spend decides its SUCCESSOR's excess and never its own"
     )

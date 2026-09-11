@@ -267,7 +267,8 @@ object EvmFixtures:
     touchSurvivesFailure = Set.empty,
     reservedCodePrefix = None,
     blockRandomness = BlockRandomness.Unavailable,
-    selfDestructScope = SelfDestructScope.AnyAccount
+    selfDestructScope = SelfDestructScope.AnyAccount,
+    blobBaseFeeUpdateFraction = None
   )
 
   val block: BlockContext = BlockContext(
@@ -277,7 +278,8 @@ object EvmFixtures:
     difficulty = BigInt(0x0100),
     gasLimit = BigInt(3141592),
     baseFee = None,
-    prevRandao = None
+    prevRandao = None,
+    excessBlobGas = None
   )
 
   val transaction: TransactionContext = TransactionContext(origin = address(0x99), gasPrice = BigInt(7))
