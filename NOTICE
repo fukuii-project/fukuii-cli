@@ -26,3 +26,8 @@ IOHK's Mantis, which chose Scala and the JVM for the task.
 Fukuii is an independent, ground-up client. It contains no Mantis source code and is not a
 derivative work of Mantis. "Mantis" is a trademark of IOHK, referenced only for lineage and the
 project's name story.
+
+The KZG trusted setup Fukuii ships, read by the point-evaluation precompile, is the output of the
+Ethereum KZG Ceremony, taken byte-identical from ethereum/c-kzg-4844 (Apache-2.0). The precompile
+that reads it links jc-kzg-4844 (Consensys, Apache-2.0), whose native libraries are built from
+c-kzg-4844 and from blst (Supranational, Apache-2.0).
