@@ -4,7 +4,16 @@ import org.fukuii.bytes.{Bytes, Hash, UInt256, UInt64}
 import org.fukuii.chainspec.{BlobSchedule, FeeMarket, HeaderConstants, HeaderRules, UpgradeRules}
 import org.fukuii.chainspec.networks.ethereum
 import org.fukuii.evm.EvmFixtures
-import org.fukuii.types.{BaseFeeTail, BlobGasTail, BlockHeader, BlockNonce, Bloom, Seal, WithdrawalsTail}
+import org.fukuii.types.{
+  BaseFeeTail,
+  BeaconRootTail,
+  BlobGasTail,
+  BlockHeader,
+  BlockNonce,
+  Bloom,
+  Seal,
+  WithdrawalsTail
+}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** What a header must satisfy against its parent, at and around a fee market.
@@ -251,6 +260,56 @@ class HeaderValidatorSpec extends AnyFlatSpec:
         accounting(carrying(headerOf(1, Limit, Target, Some(ParentFee)), SomeWithdrawalsRoot), TargetBlobGas, 0),
         withBlobGas
       )
+    )
+
+  // ── The root of the beacon block a parent was built against ───────────────
+
+  /** [[withBlobGas]] with the beacon root required as well.
+    *
+    * Built over that rather than beside it for the reason each rule set above
+    * is built over the one below: the beacon root is a header element behind
+    * the blob-gas pair, so a header cannot carry one without the other and a
+    * fork requiring the root necessarily requires the pair.
+    */
+  private val withBeaconRoot: UpgradeRules =
+    ethereum.Upgrades.berlin.copy(
+      header = HeaderRules(
+        Some(market),
+        HeaderConstants.Unconstrained,
+        true,
+        Some(BlobSchedule(targetBlobs = BigInt(3), maxBlobs = BigInt(6))),
+        carriesParentBeaconBlockRoot = true
+      )
+    )
+
+  /** A root over some beacon block, whose value no layer of this client reads. */
+  private val SomeBeaconRoot: Hash = EvmFixtures.hash(0x99)
+
+  /** [[accounting]] with a beacon root attached behind the blob-gas pair. */
+  private def attesting(header: BlockHeader, root: Hash): BlockHeader =
+    header.copy(tail =
+      header.tail.map(fee =>
+        fee.copy(next =
+          fee.next.map(withdrawals =>
+            withdrawals.copy(next = withdrawals.next.map(_.copy(next = Some(BeaconRootTail(root)))))
+          )
+        )
+      )
+    )
+
+  /** A child stating `root`, over a parent that spent exactly the target.
+    *
+    * The parent sits at the same rules as the child and carries the same
+    * attestation, so every other rule in this object is satisfied and the only
+    * thing varying is the field under test.
+    */
+  private def childAttesting(rules: UpgradeRules, root: Option[Hash]): Either[HeaderFault, Unit] =
+    val accounted = accounting(carrying(headerOf(2, Limit, 0, Some(ParentFee)), SomeWithdrawalsRoot), 0, 0)
+    val parent =
+      accounting(carrying(headerOf(1, Limit, Target, Some(ParentFee)), SomeWithdrawalsRoot), TargetBlobGas, 0)
+    HeaderValidator.validate(
+      Resolved(root.fold(accounted)(attesting(accounted, _)), rules),
+      Resolved(parent, rules)
     )
 
   /** Six blobs' worth of gas, which is this fork's maximum as the bound reads it. */
@@ -831,4 +890,49 @@ class HeaderValidatorSpec extends AnyFlatSpec:
           )
         ),
       "the child's own spend decides its SUCCESSOR's excess and never its own"
+    )
+
+  // ── The root of the beacon block a parent was built against ───────────────
+
+  "a header at a fork that states a beacon root" should "be accepted when it states one" in
+    assert(
+      childAttesting(withBeaconRoot, Some(SomeBeaconRoot)) == Right(()),
+      "the field is required and this header has one"
+    )
+
+  it should "be refused when it states none" in
+    // `ethereum/go-ethereum` @ `02872e9ef` `consensus/beacon/consensus.go:267`
+    // refuses the same header for the same reason: "header is missing
+    // beaconRoot".
+    assert(
+      childAttesting(withBeaconRoot, None) == Left(HeaderFault.ParentBeaconBlockRootMissing),
+      "a block at this fork whose header omits the field is invalid, not merely lossy"
+    )
+
+  "a header below any beacon-root proposal" should "be accepted when it states none" in
+    assert(
+      childAttesting(withBlobGas, None) == Right(()),
+      "every block this network produced between the two forks is one of these"
+    )
+
+  it should "be refused when it states one" in
+    // The half a check written only for the required direction drops, which is
+    // what this member was without a reader at all. go-ethereum states the same
+    // absence rule at `consensus/beacon/consensus.go:263-264`.
+    assert(
+      childAttesting(withBlobGas, Some(SomeBeaconRoot)) ==
+        Left(HeaderFault.ParentBeaconBlockRootUnexpected(SomeBeaconRoot)),
+      "absence is a rule, exactly as presence is"
+    )
+
+  "the root a header states" should "not be read at any layer of this client" in
+    // The distinction from every other commitment, and the reason this check is
+    // the only one this field ever gets. A withdrawals root is re-settled where
+    // the body is; this value is handed in from the consensus layer and derived
+    // from nothing, so two headers differing only in these 32 bytes are
+    // indistinguishable here and remain so everywhere below.
+    assert(
+      childAttesting(withBeaconRoot, Some(EvmFixtures.hash(0x11))) ==
+        childAttesting(withBeaconRoot, Some(EvmFixtures.hash(0x22))),
+      "no layer here holds anything to compare a beacon root against"
     )

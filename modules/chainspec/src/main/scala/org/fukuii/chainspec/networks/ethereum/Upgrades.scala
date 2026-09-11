@@ -7,6 +7,7 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip1014,
   Eip1052,
   Eip1108,
+  Eip1153,
   Eip1234,
   Eip1283,
   Eip1344,
@@ -44,11 +45,16 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip3860,
   Eip4345,
   Eip4399,
+  Eip4788,
+  Eip4844,
   Eip4895,
   Eip5133,
+  Eip5656,
   Eip649,
   Eip658,
-  Eip7
+  Eip6780,
+  Eip7,
+  Eip7516
 }
 import org.fukuii.evm.{
   BlockRandomness,
@@ -899,4 +905,74 @@ object Upgrades:
       Eip3855.component,
       Eip3860.component,
       Eip4895.component
+    )
+
+  /** [[shanghai]] with EIP-1153, EIP-4788, EIP-4844, EIP-5656, EIP-6780 and
+    * EIP-7516 adopted.
+    *
+    * ==Six members, from the same kind of statement as the lists above==
+    *
+    * `ethereum/execution-specs` @ `0cc100eb1` (2026-09-08) states what this
+    * fork changes in `src/ethereum/forks/cancun/__init__.py` and the list has
+    * six entries, in the order below. That is the same source [[shanghai]],
+    * [[paris]], [[arrowGlacier]] and [[grayGlacier]] rest their lists on.
+    *
+    * **A seventh document names the fork and is not a member.** EIP-7569 is the
+    * meta document -- the specification's own summary cites it as what the fork
+    * *"is"* rather than as something it changes, and it sits outside the
+    * `### Changes` list the six come from. It settles no rule of its own, in
+    * the way EIP-6049 was not a member of the list above.
+    *
+    * ==Three facets move, and ONE DOCUMENT writes all three of them==
+    *
+    * [[Eip1153]], [[Eip5656]], [[Eip6780]] and [[Eip7516]] write `evm`;
+    * [[Eip4788]] writes the header facet; and [[Eip4844]] writes `evm`, the
+    * header facet and admission by itself. Nothing here writes the consensus
+    * facet, which a test asserts.
+    *
+    * **The single document reaching three facets is the notable part and the
+    * count of facets is not.** [[london]] already moves the same three across
+    * its five documents, and the difficulty facet besides -- so a composition
+    * touching three is not new on this network. What is new is that one
+    * proposal does it, because a blob is priced in the machine, accounted for
+    * in the header and admitted by a transaction format that is all one
+    * mechanism.
+    *
+    * ==The order is stated, and here one member's evaluation DOES depend on it==
+    *
+    * Four of the six write the operation table and each adds a distinct
+    * operation, so those four commute. [[Eip4788]] and [[Eip4844]] both write
+    * the header facet and name different members of it, so those two commute
+    * as well.
+    *
+    * **Two of the six READ the machine's gas schedule as well as writing to
+    * it**, which is the shape that makes an order matter at all.
+    * [[Eip7516]]'s cost is the schedule's own base price at the moment the
+    * delta runs, and [[Eip4844]]'s native is priced from a schedule member of
+    * its own. A composition placing either below a document that moved the
+    * figure it reads would evaluate to a different price while compiling --
+    * the hazard [[Eip3860]]'s note states one upgrade above.
+    *
+    * **No member of this list moves either figure**, so the order is
+    * immaterial in fact. It is stated because what makes it immaterial is a
+    * property of the other documents rather than of these two.
+    *
+    * ==The first rule set on this network that prices a resource the header
+    * accounts for==
+    *
+    * Every charge above this one is paid in gas out of the block's own limit.
+    * A blob is bought with a separate quantity the header states and no
+    * transaction's gas limit bounds, which is why [[Eip4844]] is the first
+    * document here to write a header member and a machine member for one
+    * mechanism. `org.fukuii.consensus.HeaderValidator` checks what the header
+    * states about it and `org.fukuii.evm.BlobGas` is what a transaction spends.
+    */
+  val cancun: UpgradeRules =
+    shanghai.adopting(
+      Eip1153.component,
+      Eip4788.component,
+      Eip4844.component,
+      Eip5656.component,
+      Eip6780.component,
+      Eip7516.component
     )

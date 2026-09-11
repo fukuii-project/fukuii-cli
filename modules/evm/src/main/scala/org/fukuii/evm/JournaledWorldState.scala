@@ -189,11 +189,32 @@ final class JournaledWorldState(base: WorldState) extends WorldState:
     * frame that reverts leaves nothing. This one is in neither, deliberately:
     * *"The parent reference and ``created_accounts`` are shared (not rolled
     * back)"* and *"The marker is not removed even if the account creation
-    * reverts"* (`ethereum/execution-specs` @ `0cc100eb1`,
-    * `forks/cancun/state_tracker.py:615,425`). Its `copy_tx_state` passes the
-    * set through by reference at `:636` where every other member is copied, and
-    * its `restore_tx_state` puts back four members at `:655-658` and not this
-    * one.
+    * reverts. Since the account cannot have had code prior to its creation and
+    * can't call ``get_storage_original()``, this is harmless."*
+    * (`ethereum/execution-specs` @ `0cc100eb1`,
+    * `forks/cancun/state_tracker.py:615,425-427`). Its `copy_tx_state` passes
+    * the set through by reference at `:636` where every other member is copied,
+    * and its `restore_tx_state` puts back four members at `:655-658` and not
+    * this one.
+    *
+    * **The second sentence is quoted through to its own verdict, and that is
+    * what decides this site rather than the derivation below.** A quotation
+    * stopped one sentence earlier reads as the specification stating a rule two
+    * clients break, which is a different and worse claim than the one the text
+    * supports.
+    *
+    * **What the specification states is that ITS choice is harmless; that the
+    * opposite choice is equally harmless is one step past the quotation and is
+    * marked as such.** It follows from the reason given rather than from a
+    * second statement: the premise is that the marked account can never be
+    * asked about, and an account that can never be asked about is one whose
+    * marker is unobservable whichever way a client records it. So the two
+    * clients below are exercising a latitude the specification's own reasoning
+    * grants, rather than contradicting a rule it states.
+    *
+    * `org.fukuii.execution.SystemCall.GasPrice` states the tiebreak this build
+    * applies to an unobservable divergence, and states it there because that is
+    * the site where the OTHER answer was reached.
     *
     * **So the property is the absence of two lines rather than the presence of
     * any**, which is why it is stated here: nothing in [[snapshot]] or
@@ -213,8 +234,9 @@ final class JournaledWorldState(base: WorldState) extends WorldState:
     * at `:1505` and from `AbstractMessageProcessor` at `:138`, which both its
     * revert and its exceptional-halt paths call.
     *
-    * **The divergence is DERIVED to be unobservable, and the derivation is
-    * this**, stated so a reader can check it rather than take it: a creation
+    * **The divergence is DERIVED to be unobservable here as well as declared
+    * so above, and the derivation is this**, stated so a reader can check the
+    * specification's own verdict rather than take it: a creation
     * only reaches an address [[Interpreter.deployableAt]] admits, which is an
     * address holding no code; a creation that then fails is undone, so the
     * address holds no code afterwards either. Both readers of this marker -- a

@@ -309,6 +309,13 @@ enum HeaderConstants:
   *   value handed in from the consensus layer, which is what makes it the one
   *   header field this layer can check the presence of and never the content
   *   of.
+  *
+  *   **Its reader is `org.fukuii.consensus.HeaderValidator`**, which refuses a
+  *   header on the wrong side of the proposal in both directions. That is the
+  *   admission test [[blobSchedule]] states above, met here as well -- and
+  *   because nothing anywhere can check the VALUE, this member's reader is the
+  *   only enforcement the field ever gets rather than the earliest of
+  *   several.
   */
 final case class HeaderRules(
     feeMarket: Option[FeeMarket],

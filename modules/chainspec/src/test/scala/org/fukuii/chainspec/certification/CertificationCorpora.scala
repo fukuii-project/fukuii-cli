@@ -8,7 +8,6 @@ import scala.util.control.NonFatal
 import org.fukuii.bytes.UInt64
 import org.fukuii.chainspec.{Network, UpgradeRules, UpgradeSchedule}
 import org.fukuii.chainspec.networks.{KnownNetworks, ethereum, ethereumclassic}
-import org.fukuii.chainspec.proposals.eip.{Eip1153, Eip4844, Eip5656, Eip6780, Eip7516}
 import org.fukuii.evm.EvmRules
 
 /** The published corpora this layer is certified against, run once and reported
@@ -383,65 +382,40 @@ object CertificationCorpora:
     */
   val GeneratedShanghaiCorpus: String = "execution-specs-fixtures state_tests/for_shanghai"
 
-  /** What every corpus below that names a composition is read under, written
-    * once so five names cannot drift apart.
+  /** The generated tier's memory-copying directory, resolved at this network's
+    * Cancun activation.
     *
-    * It gains a document at every phase that adopts one, and each such phase
-    * must change it -- a name stating the rules is only worth having while it
-    * states them in full.
+    * ==Every corpus from here down was once named by its composition, and none
+    * is now==
     *
-    * ==WHOEVER DELETES THIS ALSO FOLDS A SPEC AWAY, and that is the note this
-    * constant exists to carry==
+    * While the fork was being built one proposal at a time, no height resolved
+    * to it and a rule set carrying some of its six was not that fork -- so each
+    * of these corpora carried the composition in its own name, in full, and
+    * stopped being accurate on any commit that changed it. The schedule entry is
+    * what retired that: the directories resolve through an activation like every
+    * other corpus here, so what they certify now includes the activation as well
+    * as the machine.
     *
-    * This goes when the fork is whole and these directories resolve through the
-    * schedule at an activation instead. At that moment
-    * [[org.fukuii.chainspec.certification.CancunCompositionCertificationSpec]]
-    * stops being the right shape, and **its differentials belong in
-    * `CertificationCorporaSpec`'s coverage matrix rather than beside it.** They
-    * are held apart today for one reason and one only: every matrix row is
-    * resolved through a schedule at a height, and these are not. Resolve them
-    * through the schedule and the distinction is gone, so they become ordinary
-    * rows -- and that spec's `ordinary`/`heavy` split, keyed on what a rerun
-    * costs, is then what decides which run they belong to.
-    */
-  private val ComposedForCancun: String =
-    " at Shanghai with EIP-1153, EIP-5656, EIP-6780, EIP-4844's blob-gas accounting and EIP-7516"
-
-  /** The generated tier's memory-copying directory, read under the fork below
-    * with the fork's built proposals added.
+    * **[[LegacyConstantinopleStateCorpus]] is the one corpus still named by a
+    * composition, and it is a different case** -- its rule set is unreachable by
+    * construction, so there is no coordinate for it to resolve at. Nothing about
+    * these directories was ever that.
     *
-    * ==The rules are named directly, and NOT for the reason the other such
-    * corpus here is==
+    * ==A Cancun directory is filled for the whole fork, not for the proposal it
+    * is named after==
     *
-    * [[LegacyConstantinopleStateCorpus]] names a composition directly because
-    * its rule set is unreachable by construction. This one is named directly
-    * for a different reason, and the two must not be read as the same case: the
-    * fork these files are filled for is being BUILT, one proposal at a time,
-    * and a rule set carrying some of its six is not that fork. There is no
-    * `Upgrades.cancun` to resolve to yet, and writing one holding a subset
-    * would put a value in the chain configuration whose NAME asserted a
-    * completeness it did not have -- which is the defect a schedule entry ahead
-    * of its rules is, one layer down.
-    *
-    * So the name says which rules these files are read under, in full, and it
-    * stops being accurate on the commit that changes them. That is a property a
-    * corpus resolved through a schedule does not need and this one does.
-    *
-    * ==Reading a Cancun directory under something other than Cancun is only
-    * sound where the directory cannot tell==
-    *
-    * These files are filled for the whole fork, not for the proposal they are
-    * named after, so nothing about the directory guarantees that its cases turn
-    * on the proposals this composition carries. What guarantees it is the run:
-    * every case here agrees, and
-    * [[org.fukuii.chainspec.certification.CancunCompositionCertificationSpec]]
-    * records what that does and does not establish.
+    * So nothing about the directory guarantees which of the six its cases turn
+    * on, and the run is what establishes it. The differentials that measure it
+    * are rows of the coverage matrix in
+    * [[org.fukuii.chainspec.certification.CertificationCorporaSpec]], alongside
+    * every other proposal's -- which is where they belong once these are
+    * ordinary schedule-resolved corpora.
     */
   val GeneratedCancunMemoryCopyCorpus: String =
-    "execution-specs-fixtures state_tests/for_cancun/cancun/eip5656_mcopy" + ComposedForCancun
+    "execution-specs-fixtures state_tests/for_cancun/cancun/eip5656_mcopy"
 
   /** The legacy static suite's transient-storage directory, ported and filled
-    * for this fork, under the same rules.
+    * for this fork, at the same activation.
     *
     * ==A SECOND independent directory for the same proposal, and it was the
     * only one for a while==
@@ -469,9 +443,9 @@ object CertificationCorpora:
     * is what keeps the two apart.
     */
   val PortedStaticCancunTransientStorageCorpus: String =
-    "execution-specs-fixtures state_tests/for_cancun/ported_static/stEIP1153_transientStorage" + ComposedForCancun
+    "execution-specs-fixtures state_tests/for_cancun/ported_static/stEIP1153_transientStorage"
 
-  /** The same suite's memory-copying directory, under the same rules.
+  /** The same suite's memory-copying directory, at the same activation.
     *
     * A second independent directory for the same proposal, and the reason to
     * carry it rather than rest on the one above: 106 cases against 99, filled
@@ -479,7 +453,7 @@ object CertificationCorpora:
     * either one's fixtures is not an error in both.
     */
   val PortedStaticCancunMemoryCopyCorpus: String =
-    "execution-specs-fixtures state_tests/for_cancun/ported_static/stEIP5656_MCOPY" + ComposedForCancun
+    "execution-specs-fixtures state_tests/for_cancun/ported_static/stEIP5656_MCOPY"
 
   /** The generated tier's directory for the destruction proposal, under the same
     * rules.
@@ -496,7 +470,7 @@ object CertificationCorpora:
     * assuming it.
     */
   val GeneratedCancunSelfDestructCorpus: String =
-    "execution-specs-fixtures state_tests/for_cancun/cancun/eip6780_selfdestruct" + ComposedForCancun
+    "execution-specs-fixtures state_tests/for_cancun/cancun/eip6780_selfdestruct"
 
   /** The generated tier's transient-storage directory, admitted here now that the
     * rules can answer it in full.
@@ -518,10 +492,10 @@ object CertificationCorpora:
     * census MAP and the corpus count, and moves no test total at all.
     */
   val GeneratedCancunTransientStorageCorpus: String =
-    "execution-specs-fixtures state_tests/for_cancun/cancun/eip1153_tstore" + ComposedForCancun
+    "execution-specs-fixtures state_tests/for_cancun/cancun/eip1153_tstore"
 
-  /** The generated tier's directory for the blob-charge operation, under the
-    * same rules.
+  /** The generated tier's directory for the blob-charge operation, at the same
+    * activation.
     *
     * ==The smallest directory here, and the one whose limits have to be stated
     * loudest==
@@ -542,10 +516,10 @@ object CertificationCorpora:
     * without anyone having written a case for it.
     */
   val GeneratedCancunBlobGasFeeCorpus: String =
-    "execution-specs-fixtures state_tests/for_cancun/cancun/eip7516_blobgasfee" + ComposedForCancun
+    "execution-specs-fixtures state_tests/for_cancun/cancun/eip7516_blobgasfee"
 
-  /** The generated tier's directory for the blob transaction itself, under the
-    * same rules.
+  /** The generated tier's directory for the blob transaction itself, at the
+    * same activation.
     *
     * ==The first directory here whose subject is ADMISSION rather than the
     * machine==
@@ -573,10 +547,10 @@ object CertificationCorpora:
     * named.
     */
   val GeneratedCancunBlobTransactionCorpus: String =
-    "execution-specs-fixtures state_tests/for_cancun/cancun/eip4844_blobs/blob_txs" + ComposedForCancun
+    "execution-specs-fixtures state_tests/for_cancun/cancun/eip4844_blobs/blob_txs"
 
   /** The generated tier's directory for what the operation reporting a
-    * commitment COSTS, under the same rules.
+    * commitment COSTS, at the same activation.
     *
     * One file, 28 cases, and not one of them publishes a refusal -- which is
     * the property that decides what this and its sibling below can see. They
@@ -591,10 +565,10 @@ object CertificationCorpora:
     * than once.
     */
   val GeneratedCancunBlobHashCostCorpus: String =
-    "execution-specs-fixtures state_tests/for_cancun/cancun/eip4844_blobs/blobhash_opcode" + ComposedForCancun
+    "execution-specs-fixtures state_tests/for_cancun/cancun/eip4844_blobs/blobhash_opcode"
 
   /** The generated tier's directory for WHERE that operation may be reached
-    * from, under the same rules.
+    * from, at the same activation.
     *
     * Two files and 11 cases, across a top-level call, an initcode, a delegated
     * call, a static call, and a transaction of each format that is not a blob
@@ -609,11 +583,10 @@ object CertificationCorpora:
     * nothing.
     */
   val GeneratedCancunBlobHashContextCorpus: String =
-    "execution-specs-fixtures state_tests/for_cancun/cancun/eip4844_blobs/blobhash_opcode_contexts" +
-      ComposedForCancun
+    "execution-specs-fixtures state_tests/for_cancun/cancun/eip4844_blobs/blobhash_opcode_contexts"
 
   /** The generated tier's directory for the native that evaluates a committed
-    * polynomial, under the same rules.
+    * polynomial, at the same activation.
     *
     * Five files and 156 cases, reachable only now that
     * `org.fukuii.chainspec.proposals.eip.Eip4844` places a native at `0x0a`.
@@ -639,8 +612,7 @@ object CertificationCorpora:
     * something.
     */
   val GeneratedCancunPointEvaluationCorpus: String =
-    "execution-specs-fixtures state_tests/for_cancun/cancun/eip4844_blobs/point_evaluation_precompile" +
-      ComposedForCancun
+    "execution-specs-fixtures state_tests/for_cancun/cancun/eip4844_blobs/point_evaluation_precompile"
 
   /** The generated tier's directory for what that native COSTS, under the same
     * rules.
@@ -651,8 +623,7 @@ object CertificationCorpora:
     * same way.
     */
   val GeneratedCancunPointEvaluationGasCorpus: String =
-    "execution-specs-fixtures state_tests/for_cancun/cancun/eip4844_blobs/point_evaluation_precompile_gas" +
-      ComposedForCancun
+    "execution-specs-fixtures state_tests/for_cancun/cancun/eip4844_blobs/point_evaluation_precompile_gas"
 
   /** The ported tier's own directory for the blob transaction, under the same
     * rules.
@@ -684,7 +655,7 @@ object CertificationCorpora:
     * and generated tiers already have.
     */
   val PortedStaticCancunBlobTransactionCorpus: String =
-    "execution-specs-fixtures state_tests/for_cancun/ported_static/stEIP4844_blobtransactions" + ComposedForCancun
+    "execution-specs-fixtures state_tests/for_cancun/ported_static/stEIP4844_blobtransactions"
 
   /** The same directory as the Tangerine Whistle tier, resolved through the
     * other network's schedule instead.
@@ -770,6 +741,15 @@ object CertificationCorpora:
     */
   private[certification] val EthereumShanghaiStartsAtSecond: Long = 1681338455L
 
+  /** The second clock-activated fork's own second on this network.
+    *
+    * A second figure on the clock axis rather than a reuse of the one above,
+    * for the reason that one is held apart from the heights: two coordinates on
+    * one axis are comparable and two on different axes are not, and what keeps
+    * a transposition visible is the name rather than the type.
+    */
+  private[certification] val EthereumCancunStartsAtSecond: Long = 1710338135L
+
   /** The coordinate a corpus asks its network's schedule about: a block number
     * and a clock reading together.
     *
@@ -812,6 +792,8 @@ object CertificationCorpora:
     */
   private val ethereumShanghai = ResolutionPoint(EthereumParisStarts, EthereumShanghaiStartsAtSecond)
 
+  private val ethereumCancun = ResolutionPoint(EthereumParisStarts, EthereumCancunStartsAtSecond)
+
   private val classicGasReprice = ResolutionPoint(ClassicGasRepriceStarts, 0L)
 
   /** Every network-and-coordinate pair the corpora above are resolved at.
@@ -842,6 +824,7 @@ object CertificationCorpora:
       ethereum.Mainnet.network -> ethereumLondon,
       ethereum.Mainnet.network -> ethereumParis,
       ethereum.Mainnet.network -> ethereumShanghai,
+      ethereum.Mainnet.network -> ethereumCancun,
       ethereumclassic.Mainnet.network -> classicGasReprice
     )
 
@@ -931,20 +914,11 @@ object CertificationCorpora:
     // block-activated entry so the clock is read at all.
     val shanghai = rulesAt(ethereumSchedule, ethereumShanghai)
 
-    // NOT from the schedule, and not because no height resolves to it. The fork
-    // these directories are filled for is under construction, so what a schedule
-    // would resolve to at its activation is a rule set that does not exist yet
-    // -- and each corpus's own name says which proposals stand in for it.
-    // `Upgrades.cancun` is what this becomes once the fork is whole, and until
-    // then a value under that name would claim a completeness it did not have.
-    val composedForCancun =
-      shanghai.adopting(
-        Eip1153.component,
-        Eip5656.component,
-        Eip6780.component,
-        Eip4844.component,
-        Eip7516.component
-      )
+    // The second resolution here whose CLOCK decides the answer, and the last
+    // thing on this network that was ever named as a composition. Every Cancun
+    // corpus below now reaches its rules the way every other corpus does, so
+    // what they certify includes the activation and not only the machine.
+    val cancun = rulesAt(ethereumSchedule, ethereumCancun)
 
     val gasReprice = rulesAt(classicSchedule, classicGasReprice)
 
@@ -1085,56 +1059,56 @@ object CertificationCorpora:
         FixtureCorpus.generated(root).resolve("state_tests/for_cancun/cancun/eip5656_mcopy"),
         "Cancun",
         ethereumChain,
-        composedForCancun
+        cancun
       ),
       StateCorpus(
         PortedStaticCancunTransientStorageCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_cancun/ported_static/stEIP1153_transientStorage"),
         "Cancun",
         ethereumChain,
-        composedForCancun
+        cancun
       ),
       StateCorpus(
         PortedStaticCancunMemoryCopyCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_cancun/ported_static/stEIP5656_MCOPY"),
         "Cancun",
         ethereumChain,
-        composedForCancun
+        cancun
       ),
       StateCorpus(
         GeneratedCancunSelfDestructCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_cancun/cancun/eip6780_selfdestruct"),
         "Cancun",
         ethereumChain,
-        composedForCancun
+        cancun
       ),
       StateCorpus(
         GeneratedCancunTransientStorageCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_cancun/cancun/eip1153_tstore"),
         "Cancun",
         ethereumChain,
-        composedForCancun
+        cancun
       ),
       StateCorpus(
         GeneratedCancunBlobGasFeeCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_cancun/cancun/eip7516_blobgasfee"),
         "Cancun",
         ethereumChain,
-        composedForCancun
+        cancun
       ),
       StateCorpus(
         GeneratedCancunBlobTransactionCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_cancun/cancun/eip4844_blobs/blob_txs"),
         "Cancun",
         ethereumChain,
-        composedForCancun
+        cancun
       ),
       StateCorpus(
         GeneratedCancunBlobHashCostCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_cancun/cancun/eip4844_blobs/blobhash_opcode"),
         "Cancun",
         ethereumChain,
-        composedForCancun
+        cancun
       ),
       StateCorpus(
         GeneratedCancunBlobHashContextCorpus,
@@ -1143,7 +1117,7 @@ object CertificationCorpora:
           .resolve("state_tests/for_cancun/cancun/eip4844_blobs/blobhash_opcode_contexts"),
         "Cancun",
         ethereumChain,
-        composedForCancun
+        cancun
       ),
       StateCorpus(
         GeneratedCancunPointEvaluationCorpus,
@@ -1152,7 +1126,7 @@ object CertificationCorpora:
           .resolve("state_tests/for_cancun/cancun/eip4844_blobs/point_evaluation_precompile"),
         "Cancun",
         ethereumChain,
-        composedForCancun
+        cancun
       ),
       StateCorpus(
         GeneratedCancunPointEvaluationGasCorpus,
@@ -1161,7 +1135,7 @@ object CertificationCorpora:
           .resolve("state_tests/for_cancun/cancun/eip4844_blobs/point_evaluation_precompile_gas"),
         "Cancun",
         ethereumChain,
-        composedForCancun
+        cancun
       ),
       StateCorpus(
         PortedStaticCancunBlobTransactionCorpus,
@@ -1170,7 +1144,59 @@ object CertificationCorpora:
           .resolve("state_tests/for_cancun/ported_static/stEIP4844_blobtransactions"),
         "Cancun",
         ethereumChain,
-        composedForCancun
+        cancun
+      )
+    )
+
+  /** The legacy static suite in full, ported and re-filled for this fork.
+    *
+    * ==Assembled on its own, which is the whole point of it being here rather
+    * than in [[stateCorporaAt]]==
+    *
+    * [[reports]] is one lazy value every spec shares, so a corpus added to it
+    * is paid for by every run that asks any question at all. This one is 2,135
+    * files and is read only by a property carrying `org.fukuii.Heavy`, so it is
+    * assembled separately and an ordinary run never forces it.
+    *
+    * ==Which corpora belong in the ordinary run, stated as a rule rather than
+    * as a judgment about this directory==
+    *
+    * **A fork's own new corpus stays in the ordinary run, because it is the
+    * feedback loop for the machinery that fork adds.** The directories under
+    * `for_cancun/cancun` are filled against this fork's six documents, so a
+    * regression in any of them fails a run nobody had to remember to ask for.
+    *
+    * **A re-pinned legacy suite stays out of it.** These files are the static
+    * suite this build already certifies at six earlier forks, re-filled here
+    * against the same transactions; what they add is breadth over machinery
+    * that is not new rather than cover over machinery that is. That is worth
+    * having and it is not worth paying for on every compile.
+    *
+    * ==Three of its subdirectories are ALSO censused on their own, and the
+    * overlap is deliberate==
+    *
+    * [[PortedStaticCancunTransientStorageCorpus]],
+    * [[PortedStaticCancunMemoryCopyCorpus]] and
+    * [[PortedStaticCancunBlobTransactionCorpus]] each carry coverage-matrix
+    * rows an ordinary run asserts, so they stay where the feedback is. Reading
+    * their files again as part of this report is the cost of having both, and
+    * a report is keyed by name rather than by directory -- the legacy tier is
+    * already six reports over one directory for the same reason.
+    */
+  val PortedStaticCancunCorpus: String = "execution-specs-fixtures state_tests/for_cancun/ported_static"
+
+  lazy val portedStaticBulk: Option[CorpusReport] =
+    for
+      root <- FixtureCorpus.root
+      registry <- KnownNetworks.registry.toOption
+      ethereumSchedule <- registry.at(ethereum.Mainnet.network.chainId)
+    yield stateReport(
+      StateCorpus(
+        PortedStaticCancunCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_cancun/ported_static"),
+        "Cancun",
+        ethereumSchedule.network.chainId,
+        rulesAt(ethereumSchedule, ethereumCancun)
       )
     )
 

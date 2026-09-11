@@ -20,24 +20,43 @@ import org.fukuii.types.{BlockHeader, Bloom, Withdrawal}
   * derived commitments, the seal's two slots, the tail's depth and every field's
   * position to be right together — and nothing about it can be partly true.
   *
-  * ==Why these two labels and no others==
+  * ==Why these three labels and no others==
   *
-  * Their fixtures configure `{network, chainid}` and nothing else. Every later
-  * label adds `blobSchedule`, which is a Cancun dependency this build's fork
-  * ladder does not reach — measured across all 7,261 cases of these two, and
-  * calibrated against `for_cancun`, where the key is present.
-  *
-  * They are also the built range: this project's Ethereum schedule reaches
-  * Shanghai and stops, so a later label would be certifying a fork nothing here
+  * They are the built range: this project's Ethereum schedule reaches Cancun
+  * and stops, so a later label would be certifying a fork nothing here
   * activates.
   *
-  * ==What it CANNOT certify, which matters as much as what it can==
+  * ==What the third label closes, which the first two structurally could not==
   *
-  * Both labels predate blob transactions, the parent beacon block root and
-  * execution requests. So the blob-gas link of the header's tail, the
-  * beacon-root link, the requests-hash refusal and every fork-gate window above
-  * Shanghai are untouched here however many cases agree. Those are exercised by
-  * hand-written cases in this module and by nothing published.
+  * The two below it predate blob transactions and the parent beacon block
+  * root, so the header tail they exercise stops at the withdrawals
+  * commitment. **The blob-gas link and the beacon-root link were therefore
+  * derived against nothing published** — the derivation was reasoned from the
+  * specification and exercised only by hand-written payloads in this module,
+  * whose block hashes this project computed itself. A derivation and a test
+  * sharing one reading agree however wrong the reading is, which is exactly
+  * the circularity a published corpus exists to break.
+  *
+  * `for_cancun` states a `blobGasUsed` and an `excessBlobGas` on every payload
+  * and passes a parent beacon block root as `engine_newPayloadV3`'s third
+  * argument, so both links are now derived against block hashes computed
+  * elsewhere. The beacon root is the sharper of the two: it is the one header
+  * field this client cannot derive or check the value of anywhere, so a hash
+  * over it is the only evidence available that it is placed and encoded
+  * correctly at all.
+  *
+  * ==What it still CANNOT certify==
+  *
+  * Execution requests, so the requests-hash link of the tail and every
+  * fork-gate window above Cancun are untouched here however many cases agree.
+  *
+  * **The expected blob versioned hashes are carried and not checked.** The
+  * specification requires them compared against the versioned hashes inside
+  * the payload's own blob transactions, which needs those transactions
+  * decoded, and nothing on this path decodes one — see
+  * `org.fukuii.consensus.pos.TranslationRefusal.BlobVersionedHashesNotChecked`.
+  * So a payload whose third-argument hashes disagree with its own transactions
+  * is accepted here, and no count below says otherwise.
   *
   * It also certifies nothing about EXECUTION. A payload's `stateRoot`,
   * `receiptsRoot` and `logsBloom` are copied into the header and re-hashed
@@ -47,8 +66,8 @@ import org.fukuii.types.{BlockHeader, Bloom, Withdrawal}
   */
 object EnginePayloadCorpus:
 
-  /** The two labels, named as the release names them. */
-  val Labels: Vector[String] = Vector("for_paris", "for_shanghai")
+  /** The three labels, named as the release names them. */
+  val Labels: Vector[String] = Vector("for_paris", "for_shanghai", "for_cancun")
 
   private def directory(root: Path, label: String): Path =
     FixtureCorpus.generated(root).resolve("blockchain_tests_engine").resolve(label)
@@ -108,6 +127,36 @@ object EnginePayloadCorpus:
       * all of them.
       */
     case OmmersSubstituted
+
+    /** The parent beacon block root replaced by thirty-two zero bytes.
+      *
+      * ==The narrow arm for the one header field this client can never check
+      * the value of==
+      *
+      * Every other commitment is re-settled by a caller holding a body. This
+      * one is handed in from the consensus layer and derived from nothing, so
+      * the block hash over it is the only evidence anywhere in this build that
+      * it is read, placed and encoded correctly.
+      *
+      * **Zeroed rather than substituted with another value, because zero is
+      * what the corpus overwhelmingly states.** 14,503 of the 14,609 Cancun
+      * payloads carry the zero root, so an arm replacing it with something
+      * arbitrary would move all of them and prove only that the field is
+      * hashed at all — which the baseline agreement already proves. Zeroing
+      * moves exactly the payloads whose root is not already zero, which is the
+      * thin part and the only part that discriminates a derivation reading the
+      * argument from one pushing a constant.
+      */
+    case BeaconRootZeroed
+
+    /** The payload's two blob-gas fields replaced by zero.
+      *
+      * The same narrow shape as [[BeaconRootZeroed]], over the other link this
+      * label is the first to reach. Both fields at once rather than one,
+      * because `org.fukuii.consensus.pos.PayloadBlobGas` holds them together
+      * and a payload carrying one without the other is unrepresentable.
+      */
+    case BlobGasZeroed
 
   private val Arms: Vector[Arm] = Arm.values.toVector
 
@@ -170,11 +219,29 @@ object EnginePayloadCorpus:
       case Arm.WithdrawalDropped => request => PayloadTranslation.checkedHeaderOf(withoutLastWithdrawal(request))
       case Arm.OmmersSubstituted =>
         request => checkedAgainstStatedHash(request, _.copy(ommersHash = request.payload.parentHash))
+      case Arm.BeaconRootZeroed => request => PayloadTranslation.checkedHeaderOf(withZeroBeaconRoot(request))
+      case Arm.BlobGasZeroed    => request => PayloadTranslation.checkedHeaderOf(withZeroBlobGas(request))
 
   private def withoutLastWithdrawal(request: NewPayloadRequest): NewPayloadRequest =
     val payload = request.payload
     val shortened = payload.appended.map(appended => appended.copy(withdrawals = appended.withdrawals.dropRight(1)))
     request.copy(payload = payload.copy(appended = shortened))
+
+  /** Thirty-two zero bytes, as the corpus writes the root it states most
+    * often. Truncating rather than checked, because an empty array widens to
+    * exactly the width and no failure case exists to handle.
+    */
+  private val ZeroRoot: Hash = Hash.fromBytesTruncating(IArray.empty[Byte])
+
+  private def withZeroBeaconRoot(request: NewPayloadRequest): NewPayloadRequest =
+    request.copy(appended = request.appended.map(_.copy(parentBeaconBlockRoot = ZeroRoot)))
+
+  private def withZeroBlobGas(request: NewPayloadRequest): NewPayloadRequest =
+    val payload = request.payload
+    val zeroed = payload.appended.map(appended =>
+      appended.copy(next = appended.next.map(_ => PayloadBlobGas(UInt64.Zero, UInt64.Zero)))
+    )
+    request.copy(payload = payload.copy(appended = zeroed))
 
   /** The derivation, damaged after the fact, then checked against the hash the
     * payload states — which is what [[PayloadTranslation.checkedHeaderOf]] does
@@ -281,10 +348,52 @@ object EnginePayloadCorpus:
   private def shortReason(error: String): String =
     error.takeWhile(_ != '.').takeWhile(_ != '|')
 
+  /** One `engine_newPayload` call, as the release writes its positional
+    * arguments.
+    *
+    * ==The version decides how many there are, and the fixture states it==
+    *
+    * `engine_newPayloadV1` and `V2` take the payload alone;
+    * `engine_newPayloadV3` adds the expected blob versioned hashes and the
+    * parent beacon block root together (`ethereum/execution-apis` @ `6570b5500`
+    * `src/engine/cancun.md:20-24`). This reads the array's shape rather than
+    * the version the fixture states beside it, so a two-argument call and a
+    * three-argument one are told apart by what is there — which is what lets
+    * one decoder serve every label.
+    *
+    * **A partial third argument is a decode failure and not a two-argument
+    * call**, because the two arrive as one link and no version takes one
+    * without the other. Answering with the payload alone would silently drop a
+    * beacon root the header commits to, and the derived hash would then
+    * disagree with every Cancun payload for a reason the count could not name.
+    */
   private def decodeRequest(entry: Json): Either[String, NewPayloadRequest] =
-    entry.hcursor.downField("params").downN(0).focus match
+    val params = entry.hcursor.downField("params")
+    params.downN(0).focus match
       case None          => Left("no executionPayload in params")
-      case Some(payload) => decodePayload(payload).map(NewPayloadRequest(_))
+      case Some(payload) =>
+        for
+          decoded <- decodePayload(payload)
+          appended <- blobAndBeaconArgumentsAt(params)
+        yield NewPayloadRequest(decoded, appended)
+
+  private def blobAndBeaconArgumentsAt(params: io.circe.ACursor): Either[String, Option[BlobAndBeaconArguments]] =
+    (params.downN(1).focus, params.downN(2).focus) match
+      case (None, None)               => Right(None)
+      case (Some(hashes), Some(root)) =>
+        for
+          versioned <- hashes.as[Vector[String]].left.map(_ => "bad blobVersionedHashes")
+          decoded <- versioned
+            .foldRight[Either[String, Vector[Hash]]](Right(Vector.empty)) { (text, acc) =>
+              for
+                rest <- acc
+                hash <- Hash.fromHex(text).left.map(_ => "bad blob versioned hash")
+              yield hash +: rest
+            }
+          parent <- root.as[String].left.map(_ => "bad parentBeaconBlockRoot")
+          beacon <- Hash.fromHex(parent).left.map(_ => "bad parentBeaconBlockRoot")
+        yield Some(BlobAndBeaconArguments(decoded, beacon))
+      case _ => Left("one of the two arguments engine_newPayloadV3 adds together")
 
   private def decodePayload(payload: Json): Either[String, ExecutionPayload] =
     val cursor = payload.hcursor
@@ -304,6 +413,8 @@ object EnginePayloadCorpus:
       blockHash <- hashAt(cursor, "blockHash")
       transactions <- transactionsAt(cursor)
       withdrawals <- withdrawalsAt(cursor)
+      blobGas <- blobGasAt(cursor)
+      appended <- appendedChain(withdrawals, blobGas)
     yield ExecutionPayload(
       parentHash = parentHash,
       feeRecipient = feeRecipient,
@@ -319,8 +430,26 @@ object EnginePayloadCorpus:
       baseFeePerGas = baseFeePerGas,
       blockHash = blockHash,
       transactions = transactions,
-      appended = withdrawals.map(PayloadWithdrawals(_))
+      appended = appended
     )
+
+  /** A payload's own appended chain, refused where the blob-gas link would be
+    * orphaned.
+    *
+    * The chain runs withdrawals then blob gas, so blob-gas fields on a payload
+    * with no withdrawals field have nothing to hang from. No published payload
+    * is that shape — the fork adding the pair is above the fork adding the
+    * list — and the alternative to refusing is dropping the pair silently,
+    * which would move the derived hash for a reason no count could name.
+    */
+  private def appendedChain(
+      withdrawals: Option[Seq[Withdrawal]],
+      blobGas: Option[PayloadBlobGas]
+  ): Either[String, Option[PayloadWithdrawals]] =
+    (withdrawals, blobGas) match
+      case (Some(list), next) => Right(Some(PayloadWithdrawals(list, next)))
+      case (None, None)       => Right(None)
+      case (None, Some(_))    => Left("blob gas on a payload carrying no withdrawals field")
 
   private def transactionsAt(cursor: io.circe.HCursor): Either[String, Seq[Bytes]] =
     cursor.downField("transactions").as[Vector[String]].left.map(_ => "bad transactions").flatMap { encoded =>
@@ -344,6 +473,23 @@ object EnginePayloadCorpus:
             .collectFirst { case Left(reason) => reason }
             .toLeft(Some(decoded.collect { case Right(w) => w }))
         }
+
+  /** The two fields EIP-4844 appended to the payload, absent below that fork.
+    *
+    * One question rather than two, because `org.fukuii.consensus.pos.PayloadBlobGas`
+    * holds them on one link and no payload carries one without the other. A
+    * payload stating exactly one of them is a decode failure rather than a
+    * payload with neither, for [[decodeRequest]]'s reason.
+    */
+  private def blobGasAt(cursor: io.circe.HCursor): Either[String, Option[PayloadBlobGas]] =
+    (cursor.downField("blobGasUsed").focus, cursor.downField("excessBlobGas").focus) match
+      case (None, None)       => Right(None)
+      case (Some(_), Some(_)) =>
+        for
+          used <- quantityAt(cursor, "blobGasUsed")
+          excess <- quantityAt(cursor, "excessBlobGas")
+        yield Some(PayloadBlobGas(used, excess))
+      case _ => Left("one of the two fields EIP-4844 appended together")
 
   private def decodeWithdrawal(json: Json): Either[String, Withdrawal] =
     val cursor = json.hcursor

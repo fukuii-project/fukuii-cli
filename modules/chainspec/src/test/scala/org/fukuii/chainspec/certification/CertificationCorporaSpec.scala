@@ -3,6 +3,7 @@ package org.fukuii.chainspec.certification
 import org.fukuii.bytes.UInt64
 import org.fukuii.chainspec.networks.{KnownNetworks, ethereum}
 import org.fukuii.chainspec.proposals.eip.{
+  Eip1153,
   Eip1559,
   Eip2565,
   Eip2718,
@@ -17,7 +18,12 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip3855,
   Eip3860,
   Eip4399,
-  Eip4895
+  Eip4788,
+  Eip4844,
+  Eip4895,
+  Eip5656,
+  Eip6780,
+  Eip7516
 }
 import org.fukuii.chainspec.{Activation, Component, DifficultyAdjustment, Network, Registry, UpgradeRules}
 import org.fukuii.evm.fixtures.*
@@ -637,6 +643,27 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
   private val theShanghaiFour: Vector[Component] =
     Vector(Eip3651.component, Eip3855.component, Eip3860.component, Eip4895.component)
 
+  /** The six the fork above THAT adopts, in the order its composition takes
+    * them.
+    *
+    * **Five of the six can be withdrawn on their own and one cannot**, which is
+    * why the matrix carries five rows per Cancun corpus rather than six.
+    * Withdrawing EIP-4844 alone leaves EIP-7516's operation in the table with
+    * nothing to derive a charge from, and `org.fukuii.evm.Interpreter` refuses
+    * that configuration rather than answering it -- so a rerun under it would
+    * raise out of this suite instead of reporting a differential. The pair is
+    * what a fork adopts and the pair is what the rows for either measure.
+    */
+  private val theCancunSix: Vector[Component] =
+    Vector(
+      Eip1153.component,
+      Eip4788.component,
+      Eip4844.component,
+      Eip5656.component,
+      Eip6780.component,
+      Eip7516.component
+    )
+
   /** Each fork below with all but one of its own adopted.
     *
     * Recomposed rather than reverted field by field, for the reason
@@ -659,6 +686,59 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
 
   private def shanghaiWithout(dropped: Component): UpgradeRules => UpgradeRules =
     _ => ethereum.Upgrades.paris.adopting(theShanghaiFour.filterNot(_.id == dropped.id)*)
+
+  private def cancunWithout(dropped: Component): UpgradeRules => UpgradeRules =
+    _ => ethereum.Upgrades.shanghai.adopting(theCancunSix.filterNot(_.id == dropped.id)*)
+
+  /** This fork's rules with a proposal two forks below withdrawn, rebuilt
+    * through both intervening compositions.
+    *
+    * ==The one differential here that reaches ACROSS forks, and it exists
+    * because a row three forks down is zero for a reason that is not about the
+    * rule==
+    *
+    * EIP-4399 supplants what one operation reports without moving it or
+    * repricing it, so the only way a corpus can tell the two readings apart is
+    * to state a difficulty and a randomness that DIFFER. The generated tier at
+    * the consensus-transition fork states `0x00` and thirty-two zero bytes on
+    * every one of its 134 files -- one distinct pair -- so both readings push
+    * the same word there and its row is zero for a property of the files.
+    *
+    * **The re-pinned legacy directories at this fork are the first corpora in
+    * this build where the two differ.** Measured across `for_cancun` at this
+    * release: its own generated directories state one distinct pair, exactly as
+    * the fork below does, and `ported_static` states three -- 6,968 cases at a
+    * randomness of `0x...020000`, 71 at zero and one at `0x15...`. The two
+    * `ported_static` directories these rows read state a non-zero randomness on
+    * every one of their 154 cases between them.
+    *
+    * ==And all three rows are still ZERO, which refines the prediction rather
+    * than confirming it==
+    *
+    * Stating the two values differently is NECESSARY for this row to move and
+    * is not SUFFICIENT: a case must also execute the operation whose report the
+    * document supplants, and neither the directory named for transient storage
+    * nor the one named for memory copying does. So the row's zero has moved
+    * from *"the files cannot tell"* to *"the files could tell and these cases
+    * do not ask"*, which is a different claim about a different corpus and is
+    * the reason the rows are here rather than being left unmeasured.
+    *
+    * **What would move it is the bulk behind the tag**, where the other sixty
+    * directories are -- 62 of them carry a non-zero randomness. That is not a
+    * row here: the whole directory is assembled outside
+    * [[CertificationCorpora.reports]] precisely so an ordinary run does not pay
+    * for it, and the matrix's rerun machinery reads corpora from inside it.
+    *
+    * Rebuilt through all three compositions rather than by reverting the
+    * machine member, for the reason [[berlinWithout]] gives: hand-reverting a
+    * proposal restates its delta beside it.
+    */
+  private val cancunWithoutTheRandomnessSupplant: UpgradeRules => UpgradeRules =
+    _ =>
+      ethereum.Upgrades.grayGlacier
+        .adopting(theParisTwo.filterNot(_.id == Eip4399.component.id)*)
+        .adopting(theShanghaiFour*)
+        .adopting(theCancunSix*)
 
   /** How many cases each censused tier decides on each proposal of the two
     * forks either tier is read at, measured by removing the proposal and
@@ -832,8 +912,10 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     *     thirty-two zero bytes, one distinct pair across the whole directory,
     *     so both readings push the same word and a machine reading the wrong
     *     one agrees with every case. **The corpus filled two forks above this
-    *     one does state the two differently**, which is where that row can
-    *     first be non-zero.
+    *     one does state the two differently, and its rows are zero as well** --
+    *     see [[cancunWithoutTheRandomnessSupplant]], which measures that and
+    *     records why stating the two differently is necessary and not
+    *     sufficient.
     *
     * ==Every one of the four sits beside a non-zero from the same machinery==
     *
@@ -895,7 +977,81 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
       ("EIP-3651", CertificationCorpora.GeneratedShanghaiCorpus, shanghaiWithout(Eip3651.component), 12),
       ("EIP-3855", CertificationCorpora.GeneratedShanghaiCorpus, shanghaiWithout(Eip3855.component), 151),
       ("EIP-3860", CertificationCorpora.GeneratedShanghaiCorpus, shanghaiWithout(Eip3860.component), 1113),
-      ("EIP-4895", CertificationCorpora.GeneratedShanghaiCorpus, shanghaiWithout(Eip4895.component), 0)
+      ("EIP-4895", CertificationCorpora.GeneratedShanghaiCorpus, shanghaiWithout(Eip4895.component), 0),
+      ("EIP-1153", CertificationCorpora.GeneratedCancunMemoryCopyCorpus, cancunWithout(Eip1153.component), 0),
+      ("EIP-1153", CertificationCorpora.PortedStaticCancunMemoryCopyCorpus, cancunWithout(Eip1153.component), 0),
+      ("EIP-1153", CertificationCorpora.PortedStaticCancunTransientStorageCorpus, cancunWithout(Eip1153.component), 48),
+      ("EIP-1153", CertificationCorpora.GeneratedCancunSelfDestructCorpus, cancunWithout(Eip1153.component), 0),
+      ("EIP-1153", CertificationCorpora.GeneratedCancunTransientStorageCorpus, cancunWithout(Eip1153.component), 121),
+      ("EIP-1153", CertificationCorpora.GeneratedCancunBlobGasFeeCorpus, cancunWithout(Eip1153.component), 0),
+      ("EIP-4788", CertificationCorpora.GeneratedCancunMemoryCopyCorpus, cancunWithout(Eip4788.component), 0),
+      ("EIP-4788", CertificationCorpora.PortedStaticCancunMemoryCopyCorpus, cancunWithout(Eip4788.component), 0),
+      ("EIP-4788", CertificationCorpora.PortedStaticCancunTransientStorageCorpus, cancunWithout(Eip4788.component), 0),
+      ("EIP-4788", CertificationCorpora.GeneratedCancunSelfDestructCorpus, cancunWithout(Eip4788.component), 0),
+      ("EIP-4788", CertificationCorpora.GeneratedCancunTransientStorageCorpus, cancunWithout(Eip4788.component), 0),
+      ("EIP-4788", CertificationCorpora.GeneratedCancunBlobGasFeeCorpus, cancunWithout(Eip4788.component), 0),
+      ("EIP-5656", CertificationCorpora.GeneratedCancunMemoryCopyCorpus, cancunWithout(Eip5656.component), 61),
+      ("EIP-5656", CertificationCorpora.PortedStaticCancunMemoryCopyCorpus, cancunWithout(Eip5656.component), 90),
+      ("EIP-5656", CertificationCorpora.PortedStaticCancunTransientStorageCorpus, cancunWithout(Eip5656.component), 0),
+      ("EIP-5656", CertificationCorpora.GeneratedCancunSelfDestructCorpus, cancunWithout(Eip5656.component), 0),
+      ("EIP-5656", CertificationCorpora.GeneratedCancunTransientStorageCorpus, cancunWithout(Eip5656.component), 0),
+      ("EIP-5656", CertificationCorpora.GeneratedCancunBlobGasFeeCorpus, cancunWithout(Eip5656.component), 0),
+      ("EIP-6780", CertificationCorpora.GeneratedCancunMemoryCopyCorpus, cancunWithout(Eip6780.component), 0),
+      ("EIP-6780", CertificationCorpora.PortedStaticCancunMemoryCopyCorpus, cancunWithout(Eip6780.component), 0),
+      ("EIP-6780", CertificationCorpora.PortedStaticCancunTransientStorageCorpus, cancunWithout(Eip6780.component), 0),
+      ("EIP-6780", CertificationCorpora.GeneratedCancunSelfDestructCorpus, cancunWithout(Eip6780.component), 48),
+      ("EIP-6780", CertificationCorpora.GeneratedCancunTransientStorageCorpus, cancunWithout(Eip6780.component), 2),
+      ("EIP-6780", CertificationCorpora.GeneratedCancunBlobGasFeeCorpus, cancunWithout(Eip6780.component), 0),
+      ("EIP-7516", CertificationCorpora.GeneratedCancunMemoryCopyCorpus, cancunWithout(Eip7516.component), 0),
+      ("EIP-7516", CertificationCorpora.PortedStaticCancunMemoryCopyCorpus, cancunWithout(Eip7516.component), 0),
+      ("EIP-7516", CertificationCorpora.PortedStaticCancunTransientStorageCorpus, cancunWithout(Eip7516.component), 0),
+      ("EIP-7516", CertificationCorpora.GeneratedCancunSelfDestructCorpus, cancunWithout(Eip7516.component), 0),
+      ("EIP-7516", CertificationCorpora.GeneratedCancunTransientStorageCorpus, cancunWithout(Eip7516.component), 0),
+      ("EIP-7516", CertificationCorpora.GeneratedCancunBlobGasFeeCorpus, cancunWithout(Eip7516.component), 2),
+      (
+        "EIP-4399",
+        CertificationCorpora.GeneratedCancunTransientStorageCorpus,
+        cancunWithoutTheRandomnessSupplant,
+        0
+      ),
+      (
+        "EIP-4399",
+        CertificationCorpora.PortedStaticCancunTransientStorageCorpus,
+        cancunWithoutTheRandomnessSupplant,
+        0
+      ),
+      (
+        "EIP-4399",
+        CertificationCorpora.PortedStaticCancunMemoryCopyCorpus,
+        cancunWithoutTheRandomnessSupplant,
+        0
+      ),
+      ("Cancun as a whole", CertificationCorpora.GeneratedCancunMemoryCopyCorpus, _ => ethereum.Upgrades.shanghai, 61),
+      (
+        "Cancun as a whole",
+        CertificationCorpora.PortedStaticCancunMemoryCopyCorpus,
+        _ => ethereum.Upgrades.shanghai,
+        90
+      ),
+      (
+        "Cancun as a whole",
+        CertificationCorpora.PortedStaticCancunTransientStorageCorpus,
+        _ => ethereum.Upgrades.shanghai,
+        48
+      ),
+      (
+        "Cancun as a whole",
+        CertificationCorpora.GeneratedCancunSelfDestructCorpus,
+        _ => ethereum.Upgrades.shanghai,
+        48
+      ),
+      (
+        "Cancun as a whole",
+        CertificationCorpora.GeneratedCancunTransientStorageCorpus,
+        _ => ethereum.Upgrades.shanghai,
+        121
+      ),
+      ("Cancun as a whole", CertificationCorpora.GeneratedCancunBlobGasFeeCorpus, _ => ethereum.Upgrades.shanghai, 2)
     )
 
   /** One group of the rows above rerun, once each, keyed by the proposal and
@@ -1080,6 +1236,59 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     decidesAsRecorded(moved, ordinaryCoverage)
   }
 
+  /** ==The legacy static suite re-filled for this fork, 2,135 files of it==
+    *
+    * Behind the tag under the rule
+    * [[CertificationCorpora.portedStaticBulk]] states: a fork's own new corpus
+    * is the ordinary run's feedback loop and a re-pinned legacy suite is not.
+    *
+    * **What it adds is breadth over machinery that is not new.** Every case
+    * here is a transaction this build already settles at six earlier forks;
+    * what the re-fill changes is the rules they are settled under, so a
+    * divergence names an interaction between this fork's six documents and
+    * behavior nothing here was written to exercise. That is the one thing the
+    * fork's own directories structurally cannot supply, because they were
+    * filled from those six documents.
+    *
+    * **The figures are pinned rather than described**, for the reason every
+    * census here is: a harness that narrowed its own input agrees with what is
+    * left and every count it reports stays plausible.
+    */
+  property("the legacy static suite re-filled for this fork is read in full and agrees", Heavy) {
+    val report = CertificationCorpora.portedStaticBulk.getOrElse(
+      cancel("no fixture corpus: " + FixtureCorpus.RootPointer.toString + " names none")
+    )
+    assert(
+      report.filesRead == 2135 && report.casesFound == 7040 && report.diverged.isEmpty,
+      report.describe + "; skipped: " + report.skipped.take(5).map(_.name).mkString(", ")
+    )
+  }
+
+  /** ==The one skip, and it is already censused under the directory it sits
+    * in==
+    *
+    * A blob transaction that deploys. Its published bytes decode as no blob
+    * transaction at all, because this build and the specification both type
+    * that payload's recipient as an address rather than an address-or-empty --
+    * so the harness reports an unreadable signature rather than the refusal the
+    * fixture names.
+    *
+    * **Naming it is what separates a known skip from a new one.** The bulk
+    * overlaps `PortedStaticCancunBlobTransactionCorpus`, where this same case is
+    * the census's one skip, so an assertion that merely counted skips would
+    * absorb a second one silently. `CertificationCorpora` states why the skip is
+    * the finding rather than a gap to tune away.
+    */
+  property("the one case it skips is the one already censused under its own directory", Heavy) {
+    val report = CertificationCorpora.portedStaticBulk.getOrElse(
+      cancel("no fixture corpus: " + FixtureCorpus.RootPointer.toString + " names none")
+    )
+    assert(
+      report.skipped.length == 1 && report.skipped.head.name.contains("test_create_blobhash_tx"),
+      "skipped: " + report.skipped.map(_.name).mkString(", ")
+    )
+  }
+
   property("each tier decides the cases the coverage matrix records, over the corpora that cost minutes", Heavy) {
     val moved = movedPerHeavyRow
     decidesAsRecorded(moved, heavyCoverage)
@@ -1097,6 +1306,197 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     assert(
       moved == Vector("codesizeOOGInvalidSize[d0g0v0]"),
       s"the bound decides these cases: ${moved.mkString(", ")}"
+    )
+  }
+
+  /** ==Half the directory named for the blob charge cannot tell whether the
+    * operation exists==
+    *
+    * The figure worth having rather than the size. Its two files each pair a
+    * case that succeeds with one the corpus expects to fail -- out of gas, and
+    * a stack overflow -- and a failing case reaches the same state whether the
+    * byte ran an operation or named none, because both consume the whole
+    * allowance. So that directory's own name overstates what it certifies by a
+    * factor of two, which no reading of the files would have said.
+    */
+  /** ==A zero row and a withdrawal that never applied report the same number==
+    *
+    * The matrix's standing control is that every zero sits beside a non-zero
+    * from the same machinery over the same corpus, which rules out a rerun that
+    * ignored its argument. **It does not rule out a withdrawal that matched no
+    * component**: `filterNot` over an identifier that is not in the vector
+    * removes nothing, the rerun then runs the unaltered rules, and every row
+    * for that proposal reads zero — which is indistinguishable from a corpus
+    * that cannot see it.
+    *
+    * That is not hypothetical for the fork this property covers. Its
+    * header-only proposal is expected to be zero over every state corpus, so it
+    * is the one row group where a silent no-op would be invisible: the answer
+    * the defect produces is the answer the rule predicts.
+    */
+  property("each of that fork's withdrawable proposals removes something from the rules") {
+    val withdrawable =
+      Table(
+        ("proposal", "withdrawn"),
+        ("EIP-1153", Eip1153.component),
+        ("EIP-4788", Eip4788.component),
+        ("EIP-5656", Eip5656.component),
+        ("EIP-6780", Eip6780.component),
+        ("EIP-7516", Eip7516.component)
+      )
+    forAll(withdrawable) { (proposal: String, dropped: Component) =>
+      assert(
+        cancunWithout(dropped)(ethereum.Upgrades.cancun) != ethereum.Upgrades.cancun,
+        "withdrawing " + proposal + " left the rules unchanged, so every row measured against it is a no-op " +
+          "reporting the figure a corpus blind to the proposal would report"
+      )
+    }
+  }
+
+  property("the header-only proposal's withdrawal is the one a state corpus cannot see") {
+    // The other half of the property above, and the reason its zeros are a
+    // reading of the corpora rather than of the rules: the withdrawal reaches
+    // exactly one member, that member is read off a header, and a state fixture
+    // settles one transaction against a block it is handed. So the zeros are
+    // the same structural bound the matrix already records for the withdrawals
+    // commitment, arriving at a second header field.
+    val without = cancunWithout(Eip4788.component)(ethereum.Upgrades.cancun)
+    assert(
+      ethereum.Upgrades.cancun.header.carriesParentBeaconBlockRoot &&
+        !without.header.carriesParentBeaconBlockRoot &&
+        without.evm == ethereum.Upgrades.cancun.evm &&
+        without.admission == ethereum.Upgrades.cancun.admission,
+      "the document reaches a facet a state corpus could have seen, so its zero rows are not explained by the " +
+        "header bound alone"
+    )
+  }
+
+  property("the two cases the coverage matrix records for the blob charge are the two named") {
+    val moved = movedPerOrdinaryRow(("EIP-7516", CertificationCorpora.GeneratedCancunBlobGasFeeCorpus))
+    assert(
+      moved.length == 2 && moved.exists(_.contains("enough_gas")) && moved.exists(_.contains("no_stack_overflow")),
+      "the charge decides these cases: " + moved.sorted.mkString(", ")
+    )
+  }
+
+  property("the two cases it cannot decide are the two the corpus expects to fail") {
+    // The control for the row above: the complement, named, so that "only two
+    // move" is a measured split rather than a rerun that half failed to apply.
+    val decided = movedPerOrdinaryRow(("EIP-7516", CertificationCorpora.GeneratedCancunBlobGasFeeCorpus))
+    val undecided = found(assembled, CertificationCorpora.GeneratedCancunBlobGasFeeCorpus).outcomes
+      .map(_.name)
+      .filterNot(decided.contains)
+    assert(
+      undecided.length == 2 &&
+        undecided.exists(_.contains("state_test-out_of_gas]")) &&
+        undecided.exists(_.contains("state_test-stack_overflow]")),
+      "undecided: " + undecided.sorted.mkString(", ")
+    )
+  }
+
+  /** ==The one place in this matrix where two proposals decide the same case==
+    *
+    * Everywhere else a fork's rows partition the cases they move between them.
+    * In the generated tier's transient-storage directory the two cases EIP-6780
+    * decides sit INSIDE the 121 EIP-1153 decides, so the union is 121 and not
+    * 123 -- and those two cases are why that directory could not be certified
+    * while the fork was being built one proposal at a time. Both were a
+    * destruction's rule rather than a transient-storage one.
+    *
+    * Asserted as the measured overlap rather than as a general disjointness
+    * claim, so a NEW overlap anywhere is a failure rather than a silently
+    * widened claim.
+    */
+  property("the two proposals that overlap do so in exactly the two cases named") {
+    val byTransientStorage =
+      movedPerOrdinaryRow(("EIP-1153", CertificationCorpora.GeneratedCancunTransientStorageCorpus)).toSet
+    val bySelfDestructScope =
+      movedPerOrdinaryRow(("EIP-6780", CertificationCorpora.GeneratedCancunTransientStorageCorpus)).toSet
+    val both = byTransientStorage.intersect(bySelfDestructScope)
+    assert(
+      both.size == 2 &&
+        both.forall(name => name.contains("reentrant_selfdestructing_call") && name.contains("pre_existing_contract")),
+      "the two cases are a destruction of an account that predates the transaction, reached from a re-entrant " +
+        "call that also writes transient storage -- measured: " + both.toVector.sorted.mkString(", ")
+    )
+  }
+
+  /** ==A case decided only by an interaction would be named by no row==
+    *
+    * Every per-proposal row above withdraws one document. A case whose verdict
+    * moved only when SEVERAL were gone would sit in no such row and be reported
+    * by nothing, so the whole-fork rows exist to bound that: withdrawing all
+    * six at once is `ethereum.Upgrades.shanghai`, and the property below
+    * requires what that moves to be exactly the union of what the individual
+    * rows move.
+    *
+    * **Union and not sum**, and the two come apart in one directory: the two
+    * cases EIP-6780 decides in the generated transient-storage directory sit
+    * INSIDE the 121 EIP-1153 decides there, so the sum is 123 and the union is
+    * 121. Asserting the sum would fail on the one corpus where the interesting
+    * thing happens.
+    */
+  property("withdrawing that fork whole moves exactly what its proposals move between them") {
+    val cancunCorpora = ordinaryRows.collect {
+      case (proposal, corpus, _, _) if CancunProposals.contains(proposal) && corpus.contains("for_cancun") => corpus
+    }.distinct
+    forAll(Table("corpus", cancunCorpora*)) { (corpus: String) =>
+      val union = ordinaryRows
+        .collect { case (proposal, c, _, _) if c == corpus && CancunProposals.contains(proposal) => (proposal, c) }
+        .flatMap(movedPerOrdinaryRow(_))
+        .toSet
+      val whole = movedPerOrdinaryRow(("Cancun as a whole", corpus)).toSet
+      assert(
+        whole == union,
+        "withdrawing the fork whole moved " + whole.size.toString + " cases over " + corpus +
+          " and its proposals move " + union.size.toString + " between them, so " +
+          whole.diff(union).toVector.sorted.mkString(", ") + " is decided by an interaction no row names"
+      )
+    }
+  }
+
+  /** The labels of this fork's own six, as the matrix rows name them.
+    *
+    * Five of the six appear; EIP-4844 has no row of its own for the reason
+    * [[theCancunSix]] states. Named rather than matched on an `EIP-` prefix,
+    * because two other row groups over the same corpora carry labels that would
+    * pass such a test -- the cross-fork randomness row, whose subject is two
+    * forks below, and the whole-fork rows, which overlap all five by
+    * construction.
+    */
+  private val CancunProposals: Set[String] =
+    Set("EIP-1153", "EIP-4788", "EIP-5656", "EIP-6780", "EIP-7516")
+
+  property("no other pair of that fork's proposals decides a case in common") {
+    // The control for the row above: every other pair over every Cancun corpus
+    // is disjoint, so the overlap reported there is a property of those two
+    // documents over that one directory and not an artifact of intersecting
+    // sets at all.
+    // The fork's OWN six only. The whole-fork rows overlap every one of them by
+    // construction, and the cross-fork randomness row measures a document two
+    // forks below, so including either would make this assert something it does
+    // not mean.
+    val cancunRows = ordinaryRows.collect {
+      case (proposal, corpus, _, _) if corpus.contains("for_cancun") && CancunProposals.contains(proposal) =>
+        (proposal, corpus)
+    }
+    val overlaps = cancunRows
+      .groupBy(_._2)
+      .toVector
+      .flatMap { (corpus, rows) =>
+        rows
+          .map(key => key._1 -> movedPerOrdinaryRow(key).toSet)
+          .combinations(2)
+          .collect {
+            case pair if pair(0)._2.intersect(pair(1)._2).nonEmpty =>
+              corpus + ": " + pair(0)._1 + " and " + pair(1)._1
+          }
+      }
+    assert(
+      overlaps == Vector(
+        CertificationCorpora.GeneratedCancunTransientStorageCorpus + ": EIP-1153 and EIP-6780"
+      ),
+      "overlaps: " + overlaps.mkString("; ")
     )
   }
 
@@ -1182,6 +1582,14 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
         CertificationCorpora.ResolutionPoint(
           CertificationCorpora.EthereumParisStarts,
           CertificationCorpora.EthereumShanghaiStartsAtSecond
+        )
+      ),
+      (
+        "Cancun",
+        ethereum.Upgrades.shanghai.adopting(theCancunSix*),
+        CertificationCorpora.ResolutionPoint(
+          CertificationCorpora.EthereumParisStarts,
+          CertificationCorpora.EthereumCancunStartsAtSecond
         )
       )
     )

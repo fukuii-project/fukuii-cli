@@ -93,6 +93,19 @@ object StateFixtureRunner:
       // what a corpus that could not disagree looks like from the vocabulary's
       // side.
       "TransactionException.INSUFFICIENT_MAX_FEE_PER_GAS" -> Refusal.FeeCapBelowBaseFee,
+      // THE SECOND PRE-EXISTING GAP OF EXACTLY THAT SHAPE, and it is worth
+      // stating that the entry above did not predict it. That one was surfaced
+      // by a corpus carrying a transaction the fee market refuses for its cap;
+      // this one is the market's OTHER refusal -- a tip above the cap -- and
+      // the same reasoning would have found it had anyone applied it twice.
+      //
+      // It became reachable with the re-pinned legacy bulk and with nothing
+      // else. Measured across the whole published state tier at this release:
+      // five files anywhere state this name, four of them under forks this
+      // build's ladder does not reach, and the fifth is
+      // `for_cancun/ported_static/stEIP1559/test_tip_too_high`. So no corpus
+      // registered before that one could have disagreed about it.
+      "TransactionException.PRIORITY_GREATER_THAN_MAX_FEE_PER_GAS" -> Refusal.PriorityFeeAboveFeeCap,
       // The rules the blob format brings. Each name is the corpus's for one of
       // this document's own refusals, and the mapping is what turns a refusal
       // compared by NAME into a refusal compared by RULE -- without it a build

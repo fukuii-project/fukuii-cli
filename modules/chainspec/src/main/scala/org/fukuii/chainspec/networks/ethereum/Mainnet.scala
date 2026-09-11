@@ -779,6 +779,51 @@ object Mainnet:
       Upgrade.RuleChange(Upgrades.shanghai)
     )
 
+  /** Cancun, timestamp 1,710,338,135.
+    *
+    * ==Four independent statements of the figure==
+    *
+    * `ethereum/execution-specs` @ `0cc100eb1` (2026-09-08) states it twice in
+    * one module: `src/ethereum/forks/cancun/__init__.py` gives the schedule row
+    * `| Mainnet | 1710338135 | 2024-03-13 13:55:35 | 0x9f3d2254 | 269,568 |`
+    * and `FORK_CRITERIA: ForkCriteria = ByTimestamp(1710338135)` beneath it.
+    * `ethereum/go-ethereum` @ `02872e9ef` (2026-09-09) has
+    * `CancunTime: newUint64(1710338135)` in `params/config.go`;
+    * `besu-eth/besu` @ `b330564a9` (2026-09-09) has `"cancunTime": 1710338135`
+    * in `config/src/main/resources/mainnet.json`; and
+    * `ethereumclassic/core-geth` @ `4185df450` (2025-01-23) carries the same
+    * figure on its Ethereum mainnet configuration in `params/config.go:66`.
+    *
+    * ==Nothing activates between this entry and the one below it==
+    *
+    * The same instrument every entry above was checked with -- every numeric
+    * field in two clients' mainnet configurations, not the fields named after
+    * an upgrade. **Both entries sit on one axis here, so the window is read on
+    * that axis alone**, unlike the pair below it: between 1,681,338,455 and
+    * 1,710,338,135 neither client states a timestamp at all.
+    *
+    * Two fields in those configurations are numeric and are not activations,
+    * named so a later reader does not re-decide them: a blob schedule, which is
+    * a figure the rules resolve rather than a point they change at, and a
+    * deposit-contract address, which names a place rather than a time.
+    *
+    * ==The second entry on this network on the timestamp axis, and the first
+    * whose ordering against its predecessor is settled by the numbers alone==
+    *
+    * The entry below it is the first timestamp entry, and its own note records
+    * that EIP-6122's rule -- forks by timestamp MUST be scheduled at or after
+    * forks by block -- is what actually orders it against a block number. This
+    * one sits above another timestamp, so the ordinary comparison settles it
+    * and the cross-axis rule is not what is doing the work. Both entries are
+    * still subject to it.
+    */
+  private val cancun: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(
+      atTimestamp(1710338135),
+      upgrade("Cancun"),
+      Upgrade.RuleChange(Upgrades.cancun)
+    )
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -820,6 +865,7 @@ object Mainnet:
         arrowGlacier,
         grayGlacier,
         paris,
-        shanghai
+        shanghai,
+        cancun
       )
     )

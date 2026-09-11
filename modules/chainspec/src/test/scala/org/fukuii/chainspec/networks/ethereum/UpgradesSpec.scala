@@ -43,7 +43,8 @@ class UpgradesSpec extends AnyFlatSpec:
       Upgrades.arrowGlacier,
       Upgrades.grayGlacier,
       Upgrades.paris,
-      Upgrades.shanghai
+      Upgrades.shanghai,
+      Upgrades.cancun
     )
 
   /** Every rule set this network composed while it still paid a block reward.
@@ -815,5 +816,78 @@ class UpgradesSpec extends AnyFlatSpec:
     // names.
     assert(
       Upgrades.shanghai.consensus == Upgrades.paris.consensus,
+      "no document in this upgrade settles anything about the mechanism"
+    )
+
+  // ── The composition that prices a resource the header accounts for ───────
+
+  "the composition this network calls Cancun" should "record exactly the six proposals it adopted, in order" in
+    // The specification's own membership list for this fork has six entries and
+    // this is the order it states them in. A seventh document names the fork --
+    // the meta proposal the specification's summary cites as what the fork IS
+    // rather than as something it changes -- and settles no rule, so it is
+    // deliberately absent for the reason the fifth document is absent above.
+    assert(
+      Upgrades.cancun.components.drop(Upgrades.shanghai.components.length) ==
+        Vector(
+          ProposalId.Eip(1153),
+          ProposalId.Eip(4788),
+          ProposalId.Eip(4844),
+          ProposalId.Eip(5656),
+          ProposalId.Eip(6780),
+          ProposalId.Eip(7516)
+        ),
+      "the journal states the six this upgrade added over the one below it"
+    )
+
+  it should "require its headers to state the root of the beacon block their parent was built against" in
+    assert(
+      Upgrades.cancun.header.carriesParentBeaconBlockRoot,
+      "the field arrives with the fork, and `org.fukuii.consensus.HeaderValidator` is what refuses a header " +
+        "on the wrong side of it"
+    )
+
+  it should "not have required that at the upgrade before it" in
+    assert(
+      !Upgrades.shanghai.header.carriesParentBeaconBlockRoot,
+      "otherwise the assertion above holds for a build that requires the field at every height"
+    )
+
+  it should "account for blob gas, which the upgrade before it does not" in
+    assert(
+      Upgrades.cancun.header.blobSchedule.isDefined && Upgrades.shanghai.header.blobSchedule.isEmpty,
+      "the pair of header fields arrives with this fork and the schedule behind them is what a header derives from"
+    )
+
+  it should "keep every header member the upgrades below it settled" in
+    // Two documents write this facet and each writes a different member, so a
+    // delta rebuilding the record rather than copying it would reset the three
+    // the forks below put there.
+    assert(
+      (
+        Upgrades.cancun.header.feeMarket,
+        Upgrades.cancun.header.constants,
+        Upgrades.cancun.header.carriesWithdrawalsRoot
+      ) ==
+        (Upgrades.shanghai.header.feeMarket, Upgrades.shanghai.header.constants, true),
+      "two members move and the facet's other three are carried through"
+    )
+
+  it should "move the machine, the header and what a block will admit" in
+    // The three facets its six documents name between them, and EIP-4844 writes
+    // all three on its own. Stated as the three rather than as a count of
+    // facets: `Upgrades.london` already moves these three plus the difficulty
+    // one across five documents, so a composition reaching three is not new
+    // here and one DOCUMENT reaching three is.
+    assert(
+      Upgrades.cancun.admission != Upgrades.shanghai.admission &&
+        Upgrades.cancun.header != Upgrades.shanghai.header &&
+        Upgrades.cancun.evm != Upgrades.shanghai.evm,
+      "a facet this upgrade's documents name went unwritten"
+    )
+
+  it should "leave what a block owes its consensus mechanism exactly as the upgrade below it left it" in
+    assert(
+      Upgrades.cancun.consensus == Upgrades.shanghai.consensus,
       "no document in this upgrade settles anything about the mechanism"
     )

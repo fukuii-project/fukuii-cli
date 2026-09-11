@@ -170,6 +170,68 @@ object SystemCall:
     * `GASPRICE`.** On such a network the two readings are different state, and
     * the question has to be settled from that network's own specification
     * rather than from this constant.
+    *
+    * ==The rule that produced the answer, stated because this build has
+    * reached the same situation twice and answered it two ways==
+    *
+    * The other site is `org.fukuii.evm.JournaledWorldState.markAccountCreated`,
+    * where the executable specification is again alone -- it keeps a creation
+    * marker across a revert and two production clients roll it back -- and
+    * where this build followed the SPECIFICATION rather than the clients. Two
+    * unobservable divergences resolved opposite ways is a thing a reader will
+    * find, so the rule is written down rather than left to be inferred from
+    * either answer.
+    *
+    * **The rule applies only where the divergence is unobservable, and that
+    * boundary is not a softening of it.** An observable divergence between this
+    * build and a production client is a chain split, so it is a defect to be
+    * fixed and never a tie to be broken. What follows governs the case where
+    * the sources disagree and no block on any network in scope can tell.
+    *
+    * **The tiebreak is whether the normative source DECLARES the choice
+    * immaterial.**
+    *
+    *   - **Where it does, there is no disagreement to break.** The clients are
+    *     then exercising a latitude the specification granted rather than
+    *     contradicting it, both readings conform, and this build follows the
+    *     normative source. That is the creation-marker site: the specification
+    *     states the marker is kept, states why, and closes with *"this is
+    *     harmless"* -- so it has ruled on the divergence itself.
+    *   - **Where nothing does, the disagreement is real.** The value is marked
+    *     UNSETTLED, implemented from the widest independent evidence available,
+    *     and given a trigger that would reverse it. That is this site: the
+    *     proposal says nothing, the specification fills a field in a
+    *     general-purpose constructor without comment, and four implementations
+    *     across three language families fill it otherwise.
+    *
+    *     **The reading that cuts the other way is recorded rather than left
+    *     out.** Five further fields of that same constructor ARE given values
+    *     that say "this is not a transaction" -- empty access lists, no blob
+    *     hashes, no index in the block, no transaction hash -- so the
+    *     specification was willing to think about that constructor's fields,
+    *     and filling this one from the block may be a choice rather than an
+    *     oversight. It changes nothing here: the tiebreak turns on whether the
+    *     divergence was declared immaterial, and no source declares it either
+    *     way.
+    *
+    * **What deliberately does NOT enter the rule is which source the published
+    * fixtures reward.** Those are generated from the executable specification,
+    * so matching it is what certification rewards while matching the clients is
+    * what interoperating with peers rewards -- and the two come apart exactly
+    * where a value is unobservable. They come apart with no consequence,
+    * because an unobservable divergence is by construction one no fixture can
+    * discriminate: a corpus compares roots and hashes, and a value that moves
+    * neither is a value it cannot see. Measured at this site rather than
+    * assumed, in two parts: the paragraphs above walk the deployed contract's
+    * own code and find no `GASPRICE` byte in it, and `SystemCallCorpus` records
+    * that every published EIP-4788 case carries byte-identical canonical code
+    * at that address or none -- so no published case could have run a contract
+    * that asked.
+    *
+    * **Its canonical home is a consensus-change protocol this repository does
+    * not have**, alongside the state-root litmus, and it is stated here rather
+    * than in `.claude/protocols/` because writing that protocol is not this
+    * layer's to do.
     */
   val GasPrice: BigInt = BigInt(0)
 

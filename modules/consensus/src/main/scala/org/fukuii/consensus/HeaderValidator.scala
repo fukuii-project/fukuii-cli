@@ -161,6 +161,14 @@ enum HeaderFault:
     */
   case ExcessBlobGasNotRepresentable(derived: BigInt)
 
+  /** A block at a fork that states the root of the beacon block its parent was
+    * built against, stating none.
+    */
+  case ParentBeaconBlockRootMissing
+
+  /** A block below any beacon-root proposal, stating one. */
+  case ParentBeaconBlockRootUnexpected(stated: Hash)
+
 /** A header together with the rules its own height resolves to.
   *
   * ==One parameter where four invited a transposition==
@@ -394,6 +402,7 @@ object HeaderValidator:
       _ <- checkConstants(block)
       _ <- checkWithdrawalsRoot(block)
       _ <- checkBlobGas(block, parent)
+      _ <- checkParentBeaconBlockRoot(block)
     yield ()
 
   /** A header states a commitment over its block's withdrawals exactly where
@@ -583,6 +592,55 @@ object HeaderValidator:
       parent.header.blobGasUsed.map(_.toBigInt).getOrElse(BigInt(0))
     val target = schedule.targetBlobs * BlobGasPerBlob
     if spent < target then BigInt(0) else spent - target
+
+  /** A header states the root of the beacon block its parent was built against
+    * exactly where its fork requires one.
+    *
+    * ==The same pair as [[checkWithdrawalsRoot]], and the ONLY check this field
+    * ever gets==
+    *
+    * Presence and absence are both rules, as they are for the fee market, the
+    * withdrawals commitment and the blob-gas link. What differs is what happens
+    * afterwards. Every other commitment a header states is a function of the
+    * block, so a caller holding a body re-settles it and this layer's check is
+    * an earlier and weaker one. **This value is handed in from the consensus
+    * layer and derivable from nothing**, so no later caller can compare it
+    * against anything, and a fork's requirement that the field be present or
+    * absent is the whole of what any layer here can enforce about it.
+    *
+    * `org.fukuii.chainspec.HeaderRules.carriesParentBeaconBlockRoot` says the
+    * same thing from the rule's side; this is the reader that makes the member
+    * admissible.
+    *
+    * ==Two sources, enforcing it two different ways==
+    *
+    * `ethereum/go-ethereum` @ `02872e9ef` `consensus/beacon/consensus.go:263-268`
+    * checks the identical pair as a rule -- *"invalid parentBeaconRoot, have
+    * %#x, expected nil"* below the fork and *"header is missing beaconRoot"* at
+    * or above it.
+    *
+    * `ethereum/execution-specs` @ `0cc100eb1` enforces it STRUCTURALLY instead,
+    * and the difference is worth stating because it is why a rule is needed
+    * here at all: `parent_beacon_block_root` is a required field of
+    * `forks/cancun/blocks.py`'s `Header` and absent from
+    * `forks/shanghai/blocks.py`'s, so a header on the wrong side of the fork
+    * does not decode rather than failing a check. `org.fukuii.types.BlockHeader`
+    * carries one type across every fork with the field on an optional chained
+    * tail, which is what a client running more than one network family needs and
+    * is exactly what moves this from the decoder to here.
+    *
+    * ==The value is unread, and the reason differs from the withdrawals case==
+    *
+    * There the root is compared where the body is. Here there is nowhere: the
+    * option is matched on and its contents are never looked at, which is the
+    * type stating that this layer holds a commitment it cannot check.
+    */
+  private def checkParentBeaconBlockRoot(block: Resolved): Either[HeaderFault, Unit] =
+    (block.rules.header.carriesParentBeaconBlockRoot, block.header.parentBeaconBlockRoot) match
+      case (false, None)         => Right(())
+      case (false, Some(stated)) => Left(HeaderFault.ParentBeaconBlockRootUnexpected(stated))
+      case (true, None)          => Left(HeaderFault.ParentBeaconBlockRootMissing)
+      case (true, Some(_))       => Right(())
 
   /** The header fields a fork holds at a constant, against those constants.
     *

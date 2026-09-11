@@ -166,13 +166,40 @@ enum GetPayloadRefusal:
   * trait as what a consensus layer calls would state something about the
   * calling side that the calling side contradicts.
   *
-  * **`engine_getBlobs` is deferred for a reason of this side, not of that
-  * one.** It serves blobs out of the transaction pool, and neither a blob nor
-  * the pool it would come from is modeled anywhere in this build — so it could
-  * only be given a signature over types that do not exist. It became live at
-  * the upgrade that introduced blob-parameter-only forks, which is above the
-  * range this project's Ethereum schedule reaches, and the types arrive with
-  * the fork ladder rather than with this seam.
+  * **`engine_getBlobs` is not this trait's, and the reason is ownership rather
+  * than readiness.** Three things settle it, and the fork ladder is not one of
+  * them.
+  *
+  * **It is not gated by this fork, and the specification says so in its own
+  * words.** `engine_getBlobsV1` is documented in the Cancun document and
+  * annotated *"This is a new method introduced after Cancun. It is defined
+  * here because it is backwards-compatible with Cancun"* (`ethereum/execution-apis`
+  * @ `6570b5500` `src/engine/cancun.md:187`). A previous reading deferred it as
+  * living above this project's schedule; that is true of `V2` and `V3`, which
+  * `src/engine/osaka.md:94,122` introduce, and false of `V1`. **So reaching
+  * Cancun does not bring it into range and does not leave it out of range
+  * either** — nothing about a fork decides it.
+  *
+  * **What it answers is pool state, which is not this layer's.** It serves
+  * blobs out of the transaction pool, and the specification leaves what is in
+  * that pool to the client: *"execution layer clients may prune old blobs from
+  * their pool"* (`:211`), and client software **MAY** *"return an array of all
+  * `null` entries if syncing or otherwise unable to serve blob pool data"*
+  * (`:209`). A policy that moves no state root and is tunable without a
+  * hard fork belongs to whoever owns mempool policy, and the surface it is
+  * offered over — the method name, the version, the ordering requirement on
+  * the response array, the `-38004: Too large request` code and the one-second
+  * timeout — belongs to whoever owns the JSON-RPC namespace. **Neither is this
+  * seam**, which owns what a fork selects and what order a driver may call in,
+  * and this verb has nothing of either.
+  *
+  * **And it could still only be typed over values this build does not have.**
+  * Its response is `BlobAndProofV1`, a 131,072-byte SSZ blob beside a 48-byte
+  * KZG proof (`:77-78`). This fork brought blob GAS and the commitments'
+  * versioned hashes; it did not bring a blob.
+  * `org.fukuii.types.Transaction.Blob` says so on its own field — *"the blobs
+  * themselves travel beside the transaction on the network layer and are not
+  * part of it here"* — and no transaction pool is modeled anywhere.
   *
   * ==In-process on purpose, and that is what makes it the analogue of a
   * consensus engine rather than of a server==

@@ -66,7 +66,8 @@ class MainnetSpec extends AnyFlatSpec:
           "Arrow Glacier",
           "Gray Glacier",
           "Paris",
-          "Shanghai"
+          "Shanghai",
+          "Cancun"
         ),
       "an enumeration missing an entry misnumbers every entry after it, which is silent rather than absent"
     )
@@ -156,7 +157,11 @@ class MainnetSpec extends AnyFlatSpec:
         // above an entry that is absent -- one counted, one not, adjacent,
         // and both changing the rules. That pair is what the fourth upgrade
         // case exists to express, and it is only visible here.
-        Activation.AtTimestamp(UInt64.fromBits(1681338455L))
+        Activation.AtTimestamp(UInt64.fromBits(1681338455L)),
+        // The second timestamp point, and the first whose ordering against the
+        // one above it is settled by the numbers rather than by EIP-6122's
+        // cross-axis rule. Both remain subject to that rule.
+        Activation.AtTimestamp(UInt64.fromBits(1710338135L))
         // AND NOTHING FOR 15,537,394, which is the one exclusion here that
         // drops an entry that DOES change the rules. EIP-3675 requires it: a
         // fork identifier is exchanged before either peer has the other's
@@ -443,6 +448,49 @@ class MainnetSpec extends AnyFlatSpec:
     assert(
       schedule.at(UInt64.fromBits(99999999L), UInt64.Zero) == Upgrades.paris,
       "a timestamp activation came into force on a block number, so the two axes are being compared as one quantity"
+    )
+
+  // ── The first entry above another on the same axis ───────────────────────
+
+  "the Cancun entry" should "activate on a TIMESTAMP, not a height" in
+    assert(
+      entryNamed("Cancun").activation == Activation.AtTimestamp(UInt64.fromBits(1710338135L)),
+      "1,710,338,135 read as a height is a block this network will not reach for decades, which resolves to " +
+        "the upgrade below for ever and fails nothing else here"
+    )
+
+  it should "resolve to the rules that adopt its six proposals" in
+    assert(
+      schedule.at(UInt64.fromBits(99999999L), UInt64.fromBits(1710338135L)) == Upgrades.cancun,
+      "the entry at this network's Cancun timestamp does not resolve to the rules that upgrade composes"
+    )
+
+  it should "resolve to SHANGHAI one second earlier, not to the upgrade below that" in
+    // The control, and it discriminates more than the Shanghai one does: two
+    // timestamp entries now sit next to each other, so a comparison that
+    // resolved a timestamp against the wrong entry has somewhere wrong to land
+    // that is still on its own axis.
+    assert(
+      schedule.at(UInt64.fromBits(99999999L), UInt64.fromBits(1710338134L)) == Upgrades.shanghai,
+      "a block one second below this network's Cancun timestamp resolves to rules it does not run"
+    )
+
+  it should "NOT come into force on height alone, however far the chain has run" in
+    assert(
+      schedule.at(UInt64.fromBits(99999999L), UInt64.Zero) == Upgrades.paris,
+      "a timestamp activation came into force on a block number, so the two axes are being compared as one quantity"
+    )
+
+  it should "require the beacon root its own rules introduce" in
+    // The member that had no reader until this fork's validator check, asserted
+    // from the network's own resolution rather than from the composition: the
+    // rules a height resolves to are what a header is checked against, so a
+    // component adopted into the wrong upgrade would leave this false while
+    // every composition test passed.
+    assert(
+      schedule.at(UInt64.fromBits(99999999L), UInt64.fromBits(1710338135L)).header.carriesParentBeaconBlockRoot &&
+        !schedule.at(UInt64.fromBits(99999999L), UInt64.fromBits(1710338134L)).header.carriesParentBeaconBlockRoot,
+      "the field is required at this network's Cancun timestamp and forbidden one second below it"
     )
 
   "this network's schedule" should "put every block activation before every timestamp activation" in {
