@@ -221,7 +221,7 @@ object BeaconRootCorpus:
                 entry.blocks.foreach { block =>
                   block.parentBeaconBlockRoot.foreach { root =>
                     SystemCall.run(
-                      SystemCall(BeaconRoots, Bytes.fromIArray(root.toBytes)),
+                      SystemCall(SystemCall.Target.BeaconRoots, Bytes.fromIArray(root.toBytes)),
                       world,
                       contextAt(block.timestamp),
                       _ => Nothing32,

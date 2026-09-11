@@ -2,8 +2,9 @@ package org.fukuii.consensus.pos
 
 import org.scalatest.flatspec.AnyFlatSpec
 
-import org.fukuii.bytes.{Bytes, UInt64}
-import org.fukuii.types.Seal
+import org.fukuii.bytes.{Bytes, Hash, UInt256, UInt64}
+import org.fukuii.rlp.{RlpCodec, RlpItem}
+import org.fukuii.types.{Seal, Transaction}
 
 /** The two holes this phase exists to fill, and the refusals around them.
   *
@@ -24,6 +25,42 @@ class PayloadTranslationSpec extends AnyFlatSpec:
 
   private def sealOf(payload: ExecutionPayload): Option[Seal] =
     PayloadTranslation.headerOf(NewPayloadRequest(payload)).toOption.map(_.seal)
+
+  private val firstHash = PosFixtures.hash(0xa1)
+  private val secondHash = PosFixtures.hash(0xa2)
+
+  /** One blob transaction, in the canonical envelope a payload carries.
+    *
+    * Built through this project's own encoder rather than as a byte literal, so
+    * the bytes the check reads are the bytes the codec writes and a test cannot
+    * pass by agreeing with a hand-typed envelope nothing else produces.
+    */
+  private def blobTransaction(hashes: Seq[Hash]): Bytes =
+    val transaction = Transaction.Blob(
+      chainId = UInt64.fromBits(1L),
+      nonce = UInt64.fromBits(0L),
+      maxPriorityFeePerGas = UInt256.Zero,
+      maxFeePerGas = UInt256.Zero,
+      gasLimit = UInt64.fromBits(21000L),
+      recipient = PosFixtures.address(0x77),
+      value = UInt256.Zero,
+      data = Bytes.Empty,
+      accessList = Seq.empty,
+      maxFeePerBlobGas = UInt256.Zero,
+      blobVersionedHashes = hashes,
+      yParity = UInt256.Zero,
+      r = UInt256.Zero,
+      s = UInt256.Zero
+    )
+    RlpCodec[Transaction].encode(transaction) match
+      case RlpItem.Bytes(payload) => Bytes.fromIArray(payload)
+      case _: RlpItem.Sequence    => fail("a typed transaction encodes to an opaque byte string, not a list")
+
+  private def requestCarrying(transactions: Seq[Bytes], expected: Seq[Hash]): NewPayloadRequest =
+    NewPayloadRequest(
+      cancunish.copy(transactions = transactions),
+      Some(BlobAndBeaconArguments(expected, beaconRoot))
+    )
 
   "PayloadTranslation.contextOf" should "carry the payload's randomness rather than leaving it absent" in
     assert(
@@ -174,6 +211,74 @@ class PayloadTranslationSpec extends AnyFlatSpec:
       PayloadTranslation.EmptyOmmersHash ==
         org.fukuii.crypto.Keccak256.hash(org.fukuii.rlp.RlpCodec.encodeTo(Seq.empty[org.fukuii.types.BlockHeader])),
       "it is derived rather than written down, so nothing here carries thirty-two bytes with no derivation attached"
+    )
+
+  /** The comparison the specification makes a MUST at this boundary.
+    *
+    * ==Each of these is a separate way for the check to be absent==
+    *
+    * A build that never compared would pass the agreeing case and the
+    * no-blob-transaction case on its own, so neither is evidence by itself.
+    * What separates a check from no check is the disagreeing pair, the
+    * non-empty argument against a payload carrying no blob transaction at all,
+    * and the order — and the last of those is the one a comparison written over
+    * sets rather than sequences still gets wrong.
+    */
+  "PayloadTranslation.headerOf" should "derive a header where the payload's blob hashes are the ones the call states" in
+    assert(
+      PayloadTranslation.headerOf(requestCarrying(Seq(blobTransaction(Seq(firstHash))), Seq(firstHash))).isRight,
+      "a payload agreeing with its own third argument is the case the check must leave alone"
+    )
+
+  it should "refuse a payload whose blob hashes are not the ones the call states" in
+    assert(
+      PayloadTranslation.headerOf(requestCarrying(Seq(blobTransaction(Seq(firstHash))), Seq(secondHash))) ==
+        Left(TranslationRefusal.BlobVersionedHashesMismatch(Seq(secondHash), Seq(firstHash))),
+      "the refusal carries both arrays, because which entry differed is not recoverable from the fact that they did"
+    )
+
+  it should "concatenate several blob transactions in the order the payload includes them" in
+    assert(
+      PayloadTranslation.headerOf(
+        requestCarrying(
+          Seq(blobTransaction(Seq(firstHash)), blobTransaction(Seq(secondHash))),
+          Seq(secondHash, firstHash)
+        )
+      ) == Left(TranslationRefusal.BlobVersionedHashesMismatch(Seq(secondHash, firstHash), Seq(firstHash, secondHash))),
+      "the specification requires the actual array respect the order of inclusion, so a reversed argument is a mismatch"
+    )
+
+  it should "refuse a non-empty expected array against a payload carrying no blob transaction" in
+    assert(
+      PayloadTranslation.headerOf(requestCarrying(Seq.empty, Seq(firstHash))) ==
+        Left(TranslationRefusal.BlobVersionedHashesMismatch(Seq(firstHash), Seq.empty)),
+      "the specification requires the expected array be [] where the payload has no blob transaction"
+    )
+
+  it should "accept an empty expected array against a payload carrying no blob transaction" in
+    assert(
+      PayloadTranslation.headerOf(requestCarrying(Seq.empty, Seq.empty)).isRight,
+      "an empty argument against no blob transactions is what every payload below this fork looks like"
+    )
+
+  it should "refuse a transaction entry it cannot decode, rather than counting it as carrying no blob hashes" in
+    assert(
+      PayloadTranslation.headerOf(
+        requestCarrying(Seq(Bytes.fromIArray(IArray(0x03.toByte, 0xc0.toByte))), Seq.empty)
+      ) match
+        case Left(TranslationRefusal.UndecodableTransaction(0, _)) => true
+        case _                                                     => false,
+      "an entry whose blob hashes cannot be read is not an entry carrying none, and answering as though it were " +
+        "would pass a payload by failing to read it"
+    )
+
+  it should "leave a payload alone where the call supplies no expected array at all" in
+    assert(
+      PayloadTranslation
+        .headerOf(NewPayloadRequest(cancunish.copy(transactions = Seq(Bytes.fromIArray(IArray(0x03.toByte))))))
+        .isRight,
+      "the argument arrives with the third version of the method, so a request without one is asking nothing of " +
+        "this check and its transactions are never decoded"
     )
 
   "PayloadTranslation.headerOf" should "read a header field count that matches the payload's own version" in

@@ -249,14 +249,9 @@ The same split resolves the rest:
   `ethereum/consensus-specs`.** Both are corpus members and only the first
   specifies these verbs. Its branch moves, so cite a SHA and a date.
 
-  **`.claude/protocols/consensus-engine-api.md` covers this half of the seam
-  in the detail this bullet only sketches, and it names you directly: it
-  states that attaching a refusal's wire number is `conduit`'s step, and
-  that deciding which of several distinguishable domain causes applies is
-  `forge`'s.** Read it before designing or reviewing this namespace's error
-  handling — it is not one error family behind one code, and the count and
-  the causes are the protocol's to state, not this charter's to copy.
-  `.claude/protocols/` does not auto-load; open it by name.
+  **What this namespace's errors look like is not this bullet's to state.**
+  "Error codes are a specified set, not a convention" below covers it,
+  sourced from `.claude/protocols/consensus-engine-api.md`.
 - **`herald`'s.** The peer-to-peer wire protocol and peer discovery. Both of you
   sit on a trust boundary and neither is the other's: yours is the client
   request, its is the peer connection.
@@ -291,6 +286,15 @@ carries the code for *what actually went wrong*, and a caller distinguishes a
 malformed request from a rejected one from a broken node by that code alone. A
 handler that collapses every failure into one code has removed the only
 information the caller had.
+
+**The `engine_` namespace carries a second, separately specified set this list
+does not cover, and it is not one error family behind one code.**
+`.claude/protocols/consensus-engine-api.md` names you directly: attaching a
+refusal's wire number is `conduit`'s step, and deciding which of several
+distinguishable domain causes applies is `forge`'s. Read it before designing
+or reviewing this namespace's error handling — the count and the causes are
+the protocol's to state, not this charter's to copy. `.claude/protocols/`
+does not auto-load; open it by name.
 
 **Never return HTTP 500 for an application-level error.** A method that fails is
 a successful transaction at the transport layer carrying an error object at the

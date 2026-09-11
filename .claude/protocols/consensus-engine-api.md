@@ -60,8 +60,10 @@ and it matters because a design derived from the fixtures alone would ship a
 defect the fixtures cannot show.** `blockchain_tests_engine` at
 `tests-v20.0.1` publishes `newPayloadVersion` and `forkchoiceUpdatedVersion`
 per payload and publishes **no `getPayload` version at all** — measured over
-52,695 entries, where the two it does publish run `(1,1)`, `(2,2)`, `(3,3)`
-and then `(4,3)` for Prague, Osaka and every blob-parameter-only label. So a
+67,025 entries (`grep -rc '"newPayloadVersion"'` and the same for
+`forkchoiceUpdatedVersion` agree exactly; `"getPayloadVersion"` returns zero),
+where the two it does publish run `(1,1)`, `(2,2)`, `(3,3)` and then `(4,3)`
+for Prague, Osaka and every blob-parameter-only label. So a
 harness or a design that reads only what the fixtures assert about version
 would find two axes and never notice it needs a third.
 
@@ -120,10 +122,20 @@ fourth independent field. **The two arguments inside the first link are not
 consumed equally, and the asymmetry is recorded rather than hidden**: the
 parent beacon root becomes a header field, so a wrong one changes the block
 hash and is caught by the same check every payload goes through; the expected
-blob versioned hashes become nothing on this path, because checking them
-needs the payload's blob transactions decoded and nothing here decodes one —
-so that argument is carried and not checked, which is the one gap on this
-seam the block-hash check cannot back up.
+blob versioned hashes reach no header field at all, so **nothing about the
+block hash can back them up** and they are checked directly, against the
+versioned hashes inside the payload's own blob transactions.
+
+**That check was absent for as long as nothing here could decode a blob
+transaction, and its absence was recorded rather than hidden.** It was closed
+when the decoder arrived and a fork registering blob transactions made the gap
+reachable — and closing it changed what the published corpus does on this seam,
+which is the evidence that it was a real gap rather than a formality: payloads
+the corpus was built to reject had been deriving a matching header. **The check
+runs before the hash check**, which is where the surveyed client puts it, and it
+is gated on the argument's presence rather than run unconditionally — a
+deliberate and recorded divergence from that client, which passes a null in its
+place at the versions that carry none.
 
 ---
 

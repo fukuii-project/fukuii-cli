@@ -306,7 +306,8 @@ class BlockProcessorSpec extends AnyFlatSpec:
       admission: AdmissionRules = legacyOnly,
       withdrawals: Option[Seq[Withdrawal]] = None,
       blobGas: Option[BlobGasAccounting] = None,
-      baseFee: Option[BigInt] = None
+      baseFee: Option[BigInt] = None,
+      systemCalls: Seq[SystemCall] = Seq.empty
   ): Ran =
     val world = new EvmFixtures.MapWorldState
     world.setBalance(signer, Word(funded))
@@ -330,11 +331,60 @@ class BlockProcessorSpec extends AnyFlatSpec:
       irregularStateChange = irregularStateChange,
       consensusStateChange = closing => coinbaseAtClose = closing.balanceOf(coinbase).toBigInt,
       withdrawals = withdrawals,
-      blobGas = blobGas
+      blobGas = blobGas,
+      systemCalls = systemCalls
     )
     Ran(result, world, rootsAsked, coinbaseAtClose)
 
+  private val beaconRoots: SystemCall.Target = SystemCall.Target.BeaconRoots
+
   // ── A transaction runs against what the one before it left ────────────────
+
+  // ── What the system-call sequence admits ──────────────────────────────────
+
+  /** A system call is uncharged, so the sequence is where its cost is bounded.
+    *
+    * Each entry runs its target's code with [[SystemCall.GasLimit]] gas and
+    * consults neither [[BlockOutput.gasUsed]] nor the block's own limit, so
+    * nothing downstream notices a sequence that repeats. The bound is that each
+    * proposal makes its call once per block, which makes the repetition a
+    * caller's mistake -- and a thrown precondition rather than a
+    * [[BlockRejection]], because no chain rule was broken and a block carrying
+    * one is not a block this layer should answer for.
+    */
+  "a block making one proposal's system call twice" should "be refused as a precondition rather than run twice" in
+    assert(
+      intercept[IllegalArgumentException](
+        run(Seq.empty, systemCalls = Seq(SystemCall(beaconRoots, Bytes.Empty), SystemCall(beaconRoots, Bytes.Empty)))
+      ).getMessage.contains("once"),
+      "a repeated target is 30,000,000 gas a second time that reaches no total and no limit"
+    )
+
+  it should "run a sequence whose targets are distinct" in
+    assert(
+      run(Seq.empty, systemCalls = Seq(SystemCall(beaconRoots, Bytes.Empty))).output.receipts.isEmpty,
+      "one call per target is the shape a block actually makes, and the precondition must leave it alone"
+    )
+
+  /** The target is a closed set, so an arbitrary address cannot be given one.
+    *
+    * Asserted as a compile failure because that is the whole of the constraint:
+    * a runtime check would still admit the call, and what makes an unvouched
+    * address unreachable is that [[SystemCall]] does not take one.
+    *
+    * **The positive arm is what makes the negative one mean anything.** A
+    * snippet that fails to compile for an unrelated reason -- a member that does
+    * not exist, a name that does not resolve -- passes `assertDoesNotCompile`
+    * just as well as one refused for its type, and reads identically. The two
+    * snippets below differ in exactly one term, so the second compiling is what
+    * establishes that the first is refused for that term and not for its
+    * surroundings.
+    */
+  it should "not accept a bare address as a system-call target" in
+    assertDoesNotCompile("SystemCall(coinbase, Bytes.Empty)")
+
+  it should "accept a proposal-named target in the same position" in
+    assertCompiles("SystemCall(SystemCall.Target.BeaconRoots, Bytes.Empty)")
 
   "two transactions from one signer" should "both be admitted when they are run in the order the block carries them" in
     // The second states the count the first leaves behind, so it is admissible

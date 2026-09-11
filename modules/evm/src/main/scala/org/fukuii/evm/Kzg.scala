@@ -1,6 +1,6 @@
 package org.fukuii.evm
 
-import ethereum.ckzg4844.CKZG4844JNI
+import ethereum.ckzg4844.{CKZG4844JNI, CKZGException}
 
 /** Whether a KZG proof shows that a committed polynomial takes a claimed value
   * at a claimed point.
@@ -19,8 +19,12 @@ import ethereum.ckzg4844.CKZG4844JNI
   * layer counts in==
   *
   * [[trustedSetup]] is a `lazy val`, so the JVM's own initialization lock makes
-  * it run exactly once per class loader and makes every caller wait for the
-  * first. That is the right grain rather than a convenient one, and it holds in
+  * it run exactly once per class loader ONCE IT HAS SUCCEEDED, and makes every
+  * caller wait for the first. **"Once" is conditional on success and not on
+  * evaluation** -- measured at Scala 3.3.8 by `LazyInitializerRetrySpec`, an
+  * initializer that threw runs again on the next access -- which is why the
+  * native load below is a separate value rather than a statement inside this
+  * one. That is the right grain rather than a convenient one, and it holds in
   * both directions:
   *
   *   - Where a class loader is REUSED, the value is already initialized and
@@ -33,7 +37,7 @@ import ethereum.ckzg4844.CKZG4844JNI
   *     gets its own copy of the C statics, with no setup loaded in it yet.
   *
   * **Both arrangements are ones a long-lived build server actually produces**,
-  * which is why neither is left to chance. `KzgSpec` asserts the property that
+  * which is why neither is left to chance. `KzgPropSpec` asserts the property that
   * matters -- that reaching this twice in one process is harmless -- rather
   * than asserting which of the two arrangements a given run took, which is not
   * this code's to decide.
@@ -51,6 +55,18 @@ import ethereum.ckzg4844.CKZG4844JNI
   * that failed to verify -- which is the one way this could have gone wrong
   * silently, and the reason the initialization below is allowed to throw
   * instead of being folded into [[verifyProof]]'s `None`.
+  *
+  * **The property survives [[verifyProof]]'s handler only because that handler
+  * names `CKZGException`, and widening it to `RuntimeException` destroys it
+  * with nothing failing.** The two raises are distinguishable by class and by
+  * nothing else: an argument the library declines is thrown through
+  * `throw_c_kzg_exception`, which constructs a `CKZGException`, while the
+  * absent setup goes through `throw_exception`, which does
+  * `FindClass(env, "java/lang/RuntimeException")` -- and `CKZGException`
+  * EXTENDS `RuntimeException`, so the wider catch answers `None` for both. A
+  * node with no setup would then report every proof the way it reports a
+  * malformed one, which is the collapse the paragraph above says cannot
+  * happen.
   *
   * ==A load failure is FATAL and is deliberately not a refusal==
   *
@@ -114,12 +130,36 @@ object Kzg:
     */
   private val Precompute: Long = 0
 
-  /** The native library and the ceremony output, loaded once. See the class
-    * note for why a `lazy val` is what expresses "once" correctly here, and why
-    * a failure is left to raise.
+  /** The platform library, mapped once.
+    *
+    * ==Separate from [[trustedSetup]] because it is the half that cannot be
+    * repeated harmlessly==
+    *
+    * `CKZG4844JNI.loadNativeLibrary` creates a NEW temporary directory per
+    * call, copies the platform library into it and `System.load`s that path
+    * (`ethereum/c-kzg-4844` @ `v2.1.8`,
+    * `bindings/java/src/main/java/ethereum/ckzg4844/CKZG4844JNI.java:33-39`) --
+    * and a distinct path is a distinct library to the JVM, so a second call
+    * maps a second copy rather than answering from the first. Both the
+    * directory and the file are only `deleteOnExit`, so each extra copy lasts
+    * the process.
+    *
+    * **A lazy value that threw is evaluated again on the next access**, which
+    * `LazyInitializerRetrySpec` measures at the Scala this build pins. With
+    * both loads in one value, a ceremony output that fails to load would map
+    * another copy of the library on every retry -- the setup load being the far
+    * likelier of the two to fail, since it reads a file. Splitting them puts
+    * the non-repeatable half behind its own initialization lock, where success
+    * is remembered and the retry reaches only the half that can be retried.
+    */
+  private lazy val nativeLibrary: Unit = CKZG4844JNI.loadNativeLibrary()
+
+  /** The ceremony output, loaded once. See the class note for why a `lazy val`
+    * is what expresses "once" correctly here, and why a failure is left to
+    * raise.
     */
   private lazy val trustedSetup: Unit =
-    CKZG4844JNI.loadNativeLibrary()
+    nativeLibrary
     CKZG4844JNI.loadTrustedSetupFromResource(SetupResource, getClass, Precompute)
 
   /** Whether the polynomial `commitment` commits to takes value `y` at point
@@ -132,7 +172,7 @@ object Kzg:
     * library declining the arguments -- a commitment or a proof that is not a
     * compressed point of the right group, or a field element at or above the
     * modulus. The published vector file names that third outcome separately
-    * from the second, and `KzgSpec` reads all three from it.
+    * from the second, and `KzgPropSpec` reads all three from it.
     *
     * **EIP-4844's precompile answers `Some(false)` and `None` identically**,
     * and so do both clients read for it. That collapse is right THERE, where
@@ -166,7 +206,7 @@ object Kzg:
           mutableCopy(proof)
         )
       )
-    catch case _: RuntimeException => None
+    catch case _: CKZGException => None
 
   /** The width a commitment and a proof each occupy, read from the library
     * rather than restated.

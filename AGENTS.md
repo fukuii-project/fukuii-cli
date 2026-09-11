@@ -1083,8 +1083,8 @@ in a rule would charge every session that never touches consensus for them.
 charter stops naming a protocol, that protocol goes dark with nothing reporting
 it. **That cost scales with the count**, and the count is no longer two.
 
-**Two kinds sit among them, and only one is keyed to a network fukuii runs.** A
-**family** protocol covers a family of networks this project runs. A
+**Three kinds sit among them, and only one is keyed to a network fukuii runs.**
+A **family** protocol covers a family of networks this project runs. A
 **mechanism** protocol covers one consensus mechanism, written from a survey of
 production clients rather than from anything on the roadmap. **For a mechanism
 this project has not yet built, that survey commits it to nothing and must not
@@ -1092,41 +1092,68 @@ be read as scheduling work** — true of Clique, AuRa, QBFT and IBFT2 today.
 **Where the mechanism is already built, the protocol is the field-survey record
 behind that build instead** — ethash is the first, and its own head says so
 rather than carrying the other four's "commits to nothing" framing unchanged.
-Each file says which it is, and states its own evidence weight, at its own head.
+**A third kind sits beside them and is neither**, keyed to no family and no
+mechanism: `consensus-change.md` is read on every consensus task regardless of
+which family or mechanism the task is in, and `consensus-engine-api.md` is
+read alongside whichever family protocol a task is also in, wherever the task
+touches the Engine API boundary — both cross-cutting rather than selected by
+family or mechanism the way the other two kinds are. Each file states its own
+evidence weight at its own head; a family or mechanism protocol's header also
+situates it among the others of its own kind, and a cross-cutting protocol's
+header instead states what its facts consolidate.
 
 **They also differ in how far their facts can be trusted, which is why each
-carries a header saying so.** The two family protocols inherited their domain
-facts from this project's prior implementation and open with a `currency:` header
-declaring every one unverified. The mechanism protocols open with a
-`provenance:` header instead: their facts came from a dedicated conformance pass
-and were re-verified with calibrated controls. **Do not carry either header's
-wording onto the other kind** — the whole point of the difference is that a
-reader can tell them apart at a glance.
+carries a header saying so — and `provenance:` does not name one pass.** The
+family protocols inherited their domain facts from this project's prior
+implementation and open with a `currency:` header declaring every one
+unverified. The mechanism protocols open with a `provenance:` header stating a
+dedicated conformance pass: their facts came from a survey of the field and
+were re-verified with calibrated controls. **The cross-cutting protocols also
+open with a `provenance:` header, and it states a different pass** — not a
+fresh survey, but a consolidation of this build's own already-reviewed
+implementation, with every citation independently re-resolved against the
+reference corpus rather than trusted on the strength of appearing in
+already-merged code. **So `provenance:` names two different passes, and
+telling them apart takes reading what the header under it actually claims, not
+the field name alone.** Do not carry a `currency:` header's wording, or either
+kind of `provenance:` header's wording, onto a file it does not describe.
 
-### Adding a mechanism protocol takes three edits, and `forge` may perform none of them
+### Adding a protocol takes three edits, and `forge` may perform none of them
 
 **The files assert well that the set is open. This is the part that is not
-self-evident from reading them**, and it is live rather than hypothetical: a
-mechanism with no protocol here is one directory away in the reference corpus,
-and whoever surveys it arrives at this procedure. **Which mechanisms are
-unsurveyed is a reading of the corpus against the `provenance:` headers in
-`.claude/protocols/`, not a list to keep here** — a named directory with a
-present-tense "is unsurveyed" beside it goes false the moment someone surveys
-it, and nothing re-reads this page when they do.
+self-evident from reading them**, and it is live rather than hypothetical. For
+a mechanism, the trigger is a survey: one with no protocol here is one
+directory away in the reference corpus, and whoever surveys it arrives at this
+procedure. **A cross-cutting protocol's trigger is different** — a boundary or
+a cross-family concern this build has built that no existing family or
+mechanism protocol covers, the way `consensus-change.md` and
+`consensus-engine-api.md` each arrived — but the three edits below are the same
+either way. **Which mechanisms are unsurveyed is a reading of the corpus
+against the `provenance:` headers in `.claude/protocols/` that describe a field
+survey, not a list to keep here** — a named directory with a present-tense "is
+unsurveyed" beside it goes false the moment someone surveys it, and nothing
+re-reads this page when they do.
 
-**The next mechanism** needs **all three**, and the first alone accomplishes
-nothing. **No count is written here, deliberately** — the previous wording said
-*a seventh*, which counted the six protocol files rather than the mechanisms
-among them, and the roster carries the distinction on its face: a mechanism
-protocol opens with a `provenance:` header, a family protocol with a
-`currency:` one. **Derive it from the headers if you need it**, the same way
-`.claude/agents/forge.md` stopped reporting how far its own list had grown:
+**The next protocol** needs **all three edits**, and the first alone
+accomplishes nothing. **No count is written here, deliberately** — the previous
+wording said *a seventh*, which counted the protocol files rather than the
+mechanisms among them, and pointed at `provenance:` versus `currency:` as the
+distinction. **That split no longer separates a mechanism from everything
+else on its own, now that the cross-cutting protocols carry `provenance:` too**
+— a family protocol opens with `currency:`; a mechanism or a cross-cutting
+protocol opens with `provenance:`, and telling those two apart takes reading
+whether the header describes a field survey (mechanism) or a consolidation of
+this build's own already-reviewed implementation (cross-cutting), not the
+field name alone. **Derive the current set from the headers if you need it**,
+the same way `.claude/agents/forge.md` stopped reporting how far its own list
+had grown:
 
 1. **The protocol file** under `.claude/protocols/`, written to the shape the
-   existing mechanism protocols use — its own `provenance:` header, its own
-   evidence weight, its own statement that the set stays open. **Never folded
-   into an existing file**: the fold hides the divergence that justified the
-   survey.
+   existing protocols of its own kind use — its own `currency:` or
+   `provenance:` header, its own evidence weight, its own statement of what
+   distinguishes it from its neighbors. **Never folded into an existing
+   file**: the fold hides the divergence, or the boundary, that justified
+   writing a new one.
 2. **A line in `.claude/agents/forge.md` § "Read the protocol before you act"**,
    because a charter body is the only thing that delivers this directory. A file
    nothing names goes dark with nothing reporting it.

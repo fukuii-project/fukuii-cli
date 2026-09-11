@@ -42,17 +42,18 @@ final case class NewPayloadRequest(payload: ExecutionPayload, appended: Option[B
   *
   * [[parentBeaconBlockRoot]] becomes a header field, so a wrong one changes the
   * block hash and is caught by the check every payload goes through.
-  * [[expectedBlobVersionedHashes]] becomes nothing: the specification requires
-  * it compared against the versioned hashes inside the payload's own blob
-  * transactions (`ethereum/execution-apis` @ `6570b55`
-  * `src/engine/cancun.md:115-117`), which needs those transactions decoded, and
-  * nothing on this path decodes one.
+  * [[expectedBlobVersionedHashes]] moves no header field at all: the
+  * specification requires it compared against the versioned hashes inside the
+  * payload's own blob transactions (`ethereum/execution-apis` @ `6570b55`
+  * `src/engine/cancun.md:115-117`), and a disagreement there leaves every
+  * header field it derives untouched.
   *
-  * **So it is carried and not checked**, which is the one argument on this seam
-  * the block-hash check cannot back up.
-  * [[TranslationRefusal.BlobVersionedHashesNotChecked]] registers the gap and
-  * states what would close it; the field is here because refusing to carry an
-  * argument the method defines would be a worse answer than carrying it.
+  * **So it is the one argument on this seam the block-hash check cannot back
+  * up, and it gets a comparison of its own** —
+  * [[TranslationRefusal.BlobVersionedHashesMismatch]], run by
+  * [[PayloadTranslation.headerOf]] against the payload's decoded transactions.
+  * The asymmetry is in what CATCHES a wrong value rather than in whether one is
+  * caught.
   */
 final case class BlobAndBeaconArguments(
     expectedBlobVersionedHashes: Seq[Hash],

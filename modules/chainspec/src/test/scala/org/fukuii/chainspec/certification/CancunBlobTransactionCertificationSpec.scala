@@ -23,7 +23,7 @@ import java.nio.file.{Files, Path}
   * discriminate, which they cannot, and by how many cases.
   *
   * The distinction has been paid for at every earlier phase of this fork.
-  * `CancunCompositionCertificationSpec` found a directory named for a proposal
+  * `CertificationCorporaSpec` finds a directory named for a proposal
   * deciding four cases of which two could not disagree;
   * `CancunBlobGasCertificationSpec` found a corpus whose only refusals fail two
   * rules at once, so that dropping either one left it in full agreement. The
@@ -125,8 +125,9 @@ class CancunBlobTransactionCertificationSpec extends AnyFlatSpec:
     * charge-reporting operation in the table with nothing to derive a charge
     * from, and `org.fukuii.evm.Interpreter` refuses that configuration rather
     * than answering it -- so a rerun under it would raise out of this spec
-    * instead of reporting a divergence. `CancunCompositionCertificationSpec`
-    * records the same constraint for the same pair.
+    * instead of reporting a divergence. `CertificationCorporaSpec`
+    * records the same constraint for the same pair, on the vector its Cancun
+    * rows are built from.
     */
   private val withoutBlobs: UpgradeRules => UpgradeRules =
     _ => ethereum.Upgrades.shanghai.adopting(Adopted.filterNot(held => Set(BlobFormat, BlobCharge).contains(held.id))*)

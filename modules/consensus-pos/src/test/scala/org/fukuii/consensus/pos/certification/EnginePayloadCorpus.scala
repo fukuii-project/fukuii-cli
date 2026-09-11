@@ -45,19 +45,19 @@ import org.fukuii.types.{BlockHeader, Bloom, Withdrawal}
   * over it is the only evidence available that it is placed and encoded
   * correctly at all.
   *
+  * **`for_cancun` also passes the expected blob versioned hashes as
+  * `engine_newPayloadV3`'s second argument**, so the comparison against the
+  * payload's own blob transactions is exercised against published payloads
+  * rather than against hand-written ones — which matters more than the count,
+  * because the array under test is derived from transactions this project
+  * decodes itself and the expectation is not.
+  *
   * ==What it still CANNOT certify==
   *
   * Execution requests, so the requests-hash link of the tail and every
   * fork-gate window above Cancun are untouched here however many cases agree.
   *
-  * **The expected blob versioned hashes are carried and not checked.** The
-  * specification requires them compared against the versioned hashes inside
-  * the payload's own blob transactions, which needs those transactions
-  * decoded, and nothing on this path decodes one — see
-  * `org.fukuii.consensus.pos.TranslationRefusal.BlobVersionedHashesNotChecked`.
-  * So a payload whose third-argument hashes disagree with its own transactions
-  * is accepted here, and no count below says otherwise.
-  *
+
   * It also certifies nothing about EXECUTION. A payload's `stateRoot`,
   * `receiptsRoot` and `logsBloom` are copied into the header and re-hashed
   * without being recomputed, so a case whose state transition this build would

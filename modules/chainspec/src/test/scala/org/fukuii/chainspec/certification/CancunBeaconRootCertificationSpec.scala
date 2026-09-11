@@ -103,7 +103,7 @@ class CancunBeaconRootCertificationSpec extends AnyFlatSpec:
 
   private def calling(world: StateTrieWorldState, at: BigInt, root: Bytes) =
     SystemCall.run(
-      SystemCall(BeaconRootCorpus.BeaconRoots, root),
+      SystemCall(SystemCall.Target.BeaconRoots, root),
       world,
       blockAt(at),
       _ => throw new AssertionError("neither path of this contract asks for a block hash"),

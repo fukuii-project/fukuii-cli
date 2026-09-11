@@ -13,7 +13,7 @@ import org.fukuii.evm.{Halt, Precompile, PrecompileSet}
   * ==A directory named for a precompile does not establish that it verifies
   * anything==
   *
-  * `CancunCompositionCertificationSpec` records why a count is not a finding:
+  * `CertificationCorporaSpec` records why a count is not a finding:
   * a case filled for a fork can pass under a build that never ran the rule the
   * directory is named after. These 180 cases are the first in this repository
   * whose subject is an ARITHMETIC rather than a schedule or a charge, so the
@@ -79,7 +79,7 @@ class CancunPointEvaluationCertificationSpec extends AnyFlatSpec:
   /** Which cases answer differently under an altered run, by name.
     *
     * The pairing is checked before it is relied on, for the reason
-    * [[CancunCompositionCertificationSpec]] gives: `zip` truncates to the
+    * [[CertificationCorporaSpec]] gives: `zip` truncates to the
     * shorter side rather than complaining, so a rerun yielding fewer outcomes
     * would report a LOW count -- which reads as a corpus that decides less
     * rather than as a rerun that went wrong.

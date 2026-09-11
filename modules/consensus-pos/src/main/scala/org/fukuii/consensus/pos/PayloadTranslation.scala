@@ -4,9 +4,19 @@ import org.fukuii.bytes.{Bytes, Hash, UInt256}
 import org.fukuii.crypto.Keccak256
 import org.fukuii.evm.BlockContext
 import org.fukuii.execution.Withdrawals
-import org.fukuii.rlp.RlpCodec
+import org.fukuii.rlp.{Rlp, RlpCodec, RlpError, RlpItem}
 import org.fukuii.trie.Trie
-import org.fukuii.types.{BaseFeeTail, BeaconRootTail, BlobGasTail, BlockHeader, BlockNonce, Seal, WithdrawalsTail}
+import org.fukuii.types.{
+  BaseFeeTail,
+  BeaconRootTail,
+  BlobGasTail,
+  BlockHeader,
+  BlockNonce,
+  Seal,
+  Transaction,
+  TransactionType,
+  WithdrawalsTail
+}
 
 /** Why a payload could not be turned into a header.
   *
@@ -17,13 +27,13 @@ import org.fukuii.types.{BaseFeeTail, BeaconRootTail, BlobGasTail, BlockHeader, 
   * [[ForkGateRefusal]] one layer down: this module answers the distinguishable
   * reason and the transport attaches the number.
   *
-  * ==One case is RESERVED and is never returned==
+  * ==Every case is reachable, and one of them only recently==
   *
-  * [[BlobVersionedHashesNotChecked]] names a check this build does not perform,
-  * and it is here rather than in a comment because the register is what a
-  * caller reads to learn what can go wrong — a gap recorded only beside the
-  * field it concerns is invisible from the side that would have to handle it.
-  * Its own note states what would make it live.
+  * [[BlobVersionedHashesMismatch]] was carried here as a RESERVED case that
+  * nothing returned, registering a check this build could not perform because
+  * no transaction was decoded anywhere on this path. It is returned now. What
+  * changed is not this module's structure but what sits beneath it: the blob
+  * transaction decodes, so the array the specification defines can be built.
   */
 enum TranslationRefusal:
 
@@ -95,8 +105,8 @@ enum TranslationRefusal:
     */
   case ExecutionRequestsNotDerived
 
-  /** RESERVED, and returned by nothing today: the call carries expected blob
-    * versioned hashes, which this build does not check.
+  /** The versioned hashes the call said the payload's blob transactions carry
+    * are not the ones they carry.
     *
     * ==The one argument on this seam the block-hash check cannot back up==
     *
@@ -104,44 +114,54 @@ enum TranslationRefusal:
     * this build derives, and so covered by comparing that header's hash against
     * the one the payload states, or refused outright. This one is not: the
     * versioned hashes are derived from the blob transactions INSIDE the
-    * payload: the specification requires the actual array be obtained by
-    * *"concatenating blob versioned hashes lists (`tx.blob_versioned_hashes`)
-    * of each blob transaction included in the payload"* and `INVALID` returned
-    * *"if the expected and the actual arrays don't match"*
-    * (`ethereum/execution-apis` @ `6570b55` `src/engine/cancun.md:115-117`).
-    * Nothing about that comparison moves a header field, so a payload whose
-    * blob transactions disagree with the argument derives a header that hashes
-    * correctly and passes every check this module makes.
+    * payload, and nothing about that comparison moves a header field — so
+    * without this case a payload whose blob transactions disagree with the
+    * argument would derive a header that hashes correctly and pass every other
+    * check this module makes.
     *
-    * **It is a standing obligation, not a fork-conditional one.** The same
-    * clause closes *"This validation MUST be instantly run in all cases even
-    * during active sync process"* (`:119`) — the wording that makes
-    * [[EmptyTransaction]] a check this module runs without a decoder. The
-    * difference is that this one cannot be run without one.
+    * The specification requires the actual array be obtained by *"concatenating
+    * blob versioned hashes lists (`tx.blob_versioned_hashes`) of each blob
+    * transaction included in the payload, respecting the order of inclusion"*,
+    * with `INVALID` returned *"if the expected and the actual arrays don't
+    * match"* (`ethereum/execution-apis` @ `6570b55`
+    * `src/engine/cancun.md:115-117`). **A payload carrying no blob transaction
+    * at all is not exempt**: the same clause requires the expected array then be
+    * `[]`, so a non-empty argument against no blob transactions is a mismatch
+    * rather than an absent comparison.
     *
-    * ==Why it is declared rather than returned==
+    * **It is a standing obligation, not a fork-conditional one.** The clause
+    * closes *"This validation MUST be instantly run in all cases even during
+    * active sync process"* (`:119`) — the wording that makes [[EmptyTransaction]]
+    * a check this module runs regardless.
     *
-    * The check needs the payload's transactions DECODED, and this module
-    * decodes none — the transactions root is taken over the encoded bytes for
-    * the reason [[PayloadTranslation.headerOf]] records. So performing it here
-    * would mean putting a decoder on a path built not to need one, and
-    * refusing every blob-bearing payload instead would refuse payloads whose
-    * headers this build derives correctly.
-    *
-    * **Neither is a translation-layer decision.** Whether an unperformable
-    * check refuses the payload or is deferred to the layer that decodes the
-    * transactions anyway is the verb's to settle, and the verb's own refusal
-    * set is where a `-32602` for a wrong parameter set would live too. The case
-    * is here so the gap is registered rather than resolved.
-    *
-    * ==What would make it live==
-    *
-    * The check being performed somewhere — which is the same trigger as
-    * execution reaching blob transactions, since that is where the decoded
-    * transactions exist. Until then this build must not be read as having
-    * checked it.
+    * Both arrays are carried for [[BlockHashMismatch]]'s reason: knowing only
+    * that they differ says nothing about which entry was wrong, and the pair is
+    * what a caller compares against the payload it sent.
     */
-  case BlobVersionedHashesNotChecked
+  case BlobVersionedHashesMismatch(expected: Seq[Hash], actual: Seq[Hash])
+
+  /** A transaction entry does not decode, so the payload's own versioned hashes
+    * cannot be obtained at all.
+    *
+    * ==Reached only where the versioned-hash check runs, which is what keeps it
+    * off the header path==
+    *
+    * [[PayloadTranslation.headerOf]] takes the transactions root over the
+    * encoded bytes and decodes nothing, so an entry that does not decode is
+    * ordinarily no obstacle to deriving a header. It becomes one the moment the
+    * call supplies expected blob versioned hashes, because the array they are
+    * compared against is defined in terms of DECODED transactions: an entry
+    * this build cannot read is an entry whose blob hashes it cannot count, and
+    * answering as though it carried none would pass a payload by failing to
+    * read it.
+    *
+    * **So this is a refusal to guess rather than a decoder being strict.**
+    * `ethereum/go-ethereum` @ `02872e9ef` reaches the same state from the other
+    * direction: its `executableDataToBlock` decodes the transactions first and
+    * returns that error before it compares anything
+    * (`beacon/engine/types.go:305-307`).
+    */
+  case UndecodableTransaction(index: Int, error: RlpError)
 
 /** Turning what the consensus layer sends into what this client executes.
   *
@@ -194,6 +214,23 @@ object PayloadTranslation:
     *
     * Total: every field it reads is mandatory on the payload, so there is
     * nothing here to refuse.
+    *
+    * ==POSTCONDITION for the caller: the excess is transcribed, never checked==
+    *
+    * Nothing here compares `excessBlobGas` against the parent's, because
+    * nothing here has a parent -- a payload arrives on its own and this module
+    * holds no chain. So the figure in the returned context is whatever the
+    * sender stated, and `org.fukuii.evm.BlobGasPrice.at` states a precondition
+    * this transcription cannot meet on its own: the cost of deriving a charge
+    * from it is linear in the excess, so a sender-stated figure near the top of
+    * the 64-bit range is one no machine finishes pricing.
+    *
+    * **Whatever executes a block built from this context owes that check
+    * first** -- `org.fukuii.consensus.HeaderValidator`'s
+    * `ExcessBlobGasMismatch`, against the parent this module never sees. It is
+    * stated here rather than left to be discovered because the ordering is the
+    * only thing standing between the two, and a block-import path assembled
+    * later would otherwise inherit an obligation nothing had written down.
     */
   def contextOf(payload: ExecutionPayload): BlockContext =
     BlockContext(
@@ -251,6 +288,7 @@ object PayloadTranslation:
     val payload = request.payload
     for
       _ <- firstEmptyTransaction(payload.transactions)
+      _ <- checkedBlobVersionedHashes(request)
       _ <- if request.executionRequests.isEmpty then Right(()) else Left(TranslationRefusal.ExecutionRequestsNotDerived)
       tail <- tailOf(request)
     yield BlockHeader(
@@ -299,6 +337,83 @@ object PayloadTranslation:
     transactions.zipWithIndex
       .collectFirst { case (bytes, index) if bytes.isEmpty => TranslationRefusal.EmptyTransaction(index) }
       .toLeft(())
+
+  /** The expected blob versioned hashes against the ones the payload's own blob
+    * transactions carry.
+    *
+    * ==It runs exactly where the argument exists, and that is the whole gate==
+    *
+    * The argument arrives with `engine_newPayloadV3` and later, so a request
+    * carrying no [[BlobAndBeaconArguments]] is one no version of the method
+    * asked this of — and comparing against an array nobody supplied would
+    * refuse every payload the two earlier versions define. Presence of the
+    * argument is therefore the condition, rather than a fork or a timestamp
+    * read a second way: the version ladder already decided it.
+    *
+    * **`ethereum/go-ethereum` @ `02872e9ef` compares unconditionally instead,
+    * with a `nil` expected array standing in at the earlier versions
+    * (`beacon/engine/types.go:319-329`, reached from `NewPayloadV1`'s call
+    * passing `nil`), so a pre-Cancun payload carrying a blob transaction is
+    * refused there and merely goes uncompared here.** Recorded rather than
+    * matched: that payload has nowhere to be valid anyway — the fork gate
+    * refuses a Cancun timestamp sent to the earlier verbs, and a blob
+    * transaction below the fork that admits the format does not execute — so
+    * the two agree on every payload either would accept, and the narrower
+    * condition is the one the specification actually states.
+    */
+  private def checkedBlobVersionedHashes(request: NewPayloadRequest): Either[TranslationRefusal, Unit] =
+    request.expectedBlobVersionedHashes match
+      case None           => Right(())
+      case Some(expected) =>
+        blobVersionedHashesOf(request.payload.transactions).flatMap { actual =>
+          if actual == expected then Right(())
+          else Left(TranslationRefusal.BlobVersionedHashesMismatch(expected, actual))
+        }
+
+  /** Every blob transaction's versioned hashes, concatenated in the order the
+    * payload includes them.
+    *
+    * A transaction that is not a blob transaction contributes nothing, which is
+    * what makes a fold over ALL of them the same array the specification
+    * defines over the blob ones.
+    */
+  private def blobVersionedHashesOf(transactions: Seq[Bytes]): Either[TranslationRefusal, Seq[Hash]] =
+    val decoded = transactions.zipWithIndex.map { (bytes, index) =>
+      transactionOf(bytes).left.map(TranslationRefusal.UndecodableTransaction(index, _))
+    }
+    decoded.collectFirst { case Left(refusal) => refusal } match
+      case Some(refusal) => Left(refusal)
+      case None          =>
+        Right(decoded.collect { case Right(blob: Transaction.Blob) => blob.blobVersionedHashes }.flatten)
+
+  /** The transaction one payload entry carries.
+    *
+    * ==Two encodings, and the leading byte separates them without ambiguity==
+    *
+    * A typed transaction travels as `type || payload` where the type is at most
+    * [[org.fukuii.types.TransactionType.MaxTypeNumber]], and a legacy one
+    * travels as a bare RLP list, whose first byte RLP itself puts at `0xc0` or
+    * above. The two ranges cannot meet, so the first byte decides which decoder
+    * to reach for rather than one being tried and the other used as a fallback
+    * — a fallback would make a value that failed one reading get a second
+    * chance at the other, which is how one transaction acquires two encodings.
+    *
+    * **The legacy branch demands a sequence for that reason.** `Rlp.decode` of
+    * a byte string beginning at `0x80` yields an RLP STRING, and handing its
+    * contents on would read a typed transaction wrapped in a string header as
+    * though it were that transaction — a second encoding of one transaction,
+    * which the transactions root is taken over and so would change a block
+    * hash this module had already agreed with.
+    */
+  private def transactionOf(bytes: Bytes): Either[RlpError, Transaction] =
+    val raw = bytes.toIArray
+    if raw.isEmpty then Left(RlpError.EmptyInput)
+    else if (raw(0) & 0xff) <= TransactionType.MaxTypeNumber then RlpCodec[Transaction].decode(RlpItem.Bytes(raw))
+    else
+      Rlp.decode(raw).flatMap {
+        case sequence: RlpItem.Sequence => RlpCodec[Transaction].decode(sequence)
+        case _: RlpItem.Bytes           => Left(RlpError.ExpectedSequence)
+      }
 
   /** The header's tail, built to the depth the payload and the call reach.
     *

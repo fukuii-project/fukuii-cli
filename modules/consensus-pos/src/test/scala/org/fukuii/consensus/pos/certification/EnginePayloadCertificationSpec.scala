@@ -63,6 +63,31 @@ class EnginePayloadCertificationSpec extends AnyFlatSpec:
   private val HashRefusals: Map[String, Int] =
     Map("for_paris" -> 0, "for_shanghai" -> 3, "for_cancun" -> 3)
 
+  /** Skipped payloads refused because a transaction entry does not decode.
+    *
+    * ==Five, and every one of them is a shape the specification forbids==
+    *
+    * Three carry a blob transaction in its NETWORK form -- the body wrapped
+    * beside its blobs, commitments and proofs, four fields where a transaction
+    * has fourteen -- from `reject_valid_full_blob_in_block_rlp`, whose name
+    * states the expectation. The other two carry a blob transaction with no
+    * recipient, from `invalid_blob_tx_contract_creation` and
+    * `create_blobhash_tx`: `ethereum/EIPs` @ `d2a64c2d4` `EIPS/eip-4844.md:107`
+    * says the field *"MUST NOT be `nil` and therefore must always represent a
+    * 20-byte address. This means that blob transactions cannot have the form of
+    * a create transaction."* This build encodes that in the type rather than in
+    * a check -- `org.fukuii.types.Transaction.Blob.recipient` is an `Address`
+    * and not an `Option[Address]` -- so the decoder refuses the width.
+    *
+    * **All five derived a matching header until the versioned-hash comparison
+    * gave this tier a reason to decode a transaction at all**, which is the
+    * sharper reading of the number: they are not newly malformed, they were
+    * newly LOOKED at. `org.fukuii.consensus.pos.TranslationRefusal.UndecodableTransaction`
+    * states why the comparison cannot proceed past one.
+    */
+  private val UndecodableRefusals: Map[String, Int] =
+    Map("for_paris" -> 0, "for_shanghai" -> 0, "for_cancun" -> 5)
+
   /** ==Every accessor here is a `def`, and that is not a style choice==
     *
     * A missing corpus must fail as tests rather than as a suite that never
@@ -327,34 +352,38 @@ class EnginePayloadCertificationSpec extends AnyFlatSpec:
     */
   "the tier's undecided payloads" should "reproduce every stated block hash under Paris" in
     assert(
-      coverage("for_paris").undecidedDerivingHeader == Skips("for_paris"),
+      coverage("for_paris").undecidedDerivingHeader == Skips("for_paris") - UndecodableRefusals("for_paris"),
       "derived " + coverage("for_paris").undecidedDerivingHeader.toString + " matching headers across " +
-        Skips("for_paris").toString + " skipped payloads: " + coverage("for_paris").toString
+        Skips("for_paris").toString + " skipped payloads, less the " + UndecodableRefusals("for_paris").toString +
+        " refused for a transaction that does not decode: " + coverage("for_paris").toString
     )
 
   it should "reproduce every stated block hash under Shanghai" in
     assert(
-      coverage("for_shanghai").undecidedDerivingHeader == Skips("for_shanghai"),
+      coverage("for_shanghai").undecidedDerivingHeader == Skips("for_shanghai") - UndecodableRefusals("for_shanghai"),
       "derived " + coverage("for_shanghai").undecidedDerivingHeader.toString + " matching headers across " +
-        Skips("for_shanghai").toString + " skipped payloads: " + coverage("for_shanghai").toString
+        Skips("for_shanghai").toString + " skipped payloads, less the " + UndecodableRefusals("for_shanghai").toString +
+        " refused for a transaction that does not decode: " + coverage("for_shanghai").toString
     )
 
-  it should "reproduce every stated block hash under Cancun" in
+  it should "reproduce every stated block hash under Cancun it can read a transaction of" in
     // The largest of the three by an order of magnitude, and the one carrying
     // the malformed blob-transaction shapes the fork introduced -- so it is the
     // group most likely to break a derivation that reads the payload's own
     // appended chain.
     assert(
-      coverage("for_cancun").undecidedDerivingHeader == Skips("for_cancun"),
+      coverage("for_cancun").undecidedDerivingHeader == Skips("for_cancun") - UndecodableRefusals("for_cancun"),
       "derived " + coverage("for_cancun").undecidedDerivingHeader.toString + " matching headers across " +
-        Skips("for_cancun").toString + " skipped payloads: " + coverage("for_cancun").toString
+        Skips("for_cancun").toString + " skipped payloads, less the " + UndecodableRefusals("for_cancun").toString +
+        " refused for a transaction that does not decode: " + coverage("for_cancun").toString
     )
 
-  it should "be refused by the translation nowhere" in
+  it should "be refused by the translation exactly where a transaction entry does not decode" in
     assert(
-      every.forall(report => coverage(report.corpus).undecidedRefused == 0),
-      "a refusal here is this build disagreeing with a published block hash on the payloads most likely to " +
-        "break a derivation, and nothing about the corpus makes zero the expected answer: " + coverage.toString
+      every.forall(report => coverage(report.corpus).undecidedRefused == UndecodableRefusals(report.corpus)),
+      "a refusal beyond the undecodable transaction shapes this tier accounts for is this build disagreeing " +
+        "with a published block hash on the payloads most likely to break a derivation, and nothing about " +
+        "the corpus makes any particular number the expected answer: " + coverage.toString
     )
 
   /** ==The calibration, run rather than recorded==

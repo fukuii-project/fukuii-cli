@@ -86,13 +86,32 @@ obligation, not a one-time check.** `banksy.md` carries it twice — compactly
 in its `description`, in full in its body — and until 2026-09-09 the two
 disagreed: the `description` stated the conjunction above, the body stated an
 unconditional `NO → yours` and demoted tunability to a "hallmark" rather than
-a necessary condition, and a dispatched `banksy` reads the body. `forge.md`
-carries one copy, in its body, with its `description` pointing at it. **If a
-copy is ever found to disagree with this one, restore the conjunction on the
-drifted copy — never widen `banksy`'s NO branch to absorb what fails it.**
-That repair looks obvious from the asymmetry alone and is the wrong one: it
-would make `banksy` the owner of every protocol obligation that moves no
-state root, including the consensus-layer seam `consensus-engine-api.md`
+a necessary condition, and a dispatched `banksy` reads the body.
+
+**Do not enumerate the carriers as a closed roster — a list naming only
+`banksy.md` and `forge.md` was already wrong the day it was written.**
+`herald.md`'s own peer-scoring boundary states the identical conjunction
+(*"alters no state root and is operator-tunable without a hard fork"*), and
+any charter routing a decision through this litmus can state its own copy
+without this file being told. Sweep for it instead of trusting a list:
+
+```
+git grep -n 'state root' .claude/agents/*.md .claude/protocols/*.md
+```
+
+then read each hit for whether it restates the conjunction, and check it
+against this file's own wording. **A line-based sweep misses a restatement
+that wraps across a line break** — `herald.md`'s own copy splits
+`operator-tunable` from `without a hard fork` at exactly such a break — so
+where a charter is known to touch this boundary and a sweep still returns
+nothing for it, read the surrounding paragraph before concluding it is
+silent.
+
+**If a copy is ever found to disagree with this one, restore the conjunction
+on the drifted copy — never widen `banksy`'s NO branch to absorb what fails
+it.** That repair looks obvious from the asymmetry alone and is the wrong
+one: it would make `banksy` the owner of every protocol obligation that moves
+no state root, including the consensus-layer seam `consensus-engine-api.md`
 governs.
 
 ---
@@ -100,15 +119,29 @@ governs.
 ## The unobservable-divergence tiebreak
 
 **Where a divergence between the executable specification and the production
-clients is unobservable, the tiebreak is whether the normative source
-DECLARES the choice immaterial.**
+clients is unobservable, the tiebreak is whether the normative source's own
+stated reasoning ESTABLISHES the choice immaterial.**
 
-- **Where it does, there is no tie to break.** The clients are exercising
-  latitude the specification granted rather than contradicting it — both
-  readings conform, and this build follows the specification.
-- **Where nothing declares anything, the disagreement is real.** The value is
-  implemented from the widest independent evidence available, marked
-  **UNSETTLED**, and carries the trigger that would reverse it.
+**That is an inference from the source's reasoning, not a search for a
+sentence declaring "either reading is fine," and the inference typically sits
+one step past the quotation that carries it.** A source stating that its own
+choice is harmless has not yet stated that the opposite choice is too; the
+second claim follows from the *reason* given for the first, when that reason
+does not depend on which way the choice went — Instance 1 below works this
+out in full, because the specification's own text there only ever asserts the
+first half. **Put at its shortest: the specification's authority on an
+unobservable divergence is conditional on it having reasoned about the
+point, not on it having merely stated a value.**
+
+- **Where the source's reasoning establishes it, there is no tie to break.**
+  Both readings conform — the clients are exercising latitude the
+  specification granted, not contradicting it — and this build's own siding
+  with the specification in that case is a **free preference the
+  immateriality permits, not a consequence the evidence forces.**
+- **Where nothing in the source's reasoning establishes it, the disagreement
+  is real.** The value is implemented from the widest independent evidence
+  available, marked **UNSETTLED**, and carries the trigger that would reverse
+  it.
 
 **"Unobservable" is the whole boundary, and it does not soften anywhere
 inside it.** An observable divergence between this build and a production
@@ -129,9 +162,10 @@ exercise the disagreement at all.
 
 ### Instance 1 — the account-creation marker, EIP-6780's `SELFDESTRUCT` scope
 
-**The specification keeps a created-in-transaction marker across a revert;
-two production clients roll it back on revert. This build follows the
-specification.**
+**The specification keeps a created-in-transaction marker across a revert. Of
+the four production clients read, one keeps it too and three roll it back.
+This build follows the specification, alongside the one client that already
+does.**
 
 `ethereum/execution-specs @ 0cc100eb1`, `forks/cancun/state_tracker.py:615,
 425-427`: *"The parent reference and `created_accounts` are shared (not
@@ -139,7 +173,7 @@ rolled back)"*, and, of the marker specifically, *"The marker is not removed
 even if the account creation reverts. Since the account cannot have had code
 prior to its creation and can't call `get_storage_original()`, this is
 harmless."* Quoted through to its own verdict rather than cut a sentence
-earlier — stopped early, this reads as the specification stating a rule two
+earlier — stopped early, this reads as the specification stating a rule three
 clients break, which is a different and stronger claim than the text
 supports.
 
@@ -148,11 +182,12 @@ opposite choice is equally harmless is one step past the quotation.** It
 follows from the reason given, not from a second statement: the premise is
 that a marked account can never be asked about, and an account that can never
 be asked about carries a marker whose value is unobservable however a client
-records it. So the two clients below are exercising the specification's own
-latitude, not contradicting a rule it states — which is what makes this the
-"declares immaterial" branch rather than the "nothing declares anything" one.
+records it. So the three clients below that roll the marker back are
+exercising the specification's own latitude, not contradicting a rule it
+states — which is what makes this the "declares immaterial" branch rather
+than the "nothing declares anything" one.
 
-**Two production clients roll the marker back on revert.**
+**Three of the four clients read roll the marker back on revert.**
 `ethereum/go-ethereum @ 02872e9ef` holds it as `newContract` on the state
 object and journals the write, so `createContractChange.revert` sets it false
 (`core/state/journal.go:480-482`, written by `StateDB.CreateContract` at
@@ -161,6 +196,30 @@ object and journals the write, so `createContractChange.revert` sets it false
 (`evm/.../frame/TxValues.java:55,159`), reached from
 `MessageFrame.rollback()` (`:1505`) and from `AbstractMessageProcessor`
 (`:138`), which both its revert and its exceptional-halt paths call.
+`erigontech/erigon @ ab8e9fde7` marks a freshly created object
+`newlyCreated` — *"true if this object was created in the current
+transaction"* (`execution/state/state_object.go:103`), consulted at
+`execution/state/intra_block_state.go:1900-1908` ("Used for EIP-6780") — and
+a revert of the journal's `kindCreateObject` entry deletes the object
+outright (`execution/state/journal.go:170-171,287-292`) rather than clearing
+the flag in place, so the marker is gone along with the account it was on.
+
+**`NethermindEth/nethermind @ 3a98e0818` is the fourth client, and it keeps
+the marker — agreeing with the specification rather than with the other
+three.** It tracks a creation on `CreateList`, a plain `HashSet<AddressAsKey>`
+(`src/Nethermind/Nethermind.Evm/StackAccessTracker.cs:21,58,110`), consulted
+for the identical SELFDESTRUCT-scope check
+(`src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.ControlFlow.cs:273`).
+Unlike its sibling `JournalSet` fields on the same tracker — accessed
+addresses, accessed storage cells, and the destroy list, all restored on a
+sub-call revert — `CreateList` carries no snapshot and is **absent from
+`Restore()`** (`StackAccessTracker.cs:118` clears it only once, at the end of
+the top-level execution). So it survives a sub-call revert unchanged, exactly
+as the specification directs.
+
+**So the split is two sources keeping the marker — the specification and
+nethermind — against three clients rolling it back, not the specification
+standing alone against every client.**
 
 **The unobservability is derived, not merely asserted, and the derivation is
 checkable:** a creation only reaches an address holding no code; a creation
@@ -168,16 +227,21 @@ that then fails is undone, so the address holds no code afterward either.
 Both readers of the marker — EIP-6780's narrowed `SELFDESTRUCT` scope, and the
 committed value a store is priced against — are reached only by running code,
 and an address with none runs nothing. A later creation at the same address
-records the marker again. So a marker this build keeps and those two clients
-drop can only ever be asked about an address that cannot ask.
+records the marker again. So a marker this build and nethermind keep, and the
+other three clients drop, can only ever be asked about an address that cannot
+ask.
 
 **Corroboration, not proof:** `state_tests/for_cancun/cancun/eip6780_selfdestruct`
 carries 136 cases built for exactly this interaction, and
 `cancun/eip1153_tstore` carries 123 more, all 259 agreeing under this build's
-reading (`CancunCompositionCertificationSpec`). A corpus filled from the
-specification cannot state an expectation for a behavior the specification
-calls harmless, so what those 259 cases establish is that the shape is
-exercised and nothing diverged — never that no discriminating input exists.
+reading — recorded in `CertificationCorporaSpec`'s coverage matrix
+(`GeneratedCancunSelfDestructCorpus`, 136 cases, and
+`GeneratedCancunTransientStorageCorpus`, 123), which absorbed this differential
+when the standalone composition spec was folded into the schedule. A corpus
+filled from the specification cannot state an expectation for a behavior the
+specification calls harmless, so what those 259 cases establish is that the
+shape is exercised and nothing diverged — never that no discriminating input
+exists.
 
 ### Instance 2 — a system call's `GASPRICE`, EIP-4788's beacon-root call
 
@@ -234,27 +298,35 @@ nothing at all, which is why nothing in this corpus can decide
 asked, which is the measurement behind the rejected tiebreak above at this
 instance specifically.
 
-> `org.fukuii.execution.SystemCall`'s own scaladoc attributes this
-> measurement to an object named `SystemCallCorpus`, twice. No such object
-> exists in this tree — `git grep -l 'SystemCallCorpus'` returns only that
-> one file, citing itself. The actual object, verified against the source
-> above, is `BeaconRootCorpus`. This is a citation defect in that file's
-> comment and not in the claim: the measurement is real and independently
-> confirmed here, under its correct name. Flagged for correction where that
-> file is next touched; not fixed here — a comment fix in consensus code is
-> a decision for whoever owns that file, not an incidental edit to make while
-> authoring this protocol.
-
 ### The rule generalizes past both instances
 
 Neither worked instance is the boundary of the rule. Any future site where
 this build's own reading of the executable specification disagrees with the
 production clients, with no block on any network in scope able to tell the
 difference, is governed by the same tiebreak: check whether the normative
-source declares the choice immaterial before treating the disagreement as
-real, and never let "the published fixtures reward one side" decide it — an
-unobservable divergence is, by the same construction every time, one no
-fixture can discriminate.
+source's own stated reasoning establishes the choice immaterial before
+treating the disagreement as real, and never let "the published fixtures
+reward one side" decide it — an unobservable divergence is, by the same
+construction every time, one no fixture can discriminate.
+
+**The rule is not a rationalization for whichever side this build already
+picked, and that is demonstrated rather than asserted.** Tested against every
+simpler rule that would also fit these two outcomes — always follow the
+specification, always follow the clients, follow whichever side has more
+implementations — none of them reproduces both instances at once. Instance 1
+sides with the specification against a majority of clients (three of four
+roll the marker back; the specification and one client, nethermind, keep
+it); Instance 2 sides with the clients against the specification, by a
+unanimous four-client reading. A rule that always followed the specification
+gets Instance 2 wrong; a rule that always followed the clients, or that
+followed whichever side had more implementations, gets Instance 1 wrong the
+moment a fourth client is read. **Widening Instance 1's survey from two
+clients to four makes the case stronger, not weaker**: this build now sides
+with a minority reading at Instance 1 and a majority reading at Instance 2,
+which no rule keyed to a headcount could produce either way. What decides
+both is whether the *source's own reasoning* establishes the choice as
+immaterial — present at Instance 1, absent at Instance 2 — independent of how
+many clients land on which side.
 
 ---
 
@@ -295,12 +367,14 @@ signal, and its own contract is a change a schedule knows about for one
 block, where a system call runs on every block from its fork onward.
 
 **3. Its writes commit on every outcome, and that is a property of the
-OUTCOME check, not of what an individual invocation keeps.** The
-specification runs the call *"without checking if the contract contains code
-or if the transaction fails"*, and `ethereum/go-ethereum @ 02872e9ef`
-`core/state_processor.go:337` discards all three results of its call —
+OUTCOME check, not of what an individual invocation keeps.** Point 2's
+specification is the proposal; here it is the **executable** specification,
+`ethereum/execution-specs`, and it runs the call *"without checking if the
+contract contains code or if the transaction fails"* (@ `0cc100eb1`
+`forks/cancun/fork.py:552-553`), and `ethereum/go-ethereum @ 02872e9ef`
+`core/state_processor.go:336` discards all three results of its call —
 `_, _, _ = evm.Call(...)` — and finalizes immediately after, in sharp
-contrast with the ordinary system-contract call eleven lines below it, which
+contrast with the ordinary system-contract call thirty lines below it, which
 panics on error. **This does NOT mean a reverted invocation's own writes
 survive.** The interpreter still undoes those inside itself, exactly as for a
 transaction. What is unchecked is whether the caller branches on success or
@@ -349,15 +423,23 @@ rule and both worked instances are grounded in this build's own reviewed,
 citation-backed implementation, and every citation in this file was
 independently re-resolved against the reference corpus rather than trusted
 on the strength of appearing in already-merged code. **What is not re-derived
-here is the underlying specification and client readings themselves** — this
-file did not re-open `ethereum/execution-specs`, `ethereum/go-ethereum`,
-`besu-eth/besu`, `NethermindEth/nethermind` or `erigontech/erigon` line by
-line; it verified that the refs cited resolve to the commits claimed and
-transcribed what the citing code already established. Treat the tiebreak's
-two worked instances with the same standing their source code carries, no
-stronger: `markAccountCreated`'s reading is corroborated by 259 published
-cases and a stated derivation; `SystemCall.GasPrice` is UNSETTLED by design
-and carries its own reversing trigger. Neither is a value to be "corrected"
+here, with one exception, is the underlying specification and client
+readings themselves** — this file did not re-open `ethereum/execution-specs`,
+`ethereum/go-ethereum`, `besu-eth/besu`, `NethermindEth/nethermind` or
+`erigontech/erigon` line by line; it verified that the refs cited resolve to
+the commits claimed and transcribed what the citing code already established.
+**The exception is Instance 1's `NethermindEth/nethermind` and
+`erigontech/erigon` readings**, added during a review pass that widened the
+survey past the two clients `JournaledWorldState.scala`'s own scaladoc
+already cited. Neither client's marker behavior was cited anywhere in this
+build before that pass, so both were read directly against the reference
+corpus rather than transcribed — a stronger form of evidence than the rest of
+this file carries, not a weaker one, and worth distinguishing rather than
+folding into the general disclaimer. Treat the tiebreak's two worked
+instances with the same standing their source code carries, no stronger:
+`markAccountCreated`'s reading is corroborated by 259 published cases and a
+stated derivation; `SystemCall.GasPrice` is UNSETTLED by design and carries
+its own reversing trigger. Neither is a value to be "corrected"
 back toward agreement between the specification and the clients — that
 agreement does not exist today, and the tiebreak is what to do in its
 absence, not a prediction of what it will be.

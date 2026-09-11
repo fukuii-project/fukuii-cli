@@ -71,6 +71,30 @@ object BlobGasPrice:
     * arguments, and `ethereum/go-ethereum` @ `02872e9ef`
     * `consensus/misc/eip4844/eip4844.go:46-47` composes the same three from its
     * own per-fork configuration.
+    *
+    * ==PRECONDITION: `excessBlobGas` is one a validated header states==
+    *
+    * The expansion below runs a term at a time until one rounds away, and the
+    * term stops growing only once the step passes `excessBlobGas /
+    * updateFraction` -- so both the iteration count and the width of the
+    * intermediate are LINEAR in that ratio, and neither is bounded by anything
+    * in this object. A header states its excess as a 64-bit field, and the top
+    * of that range divided by a fork's update fraction is a figure no machine
+    * finishes counting to.
+    *
+    * **What bounds it is ORDER, not a check here, and both authorities are
+    * built the same way** -- `ethereum/go-ethereum` @ `02872e9ef`
+    * `consensus/misc/eip4844/eip4844.go:224-225` carries the identical
+    * unbounded loop. A validated excess cannot be large: it is derived as the
+    * parent's excess plus the parent's spend less the target, and the spend is
+    * itself capped at the fork's blob limit, so a chain validated from its
+    * activation grows this by at most one block's worth at a time.
+    * `org.fukuii.consensus.HeaderValidator`'s `ExcessBlobGasMismatch` is what
+    * establishes that, and it runs against a PARENT this object never sees.
+    *
+    * So a caller that has not validated the header against its parent must not
+    * reach here with the figure it stated. Nothing in this signature can
+    * enforce that, which is why it is written down.
     */
   def at(excessBlobGas: BigInt, updateFraction: BigInt): BigInt =
     taylorExponential(Minimum, excessBlobGas, updateFraction)

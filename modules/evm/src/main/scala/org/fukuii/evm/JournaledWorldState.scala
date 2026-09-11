@@ -256,7 +256,7 @@ final class JournaledWorldState(base: WorldState) extends WorldState:
     * filled from the specification cannot state an expectation for a behavior
     * the specification calls harmless, so what those 259 cases establish is that
     * the shape is exercised and nothing diverged, never that no input exists.
-    * `CancunCompositionCertificationSpec` holds the run.
+    * `CertificationCorporaSpec` holds the run.
     */
   def markAccountCreated(address: Address): Unit =
     val _ = createdHere.add(address)

@@ -65,11 +65,11 @@ import org.fukuii.evm.{
   * transaction fails"*, and its `incorporate_tx_into_block(system_tx_state)`
   * runs on the statement after `process_message_call` with no branch between
   * them (`fork.py:546-611`). `ethereum/go-ethereum` @ `02872e9ef`
-  * `core/state_processor.go:337` discards all three results of its call --
+  * `core/state_processor.go:336` discards all three results of its call --
   * `_, _, _ = evm.Call(...)` -- and finalises immediately after. The contrast
   * inside that one file is the sharpest evidence available that the discard is
-  * deliberate rather than an oversight: the EIP-2935 call eleven lines below it
-  * is written `_, _, err := evm.Call(...)` followed by `if err != nil { panic(err) }`.
+  * deliberate rather than an oversight: the EIP-2935 call at `:366` is written
+  * `_, _, err := evm.Call(...)` followed by `if err != nil { panic(err) }`.
   *
   * **What that does NOT mean is that a reverted invocation's own writes
   * survive.** [[org.fukuii.evm.Interpreter.run]] undoes those inside itself, as
@@ -79,16 +79,65 @@ import org.fukuii.evm.{
   * survived the invocation is committed.
   *
   * @param target
-  *   the account whose code runs. Not a fork-resolved value and deliberately
+  *   which proposal's account runs. Not a fork-resolved value and deliberately
   *   not a member of any rule set: the proposal that introduces one names the
   *   address, so it belongs to the proposal rather than to a record a network
-  *   could set differently.
+  *   could set differently. [[SystemCall.Target]] is that sentence expressed as
+  *   a type rather than left to the caller to honor.
   * @param input
   *   what the invocation is called with, which the `CALLDATA` operations read.
   */
-final case class SystemCall(target: Address, input: Bytes)
+final case class SystemCall(target: SystemCall.Target, input: Bytes)
 
 object SystemCall:
+
+  /** Which proposal's account a system call runs.
+    *
+    * ==A closed set, because an open one is a 30,000,000-gas invocation at an
+    * address nothing vouched for==
+    *
+    * [[SystemCall.run]] executes the target's code as [[Caller]] with
+    * [[GasLimit]] gas and commits whatever survives, charging nobody and
+    * consulting no block limit. Taking a bare `Address` there means any address
+    * a caller can name is reachable on those terms -- and the scaladoc above
+    * already said the address belongs to the proposal, so an open parameter was
+    * a documented intention the type did not hold anyone to.
+    *
+    * **The set has one member because this build has implemented one proposal
+    * that makes a system call**, not because one is all there will be.
+    * `.claude/rules/reference-first.md` is the test applied: a second case is
+    * added by the commit that implements the proposal naming it, and a target
+    * absent from this enum is a proposal this build has not built rather than
+    * an address it declines to serve. **Adding a case is a consensus-value
+    * adoption** -- see the address below for what that costs.
+    */
+  enum Target(val address: Address):
+
+    /** EIP-4788's beacon-roots account.
+      *
+      * `0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02`. Three independent sources
+      * state it identically: `ethereum/EIPs` @ `d2a64c2d4` `EIPS/eip-4788.md:34`
+      * (`BEACON_ROOTS_ADDRESS`), `ethereum/go-ethereum` @ `02872e9ef`
+      * `params/protocol_params.go:249`, and `besu-eth/besu` @ `b330564a9`
+      * `ethereum/core/.../blockhash/CancunPreExecutionProcessor.java:34` -- two
+      * language families beside the proposal. The proposal also derives it
+      * rather than only asserting it: it is `rlp([sender, 0])` for the
+      * deployment transaction's recovered sender (`:234`), so the value is
+      * checkable and not merely transcribed.
+      *
+      * **A second copy of this address lives in the beacon-root certification
+      * corpus, and collapsing the two would be a mistake.** That copy is what
+      * locates the account in a published fixture, so the two are independent
+      * readings that must agree: a substitution here leaves the invocation
+      * running against an account the corpus seeded nothing at, and the
+      * certification fails. One shared constant would agree with itself.
+      */
+    case BeaconRoots
+        extends Target(
+          Address
+            .fromHex("0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02")
+            .getOrElse(throw new AssertionError("the beacon-roots address is a well-formed address"))
+        )
 
   /** The account a system call runs as.
     *
@@ -188,15 +237,21 @@ object SystemCall:
     * fixed and never a tie to be broken. What follows governs the case where
     * the sources disagree and no block on any network in scope can tell.
     *
-    * **The tiebreak is whether the normative source DECLARES the choice
-    * immaterial.**
+    * **The tiebreak is whether the normative source's own stated reasoning
+    * ESTABLISHES the choice immaterial** -- an inference from that reasoning,
+    * never a search for a sentence granting permission, since a source calling
+    * its own choice harmless has not thereby said the opposite choice is.
+    * `.claude/protocols/consensus-change.md` carries the rule and both worked
+    * instances; what follows is only how it lands here.
     *
-    *   - **Where it does, there is no disagreement to break.** The clients are
-    *     then exercising a latitude the specification granted rather than
-    *     contradicting it, both readings conform, and this build follows the
-    *     normative source. That is the creation-marker site: the specification
-    *     states the marker is kept, states why, and closes with *"this is
-    *     harmless"* -- so it has ruled on the divergence itself.
+    *   - **Where the reasoning establishes it, there is no disagreement to
+    *     break.** The clients are then exercising a latitude the specification
+    *     granted rather than contradicting it, and both readings conform -- so
+    *     this build's siding with the normative source is a preference the
+    *     immateriality permits rather than a result the evidence forces. That
+    *     is the creation-marker site: the specification states the marker is
+    *     kept and gives a reason that holds whichever way the choice went,
+    *     which is what carries the second half it never states outright.
     *   - **Where nothing does, the disagreement is real.** The value is marked
     *     UNSETTLED, implemented from the widest independent evidence available,
     *     and given a trigger that would reverse it. That is this site: the
@@ -210,9 +265,10 @@ object SystemCall:
     *     hashes, no index in the block, no transaction hash -- so the
     *     specification was willing to think about that constructor's fields,
     *     and filling this one from the block may be a choice rather than an
-    *     oversight. It changes nothing here: the tiebreak turns on whether the
-    *     divergence was declared immaterial, and no source declares it either
-    *     way.
+    *     oversight. It changes nothing here: the tiebreak turns on whether a
+    *     source's own reasoning establishes the immateriality, and nothing
+    *     here reasons about the point at all -- which is a weaker thing than
+    *     declining to permit it, and is what leaves the disagreement real.
     *
     * **What deliberately does NOT enter the rule is which source the published
     * fixtures reward.** Those are generated from the executable specification,
@@ -304,7 +360,7 @@ object SystemCall:
       chainId: UInt64,
       rules: EvmRules
   ): Option[Unsupported] =
-    val code = world.codeOf(call.target)
+    val code = world.codeOf(call.target.address)
     if code.isEmpty then None
     else
       val journal = new JournaledWorldState(world)
@@ -319,8 +375,8 @@ object SystemCall:
       val frame = new Frame(
         Message(
           caller = Caller,
-          currentTarget = call.target,
-          codeAddress = Some(call.target),
+          currentTarget = call.target.address,
+          codeAddress = Some(call.target.address),
           value = Word.Zero,
           data = call.input,
           // `should_transfer_value=False` (`forks/cancun/fork.py:600`), and

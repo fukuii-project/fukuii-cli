@@ -466,7 +466,7 @@ object CertificationCorpora:
     * every destruction consults, so its cases divide into those whose account
     * this transaction created and those whose it did not -- and both halves
     * answer differently under the two rule sets. The differential in
-    * `CancunCompositionCertificationSpec` is what measures that rather than
+    * `CertificationCorporaSpec` is what measures that rather than
     * assuming it.
     */
   val GeneratedCancunSelfDestructCorpus: String =

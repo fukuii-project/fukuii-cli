@@ -398,6 +398,17 @@ object BlockProcessor:
       blobGas: Option[BlobGasAccounting] = None,
       systemCalls: Seq[SystemCall] = Seq.empty
   ): Either[BlockRejection, BlockOutput] =
+    // A system call is uncharged and consults no block limit, so N of them is N
+    // times [[SystemCall.GasLimit]] that reaches neither [[BlockOutput.gasUsed]]
+    // nor the header's. What bounds the sequence is that each proposal makes its
+    // own call once per block, which makes a repeated target a caller's mistake
+    // rather than a block this layer should answer for -- and not a
+    // [[BlockRejection]], because no chain rule was broken.
+    require(
+      systemCalls.map(_.target).distinct.length == systemCalls.length,
+      "a block makes each proposal's system call once, so a repeated target is uncharged gas nothing asked for: " +
+        systemCalls.map(_.target.toString).mkString(", ")
+    )
     irregularStateChange.foreach(change => change(world))
     // Each is run whatever the one before it reported, because none of them is
     // conditional on another and an unbuilt operation is not a refusal. The
