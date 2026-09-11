@@ -85,8 +85,8 @@ final case class FeeMarket(
   * the gas a derivation -- `org.fukuii.consensus.HeaderValidator` holds the
   * per-blob figure, because no fork varies it.
   *
-  * ==Two of the published record's three members are absent, for two different
-  * reasons==
+  * ==One of the published record's three members is absent, and the reason is
+  * the reader rather than the value==
   *
   * `baseFeeUpdateFraction` is read by no header rule at any fork this build has
   * surveyed: it prices blob gas, and the layers that need a price are the
@@ -94,33 +94,46 @@ final case class FeeMarket(
   * `org.fukuii.evm.EvmRules` where the operation that reads it is, so that one
   * number is held once rather than in two facets.
   *
-  * `max` is a header rule, and its reader is not built. Both production clients
-  * check a header's own `blobGasUsed` against it in the SAME rule that checks
-  * the excess -- `ethereum/go-ethereum` @ `02872e9ef`
-  * `consensus/misc/eip4844/eip4844.go:111-116` and `besu-eth/besu` @
-  * `b330564a9`
-  * `ethereum/core/.../headervalidationrules/BlobGasValidationRule.java:67-78`,
-  * each also requiring the figure to be a whole number of blobs. Neither check
-  * needs a body, so neither is the block-level comparison against what the
-  * transactions actually carried. **The member arrives with them**, on
-  * [[HeaderRules]]'s own admission test.
+  * [[maxBlobs]] was held off this record on the same test while nothing read
+  * it, and lands with the bound that does --
+  * `org.fukuii.consensus.HeaderValidator` checks a header's own `blobGasUsed`
+  * against it. **That is the admission test working rather than an exception to
+  * it**: the member was refused for as long as it had no reader and admitted in
+  * the commit that built one.
   *
-  * ==So it holds one member today, and that is still not a flag==
+  * ==The unit is blobs for both members, which makes one of them a comparison
+  * rather than a transcription==
   *
-  * The obvious objection is that a one-member record is an `Option[BigInt]` with
-  * ceremony. Two things answer it. The published object is a record of three,
-  * two of which have identified readers and named triggers above, so this grows
-  * rather than being a shape chosen against nothing. And a bare number on
-  * [[HeaderRules]] would read as a quantity of something unstated at every use
-  * site, where every source in the field gives this figure a name.
+  * go-ethereum stores `Max` as a blob count and derives the gas bound from it --
+  * `consensus/misc/eip4844/eip4844.go:41-43` is `uint64(bc.Max) *
+  * params.BlobTxBlobGasPerBlob`. The executable specification states the
+  * product instead, as `MAX_BLOB_GAS_PER_BLOCK: Final[U64] = U64(786432)`
+  * (`src/ethereum/forks/cancun/fork.py:93`), which is the same figure reached
+  * the other way round: 786,432 is 6 times `2**17`. Holding blobs keeps both
+  * members in the unit a configuration file states them in and leaves the
+  * multiplication where the per-blob figure lives.
   *
   * @param targetBlobs
   *   how many blobs a block is expected to carry. The parent's own excess plus
   *   what the parent spent is measured against it: the difference is this
   *   block's excess, and the figure is floored at zero rather than going
   *   negative.
+  * @param maxBlobs
+  *   how many blobs a block may carry at most. A header's own `blobGasUsed` is
+  *   checked against it, and against being a whole number of blobs at all --
+  *   both from the header alone, and both in
+  *   `org.fukuii.consensus.HeaderValidator`, which carries the evidence for
+  *   hoisting a bound the specification states over an executed body.
+  *
+  *   **It is not the target, and no schedule read for this sets the two
+  *   equal.** `ethereum/go-ethereum` @ `02872e9ef` `params/config.go:338-372`
+  *   carries six, and separates the pair in all six -- 3/6, 6/9, 10/15, 14/21,
+  *   21/32 and 14/21; `besu-eth/besu` @ `b330564a9`
+  *   `config/.../BlobSchedule.java:24-30` names three and separates the pair in
+  *   all three, agreeing on 3/6 and 6/9. So a build deriving one member from
+  *   the other would be wrong at every fork rather than at an edge case.
   */
-final case class BlobSchedule(targetBlobs: BigInt)
+final case class BlobSchedule(targetBlobs: BigInt, maxBlobs: BigInt)
 
 /** Which header fields a fork holds at a constant, rather than leaving them for
   * a block's producer to choose and its consensus mechanism to check.

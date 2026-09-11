@@ -167,7 +167,12 @@ class HeaderValidatorSpec extends AnyFlatSpec:
     */
   private val withBlobGas: UpgradeRules =
     ethereum.Upgrades.berlin.copy(
-      header = HeaderRules(Some(market), HeaderConstants.Unconstrained, true, Some(BlobSchedule(BigInt(3))))
+      header = HeaderRules(
+        Some(market),
+        HeaderConstants.Unconstrained,
+        true,
+        Some(BlobSchedule(targetBlobs = BigInt(3), maxBlobs = BigInt(6)))
+      )
     )
 
   /** Three blobs' worth of gas, which is this fork's target restated as the
@@ -208,6 +213,27 @@ class HeaderValidatorSpec extends AnyFlatSpec:
         withBlobGas
       )
     )
+
+  /** A child spending `used`, over a parent that spent exactly the target.
+    *
+    * The parent puts the child's required excess at zero and the child states
+    * zero, so the derivation is satisfied whatever `used` is and the only thing
+    * varying is the spend the two bounds read.
+    */
+  private def childSpend(used: BigInt): Either[HeaderFault, Unit] =
+    HeaderValidator.validate(
+      Resolved(
+        accounting(carrying(headerOf(2, Limit, 0, Some(ParentFee)), SomeWithdrawalsRoot), used, 0),
+        withBlobGas
+      ),
+      Resolved(
+        accounting(carrying(headerOf(1, Limit, Target, Some(ParentFee)), SomeWithdrawalsRoot), TargetBlobGas, 0),
+        withBlobGas
+      )
+    )
+
+  /** Six blobs' worth of gas, which is this fork's maximum as the bound reads it. */
+  private val MaxBlobGas: BigInt = BigInt(6) * HeaderValidator.BlobGasPerBlob
 
   /** A header satisfying every other rule this object checks, with the three
     * constrained fields open.
@@ -672,14 +698,82 @@ class HeaderValidatorSpec extends AnyFlatSpec:
       "one unit off is a different charge on every blob in the block"
     )
 
+  "a spend that is a whole number of blobs within the maximum" should "be accepted" in
+    // The negative control for both bounds, and it runs to the boundary itself:
+    // a spend of exactly the maximum is valid, so a bound written `>=` fails
+    // here rather than only against a published corpus.
+    assert(
+      childSpend(BigInt(0)) == Right(()) && childSpend(TargetBlobGas) == Right(()) &&
+        childSpend(MaxBlobGas) == Right(()),
+      "nothing, the target, and the maximum itself are all whole numbers of blobs the fork allows"
+    )
+
+  "a spend that is not a whole number of blobs" should "be refused, whatever its size" in
+    // Blob gas is bought a blob at a time, so a figure between two multiples
+    // names a quantity no block can have carried. Checked below the maximum and
+    // above it, because the whole-blob check runs first and must not depend on
+    // the size of the figure.
+    assert(
+      childSpend(BigInt(1)) == Left(HeaderFault.BlobGasUsedNotWholeBlobs(count(1))) &&
+        childSpend(HeaderValidator.BlobGasPerBlob + 1) ==
+        Left(HeaderFault.BlobGasUsedNotWholeBlobs(count(HeaderValidator.BlobGasPerBlob + 1))),
+      "one unit, and one unit past a whole blob, are both refused as partial blobs"
+    )
+
+  "a spend above the fork's maximum" should "be refused against that fork's own limit" in
+    // One blob over, as a clean multiple, so the whole-blob check passes and
+    // only the bound under test can refuse it. The limit travels with the fault
+    // because what makes the spend too large is the schedule and not the number.
+    assert(
+      childSpend(MaxBlobGas + HeaderValidator.BlobGasPerBlob) ==
+        Left(
+          HeaderFault.BlobGasUsedAboveLimit(count(MaxBlobGas + HeaderValidator.BlobGasPerBlob), MaxBlobGas)
+        ),
+      "a whole number of blobs one over the maximum is refused, and the fault names the limit it broke"
+    )
+
+  "the maximum the bound compares against" should "come from the fork's schedule rather than from a constant" in {
+    // The counterpart to the target's own case below: the same header is
+    // refused at one fork's maximum and accepted at a later one's, which is what
+    // makes the figure read rather than assumed. Nine blobs is what two sources
+    // give for the fork after this one.
+    val nineBlobs: UpgradeRules =
+      ethereum.Upgrades.berlin.copy(
+        header = HeaderRules(
+          Some(market),
+          HeaderConstants.Unconstrained,
+          true,
+          Some(BlobSchedule(targetBlobs = BigInt(3), maxBlobs = BigInt(9)))
+        )
+      )
+    val parent =
+      accounting(carrying(headerOf(1, Limit, Target, Some(ParentFee)), SomeWithdrawalsRoot), TargetBlobGas, 0)
+    val child =
+      accounting(
+        carrying(headerOf(2, Limit, 0, Some(ParentFee)), SomeWithdrawalsRoot),
+        MaxBlobGas + HeaderValidator.BlobGasPerBlob,
+        0
+      )
+    assert(
+      HeaderValidator.validate(Resolved(child, withBlobGas), Resolved(parent, withBlobGas)).isLeft &&
+        HeaderValidator.validate(Resolved(child, nineBlobs), Resolved(parent, nineBlobs)) == Right(()),
+      "seven blobs is over one fork's maximum and under a later one's, from one header and two schedules"
+    )
+  }
+
   "the target the derivation subtracts" should "come from the fork's schedule rather than from a constant" in {
     // What makes the schedule a member of the rules rather than a literal in
     // the checker: the same parent requires a different excess under a later
     // fork's target. Six blobs is the figure two sources give for the fork
-    // after this one.
+    // after this one, where they also give a maximum of nine.
     val sixBlobs: UpgradeRules =
       ethereum.Upgrades.berlin.copy(
-        header = HeaderRules(Some(market), HeaderConstants.Unconstrained, true, Some(BlobSchedule(BigInt(6))))
+        header = HeaderRules(
+          Some(market),
+          HeaderConstants.Unconstrained,
+          true,
+          Some(BlobSchedule(targetBlobs = BigInt(6), maxBlobs = BigInt(9)))
+        )
       )
     val parent =
       accounting(carrying(headerOf(1, Limit, Target, Some(ParentFee)), SomeWithdrawalsRoot), TargetBlobGas * 2, 0)
@@ -692,10 +786,15 @@ class HeaderValidatorSpec extends AnyFlatSpec:
     )
   }
 
-  "the blob-gas rule" should "not read the child's own spend" in
+  "the excess DERIVATION" should "not read the child's own spend" in
     // What a block MUST state cannot depend on what it DOES state, which is the
     // property the charge derivation already holds. Two children differing only
     // in their own blobGasUsed answer alike.
+    //
+    // Scoped to the derivation rather than to the rule, because the two BOUNDS
+    // below do read the child's own spend. Both spends compared here are whole
+    // numbers of blobs within the maximum, so neither bound fires and what the
+    // comparison isolates is the derivation.
     assert(
       childExcess(BigInt(0), TargetBlobGas, BigInt(0)) ==
         HeaderValidator.validate(

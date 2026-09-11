@@ -24,22 +24,29 @@ import org.fukuii.evm.EvmRules
   * ==Two facets, and the split is by reader rather than by subject==
   *
   * The published shape of a fork's blob schedule is one object of three, and
-  * `org.fukuii.chainspec.BlobSchedule` records why two of the three sit
-  * elsewhere. The target is read by a header rule and lands on the header
-  * facet; the update fraction is read by the machine and lands on the machine's
-  * rules. One component writes both, from one reading of one fork's figures, so
-  * the two cannot drift apart by being edited separately.
+  * `org.fukuii.chainspec.BlobSchedule` records why one of the three sits
+  * elsewhere. The target and the maximum are read by header rules and land on
+  * the header facet; the update fraction is read by the machine and lands on
+  * the machine's rules. One component writes all three, from one reading of one
+  * fork's figures, so they cannot drift apart by being edited separately.
   *
   * ==The figures are this fork's and the document's own, which are the same
   * figures and will not stay that way==
   *
   * `ethereum/EIPs` @ `d2a64c2d4` (2026-09-11), `EIPS/eip-4844.md:49-53`, Final,
-  * states `TARGET_BLOB_GAS_PER_BLOCK` as 393,216, `GAS_PER_BLOB` as `2**17` and
-  * `BLOB_BASE_FEE_UPDATE_FRACTION` as 3,338,477 -- so the target is three blobs.
+  * states `MAX_BLOB_GAS_PER_BLOCK` as 786,432, `TARGET_BLOB_GAS_PER_BLOCK` as
+  * 393,216, `GAS_PER_BLOB` as `2**17` and `BLOB_BASE_FEE_UPDATE_FRACTION` as
+  * 3,338,477 -- so the target is three blobs and the maximum six, which
+  * `EIPS/eip-4844.md:400` then says in those words.
   * `ethereum/execution-specs` @ `0cc100eb1` (2026-09-11)
-  * `src/ethereum/forks/cancun/vm/gas.py:83-86` states the identical three, and
-  * `ethereum/go-ethereum` @ `02872e9ef` (2026-09-11) `params/config.go:337-342`
-  * gives `Target: 3` and `UpdateFraction: 3338477` for the same fork.
+  * `src/ethereum/forks/cancun/vm/gas.py:83-86` states the target, the per-blob
+  * figure and the update fraction identically, and holds the maximum one file
+  * away as `MAX_BLOB_GAS_PER_BLOCK` (`forks/cancun/fork.py:93`).
+  * `ethereum/go-ethereum` @ `02872e9ef` (2026-09-11) `params/config.go:338-342`
+  * gives `Target: 3`, `Max: 6` and `UpdateFraction: 3338477` for the same fork,
+  * and `besu-eth/besu` @ `b330564a9` (2026-09-11)
+  * `config/.../BlobSchedule.java:24` states the same three as `create(3, 6,
+  * 3338477)`.
   *
   * **Three later forks move them**, which is why they are data here rather than
   * constants in the rules that read them: the same go-ethereum block gives
@@ -55,7 +62,7 @@ object Eip4844:
 
   /** What a header at these rules accounts for in blob gas. */
   val blobAccounting: HeaderRules => HeaderRules =
-    _.copy(blobSchedule = Some(BlobSchedule(targetBlobs = BigInt(3))))
+    _.copy(blobSchedule = Some(BlobSchedule(targetBlobs = BigInt(3), maxBlobs = BigInt(6))))
 
   /** What the charge per unit of blob gas is derived through.
     *

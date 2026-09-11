@@ -135,6 +135,21 @@ enum HeaderFault:
   /** A block whose stated excess is not the one its parent requires. */
   case ExcessBlobGasMismatch(stated: UInt64, required: BigInt)
 
+  /** A block whose stated spend is not a whole number of blobs.
+    *
+    * Blob gas is bought a blob at a time, so a figure between two multiples of
+    * the per-blob cost names a quantity no block can have carried.
+    */
+  case BlobGasUsedNotWholeBlobs(stated: UInt64)
+
+  /** A block whose stated spend is more blob gas than its fork allows.
+    *
+    * The limit is carried rather than only the figure, because what makes the
+    * spend too large is the fork's schedule and not the number alone -- the same
+    * spend is within the limit at a later fork.
+    */
+  case BlobGasUsedAboveLimit(stated: UInt64, limit: BigInt)
+
   /** An excess whose derivation does not fit what a header can state.
     *
     * Reachable only from a parent that was never itself validated, for the
@@ -439,16 +454,57 @@ object HeaderValidator:
     * `ethereum/core/.../headervalidationrules/BlobGasValidationRule.java:53-54`
     * takes `.orElse(0L)` for each.
     *
-    * ==What is NOT checked here, and one half of it is a header rule==
+    * ==Two BOUNDS on the block's own spend, which the specification reaches by
+    * another route==
+    *
+    * **Neither the executable specification nor the document states these as
+    * header rules.** `ethereum/execution-specs` @ `0cc100eb1` (2026-09-11)
+    * `src/ethereum/forks/cancun/fork.py:315-369` is the whole of
+    * `validate_header`, and its only blob clause is the excess (`:339-341`). The
+    * maximum is enforced one transaction at a time while the block executes --
+    * `:432-439` takes `MAX_BLOB_GAS_PER_BLOCK - block_output.blob_gas_used` as
+    * what remains and refuses a transaction asking for more -- and the header's
+    * own figure is compared against the accumulated total at `:241`.
+    * `ethereum/EIPs` @ `d2a64c2d4` `EIPS/eip-4844.md:281-287` has the same
+    * shape: accumulate, assert the total is within the maximum, assert the
+    * header matches it.
+    *
+    * **Both production clients hoist both bounds to the header.**
+    * `ethereum/go-ethereum` @ `02872e9ef`
+    * `consensus/misc/eip4844/eip4844.go:112-117` and `besu-eth/besu` @
+    * `b330564a9`
+    * `ethereum/core/.../headervalidationrules/BlobGasValidationRule.java:67-77`
+    * each check that the figure is a whole number of blobs and that it is no
+    * more than the fork's maximum, from the header alone.
+    *
+    * ==Why hoisting them is sound rather than merely conventional==
+    *
+    * The accumulated total is a sum of per-transaction figures each of which is
+    * `PER_BLOB` times a blob count (`forks/cancun/vm/gas.py:431-434`), so it is
+    * always a whole number of blobs, and the per-transaction guard above bounds
+    * it by the maximum. A header failing either bound therefore cannot equal the
+    * total the specification computes for ANY body, so refusing it here refuses
+    * a strict subset of what `:241` refuses -- earlier, and without one.
+    * **That is what makes this an earlier refusal and not a stricter rule**: no
+    * block the specification accepts is refused by either bound.
+    *
+    * ==The order is this build's, because the two clients disagree about it==
+    *
+    * go-ethereum runs the maximum, then the whole-blob check, then the excess;
+    * besu runs the excess, then the whole-blob check, then the maximum. This
+    * runs the two header-only bounds before the parent-dependent derivation,
+    * which is the locality [[validate]] already orders by, and the whole-blob
+    * check before the maximum, because a figure that is not a whole number of
+    * blobs has no blob count to compare against one. **The cost is the one
+    * [[validate]] already records**: a header breaking two of these is refused
+    * by whichever runs first, so the REASON can differ from another client's
+    * while the verdict does not.
+    *
+    * ==What remains deferred, and it is the commitment==
     *
     * A block's stated `blobGasUsed` against what its transactions actually
-    * carried is a commitment, and is deferred for the reason every other
-    * commitment is: it needs an executed block. **The two BOUNDS on the same
-    * field are not that**, and both production clients check them in this same
-    * rule from the header alone -- that the figure is a whole number of blobs,
-    * and that it is no more than the fork's maximum. They are unbuilt here
-    * because `org.fukuii.chainspec.BlobSchedule` carries no maximum yet, and
-    * that record says what brings one.
+    * carried needs an executed block, and is deferred for the reason every
+    * other commitment is.
     */
   private def checkBlobGas(block: Resolved, parent: Resolved): Either[HeaderFault, Unit] =
     // Matched on the excess alone rather than on both fields, because
@@ -460,11 +516,36 @@ object HeaderValidator:
       case (None, Some(stated))           => Left(HeaderFault.BlobGasUnexpected(stated))
       case (Some(_), None)                => Left(HeaderFault.BlobGasMissing)
       case (Some(schedule), Some(stated)) =>
-        val required = excessBlobGasFor(parent, schedule)
-        UInt64.fromBigInt(required) match
-          case Left(_)     => Left(HeaderFault.ExcessBlobGasNotRepresentable(required))
-          case Right(fits) =>
-            if stated == fits then Right(()) else Left(HeaderFault.ExcessBlobGasMismatch(stated, required))
+        checkBlobGasUsed(block.header.blobGasUsed, schedule)
+          .flatMap(_ => checkExcessBlobGas(parent, schedule, stated))
+
+  /** A block's own spend is a whole number of blobs, and no more than its fork
+    * allows.
+    *
+    * The spend arrives as an option only because it shares a link with the
+    * excess. A caller reaching here has established that link is present, so an
+    * absent spend is the link being absent and answers as such rather than
+    * passing unchecked.
+    */
+  private def checkBlobGasUsed(spent: Option[UInt64], schedule: BlobSchedule): Either[HeaderFault, Unit] =
+    spent.toRight(HeaderFault.BlobGasMissing).flatMap { used =>
+      val limit = schedule.maxBlobs * BlobGasPerBlob
+      if used.toBigInt % BlobGasPerBlob != 0 then Left(HeaderFault.BlobGasUsedNotWholeBlobs(used))
+      else if used.toBigInt > limit then Left(HeaderFault.BlobGasUsedAboveLimit(used, limit))
+      else Right(())
+    }
+
+  /** A block states the excess its parent requires. */
+  private def checkExcessBlobGas(
+      parent: Resolved,
+      schedule: BlobSchedule,
+      stated: UInt64
+  ): Either[HeaderFault, Unit] =
+    val required = excessBlobGasFor(parent, schedule)
+    UInt64.fromBigInt(required) match
+      case Left(_)     => Left(HeaderFault.ExcessBlobGasNotRepresentable(required))
+      case Right(fits) =>
+        if stated == fits then Right(()) else Left(HeaderFault.ExcessBlobGasMismatch(stated, required))
 
   /** What a block's excess must be, derived from its parent.
     *

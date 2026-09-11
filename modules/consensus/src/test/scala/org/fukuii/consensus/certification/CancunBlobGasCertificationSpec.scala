@@ -45,21 +45,35 @@ import org.scalatest.flatspec.AnyFlatSpec
   * ==What this tier does NOT reach, stated as a figure rather than as a caveat==
   *
   * The other 49 blocks are published as
-  * `BlockException.INCORRECT_BLOB_GAS_USED`, seven of them alongside
-  * `BLOB_GAS_USED_ABOVE_LIMIT`, and this build accepts every one of them --
-  * because it checks a header's stated `blobGasUsed` against nothing at all.
+  * `BlockException.INCORRECT_BLOB_GAS_USED`. **Seven of them are now refused
+  * here and 42 are not**, and the split is exactly the one the layer boundary
+  * predicts: the seven state a spend outside a bound a header alone settles,
+  * and the 42 state a well-formed spend -- every one a whole number of blobs
+  * between zero and the fork's maximum -- which is wrong only against a body
+  * nothing at this layer has.
   *
-  * **Those seven name the more interesting half of the gap.** Two production
-  * clients check two BOUNDS on that field in the same rule that checks the
-  * excess -- that it is a whole number of blobs, and that it is no more than the
-  * fork's maximum -- and neither needs a body, so neither is the commitment this
-  * layer defers. `org.fukuii.chainspec.BlobSchedule` records what would bring
-  * them. What genuinely does need an executed block is the comparison against
-  * what the block's transactions actually carried, which is the remaining 42.
+  * **So the 42 is not a residue to be whittled down.** It is the commitment
+  * itself, and no header rule can move it; what closes it is the comparison
+  * against what the block's transactions actually carried.
   *
-  * **That figure is asserted below rather than left in prose.** A tier whose
-  * blind spot is described and not measured is one nobody notices closing, or
-  * widening.
+  * ==The corpus cannot tell the two header bounds apart, which is why two
+  * controls below are constructed==
+  *
+  * All seven state the same spend -- 18,446,744,073,709,551,615, the largest a
+  * header can hold -- so each fails BOTH bounds at once, and the directory holds
+  * no block failing one alone. A build implementing either bound by itself
+  * passes every refusal this corpus publishes. **That is a corpus that cannot
+  * discriminate the behavior under discussion**, so the two bounds are
+  * separated by perturbation instead, exactly as the excess is.
+  *
+  * **One direction the corpus does pin, and it is the off-by-one.** Sixteen
+  * accepted steps spend exactly the maximum, so a maximum written as `>=`
+  * rather than `>` refuses a block the corpus accepts and fails the agreement
+  * test above.
+  *
+  * **Every figure here is asserted below rather than left in prose.** A tier
+  * whose blind spot is described and not measured is one nobody notices
+  * closing, or widening.
   */
 class CancunBlobGasCertificationSpec extends AnyFlatSpec:
 
@@ -247,8 +261,37 @@ class CancunBlobGasCertificationSpec extends AnyFlatSpec:
   /** The exception name this build's rule corresponds to. */
   private val ExcessName: String = "INCORRECT_EXCESS_BLOB_GAS"
 
-  /** The exception name for the field this build does not check. */
+  /** The exception name the corpus gives a spend it rejects, for any reason. */
   private val SpendName: String = "INCORRECT_BLOB_GAS_USED"
+
+  /** The exception name the corpus adds where the spend is outside the maximum. */
+  private val LimitName: String = "BLOB_GAS_USED_ABOVE_LIMIT"
+
+  /** This fork's maximum spend, taken from the rules under test.
+    *
+    * Read from the schedule rather than restated, so a control below cannot
+    * agree with a bound that was changed -- and raised rather than defaulted,
+    * because a zero here would make every control pass against a build checking
+    * nothing.
+    */
+  private val MaxBlobGas: BigInt =
+    Rules.header.blobSchedule
+      .map(_.maxBlobs * HeaderValidator.BlobGasPerBlob)
+      .getOrElse(throw new IllegalStateException("the rules under test carry no blob schedule"))
+
+  /** The blocks the corpus refuses for their spend and not for their excess. */
+  private val forSpendOnly: Vector[Refused] =
+    refused.filter(block => block.expected.contains(SpendName) && !block.expected.contains(ExcessName))
+
+  /** The same header, stating a different spend. */
+  private def spending(header: BlockHeader, used: UInt64): BlockHeader =
+    header.copy(tail =
+      header.tail.map(fee =>
+        fee.copy(next =
+          fee.next.map(withdrawals => withdrawals.copy(next = withdrawals.next.map(_.copy(blobGasUsed = used))))
+        )
+      )
+    )
 
   "the blob-gas corpus" should "be present, or this tier certifies nothing" in
     assume(steps.nonEmpty, "no corpus root is configured, so this tier is skipped rather than passed")
@@ -328,19 +371,117 @@ class CancunBlobGasCertificationSpec extends AnyFlatSpec:
     )
   }
 
-  "a block the corpus refuses only for its stated spend" should "be ACCEPTED here, which is this tier's blind spot" in {
+  "a block the corpus refuses only for its stated spend" should "be refused where a header bound reaches it" in {
     val _ = assume(refused.nonEmpty)
-    // Stated as a figure rather than as a caveat. This build checks a header's
-    // `blobGasUsed` against nothing, so every one of these passes -- and a
-    // future phase that adds either of the two header-only bounds will move this
-    // number, which is exactly the signal a prose caveat would not give.
-    val forSpendOnly =
-      refused.filter(block => block.expected.contains(SpendName) && !block.expected.contains(ExcessName))
-    val accepted = forSpendOnly.filter(block => verdict(block.parent, block.child).isRight)
+    val reached = forSpendOnly.filter(block =>
+      verdict(block.parent, block.child) match
+        case Left(_: HeaderFault.BlobGasUsedNotWholeBlobs) => true
+        case Left(_: HeaderFault.BlobGasUsedAboveLimit)    => true
+        case _                                             => false
+    )
+    // Tied to the corpus's own labeling and not only to a count: every block
+    // this build now refuses is one the corpus itself marked as outside the
+    // limit, so the two agree about WHICH blocks these are rather than merely
+    // about how many.
     assert(
-      forSpendOnly.length == 49 && accepted.length == 49,
-      "measured at 49 blocks published with " + SpendName + " and not " + ExcessName + ", all accepted: " +
-        forSpendOnly.length.toString + " found, " + accepted.length.toString + " accepted"
+      forSpendOnly.length == 49 && reached.length == 7 && reached.forall(_.expected.contains(LimitName)),
+      "measured at 49 spend-only refusals of which 7 are reached by a header bound, all so labelled: " +
+        forSpendOnly.length.toString + " found, " + reached.length.toString + " refused, " +
+        reached.count(_.expected.contains(LimitName)).toString + " labelled"
+    )
+  }
+
+  it should "be ACCEPTED where only an executed body could reach it" in {
+    val _ = assume(refused.nonEmpty)
+    val accepted = forSpendOnly.filter(block => verdict(block.parent, block.child).isRight)
+    // What remains of this tier's blind spot, and it is the commitment rather
+    // than a shortfall in the two bounds: every one of these states a whole
+    // number of blobs within the maximum, so no rule reading the header alone
+    // can tell it from a block that really did spend that much.
+    assert(
+      accepted.length == 42 && accepted.forall(block =>
+        block.child.blobGasUsed.exists(used =>
+          used.toBigInt % HeaderValidator.BlobGasPerBlob == 0 && used.toBigInt <= MaxBlobGas
+        )
+      ),
+      "measured at 42 spend-only refusals this build still accepts, every one well formed: " +
+        accepted.length.toString
+    )
+  }
+
+  "the corpus's own spend refusals" should "each fail BOTH bounds, so neither bound is discriminated" in {
+    val _ = assume(refused.nonEmpty)
+    // Why the two controls below are constructed rather than read off the
+    // corpus. Every block it refuses for a spend outside the bounds states the
+    // largest figure a header can hold, which is neither a whole number of blobs
+    // nor within the maximum -- so a build implementing one bound alone refuses
+    // all seven, and this tier cannot tell it from a build implementing both.
+    val outside = forSpendOnly.filter(_.expected.contains(LimitName))
+    val failingBoth = outside.filter(block =>
+      block.child.blobGasUsed.exists(used =>
+        used.toBigInt % HeaderValidator.BlobGasPerBlob != 0 && used.toBigInt > MaxBlobGas
+      )
+    )
+    assert(
+      outside.length == 7 && failingBoth.length == 7,
+      "of " + outside.length.toString + " blocks outside the limit, " + failingBoth.length.toString +
+        " fail both bounds; any difference would be a block that discriminates one bound"
+    )
+  }
+
+  "a spend one unit off a whole number of blobs" should "be refused at every published step" in {
+    val _ = assume(steps.nonEmpty)
+    // The control the corpus cannot supply. One unit added to a spend it states
+    // leaves a figure that is not a whole number of blobs, and the whole-blob
+    // check runs before the maximum, so the fault names that bound at every step
+    // including the ones already at the limit.
+    val wrong = steps.filterNot { step =>
+      step.child.blobGasUsed
+        .map(_.toBigInt + 1)
+        .flatMap(UInt64.fromBigInt(_).toOption)
+        .exists(used =>
+          verdict(step.parent, spending(step.child, used)) match
+            case Left(_: HeaderFault.BlobGasUsedNotWholeBlobs) => true
+            case _                                             => false
+        )
+    }
+    assert(wrong.isEmpty, "steps whose partial-blob spend was not refused as such: " + wrong.length.toString)
+  }
+
+  "a spend one blob above the fork's maximum" should "be refused at every published step" in {
+    val _ = assume(steps.nonEmpty)
+    // The second constructed control, and the one that isolates the maximum: a
+    // clean multiple of the per-blob figure, one blob over the limit, passes the
+    // whole-blob check and can only be refused by the bound under test. The
+    // limit the fault carries is checked too, so a bound reading some other
+    // fork's schedule would not pass here.
+    val overLimit = MaxBlobGas + HeaderValidator.BlobGasPerBlob
+    val wrong = steps.filterNot { step =>
+      UInt64
+        .fromBigInt(overLimit)
+        .toOption
+        .exists(used =>
+          verdict(step.parent, spending(step.child, used)) match
+            case Left(HeaderFault.BlobGasUsedAboveLimit(_, limit)) => limit == MaxBlobGas
+            case _                                                 => false
+        )
+    }
+    assert(
+      wrong.isEmpty,
+      "steps whose over-limit spend was not refused against this fork's limit: " + wrong.length.toString
+    )
+  }
+
+  "the maximum" should "admit a block spending exactly it" in {
+    val _ = assume(steps.nonEmpty)
+    // The off-by-one control, and the one direction the corpus does pin: a bound
+    // written `>=` refuses these sixteen and the agreement test above fails.
+    // Asserted here as well so the cause is named rather than surfacing there as
+    // an unexplained divergence.
+    val atLimit = steps.filter(_.child.blobGasUsed.exists(_.toBigInt == MaxBlobGas))
+    assert(
+      atLimit.length == 16 && atLimit.forall(step => verdict(step.parent, step.child).isRight),
+      "measured at 16 accepted steps spending exactly the maximum: " + atLimit.length.toString
     )
   }
 

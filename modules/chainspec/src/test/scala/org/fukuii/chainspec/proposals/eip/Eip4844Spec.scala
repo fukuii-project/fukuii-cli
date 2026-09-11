@@ -33,8 +33,8 @@ class Eip4844Spec extends AnyFlatSpec:
 
   "adopting EIP-4844's accounting" should "give a header at these rules a blob schedule" in
     assert(
-      adopted.header.blobSchedule.contains(BlobSchedule(targetBlobs = BigInt(3))),
-      "a target of three blobs, which two specifications and one published fixture state independently"
+      adopted.header.blobSchedule.contains(BlobSchedule(targetBlobs = BigInt(3), maxBlobs = BigInt(6))),
+      "a target of three blobs and a maximum of six, which the fixture's own config states as 0x03 and 0x06"
     )
 
   it should "give the machine the fraction the charge is derived through" in
