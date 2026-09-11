@@ -177,6 +177,7 @@ object Upgrades:
     precompileAltBn128PairingBase = BigInt(100000),
     precompileAltBn128PairingPerPoint = BigInt(80000),
     precompileBlake2fPerRound = BigInt(1),
+    precompilePointEvaluation = BigInt(50000),
     transactionBase = BigInt(21000),
     transactionDataPerZeroByte = BigInt(4),
     transactionDataPerNonZeroByte = BigInt(68),

@@ -1,46 +1,46 @@
 package org.fukuii.chainspec.proposals.eip
 
 import org.fukuii.chainspec.{BlobSchedule, Component, HeaderRules, ProposalId}
-import org.fukuii.evm.{Cost, EvmRules, Opcode, Operation}
+import org.fukuii.evm.{Cost, EvmRules, Opcode, Operation, Precompile, PrecompileSet}
 import org.fukuii.execution.AdmissionRules
 import org.fukuii.types.TransactionType
 
 /** EIP-4844 -- blob-carrying transactions.
   *
-  * ==A PARTIAL adoption still, and the remaining part is named rather than
-  * implied==
+  * ==A COMPLETE adoption, and what completed it is the part a reader was
+  * previously warned about==
   *
   * The document introduces a transaction format, an operation reporting a
   * blob's hash, a precompile evaluating a polynomial, and the blob-gas
-  * accounting a header carries. **This component is all of those but the
-  * precompile.** A rule set adopting it accounts for blob gas in its headers,
-  * prices blob gas for anything that asks, admits the format at `0x03`, and
-  * holds the operation at `0x49`; it installs no precompile at `0x0a`.
+  * accounting a header carries. **A rule set adopting this component now has
+  * all four.** It accounts for blob gas in its headers, prices blob gas for
+  * anything that asks, admits the format at `0x03`, holds the operation at
+  * `0x49`, and installs the native at `0x0a`.
   *
-  * That still matters because `org.fukuii.chainspec.UpgradeRules.components`
-  * records this document's number once a rule set adopts it, and a reader
-  * taking that record as *"every rule this document states is in force here"*
-  * would be wrong -- less wrong than before, and wrong in the same way. The
-  * record states which documents were applied and the rules state what applying
-  * them did, which is the property that type already documents.
+  * **What that changes for a reader of
+  * `org.fukuii.chainspec.UpgradeRules.components` is the size of the gap, not
+  * the rule about it.** That record states which documents were applied and the
+  * rules state what applying them did; the two are still different claims, and
+  * this document is simply no longer the worked case where they came apart.
   *
-  * **A rule set here therefore accepts a blob transaction whose commitment a
-  * contract cannot verify.** Verification is the precompile's, and nothing
-  * about admitting the format supplies it: what admission checks is that each
-  * commitment names the scheme (`org.fukuii.evm.BlobGas.VersionedHashVersion`),
-  * never that the digest under that byte is the one the blob produces. The
-  * blobs themselves travel beside the transaction on the network layer and no
-  * layer here holds them.
+  * **A contract can now verify a commitment a transaction carried.** Admission
+  * checks only that each commitment names the scheme
+  * (`org.fukuii.evm.BlobGas.versionKnown`), because the commitment itself is
+  * not part of the transaction -- the blobs and their commitments travel beside
+  * it on the network layer. The precompile is handed a commitment by its
+  * caller, so it is the one place the digest under that byte can be checked
+  * against the commitment it claims to name, which is
+  * `org.fukuii.evm.BlobGas.versionedHashOf`.
   *
-  * ==Four deltas across three facets, and the fourth is why the record is not
-  * machine-scoped==
+  * ==Five deltas across three facets, and two of them do not reach the machine==
   *
   * The header gains the blob schedule; the machine gains the update fraction
-  * the charge is derived through and the operation that reports a commitment;
-  * admission gains the format. `ethereum/execution-specs` @ `0cc100eb1`
-  * (2026-09-11) splits the same document the same way, between
-  * `src/ethereum/forks/cancun/fork.py`'s header and transaction checks and
-  * `forks/cancun/vm/`'s gas constants and instruction table.
+  * the charge is derived through, the operation that reports a commitment, and
+  * the native that verifies one; admission gains the format.
+  * `ethereum/execution-specs` @ `0cc100eb1` (2026-09-11) splits the same
+  * document the same way, between `src/ethereum/forks/cancun/fork.py`'s header
+  * and transaction checks and `forks/cancun/vm/`'s gas constants, instruction
+  * table and `precompiled_contracts/`.
   *
   * ==The SCHEDULE alone spans two of those facets, and its split is by reader
   * rather than by subject==
@@ -137,21 +137,61 @@ object Eip4844:
   val admitsBlobFormat: AdmissionRules => AdmissionRules =
     rules => rules.copy(admittedTypes = rules.admittedTypes + TransactionType.Blob)
 
-  /** Adopting the document, which is adopting all four of its deltas.
+  /** The native verifying that a blob's committed polynomial takes a claimed
+    * value at a claimed point, at the address the document names.
+    *
+    * *"a precompile at `POINT_EVALUATION_PRECOMPILE_ADDRESS`"*, that address
+    * given as `Bytes20(0x0A)` and `POINT_EVALUATION_PRECOMPILE_GAS` as 50,000
+    * (`ethereum/EIPs` @ `d2a64c2d4` (2026-09-11), `EIPS/eip-4844.md:56-57,131`,
+    * Final). Corroborated at `ethereum/execution-specs` @ `0cc100eb1`
+    * (2026-09-11), `src/ethereum/forks/cancun/vm/gas.py:76`,
+    * `PRECOMPILE_POINT_EVALUATION: Final[Uint] = Uint(50000)`, and at
+    * `ethereum/go-ethereum` @ `02872e9ef` (2026-09-11),
+    * `params/protocol_params.go:204`.
+    *
+    * **No price moves.** 50,000 is already
+    * `org.fukuii.evm.GasSchedule.precompilePointEvaluation`, stated at that
+    * figure by both networks this repository configures, so this is a placement
+    * built from a figure the rules already hold -- [[Eip152]]'s shape, and for
+    * the same reason.
+    *
+    * **The figure is unmoved by every later fork the specification carries**,
+    * checked across its per-fork gas modules rather than assumed from the
+    * document: each states 50,000, and the newest differs only in wrapping it
+    * in a gas type rather than in its value. That is why it is one number in a
+    * schedule rather than something a later component reprices.
+    *
+    * ==What it does NOT reach==
+    *
+    * `org.fukuii.evm.OpcodeTable`, for [[Eip198]]'s reason -- a native has no
+    * byte in the instruction set.
+    */
+  val pointEvaluation: EvmRules => EvmRules =
+    rules =>
+      rules.copy(precompiles =
+        rules.precompiles.adding(
+          PrecompileSet.PointEvaluation,
+          Precompile.PointEvaluation(rules.schedule.precompilePointEvaluation)
+        )
+      )
+
+  /** Adopting the document, which is adopting all five of its deltas.
     *
     * Built from the general constructor rather than the machine-scoped one
-    * because two of the four do not reach the machine, which is [[Eip1559]]'s
+    * because two of the five do not reach the machine, which is [[Eip1559]]'s
     * reason for the same choice.
     *
-    * **The order is stated and is immaterial**: no two of the four name a
-    * common field, and the two that share a facet add distinct members to it.
+    * **The order is stated and is immaterial**: no two of the five name a
+    * common field, and those that share a facet add distinct members to it --
+    * the two machine-scoped placements land in different records, one in the
+    * instruction table and one in the precompile set.
     */
   val component: Component =
     Component(
       ProposalId.Eip(4844),
       rules =>
         rules.copy(
-          evm = blobHash(blobGasPricing(rules.evm)),
+          evm = pointEvaluation(blobHash(blobGasPricing(rules.evm))),
           header = blobAccounting(rules.header),
           admission = admitsBlobFormat(rules.admission)
         )

@@ -1,6 +1,7 @@
 package org.fukuii.evm
 
-import org.fukuii.bytes.Hash
+import org.fukuii.bytes.{Bytes, Hash}
+import org.fukuii.crypto.Sha256
 import org.fukuii.types.Transaction
 
 /** How much blob gas a transaction spends, and which commitments it spends it
@@ -57,8 +58,8 @@ object BlobGas:
     * `ethereum/execution-specs` @ `0cc100eb1` states the identical
     * `VERSIONED_HASH_VERSION_KZG = b"\x01"` twice --
     * `src/ethereum/forks/cancun/fork.py:94`, read by the admission rule, and
-    * `forks/cancun/vm/precompiled_contracts/point_evaluation.py:29`, read by a
-    * precompile this build has not installed.
+    * `forks/cancun/vm/precompiled_contracts/point_evaluation.py:29`, read by
+    * [[Precompile.PointEvaluation]].
     *
     * **It names the scheme that produced the commitment, which is why a hash
     * leading with anything else is refused rather than ignored.** The document
@@ -77,6 +78,41 @@ object BlobGas:
     */
   def versionKnown(hash: Hash): Boolean =
     hash.toBytes.headOption.contains(VersionedHashVersion)
+
+  /** The versioned hash naming `commitment`, which is a digest of it under a
+    * byte saying which scheme produced it.
+    *
+    * `VERSIONED_HASH_VERSION_KZG + sha256(commitment)[1:]`
+    * (`ethereum/EIPs` @ `d2a64c2d4` (2026-09-11), `EIPS/eip-4844.md:80`,
+    * Final), which `ethereum/execution-specs` @ `0cc100eb1` (2026-09-11)
+    * writes identically as `kzg_commitment_to_versioned_hash` in
+    * `src/ethereum/crypto/kzg.py`. `ethereum/go-ethereum` @ `02872e9ef`
+    * (2026-09-11) reaches it by overwriting the leading byte in place rather
+    * than by concatenating -- `core/vm/contracts.go:1608-1613` takes
+    * `sha256.Sum256` and assigns `h[0]`, which is the same thirty-two bytes.
+    *
+    * ==Here, beside the byte and the check, because the three are one rule==
+    *
+    * [[VersionedHashVersion]] states the discriminator, [[versionKnown]] tests
+    * it on a hash this layer cannot recompute, and this derives the hash where
+    * the commitment IS available. Splitting the derivation from the byte it
+    * leads with would give one rule two homes, which is how the two come to
+    * disagree about a later scheme that moves the byte.
+    *
+    * **This is the only place a commitment is in hand.** Admission sees the
+    * hashes a transaction carries and never the commitments behind them, which
+    * is why [[versionKnown]] can check the byte and nothing more; the
+    * precompile is handed both and is the one caller that can compare them.
+    */
+  def versionedHashOf(commitment: Bytes): Hash =
+    val digest = Sha256.hash(commitment.toIArray).toBytes
+    val out = new Array[Byte](Hash.Width)
+    var index = 1
+    while index < Hash.Width do
+      out(index) = digest(index)
+      index += 1
+    out(0) = VersionedHashVersion
+    Hash.fromBytesTruncating(IArray.unsafeFromArray(out))
 
   /** What a transaction carrying these commitments spends on them. */
   def spentOn(blobVersionedHashes: Seq[Hash]): BigInt = PerBlob * blobVersionedHashes.length

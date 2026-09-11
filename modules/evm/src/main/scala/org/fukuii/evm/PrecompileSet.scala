@@ -130,6 +130,22 @@ object PrecompileSet:
     */
   val Blake2f: Address = addressOf(0x09)
 
+  /** Whether a blob's committed polynomial takes a claimed value at a claimed
+    * point.
+    *
+    * *"a precompile at `POINT_EVALUATION_PRECOMPILE_ADDRESS`"* with that
+    * address given as `Bytes20(0x0A)` (`ethereum/EIPs` @ `d2a64c2d4`
+    * (2026-09-11), `EIPS/eip-4844.md:56,131`, Final). `ethereum/go-ethereum` @
+    * `02872e9ef` (2026-09-11) keys it at `common.BytesToAddress([]byte{0x0a})`
+    * in `core/vm/contracts.go`.
+    *
+    * **The first entry here whose address is written as a hexadecimal digit
+    * above nine**, which is worth naming only because `0x0a` and `0x10` are
+    * one transposition apart and both are addresses a later fork places a
+    * native at.
+    */
+  val PointEvaluation: Address = addressOf(0x0a)
+
   /** The address a low number names, which is how the field writes these: a
     * precompile sits at the low end of the space and everything above it is
     * zero.

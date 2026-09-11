@@ -604,14 +604,54 @@ object CertificationCorpora:
     * that reports zero from one that refuses or halts.
     *
     * **The two point-evaluation directories under the same parent are
-    * deliberately not registered.** This build installs no precompile at
-    * `0x0a`, so every case in them would reach an address holding nothing and
-    * diverge for a rule nobody claimed to have implemented --
-    * `org.fukuii.chainspec.proposals.eip.Eip4844` states that the precompile is
-    * the one part of the document its component leaves out.
+    * registered below**, which they were not while this build installed no
+    * precompile at `0x0a`. Every case in them then reached an address holding
+    * nothing.
     */
   val GeneratedCancunBlobHashContextCorpus: String =
     "execution-specs-fixtures state_tests/for_cancun/cancun/eip4844_blobs/blobhash_opcode_contexts" +
+      ComposedForCancun
+
+  /** The generated tier's directory for the native that evaluates a committed
+    * polynomial, under the same rules.
+    *
+    * Five files and 156 cases, reachable only now that
+    * `org.fukuii.chainspec.proposals.eip.Eip4844` places a native at `0x0a`.
+    *
+    * ==This is the one directory in the tier that can see the ARITHMETIC==
+    *
+    * Everything else filled for this document settles a transaction and
+    * compares a root, which the blob-carrying format and the operation
+    * reporting a commitment both decide without anything being verified. The
+    * commitments a transaction carries are hashes, and the blobs they name
+    * travel on the network layer -- so no case anywhere else in this tier holds
+    * a commitment for a rule to check against. **A build that answered `0x0a`
+    * with an empty success would satisfy every other Cancun directory**, which
+    * is the gap these files close and the reason
+    * `org.fukuii.evm.PrecompileSet.at`'s own note calls that answer the silent
+    * one.
+    *
+    * **`external_vectors.json` is the file that decides the ceremony output.**
+    * Its cases are built from the same published vector corpus
+    * `org.fukuii.evm.KzgPropSpec` reads, so a build that loaded a substituted
+    * or corrupt setup fails here as well as there -- two tiers reaching one
+    * artifact by different routes, which is what makes a pass on it worth
+    * something.
+    */
+  val GeneratedCancunPointEvaluationCorpus: String =
+    "execution-specs-fixtures state_tests/for_cancun/cancun/eip4844_blobs/point_evaluation_precompile" +
+      ComposedForCancun
+
+  /** The generated tier's directory for what that native COSTS, under the same
+    * rules.
+    *
+    * One file and 24 cases. Registered beside its sibling rather than merged
+    * with it, because a report is keyed by directory and merging two would give
+    * one census for two questions -- the reason the pair above it is split the
+    * same way.
+    */
+  val GeneratedCancunPointEvaluationGasCorpus: String =
+    "execution-specs-fixtures state_tests/for_cancun/cancun/eip4844_blobs/point_evaluation_precompile_gas" +
       ComposedForCancun
 
   /** The ported tier's own directory for the blob transaction, under the same
@@ -1101,6 +1141,24 @@ object CertificationCorpora:
         FixtureCorpus
           .generated(root)
           .resolve("state_tests/for_cancun/cancun/eip4844_blobs/blobhash_opcode_contexts"),
+        "Cancun",
+        ethereumChain,
+        composedForCancun
+      ),
+      StateCorpus(
+        GeneratedCancunPointEvaluationCorpus,
+        FixtureCorpus
+          .generated(root)
+          .resolve("state_tests/for_cancun/cancun/eip4844_blobs/point_evaluation_precompile"),
+        "Cancun",
+        ethereumChain,
+        composedForCancun
+      ),
+      StateCorpus(
+        GeneratedCancunPointEvaluationGasCorpus,
+        FixtureCorpus
+          .generated(root)
+          .resolve("state_tests/for_cancun/cancun/eip4844_blobs/point_evaluation_precompile_gas"),
         "Cancun",
         ethereumChain,
         composedForCancun

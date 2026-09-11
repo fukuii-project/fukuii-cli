@@ -237,6 +237,14 @@ final case class GasSchedule(
     // from the input's length, which is what makes the round count worth
     // reading carefully where it is read.
     precompileBlake2fPerRound: BigInt,
+    // What one point evaluation costs, whatever it is asked. The only
+    // precompile price here that is neither derived from the input's length nor
+    // from a figure the caller supplies: the argument is one exact width, so
+    // there is nothing for a charge to vary with. A network states it from its
+    // own genesis like every other price here, where it prices nothing until a
+    // proposal places the native that reads it -- the shape
+    // `precompileModExpDivisor` above is held at its pre-proposal value for.
+    precompilePointEvaluation: BigInt,
     // THE TRANSACTION-INTRINSIC PRICES. They belong here and not beside the
     // caller that charges them, because both authorities keep them in the same
     // repriceable record as everything above -- and because EIP-2028 is exactly

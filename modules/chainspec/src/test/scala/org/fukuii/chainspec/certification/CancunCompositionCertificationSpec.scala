@@ -89,9 +89,16 @@ import org.fukuii.evm.fixtures.{CorpusReport, FixtureCorpus}
   *
   *   - **What EIP-4844 is besides its blob-gas accounting.** The transaction
   *     format, the operation reporting a blob's hash and the point-evaluation
-  *     precompile are all that document's and none is in the composition, so no
-  *     case here is evidence about any of them. EIP-4788 is not in the
-  *     composition at all.
+  *     precompile are all that document's, and all three ARE now in the
+  *     composition -- but no case in these six directories reaches any of them,
+  *     so none of them is evidence about any of the three. **The reason has
+  *     moved and the conclusion has not**: it was once that the composition did
+  *     not carry them, and it is now that these files do not exercise them.
+  *     What does is registered separately -- `blob_txs` and
+  *     `stEIP4844_blobtransactions` for the format, `blobhash_opcode` and
+  *     `blobhash_opcode_contexts` for the operation, and
+  *     `point_evaluation_precompile` with its gas sibling for the native.
+  *     EIP-4788 is not in the composition at all.
   *   - **The blob CHARGE above its floor.** Every case in all six states a zero
   *     excess in its `env`, so the operation reports the minimum wherever it
   *     runs. **This directory is satisfied by a build that pushes the constant

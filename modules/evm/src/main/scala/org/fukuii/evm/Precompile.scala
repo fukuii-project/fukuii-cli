@@ -398,6 +398,95 @@ object Precompile:
     def run(input: Bytes): Either[Halt, Bytes] =
       Blake2b.compressPacked(input.toIArray).map(Bytes.fromIArray).toRight(Halt.InvalidParameter)
 
+  /** Whether a blob's committed polynomial takes a claimed value at a claimed
+    * point.
+    *
+    * ==Flat-priced, and it is the only native here whose width is EXACT==
+    *
+    * Every other native reads a fixed-width prefix and pads or ignores the
+    * rest, so no input is malformed. This one refuses anything that is not
+    * exactly [[PointEvaluationWidth]] bytes: *"if len(data) != 192: raise
+    * KZGProofError"* (`ethereum/execution-specs` @ `0cc100eb1` (2026-09-11),
+    * `src/ethereum/forks/cancun/vm/precompiled_contracts/point_evaluation.py`).
+    * `ethereum/go-ethereum` @ `02872e9ef` (2026-09-11) refuses the same
+    * inequality at `core/vm/contracts.go:1562`, and `besu-eth/besu` @
+    * `b330564a9` (2026-09-11) at
+    * `evm/.../precompile/KZGPointEvalPrecompiledContract.java:129`.
+    *
+    * ==The specification refuses the width BEFORE charging and this cannot,
+    * which costs nothing here==
+    *
+    * [[Precompile.gasFor]] settles a charge before [[Precompile.run]] is
+    * reached, so a wrong width is charged and then refused where the
+    * specification refuses it unpriced. **The two are indistinguishable to a
+    * caller**, and here that is a proof rather than an argument: the charge is
+    * a constant no input varies, so the only caller who could observe the
+    * difference is one holding less than it -- and that caller is refused for
+    * the shortfall instead, which is an exceptional halt keeping nothing, just
+    * as the refusal it replaces is. `Blake2f` above records the same divergence
+    * where the charge is NOT constant, which is why that one needed its
+    * equivalence asserted by effect and this one does not.
+    *
+    * **Both reference clients have this seam too and neither treats it as a
+    * divergence**: each returns the flat charge from a method that never sees
+    * the length, and refuses the width in the one that runs.
+    *
+    * ==Two refusals before the arithmetic, and the first subsumes the version
+    * byte==
+    *
+    * The claimed versioned hash must be the one the commitment actually
+    * produces. That comparison is over all thirty-two bytes, so a hash leading
+    * with the wrong scheme byte fails it without a separate test --
+    * `org.fukuii.evm.BlobGas.versionKnown` is admission's rule, where the
+    * commitment is absent and the byte is all there is to check. besu tests the
+    * byte first as an early exit and reaches the identical outcome.
+    *
+    * ==The answer is a constant, and it is the two figures the arithmetic was
+    * done over==
+    *
+    * A verification that holds answers with the field-element count and the
+    * field's order, one word each. go-ethereum publishes it as a literal
+    * (`core/vm/contracts.go:1551`) where besu concatenates the library's own
+    * two constants; this takes besu's route through
+    * `org.fukuii.evm.Kzg`, so the answer cannot disagree with the setup that
+    * produced it. The literal and the derivation were compared and are the same
+    * sixty-four bytes.
+    */
+  final case class PointEvaluation(gas: BigInt) extends Precompile:
+    def gasFor(input: Bytes): BigInt = gas
+
+    def run(input: Bytes): Either[Halt, Bytes] =
+      if input.length != PointEvaluationWidth then Left(Halt.InvalidParameter)
+      else
+        val raw = input.toIArray
+        val claimedHash = Hash.fromBytesTruncating(raw.slice(0, Hash.Width))
+        val z = raw.slice(Hash.Width, 2 * Hash.Width)
+        val y = raw.slice(2 * Hash.Width, 3 * Hash.Width)
+        val commitment = Bytes.fromIArray(raw.slice(3 * Hash.Width, 3 * Hash.Width + Kzg.PointWidth))
+        val proof = raw.slice(3 * Hash.Width + Kzg.PointWidth, PointEvaluationWidth)
+        if BlobGas.versionedHashOf(commitment) != claimedHash then Left(Halt.InvalidParameter)
+        else if Kzg.verifyProof(commitment.toIArray, z, y, proof).contains(true) then Right(PointEvaluationAnswer)
+        else Left(Halt.InvalidParameter)
+
+  /** What a point evaluation's argument occupies: a versioned hash, a point, a
+    * claimed value, a commitment and a proof, laid end to end.
+    *
+    * Derived from the widths rather than written as 192, so that it cannot
+    * disagree with the offsets [[PointEvaluation.run]] slices at.
+    */
+  private val PointEvaluationWidth: Int = 3 * Hash.Width + 2 * Kzg.PointWidth
+
+  /** What a verification that holds answers with, which is the same bytes for
+    * every input that reaches it.
+    *
+    * Built once rather than per call: it reads two library constants and
+    * allocates, and neither depends on the invocation.
+    */
+  private val PointEvaluationAnswer: Bytes =
+    Bytes.fromIArray(
+      Word(Kzg.FieldElementsPerBlob).toBytes.toIArray ++ Word(Kzg.BlsModulus).toBytes.toIArray
+    )
+
   /** An answer the curve produced, or the halt its absence means.
     *
     * The three natives above share one refusal because the curve gives them

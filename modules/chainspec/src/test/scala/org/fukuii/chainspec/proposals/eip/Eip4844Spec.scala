@@ -2,7 +2,7 @@ package org.fukuii.chainspec.proposals.eip
 
 import org.fukuii.chainspec.networks.ethereum
 import org.fukuii.chainspec.{BlobSchedule, ProposalId, UpgradeRules}
-import org.fukuii.evm.{Cost, Opcode}
+import org.fukuii.evm.{Cost, Opcode, Precompile, PrecompileSet}
 import org.fukuii.types.TransactionType
 import org.scalatest.flatspec.AnyFlatSpec
 
@@ -94,14 +94,29 @@ class Eip4844Spec extends AnyFlatSpec:
     )
   }
 
-  it should "move no price and install no precompile" in
-    // The part of the document this component still deliberately does not
-    // carry. The point-evaluation precompile at `0x0a` belongs to the same
-    // document and is not here, so a precompile set that gained an entry would
-    // mean the component reached past what its own documentation claims.
+  it should "move no price" in
+    // The native below is a PLACEMENT and not a repricing: its figure is
+    // already in the schedule at the fork below, so adopting the document adds
+    // an entry that reads that figure and changes no number at all.
     assert(
-      adopted.evm.schedule == base.evm.schedule && adopted.evm.precompiles == base.evm.precompiles,
-      "the point-evaluation precompile is the same document's and is not in this component"
+      adopted.evm.schedule == base.evm.schedule,
+      "every price is the fork below's, the native's own included"
+    )
+
+  it should "install exactly one precompile and take none out" in
+    assert(
+      adopted.evm.precompiles == base.evm.precompiles.adding(
+        PrecompileSet.PointEvaluation,
+        Precompile.PointEvaluation(base.evm.schedule.precompilePointEvaluation)
+      ),
+      "the set gains the point evaluation at `0x0a` and is otherwise the fork below's"
+    )
+
+  it should "price that precompile at the figure the schedule already held" in
+    assert(
+      adopted.evm.precompiles.at(PrecompileSet.PointEvaluation).contains(Precompile.PointEvaluation(BigInt(50000))),
+      "the document states 50,000 and the schedule already held it: " +
+        adopted.evm.precompiles.at(PrecompileSet.PointEvaluation).toString
     )
 
   it should "leave the header rules it does not name alone" in
@@ -111,15 +126,16 @@ class Eip4844Spec extends AnyFlatSpec:
     )
 
   it should "be the whole of the machine's delta" in
-    // TWO members now, and naming both is what keeps this a whole-facet
-    // assertion rather than a pair of spot checks: every other member of the
+    // THREE members now, and naming each is what keeps this a whole-facet
+    // assertion rather than a set of spot checks: every other member of the
     // machine's rules is compared against the fork below.
     assert(
       adopted.evm == base.evm.copy(
         blobBaseFeeUpdateFraction = adopted.evm.blobBaseFeeUpdateFraction,
-        table = adopted.evm.table
+        table = adopted.evm.table,
+        precompiles = adopted.evm.precompiles
       ),
-      "two members against every other member of the same facet"
+      "three members against every other member of the same facet"
     )
 
   it should "leave what settles a transaction alone" in

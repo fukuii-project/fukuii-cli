@@ -216,6 +216,7 @@ object EvmFixtures:
     precompileAltBn128PairingBase = BigInt(100002),
     precompileAltBn128PairingPerPoint = BigInt(80002),
     precompileBlake2fPerRound = BigInt(3),
+    precompilePointEvaluation = BigInt(50002),
     transactionBase = BigInt(21002),
     transactionDataPerZeroByte = BigInt(19),
     transactionDataPerNonZeroByte = BigInt(70),
