@@ -14,7 +14,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 class OpcodeSpec extends AnyFlatSpec:
 
   "the vocabulary" should "hold every operation this build knows, across forks" in
-    // 147, counted in the file rather than recalled. **This is not a per-fork
+    // 148, counted in the file rather than recalled. **This is not a per-fork
     // figure**: a byte's meaning does not change once it has one, so the enum
     // accumulates across forks and a table selects from it. The number rises
     // with the first operation each proposal adds, and is a counted fact either
@@ -24,15 +24,18 @@ class OpcodeSpec extends AnyFlatSpec:
     // EIP-1052's EXTCODEHASH and EIP-1014's CREATE2. 139 until Istanbul, which
     // added two: EIP-1344's CHAINID and EIP-1884's SELFBALANCE. 141 until
     // London, which added one: EIP-3198's BASEFEE. 142 until Shanghai, which
-    // added one: EIP-3855's PUSH0. 143 until Cancun, which has added four so
-    // far: EIP-1153's TLOAD and TSTORE, EIP-5656's MCOPY and EIP-7516's
-    // BLOBBASEFEE. **The fork is unfinished, so this number is not its final
-    // one** -- EIP-4844's BLOBHASH at 0x49 is a member of that fork's set and is
-    // not here, because nothing in this build runs it yet. Every one of the
-    // thirteen is also in `OpcodeTable.laterThanOriginal`, so the FRONTIER
-    // table's own size is unmoved -- the two counts answer different questions
-    // and only this one rises when an operation is added.
-    assert(Opcode.values.length == 147, "the Ops enum has 147 members, counted in the file rather than recalled")
+    // added one: EIP-3855's PUSH0. 143 until Cancun, which has added five:
+    // EIP-1153's TLOAD and TSTORE, EIP-5656's MCOPY, EIP-7516's BLOBBASEFEE and
+    // EIP-4844's BLOBHASH at 0x49. **That last one closes the gap this comment
+    // used to record**: it was a member of the fork's set that nothing here
+    // ran, and it now joins the table with the transaction format that gives it
+    // something to report. **The fork is still unfinished** -- what remains of
+    // EIP-4844 is a precompile, which adds no operation, so this number may not
+    // move again before the fork is whole. Every one of the fourteen is also in
+    // `OpcodeTable.laterThanOriginal`, so the FRONTIER table's own size is
+    // unmoved -- the two counts answer different questions and only this one
+    // rises when an operation is added.
+    assert(Opcode.values.length == 148, "the Ops enum has 148 members, counted in the file rather than recalled")
 
   it should "give each operation a distinct byte" in
     assert(

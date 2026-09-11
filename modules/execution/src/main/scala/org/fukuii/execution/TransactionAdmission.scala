@@ -1,8 +1,8 @@
 package org.fukuii.execution
 
-import org.fukuii.bytes.{Address, Bytes, UInt64}
+import org.fukuii.bytes.{Address, Bytes, Hash, UInt64}
 import org.fukuii.crypto.Secp256k1
-import org.fukuii.evm.{GasSchedule, WorldState}
+import org.fukuii.evm.{BlobGas, GasSchedule, WorldState}
 import org.fukuii.types.{AccessTuple, Sender, SignatureScheme, Transaction, TransactionType}
 
 /** Why a fork refuses a transaction.
@@ -90,6 +90,98 @@ enum Refusal:
     */
   case PriorityFeeAboveFeeCap
 
+  /** A format that may not deploy offers no recipient.
+    *
+    * ==Unreachable from any DECODED transaction, in this build and in the
+    * specification alike==
+    *
+    * `org.fukuii.types.Transaction.Blob` types its recipient as an address
+    * rather than an address-or-empty, and `ethereum/execution-specs` @
+    * `0cc100eb1` types it identically -- `to: Address` on
+    * `src/ethereum/forks/cancun/transactions.py:305`. So neither tree can
+    * decode a blob transaction that deploys, and neither can reach this rule
+    * from one. The specification keeps the guard anyway, at
+    * `forks/cancun/fork.py:469-470`, because its `check_transaction` is generic
+    * over a union whose earlier members DO deploy; this exists for the same
+    * reason, because [[OfferedTransaction.to]] is an option for the same
+    * reason.
+    *
+    * ==So it has no caller today, and that is stated rather than implied==
+    *
+    * Both builders of an offer in this repository read a decoded transaction,
+    * so neither can produce the state. **The published corpus does not reach it
+    * either**: the one state fixture that names an empty recipient beside a
+    * commitment list publishes signed bytes no conformant decoder reads, so
+    * this build reports that case undecodable and the refusal below is not what
+    * answers it.
+    *
+    * It is kept because the record ADMITS the state and the next caller of this
+    * layer is one that builds an offer from something other than a decoded
+    * transaction. Without it such an offer is not refused -- it is settled as a
+    * DEPLOYMENT, which is a wrong answer rather than a wrong reason.
+    *
+    * Named for the rule rather than for the blob format, because the document
+    * after this one states the same rule for its own format and the
+    * specification raises the same exception for both.
+    */
+  case FormatMayNotDeploy
+
+  /** A format that carries blobs carries none.
+    *
+    * ==A rule and not an encoding refusal, which is why it is here==
+    *
+    * An empty list encodes and decodes unambiguously, so the transaction is
+    * well-formed and the fork is what refuses it:
+    * *"there must be at least one blob"* (`ethereum/EIPs` @ `d2a64c2d4`
+    * (2026-09-11), `EIPS/eip-4844.md:271`, Final).
+    * `ethereum/execution-specs` @ `0cc100eb1` (2026-09-11) raises
+    * `NoBlobDataError` from `src/ethereum/forks/cancun/fork.py:471-472`, inside
+    * transaction checking rather than inside decoding.
+    *
+    * `org.fukuii.types.Transaction` records the same split for the
+    * authorization list of the format after this one, and the corpora agree by
+    * giving each its own expected exception.
+    */
+  case BlobListEmpty
+
+  /** A commitment the transaction carries names a scheme these rules do not
+    * know.
+    *
+    * `org.fukuii.evm.BlobGas.VersionedHashVersion` is the byte and carries the
+    * evidence. **Every commitment is read, not the first** -- the published
+    * corpus states a case whose second commitment is the malformed one and its
+    * first is well-formed, so a check that stopped at the first would admit a
+    * transaction the network refuses.
+    */
+  case BlobHashVersionUnknown
+
+  /** The most the transaction will pay per unit of blob gas is less than the
+    * charge the block sets for it.
+    *
+    * The blob half of [[FeeCapBelowBaseFee]], and a separate rule rather than
+    * the same one because the two read different fields against different
+    * charges -- a transaction can offer enough for its gas and not enough for
+    * its blobs, and the corpus states which refused it.
+    */
+  case BlobFeeCapBelowCharge
+
+  /** The transaction asks for more blob gas than the block has left to give.
+    *
+    * The blob half of [[GasAllowanceExceeded]], and against the REMAINDER for
+    * the same reason: `ethereum/execution-specs` @ `0cc100eb1`
+    * `src/ethereum/forks/cancun/fork.py:432` opens
+    * `blob_gas_available = MAX_BLOB_GAS_PER_BLOCK - block_output.blob_gas_used`
+    * exactly as it opens the gas figure on the line above.
+    *
+    * **One surveyed client bounds the TRANSACTION instead**, which is a weaker
+    * rule that agrees on a block carrying one transaction and disagrees on a
+    * block carrying two: `besu-eth/besu` @ `b330564a9`
+    * `MainnetTransactionValidator.java:228-234` compares `txTotalBlobGas`
+    * against the fork's maximum and reports `TOTAL_BLOB_GAS_TOO_HIGH`. The
+    * specification is followed here.
+    */
+  case BlobGasAllowanceExceeded
+
 /** A transaction offered for admission: the values a fork's rules are read
   * against, with the sender already settled.
   *
@@ -142,8 +234,76 @@ final case class OfferedTransaction(
     to: Option[Address],
     value: BigInt,
     data: Bytes,
-    accessList: Seq[AccessTuple]
+    accessList: Seq[AccessTuple],
+    blobs: Option[BlobOffer]
 )
+
+/** What a blob-carrying transaction states about its blobs.
+  *
+  * ==A record, because the two fields are only ever present together==
+  *
+  * One format states both and every other format states neither, so two
+  * independent options would admit two states no transaction can reach -- a
+  * ceiling with no commitments, and commitments with no ceiling. They would
+  * also sit adjacent in a parameter list at the same type as each other and as
+  * the fee-market pair beside them, where transposing any two compiles and
+  * settles wrongly. `org.fukuii.evm.EvmRules` is refused a member nothing reads
+  * on the same principle: a shape that can express a configuration no fork has
+  * is a shape somebody eventually writes.
+  *
+  * ==Absent and empty are different answers, and the difference is a refusal==
+  *
+  * `None` is a transaction of a format that carries no blobs at all;
+  * `Some` with an empty sequence is a blob transaction carrying none, which
+  * [[Refusal.BlobListEmpty]] refuses. Collapsing the two would make that rule
+  * unreachable and would refuse every ordinary transaction instead --
+  * `org.fukuii.execution.BlockOutput.withdrawalsRoot` keeps the same
+  * distinction for the same reason.
+  *
+  * @param maxFeePerBlobGas
+  *   the most the transaction will pay per unit of blob gas. It is read by two
+  *   rules that do different things with it: the charge it is compared against
+  *   is the block's, and the figure added to what the sender must hold is this
+  *   one -- **never the block's charge**, which is the same cap-against-price
+  *   split [[FeeOffer]] records at length for gas.
+  * @param versionedHashes
+  *   the commitments, in the order the transaction states them. Carried as the
+  *   stated sequence rather than narrowed to a set: the count is what the blob
+  *   gas is priced from, and duplicates are counted.
+  */
+final case class BlobOffer(maxFeePerBlobGas: BigInt, versionedHashes: Seq[Hash])
+
+/** What a block sets for blob gas: what it charges per unit, and how much of it
+  * the block has left to give.
+  *
+  * ==One record rather than two parameters, because the pair is
+  * transposable==
+  *
+  * Both are arbitrary-precision quantities and both would sit beside the two
+  * the fee market already contributes, so four same-typed values would reach
+  * [[TransactionAdmission.admit]] positionally with nothing to tell a
+  * transposition from a correct call. Each member here is named at its one
+  * construction site instead.
+  *
+  * ==Neither member is a fork constant, which is why this is not on
+  * [[AdmissionRules]]==
+  *
+  * The charge is derived from the excess the block's own header states and the
+  * fraction the fork resolves; the remainder is the fork's maximum less what
+  * the transactions before this one already spent. Both are therefore answers
+  * about one block at one position in it, which is what `gasAvailable` and the
+  * base fee already are -- and both are computed a layer up, for the reason
+  * `maxInitcodeSize` is passed in rather than duplicated here.
+  *
+  * @param charge
+  *   what the block charges per unit of blob gas.
+  *   `org.fukuii.evm.BlobGasPrice.at` is the derivation and carries its
+  *   evidence.
+  * @param available
+  *   what the block has left to spend on blobs, which is its fork's maximum
+  *   less what the transactions before this one carried.
+  */
+final case class BlobGasTerms(charge: BigInt, available: BigInt)
 
 /** What a transaction offers to pay per unit of gas.
   *
@@ -426,6 +586,7 @@ object TransactionAdmission:
       world: WorldState,
       gasAvailable: BigInt,
       baseFeePerGas: Option[BigInt],
+      blobGas: Option[BlobGasTerms],
       rules: AdmissionRules,
       schedule: GasSchedule,
       maxInitcodeSize: Option[Int]
@@ -447,6 +608,10 @@ object TransactionAdmission:
     // silently inherit a zero that means absence.
     val charge = baseFeePerGas
     val underCharge = charge.exists(offered.fee.cap < _)
+    // Zero blob gas for every format that carries no blobs, and for a blob
+    // transaction carrying an empty list -- which the branch below refuses
+    // before this figure is spent on anything.
+    lazy val blobGasWanted = offered.blobs.map(held => BlobGas.spentOn(held.versionedHashes)).getOrElse(BigInt(0))
     if !admitsFormat(offered.transactionType, rules) then Admission.Refused(Refusal.TypeNotAdmitted)
     else if intrinsic > offered.gasLimit then Admission.Refused(Refusal.IntrinsicGasTooLow)
     // IMMEDIATELY AFTER THE INTRINSIC CHARGE, which is where the specification
@@ -470,11 +635,97 @@ object TransactionAdmission:
     else if tipExceedsCap(offered.fee) then Admission.Refused(Refusal.PriorityFeeAboveFeeCap)
     else if offered.nonce >= NonceLimit then Admission.Refused(Refusal.NonceIsMax)
     else if offered.gasLimit > gasAvailable then Admission.Refused(Refusal.GasAllowanceExceeded)
+    // IMMEDIATELY AFTER THE GAS ALLOWANCE, where the specification puts it:
+    // `ethereum/execution-specs` @ `0cc100eb1`
+    // `src/ethereum/forks/cancun/fork.py:431-439` opens the two remainders on
+    // consecutive lines and compares each on the line after the one that opened
+    // it. A transaction can exceed both at once, so which is reported is the
+    // order's to decide.
+    else if blobGas.exists(blobGasWanted > _.available) then Admission.Refused(Refusal.BlobGasAllowanceExceeded)
     else if underCharge then Admission.Refused(Refusal.FeeCapBelowBaseFee)
+    // BELOW the gas cap and ABOVE the nonce, which is the position the
+    // specification gives the whole blob block: `fork.py:468-489` runs it after
+    // the fee-market arm computes `max_gas_fee` and before
+    // `sender_account.nonce` is read at all. The three rules inside it are in
+    // that document's own order too -- an empty list, then the commitments'
+    // versions, then the ceiling against the charge -- and a transaction can
+    // break more than one at once.
+    else if deploysWhereItMayNot(offered) then Admission.Refused(Refusal.FormatMayNotDeploy)
+    else if blobsAreEmpty(offered) then Admission.Refused(Refusal.BlobListEmpty)
+    else if carriesUnknownBlobVersion(offered) then Admission.Refused(Refusal.BlobHashVersionUnknown)
+    else if blobFeeCapUnderCharge(offered, blobGas) then Admission.Refused(Refusal.BlobFeeCapBelowCharge)
     else if counted != offered.nonce then Admission.Refused(Refusal.NonceMismatch)
-    else if held < maximumFee + offered.value then Admission.Refused(Refusal.InsufficientAccountFunds)
+    else if held < maximumFee + blobMaximumFee(offered) + offered.value then
+      Admission.Refused(Refusal.InsufficientAccountFunds)
     else if world.codeOf(offered.sender).nonEmpty then Admission.Refused(Refusal.SenderNotEoa)
-    else Admission.Admitted(settling(offered, intrinsic, charge.getOrElse(BigInt(0))))
+    else
+      Admission.Admitted(
+        settling(offered, intrinsic, charge.getOrElse(BigInt(0)), blobGasWanted, blobGas.map(_.charge))
+      )
+
+  /** Whether a transaction of a format that may not deploy has no recipient.
+    *
+    * Keyed on the blob offer for the reason every rule in this block is: it is
+    * the marker this record carries for the format, and reading the format's
+    * tag instead would answer for a record whose own fields say otherwise.
+    * [[Refusal.FormatMayNotDeploy]] carries the evidence and the reason a
+    * decoded blob transaction can never reach it.
+    */
+  private def deploysWhereItMayNot(offered: OfferedTransaction): Boolean =
+    offered.blobs.isDefined && offered.to.isEmpty
+
+  /** Whether a transaction of a blob-carrying format carries no blobs.
+    *
+    * Reads the offer's presence and not the format's tag, so the rule cannot
+    * fire on a transaction that has no such field to be empty --
+    * [[BlobOffer]] states why the two are kept apart.
+    */
+  private def blobsAreEmpty(offered: OfferedTransaction): Boolean =
+    offered.blobs.exists(_.versionedHashes.isEmpty)
+
+  /** Whether any commitment the transaction carries names a scheme these rules
+    * do not know.
+    *
+    * `exists` over the whole sequence rather than a test of the first, because
+    * the published corpus states cases whose malformed commitment is the
+    * second -- `invalid_blob_hash_versioning_single_tx` carries one such case
+    * in each position.
+    */
+  private def carriesUnknownBlobVersion(offered: OfferedTransaction): Boolean =
+    offered.blobs.exists(_.versionedHashes.exists(hash => !BlobGas.versionKnown(hash)))
+
+  /** Whether the transaction's ceiling for blob gas is under the block's charge
+    * for it.
+    *
+    * Both sides must be present for the comparison to mean anything, and a
+    * caller holding one without the other is in the same broken state the gas
+    * pair's own contract describes: a fork with a blob schedule states a charge
+    * on every block, and a fork without one admits no format that could state a
+    * ceiling.
+    */
+  private def blobFeeCapUnderCharge(offered: OfferedTransaction, blobGas: Option[BlobGasTerms]): Boolean =
+    (offered.blobs, blobGas) match
+      case (Some(held), Some(terms)) => held.maxFeePerBlobGas < terms.charge
+      case _                         => false
+
+  /** What the transaction's blobs add to the balance it must hold.
+    *
+    * ==The CEILING, never the block's charge==
+    *
+    * `ethereum/execution-specs` @ `0cc100eb1`
+    * `src/ethereum/forks/cancun/fork.py:485-487` adds
+    * `calculate_total_blob_gas(tx) * tx.max_fee_per_blob_gas` to `max_gas_fee`,
+    * and `ethereum/go-ethereum` @ `02872e9ef`
+    * `core/state_transition.go:456-459` builds its own balance check from
+    * `st.msg.BlobGasFeeCap`. **What is actually taken from the sender is the
+    * block's charge instead**, which go-ethereum computes separately on the
+    * lines below and this build settles in
+    * `org.fukuii.execution.TransactionProcessor`. Folding the two into one
+    * figure admits a sender who cannot cover the ceiling it offered, exactly as
+    * [[FeeOffer]] records for gas.
+    */
+  private def blobMaximumFee(offered: OfferedTransaction): BigInt =
+    offered.blobs.map(held => BlobGas.spentOn(held.versionedHashes) * held.maxFeePerBlobGas).getOrElse(BigInt(0))
 
   /** Whether the transaction deploys more code than the rules admit.
     *
@@ -567,7 +818,13 @@ object TransactionAdmission:
     * record carries is the one the branch above compared against the limit. A
     * second call would be a second definition of it.
     */
-  private def settling(offered: OfferedTransaction, intrinsicGas: BigInt, baseFeePerGas: BigInt): AdmittedTransaction =
+  private def settling(
+      offered: OfferedTransaction,
+      intrinsicGas: BigInt,
+      baseFeePerGas: BigInt,
+      blobGasUsed: BigInt,
+      blobGasPrice: Option[BigInt]
+  ): AdmittedTransaction =
     AdmittedTransaction(
       sender = offered.sender,
       nonce = offered.nonce,
@@ -578,5 +835,13 @@ object TransactionAdmission:
       value = offered.value,
       data = offered.data,
       accessList = offered.accessList,
-      intrinsicGas = intrinsicGas
+      intrinsicGas = intrinsicGas,
+      blobGasUsed = blobGasUsed,
+      // Zero where the block sets no charge, which is every fork below the
+      // first that prices blob gas. It multiplies a blob count that is itself
+      // zero at every such fork, so the product is zero either way -- written
+      // as the block's answer rather than as a stand-in, because a later reader
+      // of this member must not inherit a zero that means absence.
+      blobGasPrice = blobGasPrice.getOrElse(BigInt(0)),
+      blobVersionedHashes = offered.blobs.map(_.versionedHashes).getOrElse(Seq.empty)
     )

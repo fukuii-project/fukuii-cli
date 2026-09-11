@@ -2,10 +2,11 @@ package org.fukuii.chainspec.proposals.eip
 
 import org.fukuii.chainspec.networks.ethereum
 import org.fukuii.chainspec.{BlobSchedule, ProposalId, UpgradeRules}
+import org.fukuii.evm.{Cost, Opcode}
+import org.fukuii.types.TransactionType
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** What adopting EIP-4844's blob-gas accounting changes, and what it must leave
-  * alone.
+/** What adopting EIP-4844 changes, and what it must leave alone.
   *
   * ==The figures are the work here, because nothing else can check them==
   *
@@ -31,7 +32,7 @@ class Eip4844Spec extends AnyFlatSpec:
 
   private val adopted: UpgradeRules = base.adopting(Eip4844.component)
 
-  "adopting EIP-4844's accounting" should "give a header at these rules a blob schedule" in
+  "adopting EIP-4844" should "give a header at these rules a blob schedule" in
     assert(
       adopted.header.blobSchedule.contains(BlobSchedule(targetBlobs = BigInt(3), maxBlobs = BigInt(6))),
       "a target of three blobs and a maximum of six, which the fixture's own config states as 0x03 and 0x06"
@@ -57,23 +58,47 @@ class Eip4844Spec extends AnyFlatSpec:
       "the journal states which document produced these rules"
     )
 
-  it should "put no operation in the table and take none out" in
-    // The part of the document this component deliberately does not carry. An
-    // operation reporting a blob's hash belongs to the same document and is not
-    // here, so a table that gained an entry would mean the component reached
-    // past what its own documentation claims.
+  it should "put exactly one operation in the table and take none out" in {
+    // The operation reporting a commitment, which this component now carries
+    // alongside the accounting. Asserted as the difference rather than as a
+    // membership, so an entry added or removed elsewhere in the table moves it.
+    val gained = adopted.evm.table.opcodes.diff(base.evm.table.opcodes)
+    val lost = base.evm.table.opcodes.diff(adopted.evm.table.opcodes)
     assert(
-      adopted.evm.table == base.evm.table,
-      "this component is the blob-gas accounting alone: no BLOBHASH, no precompile, no transaction format"
+      gained == Set(Opcode.BlobHash) && lost.isEmpty,
+      "gained " + gained.toString + " and lost " + lost.toString
+    )
+  }
+
+  it should "price that operation at the document's own figure and not at a tier" in
+    // The price, and the fact that it is NOT the tier it happens to equal.
+    // Asserting `Cost.Fixed(3)` alone would pass against a build that had named
+    // `schedule.veryLow`, which is 3 at every fork read for this -- so the
+    // second half is what makes the first mean anything, and it would fail the
+    // day a fork repriced that tier.
+    assert(
+      adopted.evm.table.operationAt(Opcode.BlobHash.code).map(_.cost).contains(Cost.Fixed(BigInt(3))) &&
+        adopted.evm.schedule.veryLow == BigInt(3),
+      "the operation costs 3 as a figure of the document's own, at a fork whose very-low tier coincidentally " +
+        "also costs 3: " + adopted.evm.table.operationAt(Opcode.BlobHash.code).toString
     )
 
-  it should "admit no new transaction format" in
+  it should "admit exactly one new transaction format" in {
+    val gained = adopted.admission.admittedTypes.diff(base.admission.admittedTypes)
+    val lost = base.admission.admittedTypes.diff(adopted.admission.admittedTypes)
     assert(
-      adopted.admission == base.admission,
-      "a blob-carrying transaction is the same document's and arrives with the layer that settles one"
+      gained == Set(TransactionType.Blob) && lost.isEmpty &&
+        adopted.admission == base.admission.copy(admittedTypes = adopted.admission.admittedTypes),
+      "gained " + gained.toString + ", lost " + lost.toString +
+        ", and nothing else on the admission facet moved"
     )
+  }
 
   it should "move no price and install no precompile" in
+    // The part of the document this component still deliberately does not
+    // carry. The point-evaluation precompile at `0x0a` belongs to the same
+    // document and is not here, so a precompile set that gained an entry would
+    // mean the component reached past what its own documentation claims.
     assert(
       adopted.evm.schedule == base.evm.schedule && adopted.evm.precompiles == base.evm.precompiles,
       "the point-evaluation precompile is the same document's and is not in this component"
@@ -86,9 +111,15 @@ class Eip4844Spec extends AnyFlatSpec:
     )
 
   it should "be the whole of the machine's delta" in
+    // TWO members now, and naming both is what keeps this a whole-facet
+    // assertion rather than a pair of spot checks: every other member of the
+    // machine's rules is compared against the fork below.
     assert(
-      adopted.evm == base.evm.copy(blobBaseFeeUpdateFraction = adopted.evm.blobBaseFeeUpdateFraction),
-      "one member against every other member of the same facet"
+      adopted.evm == base.evm.copy(
+        blobBaseFeeUpdateFraction = adopted.evm.blobBaseFeeUpdateFraction,
+        table = adopted.evm.table
+      ),
+      "two members against every other member of the same facet"
     )
 
   it should "leave what settles a transaction alone" in

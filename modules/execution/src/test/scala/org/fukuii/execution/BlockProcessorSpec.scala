@@ -4,7 +4,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 import org.fukuii.bytes.{Address, Bytes, Hash, UInt256, UInt64}
 import org.fukuii.crypto.Secp256k1
-import org.fukuii.evm.{Cost, EvmFixtures, EvmRules, Opcode, Operation, Unsupported, Word, WorldState}
+import org.fukuii.evm.{BlobGas, Cost, EvmFixtures, EvmRules, Opcode, Operation, Unsupported, Word, WorldState}
 import org.fukuii.types.{PostStateOrStatus, Sender, SigningPreimage, Transaction, TransactionType, Withdrawal}
 
 /** What a block does that one transaction cannot show.
@@ -158,6 +158,65 @@ class BlockProcessorSpec extends AnyFlatSpec:
   private val alsoTypedEnvelopes: AdmissionRules =
     legacyOnly.copy(admittedTypes = Set(TransactionType.Legacy, TransactionType.AccessList))
 
+  /** Rules carrying the blob format, so a block can hold a transaction that
+    * spends blob gas.
+    */
+  private val alsoBlobs: AdmissionRules =
+    legacyOnly.copy(admittedTypes = Set(TransactionType.Legacy, TransactionType.Blob))
+
+  /** A commitment whose version byte is the one these rules know.
+    *
+    * Built from the version rather than from a literal digest, so a case below
+    * cannot pass against a build that stopped reading the byte.
+    */
+  private def commitment(index: Int): Hash =
+    Hash.fromBytesTruncating(
+      (IArray(BlobGas.VersionedHashVersion) ++ IArray.fill(31)(index.toByte))
+    )
+
+  /** What a block accounting for blob gas offers a transaction that carries
+    * some: the floor charge, and the fork's own maximum.
+    *
+    * The charge is the floor because this spec is about ACCUMULATION rather
+    * than about pricing -- `org.fukuii.evm.BlobGasPriceSpec` certifies the
+    * derivation, and a charge of one keeps a balance below within a figure a
+    * reader can check by hand.
+    */
+  private def blobAccounting(maxBlobs: Int = 6): BlobGasAccounting =
+    BlobGasAccounting(charge = BigInt(1), maximum = BigInt(maxBlobs) * BlobGas.PerBlob)
+
+  /** A signed blob transaction at `nonce`, carrying `blobs` commitments.
+    *
+    * It states a ceiling and a tip rather than a price, because that is the
+    * only shape its format has -- so a block carrying one must state a charge,
+    * which every case below does.
+    */
+  private def blobTransfer(nonce: Long, blobs: Int): Transaction.Blob =
+    val unsigned = Transaction.Blob(
+      chainId = chainId,
+      nonce = UInt64.fromBits(nonce),
+      maxPriorityFeePerGas = quantity(BigInt(0)),
+      maxFeePerGas = quantity(GasPrice),
+      gasLimit = UInt64.fromBits(AskedPerTransaction),
+      recipient = recipient,
+      value = UInt256.Zero,
+      data = Bytes.Empty,
+      accessList = Seq.empty,
+      maxFeePerBlobGas = quantity(BigInt(1)),
+      blobVersionedHashes = (0 until blobs).map(commitment),
+      yParity = UInt256.Zero,
+      r = UInt256.Zero,
+      s = UInt256.Zero
+    )
+    val signature = Secp256k1
+      .sign(SigningPreimage.hashForSigning(unsigned, None), signing)
+      .getOrElse(fail("the fixture transaction could not be signed"))
+    unsigned.copy(
+      yParity = quantity(BigInt(signature.recoveryId)),
+      r = quantity(signature.r),
+      s = quantity(signature.s)
+    )
+
   /** Emits one empty log and stops, so a block's derived log sequence has
     * something in it that a receipt also holds.
     */
@@ -245,7 +304,9 @@ class BlockProcessorSpec extends AnyFlatSpec:
       code: Map[Address, Bytes] = Map.empty,
       evm: EvmRules = EvmFixtures.rules,
       admission: AdmissionRules = legacyOnly,
-      withdrawals: Option[Seq[Withdrawal]] = None
+      withdrawals: Option[Seq[Withdrawal]] = None,
+      blobGas: Option[BlobGasAccounting] = None,
+      baseFee: Option[BigInt] = None
   ): Ran =
     val world = new EvmFixtures.MapWorldState
     world.setBalance(signer, Word(funded))
@@ -260,7 +321,7 @@ class BlockProcessorSpec extends AnyFlatSpec:
       world = world,
       destroyAccount = _ => (),
       stateRootAfterTransaction = () => rootAfterTransaction(),
-      block = EvmFixtures.block.copy(coinbase = coinbase, gasLimit = blockGasLimit),
+      block = EvmFixtures.block.copy(coinbase = coinbase, gasLimit = blockGasLimit, baseFee = baseFee),
       blockHashAt = EvmFixtures.blockHashAt,
       chainId = chainId,
       evm = evm,
@@ -268,7 +329,8 @@ class BlockProcessorSpec extends AnyFlatSpec:
       admission = admission,
       irregularStateChange = irregularStateChange,
       consensusStateChange = closing => coinbaseAtClose = closing.balanceOf(coinbase).toBigInt,
-      withdrawals = withdrawals
+      withdrawals = withdrawals,
+      blobGas = blobGas
     )
     Ran(result, world, rootsAsked, coinbaseAtClose)
 
@@ -612,4 +674,100 @@ class BlockProcessorSpec extends AnyFlatSpec:
         run(Seq.empty, withdrawals = Some(Seq(withdrawal(0, otherRecipient, 3)))).output.withdrawalsRoot !=
         Some(Withdrawals.root(Seq(withdrawal(0, otherRecipient, 4)))),
       "a commitment identifies the list it was taken over"
+    )
+
+  // ── The blob gas a block spends ──────────────────────────────────────────
+
+  "a block that accounts for no blob gas" should "state no figure for it" in
+    // The absence, which is a different answer from a zero. A block below the
+    // accounting has no such header field at all, and a caller comparing an
+    // absent figure against a header that states one is what catches a body
+    // carrying blobs where the fork admits none.
+    assert(
+      run(Seq(transfer(nonce = 0))).output.blobGasUsed.isEmpty,
+      "a fork with no blob schedule commits to nothing about blob gas"
+    )
+
+  "a block that accounts for blob gas" should "state zero where it carries none" in
+    // The other half of that pair, and the case where the two are hardest to
+    // tell apart: a block at the fork carrying no blob transaction has spent
+    // nothing and still commits to a figure.
+    assert(
+      run(Seq(transfer(nonce = 0)), blobGas = Some(blobAccounting())).output.blobGasUsed.contains(BigInt(0)),
+      "a block that could have carried blobs and did not has spent zero"
+    )
+
+  it should "state nothing but zero for a block with no transactions at all" in
+    // The empty block, which reaches the figure through a different path: the
+    // fold never runs, so what the output carries is what the opening value
+    // held rather than anything accumulated.
+    assert(
+      run(Seq.empty, blobGas = Some(blobAccounting())).output.blobGasUsed.contains(BigInt(0)),
+      "an empty block still answers"
+    )
+
+  it should "accumulate what its transactions carried" in
+    // The figure a header commits to. Two blob transactions carrying two
+    // commitments each is four blobs, which no single-transaction tier can
+    // produce -- a state fixture is one transaction against an empty block.
+    assert(
+      run(
+        Seq(blobTransfer(nonce = 0, blobs = 2), blobTransfer(nonce = 1, blobs = 2)),
+        admission = alsoBlobs,
+        blobGas = Some(blobAccounting()),
+        baseFee = Some(BigInt(0))
+      ).output.blobGasUsed.contains(BigInt(4) * BlobGas.PerBlob),
+      "four blobs across two transactions"
+    )
+
+  it should "count only the transactions that carry blobs" in
+    // A block holding both shapes, so the accumulation cannot be a count of
+    // transactions or a constant per block.
+    assert(
+      run(
+        Seq(transfer(nonce = 0), blobTransfer(nonce = 1, blobs = 3)),
+        admission = alsoBlobs,
+        blobGas = Some(blobAccounting()),
+        baseFee = Some(BigInt(0))
+      ).output.blobGasUsed.contains(BigInt(3) * BlobGas.PerBlob),
+      "an ordinary transfer spends no blob gas"
+    )
+
+  "the blob allowance" should "be what the block has LEFT, not its whole maximum" in
+    // THE RULE NO STATE FIXTURE CAN REACH, and the one the specification and a
+    // production client disagree about. `ethereum/execution-specs` @
+    // `0cc100eb1` `src/ethereum/forks/cancun/fork.py:432` measures each
+    // transaction against `MAX_BLOB_GAS_PER_BLOCK - block_output.blob_gas_used`
+    // while `besu-eth/besu` @ `b330564a9`
+    // `MainnetTransactionValidator.java:228-234` measures it against the
+    // maximum itself. The two agree on a block carrying one blob transaction
+    // and disagree here: four blobs and then three, against a maximum of six.
+    //
+    // A state fixture is one transaction against an otherwise empty block, so
+    // its allowance is always the whole maximum -- which is why the published
+    // corpus cannot separate the two readings and this case is the only thing
+    // that does.
+    assert(
+      run(
+        Seq(blobTransfer(nonce = 0, blobs = 4), blobTransfer(nonce = 1, blobs = 3)),
+        admission = alsoBlobs,
+        blobGas = Some(blobAccounting()),
+        baseFee = Some(BigInt(0))
+      ).result == Left(BlockRejection(1, Refusal.BlobGasAllowanceExceeded)),
+      "the second transaction wants three blobs where two remain"
+    )
+
+  it should "admit a block whose transactions total exactly the maximum" in
+    // The off-by-one in the other direction, and the negative control for the
+    // case above: four blobs and then two is six, which the fork allows. A
+    // build comparing with `>=` refuses this and a build ignoring the
+    // remainder admits the case above; only one reading passes both.
+    assert(
+      run(
+        Seq(blobTransfer(nonce = 0, blobs = 4), blobTransfer(nonce = 1, blobs = 2)),
+        admission = alsoBlobs,
+        blobGas = Some(blobAccounting()),
+        baseFee = Some(BigInt(0))
+      ).output.blobGasUsed.contains(BigInt(6) * BlobGas.PerBlob),
+      "exactly the maximum is spent, not exceeded"
     )

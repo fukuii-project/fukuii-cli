@@ -148,7 +148,28 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     CertificationCorpora.GeneratedCancunSelfDestructCorpus -> CorpusCensus(files = 15, cases = 136, skipped = 0),
     CertificationCorpora.GeneratedCancunTransientStorageCorpus ->
       CorpusCensus(files = 19, cases = 123, skipped = 0),
-    CertificationCorpora.GeneratedCancunBlobGasFeeCorpus -> CorpusCensus(files = 2, cases = 4, skipped = 0)
+    CertificationCorpora.GeneratedCancunBlobGasFeeCorpus -> CorpusCensus(files = 2, cases = 4, skipped = 0),
+    // The three admitted with the transaction format itself, and the first of
+    // them is larger than the five above it put together.
+    //
+    // NOTHING IS SKIPPED IN ANY OF THEM, and that is a claim about the FORMAT
+    // rather than about the sections. Every case in all three carries a section
+    // under this fork's key, as the five above do; what is new is that the
+    // transaction each one states is a format these rules now admit, where a
+    // build without the format would refuse all 914 for their type before
+    // reading anything else -- and a refusal is not a skip, so the figure that
+    // would move is the agreement below and not this one.
+    CertificationCorpora.GeneratedCancunBlobTransactionCorpus ->
+      CorpusCensus(files = 11, cases = 875, skipped = 0),
+    CertificationCorpora.GeneratedCancunBlobHashCostCorpus -> CorpusCensus(files = 1, cases = 28, skipped = 0),
+    CertificationCorpora.GeneratedCancunBlobHashContextCorpus -> CorpusCensus(files = 2, cases = 11, skipped = 0),
+    // The ported tier's own five, and the smallest directory in this census.
+    // Four of them restate rules the generated directory above already covers;
+    // the fifth names a blob transaction that deploys, publishes bytes no
+    // conformant decoder reads, and is THE ONLY SKIP among the six Cancun
+    // directories. `CertificationCorpora` states why that is the right answer
+    // rather than a gap.
+    CertificationCorpora.PortedStaticCancunBlobTransactionCorpus -> CorpusCensus(files = 5, cases = 5, skipped = 1)
   )
 
   /** Every censused corpus, as the rows the four properties below drive.
@@ -220,7 +241,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     assert(names == census.keySet, s"assembled ${names.toString} against a census of ${census.keySet.toString}")
   }
 
-  property("the census covers twenty-four corpora, counted") {
+  property("the census covers twenty-nine corpora, counted") {
     // THE REMOVAL CASE, which the pairing cannot see. Dropping a corpus from the
     // census AND from what the harness assembles leaves those two agreeing with
     // each other, leaves the same six properties registered, and leaves the
@@ -240,7 +261,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     //
     // Raising this is adding a corpus. Lowering it is dropping certified cases,
     // and that is a decision rather than a tidy-up.
-    assert(census.size == 25, s"the census covers ${census.size.toString} corpora rather than twenty-five")
+    assert(census.size == 29, s"the census covers ${census.size.toString} corpora rather than twenty-nine")
   }
 
   property("every censused corpus holds the files the census records") {

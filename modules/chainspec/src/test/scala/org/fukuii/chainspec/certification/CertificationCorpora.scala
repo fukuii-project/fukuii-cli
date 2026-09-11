@@ -544,6 +544,108 @@ object CertificationCorpora:
   val GeneratedCancunBlobGasFeeCorpus: String =
     "execution-specs-fixtures state_tests/for_cancun/cancun/eip7516_blobgasfee" + ComposedForCancun
 
+  /** The generated tier's directory for the blob transaction itself, under the
+    * same rules.
+    *
+    * ==The first directory here whose subject is ADMISSION rather than the
+    * machine==
+    *
+    * Every other Cancun directory settles a transaction and compares a root.
+    * This one is mostly about transactions that never run: of its 875 cases,
+    * 153 publish an expected refusal, and six of the seven refusals named are
+    * rules this upgrade introduces. What it therefore certifies is the branch
+    * ORDER as much as the branches -- a refusal is compared by name, so a case
+    * refused by the right rule for the wrong reason is a divergence here.
+    *
+    * **The balance requirement is where it is thickest and least obvious.** 144
+    * of the 153 expect `INSUFFICIENT_ACCOUNT_FUNDS`, and every one of them is
+    * decided by whether what the transaction offered for its blobs is counted
+    * into that requirement: measured against the published pre-state balances,
+    * all 144 are covered without it and none is.
+    * `org.fukuii.chainspec.certification.CancunBlobTransactionCertificationSpec`
+    * asserts that figure rather than leaving it in prose.
+    *
+    * **`blob_txs_full` is NOT part of this tier and never was.** It is a sibling
+    * directory under the same proposal, it exists only under
+    * `blockchain_tests`, `blockchain_tests_engine`, `blockchain_tests_engine_x`
+    * and `blockchain_tests_sync`, and this build has no runner for any of them.
+    * A reader looking for it here will not find it, which is the reason it is
+    * named.
+    */
+  val GeneratedCancunBlobTransactionCorpus: String =
+    "execution-specs-fixtures state_tests/for_cancun/cancun/eip4844_blobs/blob_txs" + ComposedForCancun
+
+  /** The generated tier's directory for what the operation reporting a
+    * commitment COSTS, under the same rules.
+    *
+    * One file, 28 cases, and not one of them publishes a refusal -- which is
+    * the property that decides what this and its sibling below can see. They
+    * are entirely about a build that runs the operation and gets the wrong
+    * answer, never about one that should have refused. A build that never
+    * implemented the operation at all halts on an undefined byte and diverges
+    * on every case, which is the coarsest thing they catch and not the finest.
+    *
+    * **Registered beside its sibling rather than merged with it**, because a
+    * report is keyed by directory and merging two would give one census for two
+    * questions -- the same reason the legacy tier is read once per fork rather
+    * than once.
+    */
+  val GeneratedCancunBlobHashCostCorpus: String =
+    "execution-specs-fixtures state_tests/for_cancun/cancun/eip4844_blobs/blobhash_opcode" + ComposedForCancun
+
+  /** The generated tier's directory for WHERE that operation may be reached
+    * from, under the same rules.
+    *
+    * Two files and 11 cases, across a top-level call, an initcode, a delegated
+    * call, a static call, and a transaction of each format that is not a blob
+    * transaction. **Those last are the discriminating ones**: the operation is
+    * reachable from a transaction carrying no commitments at all, where every
+    * index is past the end and the answer is zero, so they separate a build
+    * that reports zero from one that refuses or halts.
+    *
+    * **The two point-evaluation directories under the same parent are
+    * deliberately not registered.** This build installs no precompile at
+    * `0x0a`, so every case in them would reach an address holding nothing and
+    * diverge for a rule nobody claimed to have implemented --
+    * `org.fukuii.chainspec.proposals.eip.Eip4844` states that the precompile is
+    * the one part of the document its component leaves out.
+    */
+  val GeneratedCancunBlobHashContextCorpus: String =
+    "execution-specs-fixtures state_tests/for_cancun/cancun/eip4844_blobs/blobhash_opcode_contexts" +
+      ComposedForCancun
+
+  /** The ported tier's own directory for the blob transaction, under the same
+    * rules.
+    *
+    * ==Five cases, and one of them is the only published statement of a rule
+    * the type system was expected to make unreachable==
+    *
+    * `create_blobhash_tx` states a blob transaction with an EMPTY recipient, and
+    * it is the only case in the whole state tier that does. **This build cannot
+    * read it and neither can the specification**: both type a blob
+    * transaction's recipient as an address rather than an address-or-empty, so
+    * the signed bytes the fixture publishes decode as no blob transaction at
+    * all. It is therefore the census's one skip, recorded as undecodable, and
+    * the refusal the fixture names is reached by nothing here.
+    *
+    * **The skip is the finding rather than a defect to tune away.** A case
+    * whose published bytes no conformant decoder accepts is a case about the
+    * DECODER, and this build agrees with the specification about it -- what
+    * differs is only that the harness reports an unreadable signature as a skip
+    * rather than as a refusal, which is a property of every tier it reads and
+    * not of this one.
+    *
+    * The other four restate rules the generated directory already covers -- an
+    * empty commitment list, a malformed version, and the operation read inside
+    * and past the end of what a transaction carries. **They are registered
+    * anyway and are not redundant**: they are a second corpus's independent
+    * statement of the same rules, written by a different generation and ported
+    * rather than filled, which is the near-complement relationship the legacy
+    * and generated tiers already have.
+    */
+  val PortedStaticCancunBlobTransactionCorpus: String =
+    "execution-specs-fixtures state_tests/for_cancun/ported_static/stEIP4844_blobtransactions" + ComposedForCancun
+
   /** The same directory as the Tangerine Whistle tier, resolved through the
     * other network's schedule instead.
     *
@@ -976,6 +1078,38 @@ object CertificationCorpora:
       StateCorpus(
         GeneratedCancunBlobGasFeeCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_cancun/cancun/eip7516_blobgasfee"),
+        "Cancun",
+        ethereumChain,
+        composedForCancun
+      ),
+      StateCorpus(
+        GeneratedCancunBlobTransactionCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_cancun/cancun/eip4844_blobs/blob_txs"),
+        "Cancun",
+        ethereumChain,
+        composedForCancun
+      ),
+      StateCorpus(
+        GeneratedCancunBlobHashCostCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_cancun/cancun/eip4844_blobs/blobhash_opcode"),
+        "Cancun",
+        ethereumChain,
+        composedForCancun
+      ),
+      StateCorpus(
+        GeneratedCancunBlobHashContextCorpus,
+        FixtureCorpus
+          .generated(root)
+          .resolve("state_tests/for_cancun/cancun/eip4844_blobs/blobhash_opcode_contexts"),
+        "Cancun",
+        ethereumChain,
+        composedForCancun
+      ),
+      StateCorpus(
+        PortedStaticCancunBlobTransactionCorpus,
+        FixtureCorpus
+          .generated(root)
+          .resolve("state_tests/for_cancun/ported_static/stEIP4844_blobtransactions"),
         "Cancun",
         ethereumChain,
         composedForCancun

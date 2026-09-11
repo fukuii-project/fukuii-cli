@@ -63,7 +63,8 @@ class FeeOfferSpec extends AnyFlatSpec:
       to = Some(recipient),
       value = value,
       data = Bytes.Empty,
-      accessList = Seq.empty
+      accessList = Seq.empty,
+      blobs = None
     )
 
   private def verdict(
@@ -71,7 +72,8 @@ class FeeOfferSpec extends AnyFlatSpec:
       charge: Option[BigInt],
       balance: BigInt = BigInt(10).pow(20)
   ): Admission =
-    TransactionAdmission.admit(offer(fee), world(balance), BigInt(30000000), charge, WithMarket, Schedule, None)
+    TransactionAdmission
+      .admit(offer(fee), world(balance), BigInt(30000000), charge, None, WithMarket, Schedule, None)
 
   private def refusal(a: Admission): Option[Refusal] = a match
     case Admission.Refused(reason) => Some(reason)

@@ -673,7 +673,7 @@ lazy val chainspec = (project in file("modules/chainspec"))
 // account came into being, and the world-state double that answers it lives in
 // evm's test tree beside the machine it was written for.
 lazy val consensus = (project in file("modules/consensus"))
-  .dependsOn(bytes, types, chainspec, evm % "compile->compile;test->test")
+  .dependsOn(bytes, rlp, types, chainspec, evm % "compile->compile;test->test")
   .settings(
     name := "fukuii-consensus",
     libraryDependencies ++= testDeps

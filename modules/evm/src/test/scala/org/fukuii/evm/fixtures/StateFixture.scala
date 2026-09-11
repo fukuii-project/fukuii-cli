@@ -54,6 +54,27 @@ enum StatedFee:
   *   named rather than rejected at the reader, because a fixture carrying one
   *   is a legitimate test that the fork refuses it: an invalid transaction is
   *   not an unreadable file.
+  * @param blobVersionedHashes
+  *   the commitments this combination states, empty where the file states none.
+  *
+  *   **Read off the whole case rather than per index**, like the two fee-market
+  *   fields and unlike `accessLists`: the field is the transaction's own
+  *   contents rather than a choice per combination, and the corpus states one
+  *   sequence for every combination of a case.
+  *
+  *   Empty here does not distinguish a format that carries no such field from a
+  *   blob transaction stating an empty one -- [[kind]] is what separates those,
+  *   and the runner that reads both is where the distinction is rebuilt. A
+  *   fixture whose `blobVersionedHashes` is present and empty is a legitimate
+  *   case the corpus publishes, expecting a refusal.
+  * @param maxFeePerBlobGas
+  *   the most this combination will pay per unit of blob gas, absent where the
+  *   file states none.
+  *
+  *   **An option and not a zero.** Zero is a legal ceiling and is exactly the
+  *   value a case refused for offering too little would state, so standing it
+  *   in for an absent field would turn a format that states no ceiling into one
+  *   that states the lowest possible -- and the corpus carries cases at both.
   */
 final case class StateTransaction(
     nonce: BigInt,
@@ -65,7 +86,9 @@ final case class StateTransaction(
     accessList: Seq[AccessTuple],
     sender: Address,
     signed: Option[Bytes],
-    kind: TransactionType
+    kind: TransactionType,
+    blobVersionedHashes: Seq[Hash],
+    maxFeePerBlobGas: Option[BigInt]
 )
 
 /** The corpus's own statement that a transaction must be refused, in the
@@ -262,7 +285,51 @@ object StateFixture:
       declared <- declarationAt(json, indexes.data)
       sender <- FixtureValues.addressAt(json, "sender")
       to <- recipientOf(json)
-    yield StateTransaction(nonce, fee, gasLimit, to, value, data, declared, sender, signed, kind)
+      blobs <- blobHashesOf(json)
+      blobFee <- FixtureValues.optionally(json, "maxFeePerBlobGas")(FixtureValues.quantity)
+    yield StateTransaction(
+      nonce,
+      fee,
+      gasLimit,
+      to,
+      value,
+      data,
+      declared,
+      sender,
+      signed,
+      kind,
+      blobs,
+      blobFee
+    )
+
+  /** The commitments the case states, in the order it states them.
+    *
+    * ==An absent field and an empty array are both an empty sequence HERE==
+    *
+    * [[impliedKind]] has already read the field's PRESENCE to decide the
+    * format, so the distinction the two need is carried by that answer and not
+    * by this one. A reader that reported absence here as well would have the
+    * same fact twice and could disagree with itself.
+    *
+    * **A malformed entry is a decode failure and not a dropped commitment.** A
+    * hash that is not thirty-two bytes would change the blob count if it were
+    * skipped, and the count is what the blob gas is priced from -- so the case
+    * is reported undecodable rather than settled against a body it does not
+    * have.
+    */
+  private def blobHashesOf(json: Json): Either[String, Seq[Hash]] =
+    json.hcursor.downField("blobVersionedHashes").focus match
+      case None        => Right(Seq.empty)
+      case Some(field) =>
+        field.asArray.toRight("blobVersionedHashes is not an array").flatMap { entries =>
+          entries.toVector.foldLeft[Either[String, Vector[Hash]]](Right(Vector.empty)) { (carried, entry) =>
+            for
+              held <- carried
+              text <- entry.asString.toRight("a blob versioned hash is not a string")
+              hash <- FixtureValues.hashOf(text)
+            yield held :+ hash
+          }
+        }
 
   /** What `accessLists` declares for one combination.
     *

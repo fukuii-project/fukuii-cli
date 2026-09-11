@@ -5,10 +5,12 @@ import org.fukuii.evm.fixtures.*
 import org.fukuii.bytes.{Address, Bytes, Hash, UInt64}
 import org.fukuii.chainspec.UpgradeRules
 import org.fukuii.crypto.Keccak256
-import org.fukuii.evm.{BlockContext, BlockRandomness, JournaledWorldState, StateTrieWorldState}
+import org.fukuii.evm.{BlobGas, BlobGasPrice, BlockContext, BlockRandomness, JournaledWorldState, StateTrieWorldState}
 import org.fukuii.execution.{
   FeeOffer,
   Admission,
+  BlobGasTerms,
+  BlobOffer,
   BlockProcessor,
   OfferedTransaction,
   Refusal,
@@ -18,7 +20,7 @@ import org.fukuii.execution.{
 }
 import org.fukuii.rlp.RlpCodec
 import org.fukuii.trie.StateTrie
-import org.fukuii.types.{Log, Receipt, Transaction}
+import org.fukuii.types.{Log, Receipt, Transaction, TransactionType}
 
 /** Runs one state fixture: seeds the pre-state, admits the transaction, settles
   * whatever was admitted, and compares the state it reached against the
@@ -83,7 +85,30 @@ object StateFixtureRunner:
       // none uses that one. Both are kept because a key that matches nothing
       // cannot produce a wrong verdict, and which of the two a future corpus
       // writes is the corpus's to decide -- but only this one is doing any work.
-      "TransactionException.INVALID_CHAINID" -> Refusal.WrongChainId
+      "TransactionException.INVALID_CHAINID" -> Refusal.WrongChainId,
+      // A PRE-EXISTING GAP, surfaced by the first corpus to carry a case for it
+      // rather than introduced with one. The fee-market rule has been in this
+      // build since London and no tier read before this one publishes a
+      // transaction refused by it, so the name was never needed -- which is
+      // what a corpus that could not disagree looks like from the vocabulary's
+      // side.
+      "TransactionException.INSUFFICIENT_MAX_FEE_PER_GAS" -> Refusal.FeeCapBelowBaseFee,
+      // The rules the blob format brings. Each name is the corpus's for one of
+      // this document's own refusals, and the mapping is what turns a refusal
+      // compared by NAME into a refusal compared by RULE -- without it a build
+      // refusing for exactly the right reason is reported as diverging, which
+      // is how these five arrived.
+      "TransactionException.TYPE_3_TX_CONTRACT_CREATION" -> Refusal.FormatMayNotDeploy,
+      "TransactionException.TYPE_3_TX_ZERO_BLOBS" -> Refusal.BlobListEmpty,
+      "TransactionException.TYPE_3_TX_INVALID_BLOB_VERSIONED_HASH" -> Refusal.BlobHashVersionUnknown,
+      "TransactionException.INSUFFICIENT_MAX_FEE_PER_BLOB_GAS" -> Refusal.BlobFeeCapBelowCharge,
+      // Two names for one rule, and the corpus states them as ALTERNATIVES on
+      // the same case -- `A|B`, which the reader splits and this build satisfies
+      // by producing a refusal either maps to. They are kept apart rather than
+      // folded because a corpus is free to publish either alone, and a key that
+      // matches nothing cannot produce a wrong verdict.
+      "TransactionException.TYPE_3_TX_BLOB_COUNT_EXCEEDED" -> Refusal.BlobGasAllowanceExceeded,
+      "TransactionException.TYPE_3_TX_MAX_BLOB_GAS_ALLOWANCE_EXCEEDED" -> Refusal.BlobGasAllowanceExceeded
     )
 
   /** Runs `fixture` as `chainId`'s network at `rules`.
@@ -234,6 +259,7 @@ object StateFixtureRunner:
       journal,
       fixture.block.gasLimit,
       fixture.block.baseFee,
+      blobGasTermsOf(fixture, rules),
       rules.admission,
       rules.evm.schedule,
       rules.evm.maxInitcodeSize
@@ -298,7 +324,66 @@ object StateFixtureRunner:
       to = transaction.to,
       value = transaction.value,
       data = transaction.data,
-      accessList = transaction.accessList
+      accessList = transaction.accessList,
+      blobs = blobsOf(transaction)
+    )
+
+  /** The blob half of what the fixture stated, as admission reads it.
+    *
+    * ==The FORMAT decides, exactly as it does for the fee==
+    *
+    * Not which field happens to be present, which is a second reading of the
+    * file that can disagree with the first -- [[offerOf]]'s own contract. A
+    * blob transaction is the one format that carries these fields, so the match
+    * is on the format and is exhaustive: a format added later stops this
+    * compiling rather than silently offering nothing.
+    *
+    * **The refusal this preserves is the one the corpus states.** A case whose
+    * `blobVersionedHashes` is present and empty is a blob transaction carrying
+    * none, which is refused for that and not for its format; answering `None`
+    * here would make it indistinguishable from an ordinary transaction and the
+    * case would settle instead.
+    *
+    * **A ceiling this build cannot find is offered as zero rather than
+    * dropped.** A blob transaction must state one and every published case
+    * does, so the branch is unreachable over the corpus -- and a zero offered
+    * where a file stated nothing is refused by the charge comparison rather
+    * than admitted, which is the direction that cannot turn a missing field
+    * into a settled transaction.
+    */
+  private def blobsOf(transaction: StateTransaction): Option[BlobOffer] =
+    transaction.kind match
+      case TransactionType.Legacy     => None
+      case TransactionType.AccessList => None
+      case TransactionType.DynamicFee => None
+      case TransactionType.Blob       =>
+        Some(BlobOffer(transaction.maxFeePerBlobGas.getOrElse(BigInt(0)), transaction.blobVersionedHashes))
+      case TransactionType.SetCode => None
+
+  /** What the block charges for blob gas and how much of it it has left.
+    *
+    * ==A state fixture is one transaction against an otherwise empty block==
+    *
+    * So what it has left is the fork's whole maximum, exactly as what it has
+    * left to give in gas is its whole limit.
+    *
+    * ==Absent where the fork accounts for no blob gas, and the two absences are
+    * one answer==
+    *
+    * The schedule and the update fraction are written by one component, so a
+    * rule set holding one without the other is a configuration nothing here
+    * produces. They are read as a pair anyway rather than defaulted: a zero
+    * fraction divides by zero rather than pricing anything, and a zero maximum
+    * would refuse every blob transaction for its allowance instead of settling
+    * it.
+    */
+  private def blobGasTermsOf(fixture: StateFixture, rules: UpgradeRules): Option[BlobGasTerms] =
+    for
+      schedule <- rules.header.blobSchedule
+      fraction <- rules.evm.blobBaseFeeUpdateFraction
+    yield BlobGasTerms(
+      charge = BlobGasPrice.at(fixture.block.excessBlobGas.map(_.toBigInt).getOrElse(BigInt(0)), fraction),
+      available = schedule.maxBlobs * BlobGas.PerBlob
     )
 
   /** Every way the state this reached disagrees with the state the fixture

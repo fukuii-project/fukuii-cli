@@ -57,12 +57,37 @@ import org.fukuii.types.{Log, PostStateOrStatus, Receipt, Transaction, Transacti
   *   `root(...)` of it in `state_transition` (`forks/shanghai/fork.py:199`),
   *   beside the transactions root, the receipts root and the bloom. This
   *   project has only the one of those four so far.
+  * @param blobGasUsed
+  *   what every transaction in the block spent on blobs, absent where the block
+  *   accounts for no blob gas at all.
+  *
+  *   **The absence and a zero are different answers**, exactly as they are for
+  *   [[withdrawalsRoot]]: a block below the blob accounting has no such header
+  *   field, and a block at or above it carrying no blob transaction states
+  *   zero. Collapsing the two would make a header that omitted the field
+  *   indistinguishable from one stating zero.
+  *
+  *   `ethereum/execution-specs` @ `0cc100eb1` (2026-09-11) carries
+  *   `blob_gas_used` on its own `BlockOutput` and accumulates it one
+  *   transaction at a time (`src/ethereum/forks/cancun/fork.py:778`), then
+  *   compares it against the header at `:241`.
+  *
+  *   ==It needs no EXECUTION, which the accumulation here obscures==
+  *
+  *   Every addend is a blob count times a fixed figure, read off the decoded
+  *   transaction and nothing else -- `org.fukuii.evm.BlobGas.spentBy` is that
+  *   derivation, and a caller holding a block's transactions can sum it without
+  *   running any of them. So a header's stated spend can be checked against its
+  *   own body at a layer that executes nothing, and what this member adds is
+  *   that a block which HAS been executed carries the figure it was executed
+  *   under rather than one recomputed beside it.
   */
 final case class BlockOutput(
     receipts: Vector[Receipt],
     gasUsed: BigInt,
     unbuilt: Option[Unsupported],
-    withdrawalsRoot: Option[Hash] = None
+    withdrawalsRoot: Option[Hash] = None,
+    blobGasUsed: Option[BigInt] = None
 ):
 
   /** Every log the block emitted, oldest first.
@@ -95,6 +120,42 @@ final case class BlockOutput(
   *   that could each break the same rule.
   */
 final case class BlockRejection(index: Int, reason: Refusal)
+
+/** What a block accounts for in blob gas: what it charges per unit, and the
+  * most it may spend.
+  *
+  * ==The BLOCK's pair, where [[BlobGasTerms]] is one transaction's==
+  *
+  * The two records hold the same charge and differ in the other member, which
+  * is the whole reason they are not one type: a block states a MAXIMUM, and
+  * what a transaction is measured against is the REMAINDER after the
+  * transactions before it. `ethereum/execution-specs` @ `0cc100eb1`
+  * (2026-09-11) `src/ethereum/forks/cancun/fork.py:432` derives the second from
+  * the first on the transaction's own line --
+  * `MAX_BLOB_GAS_PER_BLOCK - block_output.blob_gas_used` -- exactly as it
+  * derives the gas remainder on the line above. Holding one type for both
+  * would let a caller hand a transaction the block's maximum, which admits a
+  * second blob transaction the network refuses.
+  *
+  * ==Absent below the fork that accounts for blob gas at all==
+  *
+  * Not zero: a maximum of zero is a fork that admits blob transactions and
+  * lets none through, which no schedule states, and a charge of zero is below
+  * the floor every source puts under it. `org.fukuii.execution.BlockOutput`
+  * carries the same absence forward.
+  *
+  * @param charge
+  *   what this block charges per unit of blob gas, derived by the caller from
+  *   the excess its header states and the fraction its fork resolves.
+  *   `org.fukuii.evm.BlobGasPrice.at` is that derivation.
+  * @param maximum
+  *   the most blob gas a block at these rules may spend.
+  *   `org.fukuii.chainspec.BlobSchedule` holds the blob count a fork allows and
+  *   `org.fukuii.evm.BlobGas.PerBlob` the figure it is multiplied by; both sit
+  *   in layers this one cannot see, which is why the product arrives rather
+  *   than being computed here.
+  */
+final case class BlobGasAccounting(charge: BigInt, maximum: BigInt)
 
 /** What a block does around the transactions it carries.
   *
@@ -291,10 +352,11 @@ object BlockProcessor:
       admission: AdmissionRules,
       irregularStateChange: Option[WorldState => Unit],
       consensusStateChange: WorldState => Unit,
-      withdrawals: Option[Seq[Withdrawal]] = None
+      withdrawals: Option[Seq[Withdrawal]] = None,
+      blobGas: Option[BlobGasAccounting] = None
   ): Either[BlockRejection, BlockOutput] =
     irregularStateChange.foreach(change => change(world))
-    val processed = transactions.zipWithIndex.foldLeft[Either[BlockRejection, BlockOutput]](Empty) {
+    val processed = transactions.zipWithIndex.foldLeft[Either[BlockRejection, BlockOutput]](Empty(blobGas)) {
       (carried, indexed) =>
         carried.flatMap { output =>
           val (transaction, index) = indexed
@@ -310,7 +372,8 @@ object BlockProcessor:
             chainId,
             evm,
             execution,
-            admission
+            admission,
+            blobGas
           )
         }
     }
@@ -320,9 +383,15 @@ object BlockProcessor:
       output.copy(withdrawalsRoot = withdrawals.map(Withdrawals.root))
     }
 
-  /** A block that has run nothing yet. */
-  private val Empty: Either[BlockRejection, BlockOutput] =
-    Right(BlockOutput(Vector.empty, BigInt(0), None))
+  /** A block that has run nothing yet.
+    *
+    * A function of the accounting rather than a constant, because a block that
+    * accounts for blob gas and carries no transactions has spent zero, while a
+    * block below the accounting has no such answer at all -- and the empty case
+    * is the one where the two are hardest to tell apart.
+    */
+  private def Empty(blobGas: Option[BlobGasAccounting]): Either[BlockRejection, BlockOutput] =
+    Right(BlockOutput(Vector.empty, BigInt(0), None, None, blobGas.map(_ => BigInt(0))))
 
   /** Runs one transaction and folds what it produced into what the block holds.
     *
@@ -348,7 +417,8 @@ object BlockProcessor:
       chainId: UInt64,
       evm: EvmRules,
       execution: ExecutionRules,
-      admission: AdmissionRules
+      admission: AdmissionRules,
+      blobGas: Option[BlobGasAccounting]
   ): Either[BlockRejection, BlockOutput] =
     val journal = new JournaledWorldState(world)
     val admitted =
@@ -359,6 +429,10 @@ object BlockProcessor:
           journal,
           block.gasLimit - output.gasUsed,
           block.baseFee,
+          // The block's maximum less what the transactions before this one
+          // carried, which is the figure the specification measures against
+          // and not the maximum itself.
+          blobGas.map(held => BlobGasTerms(held.charge, held.maximum - output.blobGasUsed.getOrElse(BigInt(0)))),
           admission,
           evm.schedule,
           evm.maxInitcodeSize
@@ -376,7 +450,14 @@ object BlockProcessor:
           receipts = output.receipts :+
             receiptFor(transaction.transactionType, settlement, used, stateRootAfterTransaction, execution),
           gasUsed = used,
-          unbuilt = output.unbuilt.orElse(settlement.unbuilt)
+          unbuilt = output.unbuilt.orElse(settlement.unbuilt),
+          withdrawalsRoot = output.withdrawalsRoot,
+          // Accumulated from what ADMISSION priced the transaction at rather
+          // than recounted off the transaction here, so the figure a block
+          // commits to is the one its transactions were charged for. The
+          // specification adds the same value it returned from
+          // `check_transaction` (`fork.py:778`).
+          blobGasUsed = output.blobGasUsed.map(_ + settling.blobGasUsed)
         )
       }
 
@@ -463,25 +544,31 @@ object BlockProcessor:
     * not where that happens -- [[FeeOffer]] holds the resolution and admission
     * applies it, because admission is where a base fee is finally in hand.
     *
-    * ==Two of the five are still unreachable, and the obligation is unchanged==
+    * ==One of the five is still unreachable, and the obligation has now been
+    * discharged twice==
     *
     * [[TransactionAdmission.senderOf]] asks
     * [[TransactionAdmission.admitsFormat]] ahead of everything else it does,
     * and [[settleInto]] binds its answer before this is applied at all, so a
     * format these rules do not admit is refused for that FORMAT and never
-    * reaches here. **That ordering was never the guarantee**, and the
-    * distinction has now been paid once: what actually kept the branch out of
-    * reach was that no rule set admitted any of the three, and the obligation
-    * recorded against it was that a fork admitting one brings the fee rule that
-    * prices it, both landing together. That is what happened -- the fee market
-    * arrived with the format, in one upgrade.
+    * reaches here. **That ordering was never the guarantee**: what kept the
+    * branch out of reach was that no rule set admitted the format, and the
+    * obligation recorded against it was that a fork admitting one brings the
+    * fee rule that prices it, both landing together.
     *
-    * The two remaining formats carry further fields no rule here reads, so the
-    * same obligation stands for each: a fork admitting one brings what prices
-    * it. The branch is raised rather than returned because a rule set admitting
-    * a format nothing prices is a configuration this project would have had to
-    * write, so there is no caller who could act on it and nothing on a chain
-    * that produces it.
+    * It has now happened twice in the shape the obligation named. The fee
+    * market arrived with the fee-market format. The blob-gas accounting and the
+    * charge derived from it arrived with the blob format, and the two extra
+    * fields that format carries -- what it will pay per unit of blob gas, and
+    * the commitments it is paying for -- are read here for the first time,
+    * against rules that reached this module in the same upgrade.
+    *
+    * **The remaining format carries a further field no rule here reads, so the
+    * obligation stands unchanged for it**: a fork admitting it brings what
+    * prices it. The branch is raised rather than returned because a rule set
+    * admitting a format nothing prices is a configuration this project would
+    * have had to write, so there is no caller who could act on it and nothing
+    * on a chain that produces it.
     */
   private def offered(transaction: Transaction, sender: Address): OfferedTransaction =
     val price = transaction match
@@ -489,7 +576,8 @@ object BlockProcessor:
       case t: Transaction.AccessList => FeeOffer.Fixed(t.gasPrice.toBigInt)
       case t: Transaction.DynamicFee =>
         FeeOffer.Capped(t.maxFeePerGas.toBigInt, t.maxPriorityFeePerGas.toBigInt)
-      case t: Transaction.Blob    => unpriced(t)
+      case t: Transaction.Blob =>
+        FeeOffer.Capped(t.maxFeePerGas.toBigInt, t.maxPriorityFeePerGas.toBigInt)
       case t: Transaction.SetCode => unpriced(t)
     // A format that carries no declaration offers an empty one, which is
     // charged nothing and warms nothing. Written out per payload rather than as
@@ -501,6 +589,19 @@ object BlockProcessor:
       case t: Transaction.DynamicFee => t.accessList
       case t: Transaction.Blob       => t.accessList
       case t: Transaction.SetCode    => t.accessList
+    // NONE and not an empty offer, for every format that carries no such
+    // field: a blob transaction stating an empty sequence is a transaction the
+    // rules refuse, and collapsing the two would make that refusal unreachable
+    // while refusing every ordinary transaction instead. [[BlobOffer]] states
+    // the distinction; this is the one site that can express it, because only
+    // here is the payload's own shape still visible.
+    val blobs = transaction match
+      case _: Transaction.Legacy     => None
+      case _: Transaction.AccessList => None
+      case _: Transaction.DynamicFee => None
+      case t: Transaction.Blob       =>
+        Some(BlobOffer(t.maxFeePerBlobGas.toBigInt, t.blobVersionedHashes))
+      case _: Transaction.SetCode => None
     OfferedTransaction(
       transactionType = transaction.transactionType,
       sender = sender,
@@ -510,7 +611,8 @@ object BlockProcessor:
       to = transaction.to,
       value = transaction.value.toBigInt,
       data = transaction.data,
-      accessList = declared
+      accessList = declared,
+      blobs = blobs
     )
 
   private def unpriced(transaction: Transaction): Nothing =

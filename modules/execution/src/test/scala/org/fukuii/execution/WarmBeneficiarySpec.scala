@@ -63,7 +63,10 @@ class WarmBeneficiarySpec extends AnyFlatSpec:
       value = 0,
       data = Bytes.Empty,
       accessList = Seq.empty,
-      intrinsicGas = IntrinsicGas.of(schedule, Bytes.Empty, deploys = false, Seq.empty)
+      intrinsicGas = IntrinsicGas.of(schedule, Bytes.Empty, deploys = false, Seq.empty),
+      blobGasUsed = BigInt(0),
+      blobGasPrice = BigInt(0),
+      blobVersionedHashes = Seq.empty
     )
     TransactionProcessor
       .settle(

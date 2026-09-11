@@ -532,6 +532,19 @@ object Interpreter:
       case Opcode.BaseFee =>
         pushing(frame, operation)(Word(environment.block.baseFee.getOrElse(unfilledBaseFee(environment))))
 
+      // The only entry in this group that reads the TRANSACTION rather than the
+      // block, and the only one that takes an operand. It is grouped here
+      // because what it reports is fixed for the whole transaction, like the
+      // two above and unlike anything a frame carries.
+      case Opcode.BlobHash =>
+        priced(operation) { gas =>
+          for
+            index <- frame.stack.pop()
+            _ <- frame.charge(gas)
+            _ <- frame.stack.push(blobHashFor(environment, index))
+          yield advance(frame)
+        }
+
       // The one block value that is DERIVED rather than stated. Every other
       // entry in this group is pushed as the header carries it; this one runs
       // the expansion in `BlobGasPrice` over the excess the header states and
@@ -2189,6 +2202,37 @@ object Interpreter:
 
   /** How far back a block hash can be read. */
   private val BlockHashReach: BigInt = BigInt(256)
+
+  /** The commitment the transaction carries at a stated index, and zero past
+    * the end of what it carries.
+    *
+    * ==Zero is an ANSWER here, not a refusal==
+    *
+    * `ethereum/execution-specs` @ `0cc100eb1`
+    * `src/ethereum/forks/cancun/vm/instructions/environment.py:572-575` pushes
+    * `Bytes32(b"\x00" * 32)` for an index at or past the length, and
+    * `ethereum/go-ethereum` @ `02872e9ef` `core/vm/eips.go:275-279` clears the
+    * operand in place for the same case. `besu-eth/besu` @ `b330564a9`
+    * `evm/.../operation/BlobHashOperation.java:55-68` pushes `Bytes.EMPTY`
+    * there, and does so on three separate paths -- an index too wide to hold,
+    * an index past the end, and a frame carrying no commitments at all.
+    * **So the operation never halts**, which is what lets a contract probe how
+    * many commitments a transaction carried without risking its own frame.
+    *
+    * ==The comparison is made at arbitrary precision, for [[blockHashFor]]'s
+    * reason turned around==
+    *
+    * An operand is a full word and a length is an `Int`, so narrowing the
+    * operand to compare them would wrap a large index into a small one and
+    * report a commitment for a position the transaction has not got. Comparing
+    * the operand against the length as arbitrary-precision integers has no such
+    * case.
+    */
+  private def blobHashFor(environment: Environment, index: Word): Word =
+    val carried = environment.transaction.blobVersionedHashes
+    val wanted = index.toBigInt
+    if wanted < BigInt(carried.length) then Word.fromBytes(Bytes.fromIArray(carried(wanted.toInt).toBytes))
+    else Word.Zero
 
   /** Nothing, or the refusal a store owes an invocation with too little gas
     * left to be worth entering.

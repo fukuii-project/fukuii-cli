@@ -60,7 +60,8 @@ class InitcodeAdmissionSpec extends AnyFlatSpec:
       to = if deploys then None else Some(recipient),
       value = 0,
       data = data,
-      accessList = Seq.empty
+      accessList = Seq.empty,
+      blobs = None
     )
 
   private def verdict(data: Bytes, deploys: Boolean, bounded: Option[Int]): Admission =
@@ -68,6 +69,9 @@ class InitcodeAdmissionSpec extends AnyFlatSpec:
       offer(data, deploys),
       world(),
       BigInt(30000000),
+      None,
+      // These rules account for no blob gas, so a block under them sets no
+      // charge for it and has no allowance to spend.
       None,
       rules,
       schedule,
@@ -124,6 +128,6 @@ class InitcodeAdmissionSpec extends AnyFlatSpec:
     // read first.
     val starved = offer(bytes(bound + 1), deploys = true).copy(gasLimit = BigInt(1))
     val answer =
-      TransactionAdmission.admit(starved, world(), BigInt(30000000), None, rules, schedule, Some(bound))
+      TransactionAdmission.admit(starved, world(), BigInt(30000000), None, None, rules, schedule, Some(bound))
     assert(refusal(answer).contains(Refusal.IntrinsicGasTooLow), "the specification's order puts the charge first")
   }

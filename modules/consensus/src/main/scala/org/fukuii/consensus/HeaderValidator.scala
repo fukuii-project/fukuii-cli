@@ -3,6 +3,7 @@ package org.fukuii.consensus
 import org.fukuii.bytes.{Hash, UInt256, UInt64}
 import org.fukuii.chainspec.{BlobSchedule, FeeMarket, HeaderConstants, UpgradeRules}
 import org.fukuii.crypto.Keccak256
+import org.fukuii.evm.BlobGas
 import org.fukuii.types.{BlockHeader, BlockNonce, Seal}
 
 /** Why a header is not valid against its parent.
@@ -327,21 +328,19 @@ object HeaderValidator:
 
   /** The blob gas one blob costs, which no fork varies.
     *
-    * `ethereum/EIPs` @ `d2a64c2d4` (2026-09-11), `EIPS/eip-4844.md:53` states
-    * `GAS_PER_BLOB` as `2**17`, and `ethereum/execution-specs` @ `0cc100eb1`
-    * (2026-09-11) repeats `PER_BLOB: Final[U64] = U64(2**17)` unchanged in every
-    * fork module that has a blob schedule at all --
-    * `forks/cancun/vm/gas.py:83` through `forks/bpo5/vm/gas.py:94`.
-    * `ethereum/go-ethereum` @ `02872e9ef` holds it as the package constant
-    * `params.BlobTxBlobGasPerBlob` and multiplies its per-fork blob COUNTS by
-    * it, which is the same split this object takes.
+    * ==Re-exported rather than defined, and the distinction is the point==
     *
-    * **Held here rather than on the fork's schedule for the reason
-    * [[GasLimitBoundDivisor]] and [[MinGasLimit]] are**: a fork-invariant figure
-    * on a fork-resolved record is a member nothing can vary, and
-    * `org.fukuii.chainspec.UpgradeRules`'s own admission test refuses it.
+    * The figure and its evidence are `org.fukuii.evm.BlobGas.PerBlob`'s. It
+    * lives a module below this one because a header rule is not its only
+    * reader: admission prices a transaction's blobs from the same number and
+    * block processing accumulates them, in `org.fukuii.execution`, which cannot
+    * see this module and which this module cannot see either. **A second
+    * definition here would be one number with two homes**, and a fork moving it
+    * would move one of them.
+    *
+    * The name is kept for the rules below that read it, and the value is not.
     */
-  val BlobGasPerBlob: BigInt = BigInt(1) << 17
+  val BlobGasPerBlob: BigInt = BlobGas.PerBlob
 
   /** What a header commits to when it includes no ommers.
     *
@@ -500,11 +499,23 @@ object HeaderValidator:
     * by whichever runs first, so the REASON can differ from another client's
     * while the verdict does not.
     *
-    * ==What remains deferred, and it is the commitment==
+    * ==What remains deferred is the commitment, and NOT for the reason the
+    * other commitments are==
     *
     * A block's stated `blobGasUsed` against what its transactions actually
-    * carried needs an executed block, and is deferred for the reason every
-    * other commitment is.
+    * carried is not a header rule and is not checked here. **It does not need
+    * an executed block either**, which is what separates it from every other
+    * commitment this layer defers: a state root, a receipts root and a gas-used
+    * figure are compared against what execution PRODUCED, while a blob spend is
+    * a count of the commitments each transaction states --
+    * `org.fukuii.evm.BlobGas.spentBy` is the whole derivation and it reads no
+    * result. So what this one waits for is a layer holding a header and a BODY
+    * together, which is a weaker thing to wait for and a different one.
+    *
+    * `CancunBlobGasCertificationSpec` measures it rather than asserting it: the
+    * forty-two blocks in this corpus that no bound above reaches are each
+    * decided by their own decoded body, with the hundred and seventy-five the
+    * corpus accepts left alone.
     */
   private def checkBlobGas(block: Resolved, parent: Resolved): Either[HeaderFault, Unit] =
     // Matched on the excess alone rather than on both fields, because

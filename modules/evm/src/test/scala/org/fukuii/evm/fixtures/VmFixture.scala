@@ -194,7 +194,10 @@ object VmFixtureRunner:
         journal,
         blockHashAt = VmFixtureRunner.blockHashOf,
         block = fixture.block,
-        transaction = TransactionContext(invocation.origin, invocation.gasPrice),
+        // This tier states an invocation with no transaction around it, so it
+        // has no field that could name a commitment and every index the
+        // operation at `0x49` could be asked for is past the end.
+        transaction = TransactionContext(invocation.origin, invocation.gasPrice, Seq.empty),
         chainId = chainId,
         rules = rules
       )

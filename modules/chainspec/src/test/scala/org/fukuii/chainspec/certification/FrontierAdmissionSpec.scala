@@ -91,7 +91,7 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
       to: Option[Address] = Some(recipient),
       data: Bytes = Bytes.Empty
   ): OfferedTransaction =
-    OfferedTransaction(kind, sender, nonce, FeeOffer.Fixed(gasPrice), gasLimit, to, value, data, Seq.empty)
+    OfferedTransaction(kind, sender, nonce, FeeOffer.Fixed(gasPrice), gasLimit, to, value, data, Seq.empty, None)
 
   /** The rules with EIP-2's creation surcharge applied. */
   private val charging: GasSchedule = ethereum.Upgrades.frontier.evm.applying(Eip2.creationCharge).schedule
@@ -119,6 +119,9 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
       state,
       available,
       None,
+      // This fork accounts for no blob gas, so there is no charge to compare a
+      // ceiling against and no allowance to spend.
+      None,
       ethereum.Upgrades.frontier.admission,
       ethereum.Upgrades.genesisPrices,
       ethereum.Upgrades.frontier.evm.maxInitcodeSize
@@ -139,7 +142,10 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
         value = transaction.value,
         data = transaction.data,
         accessList = transaction.accessList,
-        intrinsicGas = intrinsic
+        intrinsicGas = intrinsic,
+        blobGasUsed = BigInt(0),
+        blobGasPrice = BigInt(0),
+        blobVersionedHashes = Seq.empty
       )
     )
 

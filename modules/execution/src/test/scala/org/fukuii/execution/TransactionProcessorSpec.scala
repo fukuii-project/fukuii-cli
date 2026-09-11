@@ -124,7 +124,10 @@ class TransactionProcessorSpec extends AnyFlatSpec:
       value = value,
       data = data,
       accessList = Seq.empty,
-      intrinsicGas = IntrinsicGas.of(schedule, data, to.isEmpty, Seq.empty)
+      intrinsicGas = IntrinsicGas.of(schedule, data, to.isEmpty, Seq.empty),
+      blobGasUsed = BigInt(0),
+      blobGasPrice = BigInt(0),
+      blobVersionedHashes = Seq.empty
     )
 
   /** Settlement at every height before an account reached and left holding

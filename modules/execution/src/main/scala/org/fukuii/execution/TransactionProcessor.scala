@@ -67,6 +67,26 @@ import org.fukuii.types.{AccessTuple, Log}
   *   the machine may then reach at the reduced price, and that seeding happens
   *   at the outermost invocation -- the one place a caller could not supply it
   *   from anywhere else.
+  * @param blobGasUsed
+  *   the blob gas the transaction spends, zero for every format that carries no
+  *   blobs. Carried rather than recomputed for [[intrinsicGas]]'s reason: the
+  *   count admission priced the balance requirement from is the count
+  *   settlement charges for and the count a block accumulates, and three
+  *   derivations of one number is three things to keep in step.
+  * @param blobGasPrice
+  *   what the block charges per unit of blob gas, zero where the block sets no
+  *   charge. It is the BLOCK's figure and never the ceiling the transaction
+  *   offered -- admission compares the two and this is the one that is
+  *   actually spent, the same split [[baseFeePerGas]] carries for gas.
+  * @param blobVersionedHashes
+  *   the commitments the transaction carries, in order, and empty for every
+  *   format that carries none.
+  *
+  *   **Settlement needs them for a reason no fee explains**, which is why they
+  *   are here beside two figures rather than folded into one: an operation
+  *   reports the commitment at a stated index, and the outermost invocation is
+  *   the one place that sequence can be supplied from. It is the same second
+  *   reason [[accessList]] is on this record.
   */
 final case class AdmittedTransaction(
     sender: Address,
@@ -78,8 +98,18 @@ final case class AdmittedTransaction(
     value: BigInt,
     data: Bytes,
     accessList: Seq[AccessTuple],
-    intrinsicGas: BigInt
-)
+    intrinsicGas: BigInt,
+    blobGasUsed: BigInt,
+    blobGasPrice: BigInt,
+    blobVersionedHashes: Seq[Hash]
+):
+
+  /** What this transaction's blobs cost it, at the block's charge.
+    *
+    * Zero wherever either factor is, which is every fork below the first that
+    * prices blob gas and every format that carries no blobs.
+    */
+  def blobFee: BigInt = blobGasUsed * blobGasPrice
 
 /** What settling one transaction produced.
   *
@@ -153,6 +183,13 @@ object TransactionProcessor:
     * bounded by a fraction of what it spent -- a fraction a proposal moves, so
     * the divisor is read from [[ExecutionRules]] rather than written here.
     *
+    * **What a transaction paid for its blobs is part of the whole fee and no
+    * part of what comes back.** It is bought at the same moment and by the same
+    * subtraction; the refund and the producer's credit are both computed from
+    * gas alone, so the figure has no return path. The comment at that
+    * subtraction states where the value goes and why this file does not decide
+    * it.
+    *
     * The nonce is read out of `world` before it is bumped rather than taken
     * from the transaction, because the address a deployment lands at is derived
     * from it. Admission has already established the two are equal, so this is
@@ -198,12 +235,31 @@ object TransactionProcessor:
     val sender = transaction.sender
     val signedAt = world.nonceOf(sender)
     world.setNonce(sender, nextNonce(transaction.nonce))
-    moveBalance(world, sender, -(transaction.gasLimit * transaction.gasPrice))
+    // The gas the transaction bought and the blobs it carried, taken together
+    // and before anything runs. `ethereum/execution-specs` @ `0cc100eb1`
+    // `src/ethereum/forks/cancun/fork.py:724-726` writes one subtraction of
+    // both, and `ethereum/go-ethereum` @ `02872e9ef`
+    // `core/state_transition.go:464-481` adds the blob figure into the same
+    // `mgval` it debits.
+    //
+    // THE BLOB HALF IS NOT REFUNDED AND NOT CREDITED. `account` below returns
+    // unspent gas and credits the producer the tip, and neither expression
+    // names this figure -- the specification's refund is
+    // `tx_gas_left * effective_gas_price` and its producer transfer is
+    // `tx_gas_used_after_refund * priority_fee_per_gas` (`fork.py:764-772`),
+    // both gas alone. So what becomes of it is an omission here exactly as the
+    // block's own charge is, and WHERE IT GOES IS NOT DECIDED IN THIS FILE:
+    // `org.fukuii.chainspec.HeaderRules` states the same deferral for the gas
+    // charge, and the member expressing either arrives with a network that
+    // routes rather than burns. A network that routes adds a credit reading
+    // `transaction.blobFee`, which is why that figure is a member of the
+    // record rather than an expression inlined here.
+    moveBalance(world, sender, -(transaction.gasLimit * transaction.gasPrice + transaction.blobFee))
     val environment = new Environment(
       world,
       blockHashAt = blockHashAt,
       block = block,
-      transaction = TransactionContext(sender, transaction.gasPrice),
+      transaction = TransactionContext(sender, transaction.gasPrice, transaction.blobVersionedHashes),
       chainId = chainId,
       rules = rules
     )

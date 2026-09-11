@@ -282,7 +282,8 @@ object EvmFixtures:
     excessBlobGas = None
   )
 
-  val transaction: TransactionContext = TransactionContext(origin = address(0x99), gasPrice = BigInt(7))
+  val transaction: TransactionContext =
+    TransactionContext(origin = address(0x99), gasPrice = BigInt(7), blobVersionedHashes = Seq.empty)
 
   /** Which network the machine is running as, for the one operation that asks.
     *

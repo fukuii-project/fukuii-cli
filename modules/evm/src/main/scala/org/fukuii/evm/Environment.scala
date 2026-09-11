@@ -110,12 +110,41 @@ final case class BlockContext(
 
 /** The transaction an invocation is running inside, as the values it can read.
   *
-  * Two fields, because two of this fork's operations read the transaction and
-  * no more: the account that signed it, and the price it pays per unit of gas.
-  * Neither changes between the invocations of one transaction, which is what
-  * separates them from [[Message]].
+  * Three fields, because three operations read the transaction and no more: the
+  * account that signed it, the price it pays per unit of gas, and the
+  * commitments it carries. None of them changes between the invocations of one
+  * transaction, which is what separates them from [[Message]].
+  *
+  * **The third arrived with the format that carries it**, which is why this
+  * sentence counts rather than naming the operations: a later format adding a
+  * value every invocation reads adds a member here, and a count is what a
+  * reader checks the members against.
+  *
+  * @param blobVersionedHashes
+  *   the commitments the transaction carries, in the order it carries them, and
+  *   empty for every format that carries none.
+  *
+  *   **The ORDER is the value.** The operation at `0x49` reports the commitment
+  *   at a stated index, so a sequence reordered anywhere reports the wrong hash
+  *   at two indices while carrying the right set --
+  *   `ethereum/execution-specs` @ `0cc100eb1`
+  *   `src/ethereum/forks/cancun/vm/instructions/environment.py:572-573`
+  *   subscripts the tuple directly, as does `ethereum/go-ethereum` @
+  *   `02872e9ef` `core/vm/eips.go:275-277`.
+  *
+  *   **Empty and absent are the same answer HERE and not one layer up.** The
+  *   operation reports zero for an index past the end, and a transaction
+  *   carrying nothing is every index past the end -- so an empty sequence is
+  *   the correct reading for a format with no such field. Whether a blob
+  *   transaction may carry an empty one at all is a different question,
+  *   decided before anything runs by
+  *   `org.fukuii.execution.TransactionAdmission`.
   */
-final case class TransactionContext(origin: Address, gasPrice: BigInt)
+final case class TransactionContext(
+    origin: Address,
+    gasPrice: BigInt,
+    blobVersionedHashes: Seq[Hash]
+)
 
 /** Everything outside a frame that an operation may reach.
   *
