@@ -33,11 +33,12 @@ proof-of-stake change. That charter body loads on dispatch; this file does not.
 on recollection**, and the charter treats that as the same finding as the
 protocol being absent.
 
-**This is a family-fact protocol, not the deferred consensus-change protocol.**
-The state-root litmus — the rule deciding whether a change is consensus at all —
-is family-neutral, still lives in the charters, and its canonical home remains a
-consensus-change protocol this repository does not have yet. Do not read this
-file as having closed that gap.
+**This is a family-fact protocol, not the consensus-change protocol.** The
+state-root litmus — the rule deciding whether a change is consensus at all —
+is family-neutral, still lives in the charters, and its canonical home is
+`.claude/protocols/consensus-change.md`, which also carries the
+unobservable-divergence tiebreak and the pre-execution system-call seam
+facts. Do not read this file as carrying any of them.
 
 ---
 

@@ -170,11 +170,12 @@ boundary as family-neutral until a family's own protocol says otherwise, and not
 that this makes it a family-neutral seam under "Read access crosses every
 boundary" below — with the neutrality obligation that section states.
 
-**No protocol in `.claude/protocols/` covers this boundary yet** — measured
-2026-09-09, `consensus-pos.md` carries no Engine API content at all. That is the
-missing-protocol case "You own consensus, not a family" already governs: the gap
-is a **NEEDS DECISION** finding, you do not improvise the domain facts, and you
-do not write the protocol yourself.
+**`.claude/protocols/consensus-engine-api.md` covers this boundary.** Read it
+before acting on anything Engine-API-shaped, alongside whichever family
+protocol the task is also in. `consensus-pos.md` still carries no Engine API
+content of its own — measured 2026-09-09 — and it does not need to: this
+boundary is family-neutral, per above, so it has its own file rather than
+living inside one family's.
 
 ## Read the protocol before you act — nothing else will deliver it
 
@@ -195,10 +196,19 @@ A **family** protocol covers a family of networks fukuii runs, keyed to the
 networks. A **mechanism** protocol covers one consensus mechanism, keyed to the
 mechanism and written from a survey of the field rather than from a network on
 the roadmap — each says so at its own head, and each states its own evidence
-weight.
+weight. **A third kind sits beside them and is neither.** `consensus-change.md`
+is cross-cutting rather than keyed to a family or a mechanism, and it is read
+on every consensus task, never selected by which family or mechanism the task
+happens to be in.
 
 Before acting on any consensus change:
 
+- **Read `.claude/protocols/consensus-change.md` first, on every consensus
+  change, in every family.** It carries the state-root litmus, the
+  unobservable-divergence tiebreak, and the pre-execution system-call seam
+  facts — the file every other protocol in this directory, and this charter's
+  own litmus section below, has been pointing at as one this repository "does
+  not have yet." It does now.
 - **Read the protocol for the family the change belongs to.** Proof-of-work:
   `.claude/protocols/consensus-pow.md`. Proof-of-stake:
   `.claude/protocols/consensus-pos.md`.
@@ -211,6 +221,10 @@ Before acting on any consensus change:
 - **QBFT and IBFT2 are read as a pair.** They give the same storage answer and
   different validator answers, and each file exists so the second half is not
   buried under the first. A task touching either reads both.
+- **Read `.claude/protocols/consensus-engine-api.md` where the change touches
+  the consensus-layer seam this charter owns** — the Engine API boundary. It is
+  family-neutral, per "The Engine API is not proof-of-stake-only" above: read it
+  whichever family the task is in, alongside that family's own protocol.
 - **A task spanning families or mechanisms reads every protocol it spans**, not
   only the one you started in. A family-neutral seam spans all of them — see
   "Read access crosses every boundary" below.
@@ -599,21 +613,18 @@ is yours by the ordinary reading. What this branch adds is the driver mechanics
 around it — sequencing, retry, identifiers, fork-choice bookkeeping — which move
 no state root and are still not policy.
 
-**The litmus's canonical home is a consensus-change protocol this repository
-does not have yet**, and **no protocol in `.claude/protocols/` is it** — the
-consensus files there carry domain facts, family and mechanism alike, not the
-rule that decides whether a change is consensus at all.
-
-**Its deferral condition was "until a consensus layer exists", and that condition
-has now been met** — `modules/consensus`, `modules/consensus-pow` and
-`modules/consensus-pos` all carry tracked sources as of 2026-09-09. So the
-protocol is owed rather than premature. **Writing it is not yours** — it is this
-repository's framework, which "Working discipline" below forbids you to author —
-so raise it as a **NEEDS DECISION** finding for whoever set your scope, and keep
-applying the litmus from here meanwhile. Until that protocol exists, this
-charter and `banksy`'s state the litmus as their own boundary, and `banksy`'s
-carries the worked example that keeps it from being applied wrongly — read it
-there before deciding a close case.
+**The litmus's canonical home is `.claude/protocols/consensus-change.md`.**
+Its deferral condition was "until a consensus layer exists," and that
+condition was met when `modules/consensus`, `modules/consensus-pow` and
+`modules/consensus-pos` all gained tracked sources, 2026-09-09 — recorded here
+because that is the condition that made the protocol owed rather than
+premature, not because the protocol is still missing. Read that file for the
+unobservable-divergence tiebreak and the pre-execution system-call seam facts
+it carries alongside this litmus. **This charter and `banksy`'s continue to
+state the litmus as their own boundary too** — a caller reading either charter
+needs the rule at the point of routing, not one file further away — and
+`banksy`'s still carries the worked example that keeps it from being applied
+wrongly; read it there before deciding a close case.
 
 When you cannot tell which side a change falls on, **say so and ask for a joint
 read.** A miscategorized consensus change risks a chain split; a

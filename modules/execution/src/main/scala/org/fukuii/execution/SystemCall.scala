@@ -155,7 +155,7 @@ object SystemCall:
     * `TIMESTAMP` as the only environment operations it reaches, with `GASPRICE`
     * absent as an instruction and its byte absent from the code entirely. Nor
     * is a contract that would read one reachable through the corpus --
-    * `SystemCallCorpus` records that every published EIP-4788 case carries
+    * `BeaconRootCorpus` records that every published EIP-4788 case carries
     * byte-identical canonical code at that address, or none.
     *
     * **So this is a lead and not a settled value**, per
@@ -223,15 +223,14 @@ object SystemCall:
     * discriminate: a corpus compares roots and hashes, and a value that moves
     * neither is a value it cannot see. Measured at this site rather than
     * assumed, in two parts: the paragraphs above walk the deployed contract's
-    * own code and find no `GASPRICE` byte in it, and `SystemCallCorpus` records
+    * own code and find no `GASPRICE` byte in it, and `BeaconRootCorpus` records
     * that every published EIP-4788 case carries byte-identical canonical code
     * at that address or none -- so no published case could have run a contract
     * that asked.
     *
-    * **Its canonical home is a consensus-change protocol this repository does
-    * not have**, alongside the state-root litmus, and it is stated here rather
-    * than in `.claude/protocols/` because writing that protocol is not this
-    * layer's to do.
+    * **Its canonical home is `.claude/protocols/consensus-change.md`**,
+    * alongside the state-root litmus -- this site's own reasoning is
+    * consolidated there as its Instance 2, cited back to this file.
     */
   val GasPrice: BigInt = BigInt(0)
 

@@ -248,6 +248,15 @@ The same split resolves the rest:
   **Its specification is `ethereum/execution-apis`, not
   `ethereum/consensus-specs`.** Both are corpus members and only the first
   specifies these verbs. Its branch moves, so cite a SHA and a date.
+
+  **`.claude/protocols/consensus-engine-api.md` covers this half of the seam
+  in the detail this bullet only sketches, and it names you directly: it
+  states that attaching a refusal's wire number is `conduit`'s step, and
+  that deciding which of several distinguishable domain causes applies is
+  `forge`'s.** Read it before designing or reviewing this namespace's error
+  handling — it is not one error family behind one code, and the count and
+  the causes are the protocol's to state, not this charter's to copy.
+  `.claude/protocols/` does not auto-load; open it by name.
 - **`herald`'s.** The peer-to-peer wire protocol and peer discovery. Both of you
   sit on a trust boundary and neither is the other's: yours is the client
   request, its is the peer connection.

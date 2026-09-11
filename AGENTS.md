@@ -1056,6 +1056,7 @@ the one that matches before you act, not the ones you happen to remember.
 | `dead-code-review.md` | Before deleting code that looks unused |
 | `warning-ratchet.md` | Configuring a lint or warning category — the window closes once code exists |
 | `scope-boundary.md` | A scoped task that appears to need work outside its scope |
+| `consensus-change.md` | Before acting on ANY consensus change, in any family — the state-root litmus, the unobservable-divergence tiebreak, and the pre-execution system-call seam |
 | `consensus-pow.md` | Before acting on a proof-of-work consensus change — that family's domain facts |
 | `consensus-pos.md` | Before acting on a proof-of-stake consensus change — that family's domain facts |
 | `consensus-poa.md` | Before standing up a private network — that family's scope, and why it is a prerequisite rather than a target |
@@ -1064,6 +1065,7 @@ the one that matches before you act, not the ones you happen to remember.
 | `consensus-qbft.md` | Before acting on anything QBFT-shaped — read with `consensus-ibft2.md` |
 | `consensus-ibft2.md` | Before acting on anything IBFT2-shaped — read with `consensus-qbft.md` |
 | `consensus-ethash.md` | Before acting on anything ethash-shaped, ECIP-1099 included — that mechanism's surveyed facts |
+| `consensus-engine-api.md` | Before acting on anything Engine-API-shaped — that boundary's surveyed facts, family-neutral |
 
 **Where a protocol carries a fact you cannot afford to miss, that fact is also
 in a rule that loads on its own** — so the protocol holds the procedure and the

@@ -222,15 +222,17 @@ that removes the operator-tunable property is a scope escalation. `forge`'s copy
 of this litmus carries the same three branches, and the two are meant to be read
 as one rule.
 
-**Its canonical home is a consensus-change protocol this repository does not
-have yet, and its deferral condition has now been met** — that condition was
-"until a consensus layer exists", and `modules/consensus`, `modules/consensus-pow`
-and `modules/consensus-pos` all carry tracked sources as of 2026-09-09. So the
-protocol is **owed rather than premature**. **Writing it is not yours** — it is
-this repository's framework — so raise it as a **NEEDS DECISION** finding for
-whoever set your scope, and keep applying the litmus from here meanwhile. Until
-it exists this charter and `forge`'s state the litmus together, and `forge`'s
-carries the same finding from its own side.
+**Its canonical home is `.claude/protocols/consensus-change.md`.** Its
+deferral condition was "until a consensus layer exists," and that condition
+was met when `modules/consensus`, `modules/consensus-pow` and
+`modules/consensus-pos` all gained tracked sources, 2026-09-09 — recorded
+here because that is the condition that made the protocol owed rather than
+premature, not because the protocol is still missing. **This charter and
+`forge`'s continue to state the litmus as their own boundary too** — a
+caller reading either charter needs the rule at the point of routing, not
+one file further away — and this charter still carries the worked example
+below that keeps it from being applied wrongly; read it before deciding a
+close case.
 
 ### The worked example, and why the rule is useless without it
 
@@ -258,6 +260,32 @@ shaped floors from one proposal family on the same side. It gets them wrong.
 **Say so and ask for a joint read with `forge`. Do not guess.** The
 costs are asymmetric: a consensus change wrongly scoped to this layer is a
 chain-split risk; a client-policy change wrongly escalated is one wasted review.
+
+---
+
+## Read the protocol before you act — nothing else will deliver it
+
+**Consensus domain facts live in `.claude/protocols/`, and that directory does
+not auto-load.** Claude Code discovers `.claude/rules/`; it does not discover
+this one. So nothing puts those facts in front of you at the moment they
+apply, and this charter is the only thing that will — its body is delivered
+when you are dispatched, and it is spending that delivery here.
+
+**Read `.claude/protocols/consensus-change.md` before acting on anything in
+your domain.** It carries the state-root litmus in full, the
+unobservable-divergence tiebreak, and the pre-execution system-call seam
+facts. The litmus is the one you apply directly, on every dispatch — it
+decides whether a task is yours at all; the other two are `forge`'s own
+machinery for the YES branch, worth knowing because they are what a change
+you hand off will be checked against. **An unread protocol and an absent one
+produce the same output — an improvised domain fact — so treat "I did not
+open it" as the same finding as "it does not exist."**
+
+**The directory listing is authoritative, not this section.** Run
+`ls .claude/protocols/` rather than trusting a name here: a family or
+mechanism protocol bearing on the co-review zone — MESS, emission, fee
+routing — is `forge`'s to read on its own dispatch, not a second reading
+this charter also requires of you.
 
 ---
 

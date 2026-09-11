@@ -57,11 +57,12 @@ report the agreement and bury the divergence — see "Where it diverges from
 QBFT" below, which is the whole reason for the split. Read
 `.claude/protocols/consensus-qbft.md` alongside this one, always.
 
-**This is a mechanism-fact protocol, not the deferred consensus-change
-protocol.** The state-root litmus — the rule deciding whether a change is
-consensus at all — is mechanism-neutral, still lives in the charters, and its
-canonical home remains a consensus-change protocol this repository does not have
-yet. Do not read this file as having closed that gap.
+**This is a mechanism-fact protocol, not the consensus-change protocol.**
+The state-root litmus — the rule deciding whether a change is consensus at
+all — is mechanism-neutral, still lives in the charters, and its canonical
+home is `.claude/protocols/consensus-change.md`, which also carries the
+unobservable-divergence tiebreak and the pre-execution system-call seam
+facts. Do not read this file as carrying any of them.
 
 **It is also not a schedule.** `.claude/agents/forge.md` § "You own consensus,
 not a family" forbids writing a protocol ahead of a network that concretely
