@@ -945,7 +945,8 @@ class InvocationSpec extends AnyFlatSpec:
     val _ = runIn(environment, 100, destroying(runner))
     assert(
       environment.world.balanceOf(runner) == Word.Zero,
-      "both balances are read before either is written, so naming yourself is a burn"
+      "the sweep puts the balance back where an account names itself, and the emptying that follows a " +
+        "removal is what burns it -- so under these rules, which remove any account, naming yourself is a burn"
     )
   }
 

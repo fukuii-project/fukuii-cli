@@ -126,14 +126,24 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     CertificationCorpora.GeneratedLondonCorpus -> CorpusCensus(files = 130, cases = 3010, skipped = 0),
     CertificationCorpora.GeneratedParisCorpus -> CorpusCensus(files = 134, cases = 3029, skipped = 0),
     CertificationCorpora.GeneratedShanghaiCorpus -> CorpusCensus(files = 151, cases = 3220, skipped = 0),
-    // The three read under a composition rather than through a schedule, which
+    // The five read under a composition rather than through a schedule, which
     // is what their names say. Nothing is skipped in any of them: every case
     // carries a section under this fork's key, and every transaction in all
-    // three is a format these rules admit.
+    // five is a format these rules admit.
+    //
+    // TWO OF THESE ROWS ARE THIS PHASE'S WHOLE CENSUS EVIDENCE, and no test
+    // total can carry them: a corpus is one table-driven row, so admitting one
+    // moves this map and the count below and moves the suite total by nothing.
+    // The transient-storage row in particular was measured under the previous
+    // composition, found to be 121 of 123, and deliberately left out; it is
+    // admitted here because the rules can now answer the two cases it decides.
     CertificationCorpora.GeneratedCancunMemoryCopyCorpus -> CorpusCensus(files = 7, cases = 99, skipped = 0),
     CertificationCorpora.PortedStaticCancunTransientStorageCorpus ->
       CorpusCensus(files = 4, cases = 48, skipped = 0),
-    CertificationCorpora.PortedStaticCancunMemoryCopyCorpus -> CorpusCensus(files = 3, cases = 106, skipped = 0)
+    CertificationCorpora.PortedStaticCancunMemoryCopyCorpus -> CorpusCensus(files = 3, cases = 106, skipped = 0),
+    CertificationCorpora.GeneratedCancunSelfDestructCorpus -> CorpusCensus(files = 15, cases = 136, skipped = 0),
+    CertificationCorpora.GeneratedCancunTransientStorageCorpus ->
+      CorpusCensus(files = 19, cases = 123, skipped = 0)
   )
 
   /** Every censused corpus, as the rows the four properties below drive.
@@ -205,7 +215,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     assert(names == census.keySet, s"assembled ${names.toString} against a census of ${census.keySet.toString}")
   }
 
-  property("the census covers twenty-two corpora, counted") {
+  property("the census covers twenty-four corpora, counted") {
     // THE REMOVAL CASE, which the pairing cannot see. Dropping a corpus from the
     // census AND from what the harness assembles leaves those two agreeing with
     // each other, leaves the same six properties registered, and leaves the
@@ -225,7 +235,7 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     //
     // Raising this is adding a corpus. Lowering it is dropping certified cases,
     // and that is a decision rather than a tidy-up.
-    assert(census.size == 22, s"the census covers ${census.size.toString} corpora rather than twenty-two")
+    assert(census.size == 24, s"the census covers ${census.size.toString} corpora rather than twenty-four")
   }
 
   property("every censused corpus holds the files the census records") {

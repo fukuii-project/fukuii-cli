@@ -25,6 +25,24 @@ import scala.collection.mutable
   * which is worse than not restoring at all, because it would still look
   * consistent.
   *
+  * ==Three kinds of member sit here, and they differ in TWO independent ways==
+  *
+  * The paragraph above is the rule for writes and is not the rule for this
+  * type. Whether a member is put back by [[restore]] and whether it is carried
+  * down by [[commit]] are separate questions, and each of the three answers
+  * them differently:
+  *
+  *   - **The five writes above** -- restored, and committed. What a state is.
+  *   - **[[transientStorageAt]]'s keyspace** -- restored, and NOT committed. A
+  *     write EIP-1153 requires the transaction to discard.
+  *   - **[[wasCreatedInTransaction]]'s record** -- NOT restored, and not
+  *     committed. Not a write at all: a fact about what this transaction has
+  *     done, which EIP-6780 requires to outlive the invocation that did it.
+  *
+  * **So a member being absent from [[snapshot]] is a decision this type makes
+  * per member**, and the last row is the one where adding it would look like
+  * tidying up.
+  *
   * ==The machine's environment names this type rather than [[WorldState]]==
   *
   * Not an oversight: every invocation of this fork must be undoable, so a view
@@ -73,6 +91,7 @@ final class JournaledWorldState(base: WorldState) extends WorldState:
   private val codes: mutable.LinkedHashMap[Address, Bytes] = mutable.LinkedHashMap.empty
   private val brought: mutable.LinkedHashSet[Address] = mutable.LinkedHashSet.empty
   private val transient: mutable.LinkedHashMap[(Address, Word), Word] = mutable.LinkedHashMap.empty
+  private val createdHere: mutable.LinkedHashSet[Address] = mutable.LinkedHashSet.empty
 
   def balanceOf(address: Address): Word = balances.getOrElse(address, base.balanceOf(address))
 
@@ -161,11 +180,87 @@ final class JournaledWorldState(base: WorldState) extends WorldState:
   def setTransientStorage(address: Address, slot: Word, value: Word): Unit =
     transient((address, slot)) = value
 
+  /** Records that `address` was brought into existence by a creation this
+    * transaction ran.
+    *
+    * ==This is the one record here a failed invocation does NOT take back==
+    *
+    * Every other member is in [[snapshot]] and is put back by [[restore]], so a
+    * frame that reverts leaves nothing. This one is in neither, deliberately:
+    * *"The parent reference and ``created_accounts`` are shared (not rolled
+    * back)"* and *"The marker is not removed even if the account creation
+    * reverts"* (`ethereum/execution-specs` @ `0cc100eb1`,
+    * `forks/cancun/state_tracker.py:615,425`). Its `copy_tx_state` passes the
+    * set through by reference at `:636` where every other member is copied, and
+    * its `restore_tx_state` puts back four members at `:655-658` and not this
+    * one.
+    *
+    * **So the property is the absence of two lines rather than the presence of
+    * any**, which is why it is stated here: nothing in [[snapshot]] or
+    * [[restore]] mentions this map, and a reader who added it to either would
+    * be making the change look like consistency.
+    *
+    * ==Two production clients roll it back, and the divergence is not
+    * observable==
+    *
+    * `ethereum/go-ethereum` @ `02872e9ef` holds the marker as `newContract` on
+    * its state object and journals the write, so `createContractChange.revert`
+    * sets it false (`core/state/journal.go:480-482`, written by
+    * `StateDB.CreateContract` at `core/state/statedb.go:677-682`).
+    * `besu-eth/besu` @ `b330564a9` holds an `UndoSet<Address> creates` on
+    * `TxValues` and undoes it in `undoChanges(mark)`
+    * (`evm/.../frame/TxValues.java:55,159`), reached from `MessageFrame.rollback()`
+    * at `:1505` and from `AbstractMessageProcessor` at `:138`, which both its
+    * revert and its exceptional-halt paths call.
+    *
+    * **The divergence is DERIVED to be unobservable, and the derivation is
+    * this**, stated so a reader can check it rather than take it: a creation
+    * only reaches an address [[Interpreter.deployableAt]] admits, which is an
+    * address holding no code; a creation that then fails is undone, so the
+    * address holds no code afterwards either. Both readers of this marker -- a
+    * destruction, and the committed value a store is priced against -- are
+    * reached only by running code, and an address with none runs nothing. A
+    * later creation at the same address records the marker again. So a marker
+    * this build keeps and those two clients drop can only be asked about an
+    * address that cannot ask.
+    *
+    * **A derivation is not a measurement, and the published corpus is the
+    * measurement beside it.** `state_tests/for_cancun/cancun/eip6780_selfdestruct`
+    * is filled for exactly this interaction -- `journal_revert`,
+    * `reentrancy_selfdestruct_revert` and a `selfdestruct_revert` pair naming
+    * the created and not-created cases separately -- and all 136 of its cases
+    * agree under this build's reading, as do all 123 of
+    * `cancun/eip1153_tstore`. That is corroboration and not proof: a corpus
+    * filled from the specification cannot state an expectation for a behavior
+    * the specification calls harmless, so what those 259 cases establish is that
+    * the shape is exercised and nothing diverged, never that no input exists.
+    * `CancunCompositionCertificationSpec` holds the run.
+    */
+  def markAccountCreated(address: Address): Unit =
+    val _ = createdHere.add(address)
+
+  /** Whether `address` was brought into existence by a creation this
+    * transaction ran.
+    *
+    * Answers false for every address of a state this transaction found already
+    * populated, which is the question EIP-6780 turns on: *"the current
+    * behaviour is preserved when `SELFDESTRUCT` is called in the same
+    * transaction a contract was created"* (`ethereum/EIPs` @ `d2a64c2d4`,
+    * `EIPS/eip-6780.md`, Final).
+    */
+  def wasCreatedInTransaction(address: Address): Boolean = createdHere.contains(address)
+
   private def bringIntoBeing(address: Address): Unit =
     if !base.accountExists(address) then
       val _ = brought.add(address)
 
-  /** What this has written so far, in a form [[restore]] can put back. */
+  /** What this has written so far, in a form [[restore]] can put back.
+    *
+    * **[[wasCreatedInTransaction]]'s record is deliberately not in here**, and
+    * that member's own documentation carries the reason and the citation. A
+    * snapshot holding it would be undone by every failed invocation, which is
+    * the behavior EIP-6780 forbids.
+    */
   def snapshot(): JournaledWorldState.Snapshot =
     new JournaledWorldState.Snapshot(
       storage.toMap,
@@ -228,22 +323,24 @@ final class JournaledWorldState(base: WorldState) extends WorldState:
     * trie commits to the mapping it ends up holding and not to the order it was
     * built in.
     *
-    * ==One map is cleared and not carried down, which is the whole of what
+    * ==TWO members are cleared and not carried down, which is the whole of what
     * "discarded" means==
     *
-    * [[setTransientStorage]]'s writes reach no account and no trie. The
-    * specification's own `incorporate_tx_into_block` merges its other three
-    * write maps into the block and clears this one instead
-    * (`ethereum/execution-specs` @ `0cc100eb1`,
-    * `forks/cancun/state_tracker.py:690`).
+    * [[setTransientStorage]]'s writes reach no account and no trie, and
+    * [[markAccountCreated]]'s record is not a write at all. The specification's
+    * own `incorporate_tx_into_block` merges its three write maps into the block
+    * and clears exactly these two instead (`ethereum/execution-specs` @
+    * `0cc100eb1`, `forks/cancun/state_tracker.py:689-690`).
     *
-    * **The clear is not redundant with this object's lifetime, and that is why
-    * it is written.** One journal is built per transaction today, so an
-    * uncleared map would be collected with the journal and nothing would
+    * **Neither clear is redundant with this object's lifetime, and that is why
+    * both are written.** One journal is built per transaction today, so an
+    * uncleared member would be collected with the journal and nothing would
     * observe it. A journal reused across two transactions would instead carry
     * the first transaction's transient writes into the second -- readable by
-    * `TLOAD`, and a state root apart from every other client. The clear costs
-    * nothing and closes that without the caller having to know it is owed.
+    * `TLOAD` -- and would report the first transaction's creations as the
+    * second's, which is a destruction the second transaction may not perform.
+    * Both are a state root apart from every other client. The clears cost
+    * nothing and close that without the caller having to know it is owed.
     */
   def commit(): Unit =
     storage.foreach((slot, value) => base.setStorage(slot._1, slot._2, value))
@@ -257,6 +354,7 @@ final class JournaledWorldState(base: WorldState) extends WorldState:
     codes.clear()
     brought.clear()
     transient.clear()
+    createdHere.clear()
 
 object JournaledWorldState:
 

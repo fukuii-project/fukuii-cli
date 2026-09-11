@@ -862,6 +862,14 @@ object Interpreter:
             // Conformance still decides the order: the two cannot be told apart
             // from outside, and the alternative is an unforced divergence in a
             // consensus path.
+            //
+            // THE ONCE-PER-ACCOUNT GUARD STOPS BINDING under a rule set that
+            // narrows [[EvmRules.selfDestructScope]], because the register it
+            // reads is only written where a removal happens. That is
+            // unobservable rather than tolerated: every schedule adopting the
+            // narrower scope carries EIP-3529's zero here, so both readings pay
+            // nothing, and the specification's own operation at that fork
+            // computes no refund at all.
             _ = if !frame.alreadyRegistered(originator) then frame.refundCounter += schedule.refundSelfDestruct
             // The account paid out to is looked at before anything is charged,
             // which is the reason this operation cannot carry a settled price:
@@ -898,14 +906,39 @@ object Interpreter:
             _ <- mayChangeState(frame)
           yield
             val world = environment.world
-            // Both balances are read before either is written, so an account
-            // naming itself as the beneficiary ends with nothing rather than
-            // with twice what it had.
-            val beneficiaryHeld = world.balanceOf(beneficiary)
+            // WHETHER THIS ACCOUNT IS ACTUALLY REMOVED, which under one rule
+            // set is a question about the transaction rather than about the
+            // operation. It gates two acts and not one -- the removal, and the
+            // emptying that burns the balance where an account named itself --
+            // and all three sources put both under this single condition.
+            val destroys = environment.rules.selfDestructScope match
+              case SelfDestructScope.AnyAccount                   => true
+              case SelfDestructScope.AccountsCreatedInTransaction =>
+                world.wasCreatedInTransaction(originator)
             val originatorHeld = world.balanceOf(originator)
-            world.setBalance(beneficiary, beneficiaryHeld.add(originatorHeld))
+            // THE SWEEP RUNS WHATEVER THE ANSWER ABOVE WAS, and the ORDER of
+            // these two writes is what makes a self-naming destruction keep its
+            // balance rather than burn it. The account ending is emptied first,
+            // so the beneficiary's balance is read AFTER -- which for an account
+            // naming itself reads the zero just written and puts the whole sum
+            // back. Reading both before writing either would leave nothing
+            // instead, which is the prior rule and is now the `destroys` branch
+            // below.
+            //
+            // This is the specification's own `move_ether`, whose subtraction
+            // and addition are separate writes applied in that order
+            // (`ethereum/execution-specs` @ `0cc100eb1`,
+            // `forks/cancun/state_tracker.py:504-513`, called at
+            // `vm/instructions/system.py:544`). The subtraction always lands on
+            // zero here because what moves is the whole balance.
             world.setBalance(originator, Word.Zero)
-            frame.accountsToDelete = frame.accountsToDelete + originator
+            world.setBalance(beneficiary, world.balanceOf(beneficiary).add(originatorHeld))
+            if destroys then
+              // The second write of a zero is the specification's too, and it is
+              // redundant except where the beneficiary IS the account ending --
+              // which is the one case the sweep above left holding something.
+              world.setBalance(originator, Word.Zero)
+              frame.accountsToDelete = frame.accountsToDelete + originator
             // The account paid out to is reached by this whatever it receives,
             // which the proposal names in its own list of the four ways an
             // account is left holding nothing.
@@ -1521,6 +1554,19 @@ object Interpreter:
       nested.gasLeft = BigInt(0)
       Outcome.Halted(halt)
 
+    // BEFORE the count is written and before the initialization code runs,
+    // which is where the specification puts it -- `mark_account_created` sits
+    // between `destroy_storage` and `increment_nonce` in its own
+    // `process_create_message` (`ethereum/execution-specs` @ `0cc100eb1`,
+    // `forks/cancun/vm/interpreter.py:173`). EIP-6780 asks for exactly that
+    // moment: a contract is created "when a CREATE series operation begins
+    // execution", not where it deposits code, which is what makes a deployment
+    // that destroys itself from its own initialization code a member.
+    //
+    // It is deliberately OUTSIDE the reversal `taken` drives: the record is the
+    // one member of the journal that a failed invocation does not take back, and
+    // that type's own documentation carries why.
+    world.markAccountCreated(nested.message.currentTarget)
     world.setNonce(nested.message.currentTarget, rules.createdAccountNonce)
 
     run(nested, environment) match
@@ -1624,6 +1670,19 @@ object Interpreter:
     * The refusal is what makes the specification's `destroy_storage` in the
     * create path a provable no-op, which is why no trie-level storage wipe
     * exists. **A reversal needs that operation built first.**
+    *
+    * **And it needs a second thing, which is one seam away and easy to miss.**
+    * The storage term here is what makes an account that
+    * [[JournaledWorldState.wasCreatedInTransaction]] answers for one that had
+    * nothing committed at any slot -- so [[WorldState.committedStorageAt]] needs
+    * no case for such an account, where the specification's own committed read
+    * returns zero for one outright (`get_storage_original` at
+    * `ethereum/execution-specs` @ `0cc100eb1`,
+    * `forks/cancun/state_tracker.py:214`). Relax this term and that case becomes
+    * reachable: a creation over surviving storage would then read the storage a
+    * transaction found rather than the zero the specification states.
+    * `JournaledWorldStateSpec` asserts the coupling in both directions, so a
+    * reversal fails there rather than moving a state root quietly.
     *
     * ==The published corpus was consulted, and it CONFIRMS this==
     *

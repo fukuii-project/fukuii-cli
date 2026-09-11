@@ -281,3 +281,86 @@ class JournaledWorldStateSpec extends AnyFlatSpec:
       "\"all values in transient storage are discarded at the end of the transaction\", and a commit ends one"
     )
   }
+
+  // ── The one record here a failed invocation does NOT take back ────────────
+
+  "a created-account record" should "be visible through the journal that made it" in {
+    val journal = new JournaledWorldState(new EvmFixtures.MapWorldState)
+    journal.markAccountCreated(owner)
+    assert(journal.wasCreatedInTransaction(owner), "the record a narrowed destruction turns on")
+  }
+
+  it should "answer false for an account the state beneath already held" in {
+    val base = new EvmFixtures.MapWorldState
+    base.setCode(owner, EvmFixtures.bytesOf("00"))
+    assert(
+      !new JournaledWorldState(base).wasCreatedInTransaction(owner),
+      "the question is what THIS transaction created, so a populated state beneath answers nothing to it"
+    )
+  }
+
+  it should "survive a restore that drops every write made beside it" in {
+    val journal = new JournaledWorldState(new EvmFixtures.MapWorldState)
+    val taken = journal.snapshot()
+    journal.markAccountCreated(owner)
+    journal.setStorage(owner, slot, EvmFixtures.word(42))
+    journal.restore(taken)
+    assert(
+      journal.wasCreatedInTransaction(owner) && journal.storageAt(owner, slot) == Word.Zero,
+      "\"the marker is not removed even if the account creation reverts\", and the write beside it is the " +
+        "control -- without it a restore that undid nothing at all would pass this"
+    )
+  }
+
+  "a commit" should "stop holding a created-account record" in {
+    val journal = new JournaledWorldState(new EvmFixtures.MapWorldState)
+    journal.markAccountCreated(owner)
+    journal.commit()
+    assert(
+      !journal.wasCreatedInTransaction(owner),
+      "a journal reused across two transactions would otherwise report the first transaction's creations as " +
+        "the second's, which is a destruction the second may not perform"
+    )
+  }
+
+  // ── Why the committed read needs no case for a created account ────────────
+
+  "an address a creation may deploy at" should "have nothing committed at any slot" in {
+    // THE ANSWER TO A QUESTION THE COMMITTED READ RAISES AND CANNOT SETTLE.
+    // The specification's own committed read returns zero for an account created
+    // in the transaction -- `get_storage_original` at
+    // `ethereum/execution-specs` @ `0cc100eb1`
+    // `forks/cancun/state_tracker.py:214` -- and
+    // `org.fukuii.evm.JournaledWorldState.committedStorageAt` has no such case.
+    // It needs none, and this is the reason rather than an assurance: the two
+    // creation entry points both gate on `Interpreter.deployableAt`, whose
+    // storage term refuses every address that has any, so an address that can be
+    // marked created had nothing committed to be wrong about.
+    //
+    // THE COUPLING IS LOAD-BEARING AND RUNS ONE WAY. Relaxing that storage term
+    // -- which `deployableAt` records a trigger for -- makes the case live, and
+    // this is the assertion that would then fail.
+    val base = new EvmFixtures.MapWorldState
+    base.setStorage(owner, slot, EvmFixtures.word(7))
+    val journal = new JournaledWorldState(base)
+    val elsewhere = EvmFixtures.address(0x44)
+    assert(
+      !Interpreter.deployableAt(journal, owner) &&
+        Interpreter.deployableAt(journal, elsewhere) &&
+        journal.committedStorageAt(elsewhere, slot) == Word.Zero,
+      "the address holding storage is refused and the one holding none is admitted -- the second is the " +
+        "control, without which a rule that refused every address would pass this"
+    )
+  }
+
+  it should "still have nothing committed once a write of this transaction lands on it" in {
+    // The other half, and the one a reader would suspect: a pending write makes
+    // the address undeployable rather than making its committed read non-zero.
+    val journal = new JournaledWorldState(new EvmFixtures.MapWorldState)
+    journal.setStorage(owner, slot, EvmFixtures.word(42))
+    assert(
+      !Interpreter.deployableAt(journal, owner) && journal.committedStorageAt(owner, slot) == Word.Zero,
+      "a pending write answers `hasStorage` whatever it wrote, so the address is refused before the committed " +
+        "read is ever asked -- and the committed read is zero regardless, because nothing has been committed"
+    )
+  }

@@ -142,7 +142,8 @@ class EvmRulesSpec extends AnyFlatSpec:
       stateAccessMetering = StateAccessMetering.Settled,
       touchSurvivesFailure = Set.empty,
       reservedCodePrefix = None,
-      blockRandomness = BlockRandomness.Unavailable
+      blockRandomness = BlockRandomness.Unavailable,
+      selfDestructScope = SelfDestructScope.AnyAccount
     )
     assert(rebuilt == base, "two identical configurations built separately compared as different rules")
   }

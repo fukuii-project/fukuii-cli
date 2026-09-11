@@ -419,6 +419,89 @@ enum BlockRandomness:
     */
   case Eip4399
 
+/** Which accounts a destruction may remove.
+  *
+  * ==Data rather than a boolean, for the reason [[NewAccountCharge]] is==
+  *
+  * The two readings do not differ by a threshold. One removes whatever the
+  * operation ran as; the other asks a question of the transaction first, and
+  * that question is answered by a record no other rule reads. A flag would
+  * leave the difference at the site that destroys, where the negation reads as
+  * an accident rather than as a fork's answer.
+  *
+  * ==What varies is the REMOVAL, and the burn follows it rather than sitting
+  * beside it==
+  *
+  * The value an operation sweeps to its beneficiary moves under both cases; the
+  * two differ in whether the account is then emptied and taken away. That
+  * matters exactly once -- where the beneficiary IS the account ending -- and
+  * the case below carries it, because the sweep is then a no-op and the
+  * emptying is the whole of the effect. All three sources put the two acts
+  * under one condition rather than under two.
+  *
+  * ==A network that empties without removing adds a case, and the field already
+  * shows one coming==
+  *
+  * Whether a removal empties the account is a SECOND axis, and both production
+  * clients model it as a second flag rather than as a third state of this one:
+  * `ethereum/go-ethereum` @ `02872e9ef` gates the emptying on
+  * `!evm.chainRules.IsAmsterdam` inside its already-branched destruction
+  * (`core/vm/instructions.go:946-952`), and `besu-eth/besu` @ `b330564a9` reads
+  * `gasCalculator().isSelfDestructBalancePreserved()` beside its own
+  * `willBeDestroyed` (`evm/.../operation/SelfDestructOperation.java:124,146-151`).
+  * **So the axes are separate in the field and are kept separate here**; this
+  * enum is not the place to put one.
+  */
+enum SelfDestructScope:
+
+  /** Whatever the operation ran as.
+    *
+    * The original rule and every fork below EIP-6780: an account that destroys
+    * itself is emptied and taken away, whatever created it and whenever. Where
+    * it names itself as its beneficiary the sweep moves nothing and the
+    * emptying stands, so the value is destroyed -- which the proposal that
+    * narrows this describes as the behavior it is leaving behind: *"Previously
+    * it was possible to burn ether by calling `SELFDESTRUCT` targeting the
+    * executing contract as the beneficiary"* (`ethereum/EIPs` @ `d2a64c2d4`,
+    * `EIPS/eip-6780.md`, Final).
+    */
+  case AnyAccount
+
+  /** Only an account a creation this same transaction ran brought into being.
+    *
+    * EIP-6780: *"`SELFDESTRUCT` does not delete any data (including storage
+    * keys, code, or the account itself)"* where the account predates the
+    * transaction, and *"continues to behave as it did prior to this EIP"* where
+    * it does not.
+    *
+    * ==The burn splits with it, and the two halves of the document say so
+    * separately==
+    *
+    * For an account that predates the transaction, *"if the target is the same
+    * as the contract calling `SELFDESTRUCT` there is no net change in balances.
+    * Unlike the prior specification, Ether will not be burnt in this case"*.
+    * For one created in it, *"if the target is the same as the contract calling
+    * `SELFDESTRUCT` that Ether will be burnt"*. The document's own backwards
+    * compatibility section states the pair as one sentence: *"If the contract
+    * existed prior to the transaction the ether will not be burned. If the
+    * contract was newly created in the transaction the ether will be burned, as
+    * before"* (`ethereum/EIPs` @ `d2a64c2d4`, `EIPS/eip-6780.md`, Final).
+    *
+    * ==What counts as created is the CREATION STARTING, not the code landing==
+    *
+    * *"A contract is considered created at the beginning of a create
+    * transaction or when a CREATE series operation begins execution"*, and *"if
+    * a balance exists at the contract's new address it is still considered to
+    * be a contract creation"* (same document). So the record is written where a
+    * deployment begins rather than where it deposits code, which is what makes
+    * an account that destroys itself from its own initialization code a member.
+    *
+    * `org.fukuii.evm.JournaledWorldState.wasCreatedInTransaction` is what
+    * answers this, and its own documentation carries why that record survives a
+    * failed invocation where every other member of that type does not.
+    */
+  case AccountsCreatedInTransaction
+
 /** The rules one chain runs, as a value a fork produces rather than a branch the
   * machine takes.
   *
@@ -724,6 +807,22 @@ enum BlockRandomness:
   *   what the operation at `0x44` reports about the block it runs in.
   *   [[BlockRandomness]] carries the evidence for the pair, and for why this is
   *   a member here rather than a second entry in [[table]].
+  * @param selfDestructScope
+  *   which accounts a destruction may remove. [[SelfDestructScope]] carries the
+  *   evidence, including why the value a destruction burns splits with the
+  *   removal rather than being a rule of its own.
+  *
+  *   ==A rule here rather than a second entry in [[table]], where one surveyed
+  *   client puts it==
+  *
+  *   `ethereum/go-ethereum` @ `02872e9ef` registers a DIFFERENT operation for
+  *   the byte -- `opSelfdestruct` below the fork and `opSelfdestruct6780` at and
+  *   above it (`core/vm/instructions.go:904,930`), selected by its fork-resolved
+  *   jump table. That shape is not available here: an [[Operation]] carries a
+  *   price and no behavior, so the table has nowhere to put the difference.
+  *   `besu-eth/besu` @ `b330564a9` takes the shape this member does, a value on
+  *   the operation its fork constructs
+  *   (`evm/.../operation/SelfDestructOperation.java:124`).
   */
 final case class EvmRules(
     table: OpcodeTable,
@@ -740,7 +839,8 @@ final case class EvmRules(
     stateAccessMetering: StateAccessMetering,
     touchSurvivesFailure: Set[Address],
     reservedCodePrefix: Option[Int],
-    blockRandomness: BlockRandomness
+    blockRandomness: BlockRandomness,
+    selfDestructScope: SelfDestructScope
 ):
 
   /** These rules with each proposal applied, in the order given.

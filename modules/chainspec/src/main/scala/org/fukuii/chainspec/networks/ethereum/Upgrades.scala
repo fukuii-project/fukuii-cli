@@ -59,6 +59,7 @@ import org.fukuii.evm.{
   OpcodeTable,
   Precompile,
   PrecompileSet,
+  SelfDestructScope,
   StateAccessMetering,
   StorageMetering
 }
@@ -296,7 +297,8 @@ object Upgrades:
         stateAccessMetering = StateAccessMetering.Settled,
         touchSurvivesFailure = Set.empty,
         reservedCodePrefix = None,
-        blockRandomness = BlockRandomness.Unavailable
+        blockRandomness = BlockRandomness.Unavailable,
+        selfDestructScope = SelfDestructScope.AnyAccount
       ),
       execution = ExecutionRules(
         touchedEmptyAccountsAreDeleted = false,

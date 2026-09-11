@@ -8,7 +8,7 @@ import scala.util.control.NonFatal
 import org.fukuii.bytes.UInt64
 import org.fukuii.chainspec.{Network, UpgradeRules, UpgradeSchedule}
 import org.fukuii.chainspec.networks.{KnownNetworks, ethereum, ethereumclassic}
-import org.fukuii.chainspec.proposals.eip.{Eip1153, Eip5656}
+import org.fukuii.chainspec.proposals.eip.{Eip1153, Eip5656, Eip6780}
 import org.fukuii.evm.EvmRules
 
 /** The published corpora this layer is certified against, run once and reported
@@ -383,8 +383,31 @@ object CertificationCorpora:
     */
   val GeneratedShanghaiCorpus: String = "execution-specs-fixtures state_tests/for_shanghai"
 
+  /** What every corpus below that names a composition is read under, written
+    * once so five names cannot drift apart.
+    *
+    * It gains a document at every phase that adopts one, and each such phase
+    * must change it -- a name stating the rules is only worth having while it
+    * states them in full.
+    *
+    * ==WHOEVER DELETES THIS ALSO FOLDS A SPEC AWAY, and that is the note this
+    * constant exists to carry==
+    *
+    * This goes when the fork is whole and these directories resolve through the
+    * schedule at an activation instead. At that moment
+    * [[org.fukuii.chainspec.certification.CancunCompositionCertificationSpec]]
+    * stops being the right shape, and **its differentials belong in
+    * `CertificationCorporaSpec`'s coverage matrix rather than beside it.** They
+    * are held apart today for one reason and one only: every matrix row is
+    * resolved through a schedule at a height, and these are not. Resolve them
+    * through the schedule and the distinction is gone, so they become ordinary
+    * rows -- and that spec's `ordinary`/`heavy` split, keyed on what a rerun
+    * costs, is then what decides which run they belong to.
+    */
+  private val ComposedForCancun: String = " at Shanghai with EIP-1153, EIP-5656 and EIP-6780"
+
   /** The generated tier's memory-copying directory, read under the fork below
-    * with two proposals added.
+    * with the fork's built proposals added.
     *
     * ==The rules are named directly, and NOT for the reason the other such
     * corpus here is==
@@ -393,8 +416,8 @@ object CertificationCorpora:
     * its rule set is unreachable by construction. This one is named directly
     * for a different reason, and the two must not be read as the same case: the
     * fork these files are filled for is being BUILT, one proposal at a time,
-    * and a rule set carrying two of its six is not that fork. There is no
-    * `Upgrades.cancun` to resolve to yet, and writing one holding two members
+    * and a rule set carrying some of its six is not that fork. There is no
+    * `Upgrades.cancun` to resolve to yet, and writing one holding a subset
     * would put a value in the chain configuration whose NAME asserted a
     * completeness it did not have -- which is the defect a schedule entry ahead
     * of its rules is, one layer down.
@@ -408,31 +431,33 @@ object CertificationCorpora:
     *
     * These files are filled for the whole fork, not for the proposal they are
     * named after, so nothing about the directory guarantees that its cases turn
-    * on this phase's two proposals alone. What guarantees it is the run: every
-    * case here agrees, and
-    * [[org.fukuii.chainspec.certification.TransientStorageAndMemoryCopyCertificationSpec]]
-    * records what that does and does not establish. **The sibling directory
-    * `cancun/eip1153_tstore` fails that test and is deliberately absent** --
-    * see that spec for the measurement and for which phase it belongs to.
+    * on the proposals this composition carries. What guarantees it is the run:
+    * every case here agrees, and
+    * [[org.fukuii.chainspec.certification.CancunCompositionCertificationSpec]]
+    * records what that does and does not establish.
     */
   val GeneratedCancunMemoryCopyCorpus: String =
-    "execution-specs-fixtures state_tests/for_cancun/cancun/eip5656_mcopy at Shanghai with EIP-1153 and EIP-5656"
+    "execution-specs-fixtures state_tests/for_cancun/cancun/eip5656_mcopy" + ComposedForCancun
 
   /** The legacy static suite's transient-storage directory, ported and filled
     * for this fork, under the same rules.
     *
-    * ==This is EIP-1153's whole state-tier evidence at this phase, and it is
-    * here because the directory named for the proposal could not be==
+    * ==A SECOND independent directory for the same proposal, and it was the
+    * only one for a while==
     *
-    * `cancun/eip1153_tstore` is the directory a reader would expect. Two of its
-    * 123 cases are decided by a proposal this rule set does not carry, so
-    * admitting it would mean either a failing tier or a per-corpus allowance for
-    * known divergences -- and such an allowance, once it exists, absorbs a real
-    * divergence as readily as an expected one.
+    * `cancun/eip1153_tstore` is the directory a reader looks for first, and it
+    * is now beside this one. It could not be admitted while the rules carried
+    * two of the fork's six documents: two of its 123 cases were decided by a
+    * third that the composition did not hold, so admitting it would have meant
+    * either a failing tier or a per-corpus allowance for known divergences --
+    * and such an allowance, once it exists, absorbs a real divergence as readily
+    * as an expected one.
     *
     * These 4 files carry 48 cases of the same subject and every one of them
-    * agrees, so the proposal is certified against published material rather than
-    * against this build's own unit cases alone.
+    * agrees. **They are worth keeping now that the other directory is here**,
+    * for the reason the memory-copying pair below is kept: a different
+    * generator over a different source suite, so an error in one set of fixtures
+    * is not an error in both.
     *
     * ==It overlaps the tier a later phase wires, and that is the ordinary shape
     * here rather than a collision==
@@ -443,8 +468,7 @@ object CertificationCorpora:
     * is what keeps the two apart.
     */
   val PortedStaticCancunTransientStorageCorpus: String =
-    "execution-specs-fixtures state_tests/for_cancun/ported_static/stEIP1153_transientStorage " +
-      "at Shanghai with EIP-1153 and EIP-5656"
+    "execution-specs-fixtures state_tests/for_cancun/ported_static/stEIP1153_transientStorage" + ComposedForCancun
 
   /** The same suite's memory-copying directory, under the same rules.
     *
@@ -454,8 +478,46 @@ object CertificationCorpora:
     * either one's fixtures is not an error in both.
     */
   val PortedStaticCancunMemoryCopyCorpus: String =
-    "execution-specs-fixtures state_tests/for_cancun/ported_static/stEIP5656_MCOPY " +
-      "at Shanghai with EIP-1153 and EIP-5656"
+    "execution-specs-fixtures state_tests/for_cancun/ported_static/stEIP5656_MCOPY" + ComposedForCancun
+
+  /** The generated tier's directory for the destruction proposal, under the same
+    * rules.
+    *
+    * ==It is the first Cancun directory here whose subject is a RULE rather than
+    * an operation, and that changes what a case can look like==
+    *
+    * The two directories above are decided by a byte being in the table: a case
+    * that never executes it cannot tell. This one is decided by a condition
+    * every destruction consults, so its cases divide into those whose account
+    * this transaction created and those whose it did not -- and both halves
+    * answer differently under the two rule sets. The differential in
+    * `CancunCompositionCertificationSpec` is what measures that rather than
+    * assuming it.
+    */
+  val GeneratedCancunSelfDestructCorpus: String =
+    "execution-specs-fixtures state_tests/for_cancun/cancun/eip6780_selfdestruct" + ComposedForCancun
+
+  /** The generated tier's transient-storage directory, admitted here now that the
+    * rules can answer it in full.
+    *
+    * ==It was measured, left out, and is now readmitted -- which is the shape a
+    * deliberate absence should take==
+    *
+    * Under the two-proposal composition this directory was 121 of 123: both
+    * divergences sat in `tstorage_selfdestruct/reentrant_selfdestructing_call.json`
+    * and both were an account this build removed that the fixture expects to
+    * survive, which is the destruction proposal's rule and not transient
+    * storage's. It was excluded rather than admitted with a per-corpus allowance
+    * for known divergences, because such an allowance absorbs a real divergence
+    * as readily as an expected one.
+    *
+    * **So the readmission is this phase's evidence and not a bookkeeping
+    * change.** Nothing about the census total says it: the suite counts test
+    * cases and this corpus is one table-driven row, so admitting it moves the
+    * census MAP and the corpus count, and moves no test total at all.
+    */
+  val GeneratedCancunTransientStorageCorpus: String =
+    "execution-specs-fixtures state_tests/for_cancun/cancun/eip1153_tstore" + ComposedForCancun
 
   /** The same directory as the Tangerine Whistle tier, resolved through the
     * other network's schedule instead.
@@ -703,14 +765,13 @@ object CertificationCorpora:
     val shanghai = rulesAt(ethereumSchedule, ethereumShanghai)
 
     // NOT from the schedule, and not because no height resolves to it. The fork
-    // these two directories are filled for is under construction, so what a
-    // schedule would resolve to at its activation is a rule set that does not
-    // exist yet -- and the two corpora's own names say which proposals stand in
-    // for it. `Upgrades.cancun` is what this becomes once the fork is whole,
-    // and until then a value under that name would claim a completeness it did
-    // not have.
-    val transientStorageAndMemoryCopy =
-      shanghai.adopting(Eip1153.component, Eip5656.component)
+    // these directories are filled for is under construction, so what a schedule
+    // would resolve to at its activation is a rule set that does not exist yet
+    // -- and each corpus's own name says which proposals stand in for it.
+    // `Upgrades.cancun` is what this becomes once the fork is whole, and until
+    // then a value under that name would claim a completeness it did not have.
+    val composedForCancun =
+      shanghai.adopting(Eip1153.component, Eip5656.component, Eip6780.component)
 
     val gasReprice = rulesAt(classicSchedule, classicGasReprice)
 
@@ -851,21 +912,35 @@ object CertificationCorpora:
         FixtureCorpus.generated(root).resolve("state_tests/for_cancun/cancun/eip5656_mcopy"),
         "Cancun",
         ethereumChain,
-        transientStorageAndMemoryCopy
+        composedForCancun
       ),
       StateCorpus(
         PortedStaticCancunTransientStorageCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_cancun/ported_static/stEIP1153_transientStorage"),
         "Cancun",
         ethereumChain,
-        transientStorageAndMemoryCopy
+        composedForCancun
       ),
       StateCorpus(
         PortedStaticCancunMemoryCopyCorpus,
         FixtureCorpus.generated(root).resolve("state_tests/for_cancun/ported_static/stEIP5656_MCOPY"),
         "Cancun",
         ethereumChain,
-        transientStorageAndMemoryCopy
+        composedForCancun
+      ),
+      StateCorpus(
+        GeneratedCancunSelfDestructCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_cancun/cancun/eip6780_selfdestruct"),
+        "Cancun",
+        ethereumChain,
+        composedForCancun
+      ),
+      StateCorpus(
+        GeneratedCancunTransientStorageCorpus,
+        FixtureCorpus.generated(root).resolve("state_tests/for_cancun/cancun/eip1153_tstore"),
+        "Cancun",
+        ethereumChain,
+        composedForCancun
       )
     )
 

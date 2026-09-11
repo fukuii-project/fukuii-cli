@@ -266,7 +266,8 @@ object EvmFixtures:
     stateAccessMetering = StateAccessMetering.Settled,
     touchSurvivesFailure = Set.empty,
     reservedCodePrefix = None,
-    blockRandomness = BlockRandomness.Unavailable
+    blockRandomness = BlockRandomness.Unavailable,
+    selfDestructScope = SelfDestructScope.AnyAccount
   )
 
   val block: BlockContext = BlockContext(

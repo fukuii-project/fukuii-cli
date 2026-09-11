@@ -47,6 +47,7 @@ import org.fukuii.evm.{
   OpcodeTable,
   Precompile,
   PrecompileSet,
+  SelfDestructScope,
   StateAccessMetering,
   StorageMetering
 }
@@ -311,7 +312,13 @@ object Upgrades:
         // difficulty at every height it will ever reach. No proposal in this
         // file's compositions moves it, and none can: EIP-4399 is not in this
         // network's series.
-        blockRandomness = BlockRandomness.Unavailable
+        blockRandomness = BlockRandomness.Unavailable,
+        // The original rule, at every height this file reaches. EIP-6780 is not
+        // in this network's series either, so nothing below narrows it -- and a
+        // narrowing would be this network's own decision rather than an
+        // inheritance, which is why the value is written here rather than
+        // defaulted.
+        selfDestructScope = SelfDestructScope.AnyAccount
       ),
       execution = ExecutionRules(
         touchedEmptyAccountsAreDeleted = false,
