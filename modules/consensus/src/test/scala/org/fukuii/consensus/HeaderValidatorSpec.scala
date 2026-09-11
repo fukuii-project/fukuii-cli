@@ -45,7 +45,13 @@ class HeaderValidatorSpec extends AnyFlatSpec:
   private val under: UpgradeRules =
     ethereum.Upgrades.berlin
       .copy(header =
-        HeaderRules(Some(market), HeaderConstants.Unconstrained, carriesWithdrawalsRoot = false, blobSchedule = None)
+        HeaderRules(
+          Some(market),
+          HeaderConstants.Unconstrained,
+          carriesWithdrawalsRoot = false,
+          blobSchedule = None,
+          carriesParentBeaconBlockRoot = false
+        )
       )
 
   private val below: UpgradeRules = ethereum.Upgrades.berlin
@@ -97,7 +103,15 @@ class HeaderValidatorSpec extends AnyFlatSpec:
     */
   private val withWithdrawals: UpgradeRules =
     ethereum.Upgrades.berlin
-      .copy(header = HeaderRules(Some(market), HeaderConstants.Unconstrained, true, blobSchedule = None))
+      .copy(header =
+        HeaderRules(
+          Some(market),
+          HeaderConstants.Unconstrained,
+          true,
+          blobSchedule = None,
+          carriesParentBeaconBlockRoot = false
+        )
+      )
 
   /** A commitment over some list, whose value no rule at this layer reads. */
   private val SomeWithdrawalsRoot: Hash = EvmFixtures.hash(0x77)
@@ -132,7 +146,13 @@ class HeaderValidatorSpec extends AnyFlatSpec:
   private val fixed: UpgradeRules =
     ethereum.Upgrades.berlin
       .copy(header =
-        HeaderRules(Some(market), HeaderConstants.Eip3675, carriesWithdrawalsRoot = false, blobSchedule = None)
+        HeaderRules(
+          Some(market),
+          HeaderConstants.Eip3675,
+          carriesWithdrawalsRoot = false,
+          blobSchedule = None,
+          carriesParentBeaconBlockRoot = false
+        )
       )
 
   /** The commitment EIP-3675's table states, as the 32-byte literal rather than
@@ -171,7 +191,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
         Some(market),
         HeaderConstants.Unconstrained,
         true,
-        Some(BlobSchedule(targetBlobs = BigInt(3), maxBlobs = BigInt(6)))
+        Some(BlobSchedule(targetBlobs = BigInt(3), maxBlobs = BigInt(6))),
+        carriesParentBeaconBlockRoot = false
       )
     )
 
@@ -743,7 +764,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
           Some(market),
           HeaderConstants.Unconstrained,
           true,
-          Some(BlobSchedule(targetBlobs = BigInt(3), maxBlobs = BigInt(9)))
+          Some(BlobSchedule(targetBlobs = BigInt(3), maxBlobs = BigInt(9))),
+          carriesParentBeaconBlockRoot = false
         )
       )
     val parent =
@@ -772,7 +794,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
           Some(market),
           HeaderConstants.Unconstrained,
           true,
-          Some(BlobSchedule(targetBlobs = BigInt(6), maxBlobs = BigInt(9)))
+          Some(BlobSchedule(targetBlobs = BigInt(6), maxBlobs = BigInt(9))),
+          carriesParentBeaconBlockRoot = false
         )
       )
     val parent =

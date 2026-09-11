@@ -238,10 +238,13 @@ enum HeaderConstants:
   * the option answers presence, as a flag would, and the record answers what a
   * header at this fork must derive. [[BlobSchedule]] carries the evidence.
   *
-  * **The beacon root is still forecast and still unbuilt**, and it is the case
-  * the original sentence describes correctly: the proposal parameterizes
-  * nothing, so a flag is the shape it wants, exactly as
-  * [[carriesWithdrawalsRoot]] took.
+  * **The beacon root is what that forecast got RIGHT**, and
+  * [[carriesParentBeaconBlockRoot]] is the member it predicted: the proposal
+  * parameterizes nothing, so a flag is the shape it wants, exactly as
+  * [[carriesWithdrawalsRoot]] took. The two halves of one forecast landing
+  * differently is worth keeping rather than tidying away -- it is the same
+  * admission test reaching opposite answers about two fields that arrive in one
+  * fork and sit next to each other in the header.
   *
   * @param feeMarket
   *   the fee market this fork runs, absent where it runs none. A header under a
@@ -287,12 +290,32 @@ enum HeaderConstants:
   *   one link -- `org.fukuii.types.BlobGasTail` holds `blobGasUsed` and
   *   `excessBlobGas` together because no header carries one without the other --
   *   so presence is a single question rather than two.
+  * @param carriesParentBeaconBlockRoot
+  *   whether a header at this fork states the root of the beacon block its
+  *   parent was built against. EIP-4788 is what introduces the field, and
+  *   [[org.fukuii.chainspec.proposals.eip.Eip4788]] carries the evidence.
+  *
+  *   **A flag rather than a record, for [[carriesWithdrawalsRoot]]'s reason and
+  *   not [[blobSchedule]]'s.** The proposal's constants table names a history
+  *   length, a caller and a contract address, and no fork or network has moved
+  *   any of the three -- so there is nothing here a rule set could resolve
+  *   differently, and the values sit with the code that reads them rather than
+  *   on a facet.
+  *
+  *   **What the root must BE is not derivable here or anywhere in this client.**
+  *   Every other commitment a header states is a function of the block --
+  *   [[carriesWithdrawalsRoot]]'s is produced by
+  *   `org.fukuii.execution.BlockOutput.withdrawalsRoot` -- and this one is a
+  *   value handed in from the consensus layer, which is what makes it the one
+  *   header field this layer can check the presence of and never the content
+  *   of.
   */
 final case class HeaderRules(
     feeMarket: Option[FeeMarket],
     constants: HeaderConstants,
     carriesWithdrawalsRoot: Boolean,
-    blobSchedule: Option[BlobSchedule]
+    blobSchedule: Option[BlobSchedule],
+    carriesParentBeaconBlockRoot: Boolean
 )
 
 object HeaderRules:
@@ -305,5 +328,6 @@ object HeaderRules:
       feeMarket = None,
       constants = HeaderConstants.Unconstrained,
       carriesWithdrawalsRoot = false,
-      blobSchedule = None
+      blobSchedule = None,
+      carriesParentBeaconBlockRoot = false
     )

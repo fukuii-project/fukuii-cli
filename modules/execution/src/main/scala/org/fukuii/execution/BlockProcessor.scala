@@ -220,14 +220,18 @@ object BlockProcessor:
 
   /** Runs `transactions` in order against `world`, under these rules.
     *
-    * ==Three things happen in an order that is consensus-critical==
+    * ==What happens, in an order that is consensus-critical==
     *
     * The irregular state change first, where one is scheduled, so that a
-    * transaction in this very block sees the state it left; then the
-    * transactions, each seeing what the one before it wrote; then the
+    * transaction in this very block sees the state it left; then the block's
+    * own system calls, for the same reason and with the same visibility; then
+    * the transactions, each seeing what the one before it wrote; then the
     * withdrawals the body carries; then the consensus mechanism's own change,
     * after the last transaction and before anything reads the block's final
-    * root. That order is the specification's rather than a count of clients:
+    * root. **No count is stated, deliberately** -- the list has grown once and
+    * the number is what would go stale on the commit that grows it again.
+    *
+    * That order is the specification's rather than a count of clients:
     * `ethereum/execution-specs` @ `ccaaaba58`'s `apply_body` runs its
     * `for i, tx in enumerate(transactions)` loop to completion and calls
     * `pay_rewards(block_env, ommers)` on the next statement, and at
@@ -338,6 +342,44 @@ object BlockProcessor:
     *   body. A block whose body carries withdrawals its height does not admit
     *   is caught by [[BlockOutput.withdrawalsRoot]] disagreeing with the header,
     *   which is where every other commitment this layer produces is caught.
+    *
+    *   [[systemCalls]] is split the same way for the same reason, and its own
+    *   entry states the split from the other side.
+    * @param systemCalls
+    *   the invocations this block makes on its own account before any
+    *   transaction runs, in the order given. [[SystemCall]] states what running
+    *   one does; this states where it happens.
+    *
+    *   **A sequence rather than one, because the field already runs two.**
+    *   `ethereum/go-ethereum` @ `02872e9ef` (2026-09-09)
+    *   `core/state_processor.go:156-174` has a `PreExecution` calling
+    *   `ProcessBeaconBlockRoot` and then `ProcessParentBlockHash`, and
+    *   `besu-eth/besu` @ `b330564a9` (2026-09-09) reaches the same pair by
+    *   having its Prague pre-execution processor extend its Cancun one. So the
+    *   second consumer is running code rather than a shape guessed at, which is
+    *   the test `.claude/rules/reference-first.md` sets for widening one -- and
+    *   none of that second consumer is built here.
+    *
+    *   **Which calls a block makes is NOT decided here**, exactly as
+    *   `withdrawals` is not. A proposal names the address and the caller
+    *   supplies the input, and the three clients read for this gate on the
+    *   header field the proposal added rather than on a fork alone --
+    *   `NethermindEth/nethermind` @ `3a98e0818` (2026-09-09) is the most
+    *   explicit, testing `spec.IsBeaconBlockRootAvailable && !header.IsGenesis
+    *   && header.ParentBeaconBlockRoot is not null`. Whether a header at this
+    *   height may carry that field is `org.fukuii.chainspec.HeaderRules`'s, and
+    *   the genesis clause is the proposal's own: *"If this EIP is active in a
+    *   genesis block, the genesis header's `parent_beacon_block_root` must be
+    *   `0x0` and no system transaction may occur"* (`ethereum/EIPs` @
+    *   `d2a64c2d4` (2026-09-09), `EIPS/eip-4788.md`, Final).
+    *
+    *   **The irregular state change is kept ahead of these**, which is
+    *   `ethereum/go-ethereum` @ `02872e9ef`'s own order:
+    *   `core/state_processor.go:85-86` applies the DAO change and `:107` calls
+    *   `PreExecution`. It is unobservable on every network this build serves,
+    *   because no fork schedules an irregular state change and a system call at
+    *   one height, and it is stated so that a network that did would not be
+    *   settling it by accident.
     */
   def process(
       transactions: Seq[Transaction],
@@ -353,10 +395,19 @@ object BlockProcessor:
       irregularStateChange: Option[WorldState => Unit],
       consensusStateChange: WorldState => Unit,
       withdrawals: Option[Seq[Withdrawal]] = None,
-      blobGas: Option[BlobGasAccounting] = None
+      blobGas: Option[BlobGasAccounting] = None,
+      systemCalls: Seq[SystemCall] = Seq.empty
   ): Either[BlockRejection, BlockOutput] =
     irregularStateChange.foreach(change => change(world))
-    val processed = transactions.zipWithIndex.foldLeft[Either[BlockRejection, BlockOutput]](Empty(blobGas)) {
+    // Each is run whatever the one before it reported, because none of them is
+    // conditional on another and an unbuilt operation is not a refusal. The
+    // FIRST gap is the one carried, which is the order `settleInto` already
+    // keeps for the transactions that follow.
+    val unbuilt = systemCalls.foldLeft(Option.empty[Unsupported]) { (carried, call) =>
+      val gap = SystemCall.run(call, world, block, blockHashAt, chainId, evm)
+      carried.orElse(gap)
+    }
+    val processed = transactions.zipWithIndex.foldLeft[Either[BlockRejection, BlockOutput]](Empty(blobGas, unbuilt)) {
       (carried, indexed) =>
         carried.flatMap { output =>
           val (transaction, index) = indexed
@@ -383,15 +434,23 @@ object BlockProcessor:
       output.copy(withdrawalsRoot = withdrawals.map(Withdrawals.root))
     }
 
-  /** A block that has run nothing yet.
+  /** A block that has run no TRANSACTION yet.
     *
     * A function of the accounting rather than a constant, because a block that
     * accounts for blob gas and carries no transactions has spent zero, while a
     * block below the accounting has no such answer at all -- and the empty case
     * is the one where the two are hardest to tell apart.
+    *
+    * **It is not a block that has done nothing**, which is why the gap arrives
+    * as a parameter: a system call runs before the first transaction and can
+    * reach an operation this build does not run, so a block whose transactions
+    * are all still ahead of it may already have an answer to carry.
     */
-  private def Empty(blobGas: Option[BlobGasAccounting]): Either[BlockRejection, BlockOutput] =
-    Right(BlockOutput(Vector.empty, BigInt(0), None, None, blobGas.map(_ => BigInt(0))))
+  private def Empty(
+      blobGas: Option[BlobGasAccounting],
+      unbuilt: Option[Unsupported]
+  ): Either[BlockRejection, BlockOutput] =
+    Right(BlockOutput(Vector.empty, BigInt(0), unbuilt, None, blobGas.map(_ => BigInt(0))))
 
   /** Runs one transaction and folds what it produced into what the block holds.
     *
