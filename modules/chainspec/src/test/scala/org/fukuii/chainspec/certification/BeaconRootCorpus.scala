@@ -62,8 +62,9 @@ enum BeaconRootVerdict:
   * on the fork this material is filled for and the zero is the corpus rather
   * than the search.
   *
-  * Every published case is therefore a `blockchain_test`, and this build has no
-  * block-execution runner to read one with.
+  * Every published case is therefore a `blockchain_test`, and this build's
+  * runner for that tier, in `modules/blockchain-tests`, does not yet run a label
+  * filled at this fork.
   *
   * ==What makes a narrow reading sound, and it is a property of the contract==
   *

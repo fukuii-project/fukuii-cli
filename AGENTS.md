@@ -137,8 +137,9 @@ because an older build did.
 
 **circe is scoped to one module on purpose, and the table records that because the
 scope is the decision.** It sits on `evm`'s own settings rather than in the shared
-test-dependency sequence, which every module receives — only the EVM reads JSON, and a
-dependency with no present need is not an entry. Its transitive `jawn-parser` resolves to
+test-dependency sequence, which every module receives — `evm` is the one module that
+declares it, every module whose tests read fixture JSON reaches it through its
+`test->test` edge on `evm`, and a dependency with no present need is not an entry. Its transitive `jawn-parser` resolves to
 the version patched for the two advisories `project/build.properties` already documents
 against sbt's own vendored copy; **that file's observation that neither is findable by a
 coordinate-keyed scan turns out to hold even for a direct query on the affected
@@ -862,7 +863,7 @@ there"*.
 **It is NOT saved by reading more modules.** Both read the whole tree: the retired glob
 above matches every module's `classes`, and guard 3 globs `classes`, `test-classes`,
 `zinc` and `test-zinc` across all of them. Scope could not save it anyway -- a universal
-test over eleven modules fails the moment a warm cache restores one old `.class`.
+test over every module fails the moment a warm cache restores one old `.class`.
 
 **What separates them is the quantifier and the reference point**, and each half matters:
 

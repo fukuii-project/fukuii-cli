@@ -542,9 +542,10 @@ object CertificationCorpora:
     * **`blob_txs_full` is NOT part of this tier and never was.** It is a sibling
     * directory under the same proposal, it exists only under
     * `blockchain_tests`, `blockchain_tests_engine`, `blockchain_tests_engine_x`
-    * and `blockchain_tests_sync`, and this build has no runner for any of them.
-    * A reader looking for it here will not find it, which is the reason it is
-    * named.
+    * and `blockchain_tests_sync`, so no state tier can read it: of the runners
+    * this build has for those, the engine tier reads it and the block tier does
+    * not yet run a label filled at this fork. A reader looking for it here will
+    * not find it, which is the reason it is named.
     */
   val GeneratedCancunBlobTransactionCorpus: String =
     "execution-specs-fixtures state_tests/for_cancun/cancun/eip4844_blobs/blob_txs"

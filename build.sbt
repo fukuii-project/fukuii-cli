@@ -555,18 +555,24 @@ lazy val evm = (project in file("modules/evm"))
     name := "fukuii-evm",
     libraryDependencies ++= testDeps,
     // Declared HERE and not in `testDeps`, deliberately. That sequence is
-    // appended to every module, and only this one reads JSON. Putting a JSON
-    // parser on `bytes`'s test classpath would be a dependency with no present
-    // need, which this project does not do.
+    // appended to every module, and only a module whose tests read a published
+    // corpus needs a JSON parser -- each of those reaches this declaration
+    // through its test edge on this module. Putting a JSON parser on `bytes`'s
+    // test classpath would be a dependency with no present need, which this
+    // project does not do.
     //
     // The published fixture corpora are no longer certified against the EVM
-    // alone -- `DifficultyTests` is read against the proof-of-work engine --
-    // and the parser still sits here rather than moving or spreading. Every
-    // module that certifies against a corpus already takes this one as
-    // `evm % "compile->compile;test->test"`, so the readers live beside each
-    // other in one fixtures package and the modules under test consume decoded
-    // values. That keeps the number of test classpaths carrying a parser at
-    // one, which is the property this placement is for.
+    // alone -- `DifficultyTests` is read against the proof-of-work engine, and
+    // the blockchain tier against the block validator -- and the parser still
+    // sits here rather than moving or spreading. Every module that certifies
+    // against a corpus takes this one as `evm % "compile->compile;test->test"`,
+    // so the parser is declared in one place and reaches each of those test
+    // classpaths through that edge. The readers themselves live in the test
+    // tree of whichever module a corpus certifies -- the shared pieces, the
+    // corpus locator and the account reader, in this module's fixtures
+    // package. What this placement holds to one is the declaration: a module
+    // declaring the parser for itself would be a second version to keep in
+    // step.
     libraryDependencies ++= Seq(
       "io.circe" %% "circe-core"   % circeVersion % Test,
       "io.circe" %% "circe-parser" % circeVersion % Test
@@ -659,12 +665,13 @@ lazy val execution = (project in file("modules/execution"))
 // mapping from a corpus to the rules it is read under belongs here. The
 // machinery that reads a fixture and runs it -- the JSON decoders, the runner,
 // the state seeding -- is the machine's and stays in `evm`'s test tree, which
-// is also where the JSON parser is declared for the one module that reads JSON.
+// is also where the JSON parser is declared, once, for every module whose tests
+// read a corpus.
 //
-// Without this mapping the harness would have to move whole, which would make
-// `build.sbt`'s own statement that only `evm` reads JSON false. With it, each
-// half sits with the thing it is about, and this module's tests reach the
-// machinery exactly as its main sources reach the machine.
+// Without this mapping the harness would have to move whole, and a parser
+// declaration with it. With it, each half sits with the thing it is about, and
+// this module's tests reach the machinery exactly as its main sources reach the
+// machine.
 //
 // The direction is unchanged and still one-way: nothing in `evm` names anything
 // here, at either scope.
@@ -882,6 +889,101 @@ lazy val consensusPos = (project in file("modules/consensus-pos"))
     libraryDependencies ++= testDeps
   )
 
+// blockchain-tests -- the published `blockchain_tests` tier, run through the
+// production block validator. Test-only: every source is under `src/test`, and
+// nothing here ships.
+//
+// ── Why a module of its own ──
+//
+// Every other certification tier sits in the test tree of the module it
+// certifies. This one cannot: a published block needs the whole stack -- the
+// codec, the schedule, the validator in `consensus`, and for the labels before
+// the merge the proof-of-work leaf's engine -- so it sits above every module it
+// runs rather than inside one. That is also the field's shape: each surveyed
+// client runs this tier from a unit of its own above its production code,
+// `ethereum/go-ethereum`'s `tests`, `besu-eth/besu`'s `ethereum/referencetests`,
+// `NethermindEth/nethermind`'s `Ethereum.Test.Base` and `paradigmxyz/reth`'s
+// `testing/ef-tests`.
+//
+// ── Why this name ──
+//
+// It is the tier's own name. The release publishes it as `blockchain_tests`,
+// the older snapshots as `BlockchainTests`, and every client read names its
+// runner for it: go-ethereum's `block_test_util.go`, besu's
+// `BlockchainReferenceTestTools`, nethermind's `BlockchainTestBase`, reth's
+// `cases/blockchain_test.rs`. The units' own names were rejected one by one:
+// `tests` doubles sbt's own `Test` vocabulary; `ef-tests` names a publisher
+// rather than the tier; and besu's `referencetests` holds every published tier,
+// where this module holds one -- the state tier stays in `chainspec` and the
+// engine tier in `consensus-pos` -- so it would send a reader looking here for
+// tiers that are not here.
+//
+// ── The edges, each named because a source here imports it ──
+//
+//   bytes   a case states hashes and account addresses, and a chain identifier
+//           is the protocol's 64-bit word
+//   chainspec
+//           a case's network is resolved to a schedule built from that network's
+//           rules, and a spec's stand-in engine settles against the consensus
+//           facet a schedule resolves
+//   consensus
+//           the block validator every block is run through, and the faults and
+//           undecided answers it reports
+//   evm     the world a case's accounts are seeded into, and the world a
+//           mechanism's settlement writes through, which a spec's stand-in
+//           engine names
+//   execution
+//           a refused transaction's reason, which a published name is compared
+//           against
+//   rlp     a block arrives as its encoding and is decoded here
+//   trie    the state whose root is compared, and whose accounts a block
+//           destroys
+//   types   the block the encoding decodes to, and the ommer headers a
+//           settlement is handed
+//
+// ── Two test halves, for two different reasons ──
+//
+// The `test->test` half of the evm edge is the published-corpus harness in
+// `evm`'s test tree, and each piece named here is one a source here imports:
+// the corpus locator (`FixtureCorpus`); the account reader and seeding
+// (`FixtureValues`, `FixtureAccount`); a refusal's stated names
+// (`ExpectedRejection`); the skip reasons and the report that labels and counts
+// them (`SkipReason`, `CorpusReport`, `CaseOutcome`, `Verdict`), reused rather
+// than copied; the fresh state trie a case is seeded into (`VmFixtureRunner`);
+// the placeholder values the specs seed defects with (`EvmFixtures`); and the
+// JSON parser `evm` alone declares. This module keeps its own report beside
+// `CorpusReport`, because a case here has a fourth outcome, undecided.
+//
+// The `test->test` half of the chainspec edge is one table: the corpus's names
+// for a refused transaction, against this build's refusals. The state tier in
+// `chainspec`'s tests compares against it too, and a copy here would be one set
+// of names with two definitions. It is the only thing this module reaches for in
+// that test tree.
+//
+// ── What is absent ──
+//
+// Neither mechanism leaf is named yet. Nothing here imports one: the only label
+// this module runs today is after the merge, where the mechanism-neutral engine
+// runs every block. The proof-of-work leaf arrives with the first label before
+// the merge, whose engine is declared there -- the rule the proof-of-stake
+// leaf's own list states, that an edge ahead of the source needing it describes
+// an intention rather than the code.
+lazy val blockchainTests = (project in file("modules/blockchain-tests"))
+  .dependsOn(
+    bytes,
+    rlp,
+    types,
+    trie,
+    execution,
+    consensus,
+    chainspec % "compile->compile;test->test",
+    evm % "compile->compile;test->test"
+  )
+  .settings(
+    name := "fukuii-blockchain-tests",
+    libraryDependencies ++= testDeps
+  )
+
 // The aggregate. `aggregate` makes a task at the root fan out to every module;
 // it is NOT a dependency edge, so the root gains nothing on its classpath.
 //
@@ -902,7 +1004,8 @@ lazy val root = (project in file("."))
     chainspec,
     consensus,
     consensusPow,
-    consensusPos
+    consensusPos,
+    blockchainTests
   )
   .settings(
     name := "fukuii",

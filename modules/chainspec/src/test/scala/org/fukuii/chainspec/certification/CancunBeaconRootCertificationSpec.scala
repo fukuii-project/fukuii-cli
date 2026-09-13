@@ -33,8 +33,9 @@ import org.fukuii.execution.SystemCall
   * here, because none of it is read.
   *
   * **So EIP-4788 is certified for what its system call writes, and not for a
-  * block that contains one.** Closing the second needs a block-execution
-  * runner, which is a certification tier this build does not have.
+  * block that contains one.** Closing the second needs the published block
+  * tier -- `modules/blockchain-tests`, which runs whole blocks through the block
+  * validator -- to run a label filled at this fork.
   */
 class CancunBeaconRootCertificationSpec extends AnyFlatSpec:
 
