@@ -681,8 +681,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
   "the value a commitment states" should "not be read at this layer" in
     // Two headers differing only in the 32 bytes are both accepted, because the
     // comparison needs the block's withdrawals and this layer holds no body.
-    // What settles it is `org.fukuii.execution.BlockOutput.withdrawalsRoot`
-    // against the header, which is where every other commitment is settled.
+    // `BlockValidator` settles it, against the root it derives from the body,
+    // beside every other commitment the header states.
     assert(
       childCommitting(withWithdrawals, Some(EvmFixtures.hash(0x11))) ==
         childCommitting(withWithdrawals, Some(EvmFixtures.hash(0x22))),

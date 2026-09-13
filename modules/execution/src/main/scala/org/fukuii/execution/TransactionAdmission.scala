@@ -257,8 +257,8 @@ final case class OfferedTransaction(
   * `Some` with an empty sequence is a blob transaction carrying none, which
   * [[Refusal.BlobListEmpty]] refuses. Collapsing the two would make that rule
   * unreachable and would refuse every ordinary transaction instead --
-  * `org.fukuii.execution.BlockOutput.withdrawalsRoot` keeps the same
-  * distinction for the same reason.
+  * [[BlockOutput.blobGasUsed]] keeps an absence and a zero apart in the same
+  * way.
   *
   * @param maxFeePerBlobGas
   *   the most the transaction will pay per unit of blob gas. It is read by two

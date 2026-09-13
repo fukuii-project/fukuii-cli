@@ -2,7 +2,7 @@ package org.fukuii.execution
 
 import org.fukuii.bytes.{Address, Hash, UInt64}
 import org.fukuii.evm.{BlockContext, EvmRules, JournaledWorldState, Unsupported, WorldState}
-import org.fukuii.types.{Log, PostStateOrStatus, Receipt, Transaction, TransactionType, Withdrawal}
+import org.fukuii.types.{Log, PostStateOrStatus, Receipt, Transaction, TransactionType}
 
 /** What processing one block produced.
   *
@@ -39,33 +39,14 @@ import org.fukuii.types.{Log, PostStateOrStatus, Receipt, Transaction, Transacti
   *   hold is what the block would have produced had the operation halted, which
   *   is the only shape in which the block ends somewhere a caller can compare.
   *   One is enough to say so, so the first is kept rather than all of them.
-  * @param withdrawalsRoot
-  *   the commitment over the withdrawals the block carried, absent where the
-  *   block carried no withdrawals field at all.
-  *
-  *   **The absence and an empty list are different answers**, which is why this
-  *   is an option over a hash rather than a hash that is sometimes the empty
-  *   trie's. A block below the withdrawals proposal has no such field and its
-  *   header states no root; a block at or above it carrying an empty list
-  *   states the empty trie's root. Collapsing the two would make a header that
-  *   omitted the field indistinguishable from one that stated the empty root,
-  *   and `org.fukuii.chainspec.HeaderRules` resolves which a fork requires.
-  *
-  *   It sits beside [[gasUsed]] rather than being derived by a caller for the
-  *   same reason that figure does: `ethereum/execution-specs` @ `20f7f6271a`
-  *   (2026-08-26) carries `withdrawals_trie` on its own `BlockOutput` and takes
-  *   `root(...)` of it in `state_transition` (`forks/shanghai/fork.py:199`),
-  *   beside the transactions root, the receipts root and the bloom. This
-  *   project has only the one of those four so far.
   * @param blobGasUsed
   *   what every transaction in the block spent on blobs, absent where the block
   *   accounts for no blob gas at all.
   *
-  *   **The absence and a zero are different answers**, exactly as they are for
-  *   [[withdrawalsRoot]]: a block below the blob accounting has no such header
-  *   field, and a block at or above it carrying no blob transaction states
-  *   zero. Collapsing the two would make a header that omitted the field
-  *   indistinguishable from one stating zero.
+  *   **The absence and a zero are different answers**: a block below the blob
+  *   accounting has no such header field, and a block at or above it carrying
+  *   no blob transaction states zero. Collapsing the two would make a header
+  *   that omitted the field indistinguishable from one stating zero.
   *
   *   `ethereum/execution-specs` @ `0cc100eb1` (2026-09-11) carries
   *   `blob_gas_used` on its own `BlockOutput` and accumulates it one
@@ -86,7 +67,6 @@ final case class BlockOutput(
     receipts: Vector[Receipt],
     gasUsed: BigInt,
     unbuilt: Option[Unsupported],
-    withdrawalsRoot: Option[Hash] = None,
     blobGasUsed: Option[BigInt] = None
 ):
 
@@ -104,22 +84,36 @@ final case class BlockOutput(
   *
   * A record rather than an enumeration, because at this layer there is one
   * reason: the block carries a transaction these rules refuse. Everything else
-  * that makes a block invalid -- its header, its seal, its ommers, its
-  * commitments -- is decided by layers this project has not built, and each
-  * will have its own reasons rather than more cases here.
+  * that makes a block invalid belongs above this layer, under reasons of its own
+  * rather than more cases here. `org.fukuii.consensus.BlockValidator` is where a
+  * block is refused for its header or for a commitment it states, and it carries
+  * this record inside its own fault where a transaction is what refused the
+  * block.
   *
-  * `ethereum/go-ethereum` @ `6bb0588ad` reports exactly this pair, as
+  * `ethereum/go-ethereum` @ `6bb0588ad` reports the index and the refusal, as
   * `fmt.Errorf("could not apply tx %d [%v]: %w", i, ...)`, and `besu-eth/besu`
-  * @ `c2addd9424` the same in `AbstractBlockProcessor`'s
+  * @ `c2addd9424` the same two in `AbstractBlockProcessor`'s
   * `"Block processing error: transaction invalid {0}. Block {1} Transaction
-  * {2}"`.
+  * {2}"`. The operation carried beside them has no counterpart in either,
+  * because a client that runs every operation never reaches one it cannot.
   *
   * @param index
   *   where the offending transaction sits in the block. Carried because the
   *   refusal alone does not identify it and a block can hold many transactions
   *   that could each break the same rule.
+  * @param unbuilt
+  *   the first operation this build cannot run that the block reached before
+  *   the refusal -- in one of its system calls or an earlier transaction -- and
+  *   absent where it reached none.
+  *
+  *   **A refusal carrying one is not a chain result either**, for the reason
+  *   [[BlockOutput.unbuilt]] states: the state the refused transaction was
+  *   measured against is what the block would have held had that operation
+  *   halted, so a nonce or a balance it was refused for may be one the
+  *   network's own run never reaches. It has no default, so no refusal is built
+  *   without saying whether it follows one.
   */
-final case class BlockRejection(index: Int, reason: Refusal)
+final case class BlockRejection(index: Int, reason: Refusal, unbuilt: Option[Unsupported])
 
 /** What a block accounts for in blob gas: what it charges per unit, and the
   * most it may spend.
@@ -226,10 +220,10 @@ object BlockProcessor:
     * transaction in this very block sees the state it left; then the block's
     * own system calls, for the same reason and with the same visibility; then
     * the transactions, each seeing what the one before it wrote; then the
-    * withdrawals the body carries; then the consensus mechanism's own change,
-    * after the last transaction and before anything reads the block's final
-    * root. **No count is stated, deliberately** -- the list has grown once and
-    * the number is what would go stale on the commit that grows it again.
+    * consensus mechanism's own change, after the last transaction and before
+    * anything reads the block's final root. **No count is stated,
+    * deliberately** -- a fork that adds a step changes it, and the number is
+    * what would go stale on that commit.
     *
     * That order is the specification's rather than a count of clients:
     * `ethereum/execution-specs` @ `ccaaaba58`'s `apply_body` runs its
@@ -238,28 +232,17 @@ object BlockProcessor:
     * `20f7f6271a` `forks/shanghai/fork.py:500` the statement in that position is
     * `process_withdrawals`.
     *
-    * ==Withdrawals against the mechanism's change is an order nothing
-    * specifies, and it is stated rather than left implicit==
+    * ==A block's withdrawals are part of the mechanism's change==
     *
-    * EIP-4895 orders them against the transactions and against nothing else:
-    * *"The `withdrawals` in an execution payload are processed **after** any
-    * user-level transactions are applied"* (`ethereum/EIPs` @ `dbfa6bee8`
-    * (2026-08-26)). No source orders them against a block reward, because the
-    * two occupy the same slot in successive forks rather than appearing
-    * together -- the specification's `apply_body` ends in `pay_rewards` below
-    * the merge and in `process_withdrawals` above it, and
-    * `ethereum/go-ethereum` @ `e9e35a42f8` reaches one or the other from
-    * `Beacon.Finalize` on a branch. **So no rule set this project can build has
-    * both**, and the order below is unobservable on every network.
-    *
-    * It is stated because it would not be unobservable on a network that did
-    * have both: a reward that brings its beneficiary into being holding nothing
-    * and a zero-amount withdrawal to the same address reach opposite states
-    * depending on which ran last, since the second destroys what the first
-    * created. The mechanism's change is kept last so that the contract stated
-    * for it below -- *after the last transaction and before anything reads the
-    * block's final root* -- is unchanged, and the withdrawals occupy the
-    * position the specification gives them relative to the loop.
+    * They are not a step of their own here, because what a withdrawal does is
+    * the consensus mechanism's to say. `org.fukuii.consensus.ConsensusEngine`
+    * supplies it as `processWithdrawals`, and
+    * `org.fukuii.consensus.BlockValidator` composes that into the
+    * `consensusStateChange` it hands this, so a block's withdrawals run after
+    * its last transaction -- the position the specification's
+    * `process_withdrawals` holds above. `BlockValidator` states the order it
+    * gives them against the mechanism's own settlement, which no source
+    * settles.
     *
     * ==`world` is written through, so a rejection leaves it part-way==
     *
@@ -322,29 +305,8 @@ object BlockProcessor:
     *   deliberately left empty by this layer.** It is a change to state rather
     *   than a figure returned, so it composes with a mechanism that computes
     *   from an unbounded schedule, one that reads a contract at an earlier
-    *   block, and one that does nothing at all.
-    * @param withdrawals
-    *   the operations the block's body carries, absent where the body carries
-    *   no such field. [[Withdrawals]] states what crediting one does; this
-    *   states where it happens.
-    *
-    *   **It arrives as a value rather than as a change to apply**, unlike the
-    *   two above, because this layer must also state the commitment over it and
-    *   a `WorldState => Unit` yields nothing to commit to.
-    *
-    *   **Whether a block at this height may carry the field is NOT decided
-    *   here**, and this layer is not where it could be: the rule is
-    *   `org.fukuii.chainspec.HeaderRules`'s, which this module sits below.
-    *   `besu-eth/besu` @ `fdf1247c6d` (2026-08-26) splits it the same way,
-    *   processing on `maybeWithdrawalsProcessor.isPresent() &&
-    *   maybeWithdrawals.isPresent()` in `AbstractBlockProcessor` while its
-    *   `WithdrawalsValidator` holds the agreement between the fork and the
-    *   body. A block whose body carries withdrawals its height does not admit
-    *   is caught by [[BlockOutput.withdrawalsRoot]] disagreeing with the header,
-    *   which is where every other commitment this layer produces is caught.
-    *
-    *   [[systemCalls]] is split the same way for the same reason, and its own
-    *   entry states the split from the other side.
+    *   block, and one that does nothing at all. A block's withdrawals are
+    *   written through it too, for the reason the section above states.
     * @param systemCalls
     *   the invocations this block makes on its own account before any
     *   transaction runs, in the order given. [[SystemCall]] states what running
@@ -360,10 +322,10 @@ object BlockProcessor:
     *   the test `.claude/rules/reference-first.md` sets for widening one -- and
     *   none of that second consumer is built here.
     *
-    *   **Which calls a block makes is NOT decided here**, exactly as
-    *   `withdrawals` is not. A proposal names the address and the caller
-    *   supplies the input, and the three clients read for this gate on the
-    *   header field the proposal added rather than on a fork alone --
+    *   **Which calls a block makes is NOT decided here.** A proposal names the
+    *   address and the caller supplies the input, and the three clients read for
+    *   this gate on the header field the proposal added rather than on a fork
+    *   alone --
     *   `NethermindEth/nethermind` @ `3a98e0818` (2026-09-09) is the most
     *   explicit, testing `spec.IsBeaconBlockRootAvailable && !header.IsGenesis
     *   && header.ParentBeaconBlockRoot is not null`. Whether a header at this
@@ -394,7 +356,6 @@ object BlockProcessor:
       admission: AdmissionRules,
       irregularStateChange: Option[WorldState => Unit],
       consensusStateChange: WorldState => Unit,
-      withdrawals: Option[Seq[Withdrawal]] = None,
       blobGas: Option[BlobGasAccounting] = None,
       systemCalls: Seq[SystemCall] = Seq.empty
   ): Either[BlockRejection, BlockOutput] =
@@ -440,9 +401,8 @@ object BlockProcessor:
         }
     }
     processed.map { output =>
-      withdrawals.foreach(carried => Withdrawals.credit(carried, world, destroyAccount))
       consensusStateChange(world)
-      output.copy(withdrawalsRoot = withdrawals.map(Withdrawals.root))
+      output
     }
 
   /** A block that has run no TRANSACTION yet.
@@ -461,7 +421,7 @@ object BlockProcessor:
       blobGas: Option[BlobGasAccounting],
       unbuilt: Option[Unsupported]
   ): Either[BlockRejection, BlockOutput] =
-    Right(BlockOutput(Vector.empty, BigInt(0), unbuilt, None, blobGas.map(_ => BigInt(0))))
+    Right(BlockOutput(Vector.empty, BigInt(0), unbuilt, blobGas.map(_ => BigInt(0))))
 
   /** Runs one transaction and folds what it produced into what the block holds.
     *
@@ -511,7 +471,7 @@ object BlockProcessor:
           case Admission.Admitted(settling) => Right(settling)
       yield settling
     admitted.left
-      .map(reason => BlockRejection(index, reason))
+      .map(reason => BlockRejection(index, reason, output.unbuilt))
       .map { settling =>
         val settlement =
           TransactionProcessor.settle(settling, journal, destroyAccount, block, blockHashAt, chainId, evm, execution)
@@ -521,7 +481,6 @@ object BlockProcessor:
             receiptFor(transaction.transactionType, settlement, used, stateRootAfterTransaction, execution),
           gasUsed = used,
           unbuilt = output.unbuilt.orElse(settlement.unbuilt),
-          withdrawalsRoot = output.withdrawalsRoot,
           // Accumulated from what ADMISSION priced the transaction at rather
           // than recounted off the transaction here, so the figure a block
           // commits to is the one its transactions were charged for. The

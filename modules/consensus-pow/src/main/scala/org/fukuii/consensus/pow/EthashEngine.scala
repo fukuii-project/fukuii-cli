@@ -125,15 +125,18 @@ final case class EthashEngine(
     * `validate_ommers`, which reads `chain.blocks`. This is handed ommers that
     * have already passed such a check and has no channel to refuse one.
     *
-    * ==That precondition has no enforcer in this build, and the obligation is
-    * recorded here rather than met==
+    * ==The block validator keeps that precondition by declining ommers rather
+    * than validating them, and the obligation is recorded here rather than met==
     *
     * [[ommerReward]] raises on an age outside the range its rule is stated for,
     * and this credits the block's own beneficiary before it reaches the first
     * ommer -- so a broken precondition leaves state part-way and reaches the
     * caller as a raise rather than as a refusal it can file against a block.
-    * **No ommer-depth validation exists in this build**, so the check the
-    * paragraph above assigns upstream is currently assigned to nobody.
+    * **No ommer-depth validation exists in this build.**
+    * [[org.fukuii.consensus.BlockValidator]] never runs a block whose body
+    * carries an ommer -- it answers one as undecided, or refuses it earlier --
+    * so no block it validates arrives here with one; a caller reaching this
+    * some other way meets the raise.
     *
     * **A fault channel here is the wrong remedy and is deliberately not taken.**
     * Both clients read here settle an ommer's admissibility against the CHAIN,
@@ -142,7 +145,7 @@ final case class EthashEngine(
     * `VerifyUncles`, and `besu-eth/besu-etc` @ `eb4248c997` walks the blockchain
     * in `MainnetBlockBodyValidator.isOmmerSiblingOfAncestor`. A refusal on this
     * member would move a validation concern onto the one seam every mechanism
-    * implements, on the strength of a caller that does not exist yet. [[SealFault]] is not the
+    * implements, on the strength of an ommer validator that does not exist yet. [[SealFault]] is not the
     * precedent it resembles -- that answers a question about a header a PEER
     * supplied, where the fault is data, whereas everything reaching here has
     * already been validated and a bad age is a caller error. This engine raises

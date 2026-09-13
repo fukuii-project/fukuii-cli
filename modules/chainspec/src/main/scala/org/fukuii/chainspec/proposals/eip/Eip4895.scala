@@ -80,9 +80,10 @@ object Eip4895:
   /** A header at this fork states a commitment over the block's withdrawals.
     *
     * The value it must state is not here and could not be: it is a function of
-    * the body, and `org.fukuii.execution.BlockOutput.withdrawalsRoot` is what
-    * produces it. This settles only that the field is required, which is what a
-    * node holding a header and no body can still check.
+    * the body, which `org.fukuii.execution.Withdrawals.root` derives and
+    * `org.fukuii.consensus.BlockValidator` compares with the header. This
+    * settles only that the field is required, which is what a node holding a
+    * header and no body can still check.
     */
   val withdrawalsCommitment: HeaderRules => HeaderRules = _.copy(carriesWithdrawalsRoot = true)
 

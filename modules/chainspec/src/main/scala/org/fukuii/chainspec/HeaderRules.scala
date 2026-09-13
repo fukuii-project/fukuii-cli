@@ -270,9 +270,10 @@ enum HeaderConstants:
   *   **A flag rather than a record, because the proposal parameterizes
   *   nothing.** [[feeMarket]] carries three figures a derivation reads; this
   *   carries none, and there is nothing a network could set differently. What
-  *   the root must BE is a function of the block's body and is produced where
-  *   the body is -- `org.fukuii.execution.BlockOutput.withdrawalsRoot` -- so
-  *   this member answers presence and never value.
+  *   the root must BE is a function of the block's body and is derived from the
+  *   body -- `org.fukuii.execution.Withdrawals.root`, which
+  *   `org.fukuii.consensus.BlockValidator` compares with the header's -- so this
+  *   member answers presence and never value.
   *
   *   **Both directions are rules**, as with [[feeMarket]]: a header below the
   *   proposal carrying a root is invalid exactly as one at or above it carrying
@@ -304,8 +305,8 @@ enum HeaderConstants:
   *
   *   **What the root must BE is not derivable here or anywhere in this client.**
   *   Every other commitment a header states is a function of the block --
-  *   [[carriesWithdrawalsRoot]]'s is produced by
-  *   `org.fukuii.execution.BlockOutput.withdrawalsRoot` -- and this one is a
+  *   [[carriesWithdrawalsRoot]]'s is derived from the body by
+  *   `org.fukuii.execution.Withdrawals.root` -- and this one is a
   *   value handed in from the consensus layer, which is what makes it the one
   *   header field this layer can check the presence of and never the content
   *   of.

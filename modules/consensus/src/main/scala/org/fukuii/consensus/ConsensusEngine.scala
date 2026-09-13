@@ -3,9 +3,10 @@ package org.fukuii.consensus
 import scala.annotation.unused
 
 import org.fukuii.bytes.Address
-import org.fukuii.chainspec.{ConsensusRules, UpgradeRules}
+import org.fukuii.chainspec.{ConsensusRules, HeaderConstants, UpgradeRules}
 import org.fukuii.evm.{Word, WorldState}
-import org.fukuii.types.BlockHeader
+import org.fukuii.execution.Withdrawals
+import org.fukuii.types.{BlockHeader, Withdrawal}
 
 /** The consensus mechanism a network runs, as a transformation over the rules a
   * fork resolved and a change to state the block's transactions did not make.
@@ -30,8 +31,8 @@ import org.fukuii.types.BlockHeader
   * an [[org.fukuii.chainspec.UpgradeRules]], which is a record of values --
   * rather than the transformation.
   *
-  * ==Both members default to contributing nothing, and that is the field's
-  * design rather than a convenience==
+  * ==The transformation defaults to contributing nothing, and that is the
+  * field's design rather than a convenience==
   *
   * nethermind's interface supplies a default no-op body for
   * `ApplyToReleaseSpec`, and besu's `getModifierForBlock` answers the identity
@@ -42,11 +43,21 @@ import org.fukuii.types.BlockHeader
   * nothing to write: a slot that is sometimes absent and sometimes empty
   * collapses two states a chain distinguishes.
   *
+  * **Every other member defaults to what the networks this build serves run,
+  * not to nothing**, because each is a rule a block breaks or a change it makes
+  * on those networks: [[settlement]] credits the resolved reward,
+  * [[validateHeader]] bounds the extra data, and [[processWithdrawals]] credits
+  * each withdrawal. A mechanism answering differently overrides the member,
+  * which is how the field reaches each -- see each member for its evidence.
+  *
   * ==What this does not yet carry, and what brings each==
   *
   * A difficulty rule, a seal rule and an ommer ruleset are all engine-shaped on
-  * the evidence and none is here, because nothing reads one. Each arrives with
-  * the layer that validates the thing it governs.
+  * the evidence. **The first two have a place already**: each is a rule over a
+  * header, so an engine whose mechanism states one either runs it in an
+  * override of [[validateHeader]] or names it there as an [[EngineRule]] it did
+  * not run, and [[BlockValidator]] reads both answers. An ommer ruleset arrives
+  * with the layer that validates a body's ommers.
   *
   * The transformation is also resolved ONCE here rather than per activation,
   * and the field resolves it per activation: nethermind passes
@@ -150,6 +161,181 @@ trait ConsensusEngine:
   ): WorldState => Unit =
     world => credit(world, rules, beneficiary, rules.blockReward.toBigInt)
 
+  /** The header rules this mechanism settles, checked against the header's
+    * parent after the rules every mechanism shares, and the ones among them
+    * this engine did not run.
+    *
+    * ==Three answers, and a refusal outranks both of the others==
+    *
+    * A `Left` is a rule this engine ran refusing the header. A `Right` is every
+    * rule it ran accepting the header, together with the rules its mechanism
+    * states that it did not run -- empty where it ran them all. So a rule left
+    * unrun can only ever be reported beside a header nothing that did run
+    * refused, and [[BlockValidator]] answers a non-empty set as undecided once
+    * the block has run and every comparison over it has accepted it.
+    *
+    * ==A rule may be left unrun only where execution does not read it==
+    *
+    * Deciding it last is sound only because nothing before it depends on the
+    * rule's outcome, so **an engine names as unrun only a rule execution does not
+    * read, and runs -- or refuses on -- any rule execution does read, here.**
+    * An ethash block's execution reads the difficulty the header states and the
+    * outcome of neither rule. A Clique block's is different: its coinbase is its
+    * author, and its author is recovered from its seal --
+    * `ethereum/go-ethereum` @ `02872e9ef` fills the machine's beneficiary from
+    * `Engine().Author(header)` (`core/evm.go:53`) and Clique answers that with
+    * `ecrecover` over the seal (`consensus/clique/clique.go:205-206`).
+    *
+    * **The unrun rules are an answer rather than something a caller chose,
+    * which is not how the field expresses a skip.** The clients read that check
+    * a seal make skipping it an input, and none answers with the skip.
+    * `ethereum/go-ethereum-pow` @ `v1.10.26` takes
+    * `VerifyHeader(chain, header, seal bool)` (`consensus/consensus.go:71`), and
+    * its snap sync asks for a seal on one header in each hundred until a batch
+    * nears its pivot (`eth/downloader/downloader.go:1371-1373`,
+    * `core/headerchain.go:333-343`). `besu-eth/besu-etc` @ `eb4248c997` leaves
+    * its proof-of-work rule out of light validation
+    * (`ProofOfWorkValidationRule.java:136-139`), which its fast sync picks for a
+    * header unless a random draw falls under a full-validation rate of a tenth
+    * by default (`FastSyncValidationPolicy.java:40-45`,
+    * `SynchronizerConfiguration.java:32`). `NethermindEth/nethermind` @
+    * `3a98e0818` hands its seal validator a `force` flag and documents the
+    * result as *"True if seal is valid or was not checked"*
+    * (`Nethermind.Consensus/ISealValidator.cs:17-19`). A caller that chose the
+    * input knows what was skipped; a verdict read afterwards cannot, and that
+    * last answer is exactly one [[BlockVerdict.Valid]] must never give. The
+    * specification skips neither rule: `ethereum/execution-specs` @
+    * `0cc100eb1` computes a difficulty and calls `validate_proof_of_work` on
+    * every header it validates (`forks/frontier/fork.py:256,269`).
+    *
+    * **A chain that declares no proof of work -- a fixture sealed without proof,
+    * a development network -- is a configuration whose engine states no seal
+    * rule**, and the field configures it the same way rather than through a
+    * verdict claiming a seal ran. `ethereum/go-ethereum-pow` @ `v1.10.26` builds
+    * `NewFaker`, *"a ethash consensus engine with a fake PoW scheme that accepts
+    * all blocks' seal as valid, though they still have to conform to the
+    * Ethereum consensus rules"* (`consensus/ethash/ethash.go:498-506`).
+    * `NethermindEth/nethermind` @ `3a98e0818` registers `NullSealEngine`, which
+    * answers both its difficulty and its seal check with `true`, as the seal
+    * validator a chain has until a mechanism replaces it
+    * (`Nethermind.Init/Modules/BlockProcessingModule.cs:120-121`,
+    * `Nethermind.Consensus/NullSealEngine.cs:25-27`). `besu-eth/besu` @
+    * `b330564a94` makes the skip a validation mode instead: three light modes
+    * each documented *"Skip proof of work validation"*, and `NONE`, *"No
+    * Validation. data must be pre-validated"*
+    * (`ethereum/core/.../mainnet/HeaderValidationMode.java:18-28`). A node
+    * holding the cache for a header's epoch is the other end of the same
+    * choice: its engine runs the seal rule rather than naming it.
+    *
+    * ==An override starts from this answer rather than replacing it==
+    *
+    * An engine overriding this calls `super.validateHeader`, then removes from
+    * the rules it names each one it runs itself and adds any further rule its
+    * mechanism states and it does not run -- unless its mechanism states a
+    * different rule for extra data, as Clique's structure and QBFT's validator
+    * list do, below. An override that drops the call drops the bound, and
+    * nothing reports it; one that runs a rule and leaves it named answers every
+    * block it accepts as undecided.
+    *
+    * ==On the seam because the field puts the extra-data rule on the engine==
+    *
+    * `ethereum/go-ethereum` @ `02872e9ef` checks it inside each engine's own
+    * header verification -- `consensus/beacon/consensus.go:213` bounds it at 32
+    * bytes, while `consensus/clique/clique.go:261-275` requires a 32-byte vanity
+    * and a 65-byte seal, with a signer list between them on checkpoint blocks,
+    * which no 32-byte bound admits. `besu-eth/besu` @ `b330564a94` wires one rule
+    * into its mainnet and merge header rules, another into Clique's, and no
+    * length bound into QBFT's (`QbftBlockHeaderValidationRulesetFactory.java:59-73`),
+    * whose extra data carries its validators and commit seals. `paradigmxyz/reth` @ `e63ec720ac`
+    * holds the bound as a field of its consensus engine, `max_extra_data_size`
+    * (`crates/ethereum/consensus/src/lib.rs:48,209`). So the bound is not a
+    * constant of the rules a fork resolves, which
+    * [[org.fukuii.chainspec.UpgradeRules]] already records from the other side.
+    *
+    * ==Run after the shared rules, and the order is a precondition==
+    *
+    * [[BlockValidator]] reaches this only once [[HeaderValidator]] has accepted
+    * the pair, so an override may take succession and the gas figures as
+    * settled. A difficulty formula depends on that: it measures the gap since
+    * the parent's timestamp and is not defined over a header that does not come
+    * after its parent.
+    *
+    * ==This default names both rules wherever the constants fix neither==
+    *
+    * Under EIP-3675's header constants neither rule has anything to check: the
+    * difficulty and the seal's nonce are fixed values [[HeaderValidator]]
+    * already compares, and the seal's other slot holds no proof. So the default
+    * names nothing there.
+    *
+    * **Under constants that fix nothing it names both**, for the extra-data
+    * bound's reason: every mechanism read that leaves the constants unfixed
+    * states a difficulty rule and a seal rule of its own, so a block validated
+    * here was paired with none of them, and answering undecided keeps that
+    * visible where answering valid would hide it. Ethash is one; the others
+    * read are Clique -- `ethereum/go-ethereum` @ `02872e9ef` refuses a signer
+    * outside its snapshot and a difficulty not matching its turn
+    * (`consensus/clique/clique.go:472-502`), `besu-eth/besu` @ `b330564a94` adds
+    * a `CliqueDifficultyValidationRule` and a `CliqueExtraDataValidationRule`
+    * that refuses a proposer, recovered from the seal, outside the validators
+    * (`consensus/clique/.../BlockHeaderValidationRulesetFactory.java:103-104`,
+    * `CliqueExtraDataValidationRule.java:87-91`), and `NethermindEth/nethermind`
+    * @ `3a98e0818` checks both in `CliqueSealValidator.ValidateParams`
+    * (`:21-51`); authority round, whose difficulty nethermind derives from the
+    * step and whose seal it recovers against the beneficiary
+    * (`AuRaSealValidator.cs:124-133,141-164`); and QBFT and IBFT2, which besu
+    * gives a constant difficulty and a commit-seal rule
+    * (`QbftBlockHeaderValidationRulesetFactory.java:70,73`,
+    * `IbftBlockHeaderValidationRulesetFactory.java:71,75`). **The falsifier tried
+    * was a chain configured without proof**, and each such configuration read
+    * is an engine or a validation mode stating no seal rule, which is what an
+    * engine here overrides this to say. Mechanisms outside the families those
+    * clients serve were not read.
+    *
+    * @param parent
+    *   unread by this default, which applies a bound to the header alone, and
+    *   read by any mechanism whose rule is stated against a parent.
+    */
+  def validateHeader(block: Resolved, @unused parent: Resolved): Either[HeaderFault, Set[EngineRule]] =
+    val length = block.header.extraData.length
+    if length > ConsensusEngine.MaximumExtraDataSize then
+      Left(HeaderFault.ExtraDataAboveLimit(length, ConsensusEngine.MaximumExtraDataSize))
+    else
+      block.rules.header.constants match
+        case HeaderConstants.Unconstrained => Right(Set(EngineRule.Difficulty, EngineRule.Seal))
+        case HeaderConstants.Eip3675       => Right(Set.empty)
+
+  /** What this mechanism writes into state for the withdrawals a block's body
+    * carries.
+    *
+    * ==On the seam because one network family processes them another way==
+    *
+    * The default is EIP-4895's, a balance credit per withdrawal, which is
+    * [[org.fukuii.execution.Withdrawals.credit]]. Gnosis credits no balance:
+    * `gnosischain/specs` @ `045d46d6d` `execution/withdrawals.md` has the block
+    * make one system call to a withdrawal contract instead, and states that *"If
+    * the transaction reverts, or runs out of the gas, the entire block **MUST** be
+    * considered invalid."*
+    * `NethermindEth/nethermind` @ `3a98e0818` supplies that as its own
+    * `AuraWithdrawalProcessor` (`Nethermind.Merge.AuRa/Withdrawals/AuraWithdrawalProcessor.cs:33-65`),
+    * and `erigontech/erigon` @ `ab8e9fde7` branches on the engine to reach it
+    * (`execution/protocol/rules/merge/merge.go:184-197`). So a validator that
+    * credited the withdrawals itself would state one family's rule for every
+    * family.
+    *
+    * **What that network needs beyond an override is not here.** A change to
+    * state has nowhere to put the refusal its specification requires, and
+    * [[org.fukuii.execution.SystemCall.Target]] names no network-configured
+    * contract; both arrive with that engine.
+    *
+    * @param withdrawals
+    *   the list the body carries, which may be empty. [[BlockValidator]] does not
+    *   ask at all where the body carries no such field, and the distinction is one
+    *   both clients above branch on: nethermind skips the contract call only where
+    *   `block.Withdrawals is null`, and erigon only where `withdrawals == nil`.
+    */
+  def processWithdrawals(withdrawals: Seq[Withdrawal], destroyAccount: Address => Unit): WorldState => Unit =
+    world => Withdrawals.credit(withdrawals, world, destroyAccount)
+
   /** Adds `amount` to what `to` already holds, bringing the account into being
     * where none existed -- unless the amount is nothing and this network does
     * not bring an account into being for a credit of nothing.
@@ -216,7 +402,46 @@ trait ConsensusEngine:
         )
       world.setBalance(to, Word(credited))
 
+/** A header rule a consensus mechanism states, named where an engine did not
+  * run it.
+  *
+  * ==Named after the rules the field already separates==
+  *
+  * Every client read keeps these two apart. `ethereum/go-ethereum-pow` @
+  * `v1.10.26` refuses a wrong difficulty and a wrong seal at different points of
+  * one method, the second only when asked (`consensus/ethash/consensus.go:282-287`,
+  * `:314-318`); `NethermindEth/nethermind` @ `3a98e0818` gives its seal
+  * validator `ValidateParams` and `ValidateSeal`; `ethereum/execution-specs` @
+  * `0cc100eb1` calls `calculate_block_difficulty` and `validate_proof_of_work`
+  * separately. **Neither name is proof-of-work vocabulary**: `ethereum/go-ethereum`
+  * @ `02872e9ef` refuses a Clique header's difficulty as `errWrongDifficulty`
+  * and checks its seal in `verifySeal` (`consensus/clique/clique.go:121,472`),
+  * and nethermind's `AuRaSealValidator` compares an authority-round header's
+  * difficulty with the one its step requires in `ValidateParams` and checks
+  * the seal in `ValidateSeal` (`Nethermind.Consensus.AuRa/AuRaSealValidator.cs:124-133,141`).
+  */
+enum EngineRule:
+
+  /** The difficulty the header states, against the one its parent requires. */
+  case Difficulty
+
+  /** The seal the header carries, against what the mechanism accepts as one. */
+  case Seal
+
 object ConsensusEngine:
+
+  /** The most extra data a header carries under the mechanisms whose bound is a
+    * length.
+    *
+    * 32 bytes. `ethereum/execution-specs` @ `0cc100eb1` writes
+    * `len(header.extra_data) > 32` in every one of its 24 fork modules,
+    * `ethereum/go-ethereum-pow` @ `v1.10.26` declares `MaximumExtraDataSize
+    * uint64 = 32` (`params/protocol_params.go:27`), and `besu-eth/besu` @
+    * `b330564a94` declares `MAX_EXTRA_DATA_BYTES = 32`
+    * (`ethereum/core/.../core/BlockHeader.java:37`). A header of exactly this
+    * length is accepted: every one of the three refuses on `>`.
+    */
+  val MaximumExtraDataSize: Int = 32
 
   /** An engine that contributes nothing of its own to the rules it is handed.
     *

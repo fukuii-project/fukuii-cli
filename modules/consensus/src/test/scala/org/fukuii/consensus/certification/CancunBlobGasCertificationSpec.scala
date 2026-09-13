@@ -59,11 +59,11 @@ import org.scalatest.flatspec.AnyFlatSpec
   * comparison reads no result: `org.fukuii.evm.BlobGas.spentBy` is a length
   * times a constant, so the body settles it and nothing has to run.
   *
-  * **So what this tier still defers is a PLACE rather than a capability.** The
-  * comparison has no production home because no layer here holds a header and a
-  * body together; a caller does it, exactly as a caller compares a withdrawals
-  * root today. The block-execution tier will own it, and will find the figure
-  * already derived.
+  * **So what the comparison needs is a PLACE rather than a capability, and
+  * [[org.fukuii.consensus.BlockValidator]] is that place.** It holds a header and
+  * a body together and compares the two before running the block, refusing a
+  * disagreement as `BlockFault.BlobGasUsedMismatch`. This spec makes the same
+  * comparison directly, over each published header and body.
   *
   * ==The corpus cannot tell the two header bounds apart, which is why two
   * controls below are constructed==
@@ -364,11 +364,9 @@ class CancunBlobGasCertificationSpec extends AnyFlatSpec:
     * transaction states, so a block's spend is decided by its body and needs no
     * execution at all.
     *
-    * That is what makes this tier possible before a block-execution tier
-    * exists. What is still deferred is not the FIGURE but the comparison's
-    * production home: this build has no layer that holds a header and a body
-    * together, so a caller does what this spec does -- exactly as a caller
-    * compares `withdrawalsRoot` and `gasUsed` today.
+    * That is what lets this tier decide a spend without a block-execution tier.
+    * [[org.fukuii.consensus.BlockValidator]] makes the same comparison over the
+    * same sum before it runs a block, which is the comparison's production home.
     */
   private def carriedBy(body: Vector[Transaction]): BigInt = body.map(BlobGas.spentBy).sum
 

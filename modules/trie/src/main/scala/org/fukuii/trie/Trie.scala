@@ -114,10 +114,10 @@ object Trie:
     * on `rlp.encode(Uint(i))` (`forks/shanghai/fork.py:644` is the withdrawals
     * one).
     *
-    * **So this is deliberately not a withdrawals function.** Two of its three
-    * consumers do not exist here yet, and writing it beside the one that does
-    * would guarantee a second derivation when they land -- which is a
-    * disagreement between two commitments in one header, and a chain split
+    * **So this is deliberately not a withdrawals function.** All three
+    * commitments are derived through it, and a derivation written beside any one
+    * of its consumers would be a second one, free to disagree with this -- a
+    * disagreement between two commitments in one header, which is a chain split
     * rather than a duplicate.
     *
     * ==The values arrive encoded, so this stays ignorant of what it commits

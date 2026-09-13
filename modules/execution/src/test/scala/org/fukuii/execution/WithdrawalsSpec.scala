@@ -230,16 +230,16 @@ class WithdrawalsSpec extends AnyFlatSpec:
       "a commitment over one list does not match another"
     )
 
-  it should "disagree with a block that produced none" in
-    // The presence half of the same comparison, which is what catches a body
-    // carrying withdrawals at a height whose headers state no root: the option
-    // settles presence and value in one step.
+  it should "disagree with a body carrying no list" in
+    // The presence half, where a body derives no root at all. A header's root
+    // cannot equal an absent one, and `org.fukuii.consensus.BlockValidator`
+    // refuses that pair as a fault of its own before any value is compared.
     assert(
       headerCommittingTo(Some(Withdrawals.root(Seq.empty))).withdrawalsRoot != Option.empty[Hash],
       "the empty commitment is not the absence of one"
     )
 
-  "a header holding no commitment" should "disagree with a block that produced one" in
+  "a header holding no commitment" should "disagree with a body carrying a list" in
     assert(
       headerCommittingTo(None).withdrawalsRoot != Some(Withdrawals.root(Seq.empty)),
       "a header that omits the field cannot match a block whose body carried a list"

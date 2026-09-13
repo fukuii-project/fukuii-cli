@@ -42,6 +42,26 @@ enum HeaderFault:
   /** A block claiming to have used more gas than it allowed itself. */
   case GasUsedAboveLimit(used: BigInt, limit: BigInt)
 
+  /** A block whose extra data is longer than its consensus mechanism allows.
+    *
+    * ==A header fault that [[HeaderValidator]] never reports==
+    *
+    * The bound is the mechanism's, so [[ConsensusEngine.validateHeader]] is what
+    * checks it and this is only the vocabulary it reports in. The clients read
+    * for it vary the rule by engine rather than by fork: `besu-eth/besu` @
+    * `b330564a94` wires `ExtraDataMaxLengthValidationRule(BlockHeader.MAX_EXTRA_DATA_BYTES)`
+    * into its mainnet and merge header rules and a `CliqueExtraDataValidationRule`
+    * into Clique's, and among the chain specifications `NethermindEth/nethermind`
+    * @ `3a98e0818` ships in `src/Nethermind/Chains/`, each of the four Clique
+    * ones states a `maximumExtraDataSize` of `0xffff` and each ethash and
+    * authority-round one `0x20`. That is a reading of what ships: a test
+    * specification elsewhere in the same tree states `0xffff` under ethash.
+    *
+    * The limit is carried beside the length because a length alone does not say
+    * which engine refused it.
+    */
+  case ExtraDataAboveLimit(length: Int, limit: Int)
+
   /** A block no later than the one it builds on. */
   case TimestampNotAfterParent(stated: BigInt, parent: BigInt)
 
@@ -232,12 +252,13 @@ final case class Resolved(header: BlockHeader, rules: UpgradeRules)
   * Verifying a difficulty means running a targeting formula over a parent;
   * verifying a seal means hashing a header against an epoch-scoped cache
   * measured in tens of megabytes; verifying ommers means holding a body and
-  * several ancestors. Each is engine-shaped on the evidence, and
-  * [[ConsensusEngine]] already records that each *"arrives with the layer that
-  * validates the thing it governs"*. **None of the three happens here.** The
-  * shape admits them: each is a further rule over the same two headers, and the
-  * seal in particular wants to be a collaborator rather than a member, so that a
-  * header-only pass never has to hold that cache.
+  * several ancestors. Each is engine-shaped on the evidence, and **none of the
+  * three happens here.** A difficulty rule and a seal rule are the block's own
+  * mechanism's: [[ConsensusEngine.validateHeader]] runs one or names it as an
+  * [[EngineRule]] it did not run, so a header-only pass here never holds a
+  * seal's cache. Ommer validation is built nowhere yet, and
+  * [[BlockValidator]] answers a block whose body carries ommers as undecided
+  * before it runs, wherever no earlier comparison refuses it.
   *
   * **What EIP-3675 adds is not verification of any of the three but the removal
   * of it, replaced by a comparison against a constant** -- *"Remove verification
@@ -307,16 +328,15 @@ final case class Resolved(header: BlockHeader, rules: UpgradeRules)
   * evidence [[org.fukuii.chainspec.UpgradeRules]] already refused the extra-data
   * cap on.
   *
-  * ==This is not a block validator, and the boundary is already drawn==
+  * ==This is not a block validator, and [[BlockValidator]] is==
   *
-  * `org.fukuii.execution.BlockProcessor` states it: everything that makes a
-  * block invalid *"its header, its seal, its ommers, its commitments -- is
-  * decided by layers this project has not built, and each will have its own
-  * reasons rather than more cases here."* Four concerns, and this is one. In
-  * particular nothing here compares a commitment: a state root, a receipts root
-  * or a gas-used figure is checked against what execution PRODUCED, which needs
-  * an executed block and would make this a block validator rather than a header
-  * one.
+  * [[BlockValidator]] runs this once the block names its parent, and ahead of
+  * the block's own mechanism's header rules, the body's commitments and the
+  * block itself, refusing under a [[BlockFault]] of its own for each. In
+  * particular nothing here compares a commitment: a state root, a receipts
+  * root or a gas-used figure is checked against what execution PRODUCED, which
+  * needs an executed block and would make this a block validator rather than a
+  * header one.
   */
 object HeaderValidator:
 
@@ -420,14 +440,12 @@ object HeaderValidator:
     *
     * **What the root must BE is not asked here, and this is the boundary this
     * object already draws rather than a new one.** That comparison needs the
-    * block's withdrawals, so it is a commitment in exactly the sense the state
-    * root, the receipts root and the gas figure are: checked against what
-    * execution produced, by a caller holding a body.
-    * `org.fukuii.execution.BlockOutput.withdrawalsRoot` is the value it is
-    * compared against, and because that value is itself an option over a hash,
-    * one comparison settles the value and re-settles the presence -- so a
-    * caller that has run the block is not relying on this check, and a node that
-    * has only a header is not left without one.
+    * block's withdrawals, so it belongs to a caller holding a body:
+    * [[BlockValidator]] derives the root from the body's own list and compares
+    * it, and refuses a body whose list is present where the header commits to
+    * none or absent where it commits to one. So a caller that has validated the
+    * block is not relying on this check, and a node that has only a header is
+    * not left without one.
     */
   private def checkWithdrawalsRoot(block: Resolved): Either[HeaderFault, Unit] =
     (block.rules.header.carriesWithdrawalsRoot, block.header.withdrawalsRoot) match
@@ -518,8 +536,9 @@ object HeaderValidator:
     * figure are compared against what execution PRODUCED, while a blob spend is
     * a count of the commitments each transaction states --
     * `org.fukuii.evm.BlobGas.spentBy` is the whole derivation and it reads no
-    * result. So what this one waits for is a layer holding a header and a BODY
-    * together, which is a weaker thing to wait for and a different one.
+    * result. So what it needs is a layer holding a header and a BODY together,
+    * which is a weaker thing than an executed block and a different one --
+    * [[BlockValidator]] is that layer, and compares it before running anything.
     *
     * `CancunBlobGasCertificationSpec` measures it rather than asserting it: the
     * forty-two blocks in this corpus that no bound above reaches are each

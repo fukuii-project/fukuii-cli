@@ -713,23 +713,33 @@ lazy val chainspec = (project in file("modules/chainspec"))
 //   chainspec
 //           the resolved rule set the transformation is over, and the facet
 //           the reward application reads
+//   crypto  the empty-ommers commitment is a Keccak-256 digest, and a body's
+//           ommers are compared with their header's commitment the same way
 //   evm     a change to state is written through `WorldState`, and the balance
 //           it writes is the machine's word at that boundary
+//   execution
+//           the block validator runs `BlockProcessor.process` and compares the
+//           `BlockOutput` it returns, and a withdrawal's default effect is
+//           `Withdrawals.credit`
+//   rlp     the ommers commitment is taken over the list's encoding
+//   trie    a block's transactions and receipts roots are indexed-trie roots
 //   types   the seam names a block header, because the ommers a mechanism is
 //           handed arrive as headers in every surveyed client and the two
 //           facts an emission reads off one are read straight off the header
 //           there
 //
-// `execution` is reached transitively through chainspec and is not named: what
-// this module produces is the function `BlockProcessor.process` already takes,
-// and producing it names no type from that module.
+// Every edge but chainspec is reached transitively as well -- chainspec takes
+// execution and evm, and evm takes bytes, rlp, crypto, types and trie -- and
+// each is named anyway, because this module's own sources import it, and an
+// edge left implicit is one a later change to chainspec or evm can remove
+// without anything here noticing until it fails to compile.
 //
 // The `test->test` half of the evm edge, for the reason execution and chainspec
 // both declare the same edge: what a reward test must observe is whether an
 // account came into being, and the world-state double that answers it lives in
 // evm's test tree beside the machine it was written for.
 lazy val consensus = (project in file("modules/consensus"))
-  .dependsOn(bytes, rlp, types, chainspec, evm % "compile->compile;test->test")
+  .dependsOn(bytes, rlp, crypto, types, trie, execution, chainspec, evm % "compile->compile;test->test")
   .settings(
     name := "fukuii-consensus",
     libraryDependencies ++= testDeps
