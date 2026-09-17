@@ -118,6 +118,12 @@ object BlockBody:
 
 object Block:
 
+  /** A block is its header plus the body's elements, so its arity is the
+    * body's plus one.
+    */
+  val MandatoryFields: Int = BlockBody.MandatoryFields + 1
+  val WithWithdrawalsFields: Int = BlockBody.WithWithdrawalsFields + 1
+
   /** `[header, transactions, ommers]`, then the withdrawals list if the fork
     * has one.
     *
@@ -126,12 +132,6 @@ object Block:
     * element would produce a well-formed list that is not the block encoding
     * the specification defines, and a block hash that matches nothing.
     */
-  /** A block is its header plus the body's elements, so its arity is the
-    * body's plus one.
-    */
-  val MandatoryFields: Int = BlockBody.MandatoryFields + 1
-  val WithWithdrawalsFields: Int = BlockBody.WithWithdrawalsFields + 1
-
   given blockCodec: RlpCodec[Block] with
 
     def encode(value: Block): RlpItem =

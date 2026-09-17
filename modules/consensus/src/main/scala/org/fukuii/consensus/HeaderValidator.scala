@@ -457,8 +457,8 @@ object HeaderValidator:
     * and it resolves to rules with one. A height here would encode one
     * activation axis and duplicate a fact
     * [[org.fukuii.chainspec.UpgradeSchedule]] already owns.
-    */
-  /** ==The order differs from the specification's, and it costs a reason==
+    *
+    * ==The order differs from the specification's, and it costs a reason==
     *
     * `ethereum/execution-specs` @ `20f7f6271a` `forks/london/fork.py`'s
     * `validate_header` runs the gas figure, then the charge, then succession.
@@ -595,7 +595,9 @@ object HeaderValidator:
     * always a whole number of blobs, and the per-transaction guard above bounds
     * it by the maximum. A header failing either bound therefore cannot equal the
     * total the specification computes for ANY body, so refusing it here refuses
-    * a strict subset of what `:241` refuses -- earlier, and without one.
+    * a strict subset of what the specification refuses -- at the per-transaction
+    * guard for a body whose blobs exceed the maximum, which never reaches `:241`,
+    * and at `:241` for any other -- earlier, and without one.
     * **That is what makes this an earlier refusal and not a stricter rule**: no
     * block the specification accepts is refused by either bound.
     *

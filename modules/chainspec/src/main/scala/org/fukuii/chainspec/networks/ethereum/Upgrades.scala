@@ -274,9 +274,10 @@ object Upgrades:
     * puts it here.** One mechanism runs every height the specification models
     * before the merge, and the amount changes twice under it -- to three ether
     * at Byzantium and to two at Constantinople, both in the same
-    * `BLOCK_REWARD` slot of the corresponding fork module. Neither of those
-    * heights is in this build, so all three rule sets here pay the launch
-    * amount.
+    * `BLOCK_REWARD` slot of the corresponding fork module. This build adopts
+    * each change where its fork does -- [[byzantium]] through `Eip649` and
+    * [[constantinople]] through `Eip1234` -- so every rule set before Byzantium
+    * pays the launch amount.
     *
     * A reward of zero credits the beneficiary, which is unobservable at five
     * ether and is stated because it is the value the field states. besu writes

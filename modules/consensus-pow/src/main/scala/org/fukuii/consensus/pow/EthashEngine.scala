@@ -22,6 +22,14 @@ import org.fukuii.types.{BlockHeader, Seal}
   * difficulty rule run on it, and a seal no declaration exempts is never
   * answered valid.
   *
+  * ==The seal itself is verified where a caller holds its epoch's cache==
+  *
+  * [[epochOf]] and [[cacheFor]] give the epoch a header falls in and the cache
+  * it is checked against, [[sealHash]] the digest a nonce is sought against, and
+  * [[verifySeal]] the check itself. Header validation here holds no cache, which
+  * is why [[validateHeader]] names the seal rule as not run rather than running
+  * it.
+  *
   * ==One engine and one parameter, which is how two of the three lineages ship
   * it==
   *
