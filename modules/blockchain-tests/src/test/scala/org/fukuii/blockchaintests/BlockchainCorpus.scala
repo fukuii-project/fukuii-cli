@@ -266,6 +266,15 @@ object BlockchainCorpus:
     * group of 7,040 cases and each earlier label's group of 64 alike, since the
     * rule is about what a corpus is rather than what it costs.
     *
+    * **The state tier applies that rule to its bulk, and draws the line
+    * differently for the rest**: its per-fork censuses read each label's two
+    * stack-overflow files with everything else, and it keeps three `for_cancun`
+    * `ported_static` subdirectories in the ordinary run for coverage-matrix rows.
+    * This tier applies the rule as written. For the groups of 64, nothing moved
+    * out goes uncovered, as below; for `for_cancun`'s group, which the ordinary
+    * run never read, whether it covers every rule that group exercises is
+    * unmeasured.
+    *
     * **Each group of 64 is the suite's two stack-overflow files**, and each of
     * those labels also carries the generated corpus's own stack-overflow files,
     * which the ordinary run still reads. So a regression in that rule still fails

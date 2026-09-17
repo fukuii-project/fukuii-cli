@@ -44,17 +44,22 @@ enum FillingTool:
     */
   case ExecutionSpecs
 
-  /** retesteth's names, as the `Cancun` snapshot states them. Its cases name
-    * `retesteth-0.3.3-discontinued+commit.f30e58c2` as their filling tool, over
-    * evmone's transition tool.
+  /** retesteth's names, as the `Cancun` snapshot's `bcInvalidHeaderTest` states
+    * them: every case there names `retesteth-0.3.3-discontinued+commit.f30e58c2`
+    * as its filling tool, over evmone's transition tool.
+    *
+    * **The filling tool varies by case, even within one directory**: that
+    * snapshot's `bcEIP1559` alone holds three retesteth builds over go-ethereum's
+    * `evm`. So a label reads its own cases' `_info` before it takes this table.
     */
   case Retesteth
 
-  /** testeth's names, as the `Constantinople` snapshot states them: aleth's own
-    * exception names. Its cases name `testeth 1.8.0-alpha.0-12+commit.b120a12c`
-    * as what filled them, which predates retesteth's first definition of every
-    * name that snapshot states -- the earliest is `ethereum/retesteth` @
-    * `4959163f` (2019-12-16), against aleth's `b120a12c6` (2019-10-28).
+  /** testeth's names, as the `Constantinople` snapshot's `bcInvalidHeaderTest`
+    * states them: aleth's own exception names. Every case there names
+    * `testeth 1.8.0-alpha.0-12+commit.b120a12c` as what filled it, which predates
+    * retesteth's first definition of every name that directory states -- the
+    * earliest is `ethereum/retesteth` @ `4959163f` (2019-12-16), against aleth's
+    * `b120a12c6` (2019-10-28). Other cases in the snapshot name other builds.
     */
   case Testeth
 

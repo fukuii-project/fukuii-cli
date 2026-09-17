@@ -290,8 +290,9 @@ object BlockchainFixture:
     * The generated tier and `ethereum/legacytests`' `Cancun` snapshot key a
     * refusal `expectException`. The `Constantinople` snapshot keys it
     * `expectExceptionALL`, or `expectException` followed by a network's name,
-    * one key per network the file's cases run -- which is how the tool that
-    * filled it reads the pair, taking the key for its own network or the one for
+    * one key per network the file's cases run -- which is how testeth, the tool
+    * that filled its `bcInvalidHeaderTest`, reads the pair, taking the key for its
+    * own network or the one for
     * all of them (`ethereum/aleth` @ `b120a12c6`,
     * `test/tools/jsontests/BlockChainTests.cpp:950-959`). So a block states a
     * refusal for this case where one of those three names it, and the keys for
