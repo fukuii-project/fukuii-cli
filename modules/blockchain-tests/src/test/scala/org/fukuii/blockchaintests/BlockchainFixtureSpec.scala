@@ -1,6 +1,6 @@
 package org.fukuii.blockchaintests
 
-import io.circe.Json
+import io.circe.{Json, JsonObject}
 import org.scalatest.flatspec.AnyFlatSpec
 
 import org.fukuii.bytes.{Hash, UInt64}
@@ -43,6 +43,20 @@ class BlockchainFixtureSpec extends AnyFlatSpec:
   private def refusal(json: Json, stated: String): Json =
     withBlock(json, 0)(_.mapObject(_.add("expectException", Json.fromString(stated))))
 
+  /** The BLOCKHASH case with `edit` applied to its `config` object. */
+  private def withConfig(edit: JsonObject => JsonObject): Json =
+    published(PublishedParisCases.BlockHashCase).mapObject(obj =>
+      obj.add("config", obj("config").fold(Json.obj())(_.mapObject(edit)))
+    )
+
+  /** A blob schedule's entry as the published `for_cancun` cases state it. */
+  private val cancunEntry: Json =
+    Json.obj(
+      "target" -> Json.fromString("0x03"),
+      "max" -> Json.fromString("0x06"),
+      "baseFeeUpdateFraction" -> Json.fromString("0x32f0ed")
+    )
+
   "decodeFile" should "read every case the published resource holds and leave none undecodable" in
     assert(
       PublishedParisCases.text
@@ -75,19 +89,40 @@ class BlockchainFixtureSpec extends AnyFlatSpec:
   it should "read the network and chain id a case's config states, and name no other key" in {
     val config = decoded(PublishedParisCases.BlockHashCase, published(PublishedParisCases.BlockHashCase)).config
     assert(
-      config == Some(StatedConfig(Some("Paris"), Some(UInt64.fromBits(1L)), Vector.empty)),
+      config == Some(StatedConfig(Some("Paris"), Some(UInt64.fromBits(1L)), None, Vector.empty)),
       "the published config states exactly a network and a chain id: " + config.toString
     )
   }
 
-  it should "name every config key beside the two it reads" in {
-    val scheduled = published(PublishedParisCases.BlockHashCase).mapObject(obj =>
-      obj.add("config", obj("config").fold(Json.obj())(_.mapObject(_.add("blobSchedule", Json.obj()))))
-    )
-    val otherKeys = decoded("scheduled", scheduled).config.map(_.otherKeys)
+  it should "name every config key beside the three it reads" in {
+    val otherKeys = decoded("keyed", withConfig(_.add("NOT_A_PUBLISHED_KEY", Json.obj()))).config.map(_.otherKeys)
     assert(
-      otherKeys == Some(Vector("blobSchedule")),
+      otherKeys == Some(Vector("NOT_A_PUBLISHED_KEY")),
       "a key no comparison reads must reach the runner by name: " + otherKeys.toString
+    )
+  }
+
+  it should "read each fork's entry of a blob schedule, as the published entry states it" in {
+    val schedule =
+      decoded("scheduled", withConfig(_.add("blobSchedule", Json.obj("Cancun" -> cancunEntry)))).config
+        .flatMap(_.blobSchedule)
+    assert(
+      schedule == Some(
+        Map("Cancun" -> StatedBlobEntry(Some(BigInt(3)), Some(BigInt(6)), Some(BigInt(3338477)), Vector.empty))
+      ),
+      "the three members a published entry states, as quantities: " + schedule.toString
+    )
+  }
+
+  it should "name every key inside a blob schedule's entry beside the three it reads" in {
+    val extended = cancunEntry.mapObject(_.add("NOT_A_PUBLISHED_KEY", Json.fromString("0x01")))
+    val keys =
+      decoded("extended", withConfig(_.add("blobSchedule", Json.obj("Cancun" -> extended)))).config
+        .flatMap(_.blobSchedule)
+        .map(_.get("Cancun").map(_.otherKeys))
+    assert(
+      keys == Some(Some(Vector("NOT_A_PUBLISHED_KEY"))),
+      "a key inside an entry is a rule the case states as much as one beside it: " + keys.toString
     )
   }
 
@@ -135,7 +170,42 @@ class BlockchainFixtureSpec extends AnyFlatSpec:
     }
     assert(
       hashes == Vector(None),
-      "an absent decoded form is the case saying the block does not decode: " + hashes.toString
+      "an absent decoded form is the case stating no hash to check: " + hashes.toString
+    )
+  }
+
+  it should "read a refused block keyed as the legacy snapshot keys one" in {
+    // `ethereum/legacytests`' snapshot states a refused block with a block
+    // number and a chain name beside the refusal, the encoding and the decoded
+    // form, where the generated tier states the last three.
+    val legacy = withBlock(published(PublishedParisCases.GasLimitCase), 0)(
+      _.mapObject(_.add("blocknumber", Json.fromString("1")).add("chainname", Json.fromString("default")))
+    )
+    val refused = decoded("legacy", legacy.mapObject(_.remove("config"))).blocks.collect {
+      case StatedBlock.Invalid(_, rejection, decodedHash) => (rejection, decodedHash.isDefined)
+    }
+    assert(
+      refused == Vector((ExpectedRejection(Set("BlockException.INVALID_GASLIMIT")), true)),
+      "the refusal and its decoded form are read, and the two further keys change neither: " + refused.toString
+    )
+  }
+
+  it should "name each block that states a chain other than the default, and no block that states the default" in {
+    // The older snapshot names every block's chain; `bcInvalidHeaderTest` names
+    // `default` throughout, and its multi-chain tiers name others.
+    val chained = (name: String) =>
+      decoded(
+        name,
+        withBlock(published(PublishedParisCases.GasLimitCase), 0)(
+          _.mapObject(_.add("chainname", Json.fromString(name)))
+        )
+      )
+    val branch = chained("B").otherChains
+    val main = chained("default").otherChains
+    assert(
+      branch == Vector(0 -> "B") && main.isEmpty,
+      "a block on another chain is named with its position, and the default is no other chain: " + branch.toString +
+        " " + main.toString
     )
   }
 

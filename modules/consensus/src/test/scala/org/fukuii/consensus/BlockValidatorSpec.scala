@@ -9,7 +9,7 @@ import org.fukuii.evm.fixtures.{FixtureValues, VmFixtureRunner}
 import org.fukuii.execution.{BlockRejection, Refusal}
 import org.fukuii.rlp.RlpCodec
 import org.fukuii.trie.StateTrie
-import org.fukuii.types.{BlobGasTail, Block, BlockHeader, Withdrawal}
+import org.fukuii.types.{BlobGasTail, Block, BlockHeader, Seal, Transaction, Withdrawal}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Whether a block is valid against its parent, decided over published blocks.
@@ -38,6 +38,16 @@ import org.scalatest.flatspec.AnyFlatSpec
   * here -- that is the blockchain tier's to certify. None of these blocks predates
   * the merge, carries an ommer the release validates, or runs under a mechanism
   * other than the default one.
+  *
+  * ==One block's commitments are settled from its own run, and are not what it
+  * asserts==
+  *
+  * Every published block states a zero randomness, so none can show that the
+  * value a block reports is the one its header states rather than a constant.
+  * The block that logs is therefore edited to store what it reads, its header
+  * given a non-zero value, and its commitments taken from a run. What is
+  * asserted is the stored word against the header's own field, which no run
+  * produced.
   */
 class BlockValidatorSpec extends AnyFlatSpec:
 
@@ -71,8 +81,8 @@ class BlockValidatorSpec extends AnyFlatSpec:
       case Left(error) => fail("the published pre-state did not seed: " + error)
       case Right(())   => (trie, world)
 
-  /** The verdict, and the state root the world was left at. */
-  final private case class Ran(verdict: BlockVerdict, rootAfter: Hash)
+  /** The verdict, the state root the world was left at, and that world. */
+  final private case class Ran(verdict: BlockVerdict, rootAfter: Hash, world: WorldState)
 
   /** Validates `block` against `published`'s genesis, from that genesis's state.
     *
@@ -99,7 +109,7 @@ class BlockValidatorSpec extends AnyFlatSpec:
       blockHashAt = number => if number == BigInt(0) then published.publishedGenesisHash else EvmFixtures.hash(0),
       chainId = chainId
     )
-    Ran(verdict, trie.stateRoot)
+    Ran(verdict, trie.stateRoot, world)
 
   /** The withdrawal block with its header edited and its body as published. */
   private def withHeader(edit: BlockHeader => BlockHeader): Block =
@@ -237,6 +247,64 @@ class BlockValidatorSpec extends AnyFlatSpec:
       if block.header.timestamp.toBigInt <= parent.header.timestamp.toBigInt then
         throw new IllegalStateException("reached with a header that does not follow its parent")
       else Right(Set.empty)
+
+  /** `PREVRANDAO PUSH0 SSTORE STOP`: the randomness the block reports, stored
+    * under slot zero.
+    */
+  private val StoresRandomness: Bytes =
+    Bytes.fromIArray(
+      IArray[Byte](
+        Opcode.Difficulty.code.toByte,
+        Opcode.Push0.code.toByte,
+        Opcode.SStore.code.toByte,
+        Opcode.Stop.code.toByte
+      )
+    )
+
+  /** A randomness no published header states. */
+  private val StatedRandomness: Hash = EvmFixtures.hash(0x3c)
+
+  /** The account the block that logs has its one transaction call. */
+  private def calledByLogsBlock: Address =
+    LogsBlock.block.body.transactions.headOption match
+      case Some(call: Transaction.Legacy) => call.to.getOrElse(fail("the block that logs deploys rather than calls"))
+      case other                          => fail("the block that logs carries no legacy call: " + other.toString)
+
+  /** The block that logs, calling code that stores the randomness the block
+    * reports, under a header stating [[StatedRandomness]]. Its commitments are
+    * still the published block's, which the new code makes wrong.
+    */
+  private def storingRandomness: PublishedBlock =
+    val called = calledByLogsBlock
+    val account = LogsBlock.pre.getOrElse(called, fail("the called account is not in the published pre-state"))
+    val header = LogsBlock.block.header
+    val resealed = header.seal match
+      case Seal.MixHashAndNonce(_, nonce) => Seal.MixHashAndNonce(StatedRandomness, nonce)
+      case other => fail("the block that logs is not sealed by a digest and a nonce: " + other.toString)
+    LogsBlock.copy(
+      pre = LogsBlock.pre.updated(called, account.copy(code = StoresRandomness)),
+      block = LogsBlock.block.copy(header = header.copy(seal = resealed))
+    )
+
+  /** `published`'s block with each commitment its own run produces written
+    * into its header, one at a time, in the order the validator compares them.
+    */
+  private def settled(published: PublishedBlock): Block =
+    def committing(header: BlockHeader, remaining: Int): BlockHeader =
+      if remaining == 0 then header
+      else
+        ran(published)(block = published.block.copy(header = header)).verdict match
+          case BlockVerdict.Invalid(BlockFault.GasUsedMismatch(_, produced)) =>
+            val used = UInt64.fromBigInt(produced).getOrElse(fail("a produced gas figure a header cannot state"))
+            committing(header.copy(gasUsed = used), remaining - 1)
+          case BlockVerdict.Invalid(BlockFault.LogsBloomMismatch(_, produced)) =>
+            committing(header.copy(logsBloom = produced), remaining - 1)
+          case BlockVerdict.Invalid(BlockFault.ReceiptsRootMismatch(_, produced)) =>
+            committing(header.copy(receiptsRoot = produced), remaining - 1)
+          case BlockVerdict.Invalid(BlockFault.StateRootMismatch(_, produced)) =>
+            committing(header.copy(stateRoot = produced), remaining - 1)
+          case _ => header
+    published.block.copy(header = committing(published.block.header, 4))
 
   // ── The published blocks, as published ────────────────────────────────────
 
@@ -533,6 +601,21 @@ class BlockValidatorSpec extends AnyFlatSpec:
       ),
       "a fraction of zero divides by zero when priced, so this answers only if the header rule ran first"
     )
+
+  // ── The randomness a block reports ────────────────────────────────────────
+
+  "a block whose transaction stores the randomness it reads" should "store the value its own header states" in {
+    val published = storingRandomness
+    val stored = ran(published)(block = settled(published))
+    assert(
+      isValid(stored.verdict) &&
+        stored.world.storageAt(calledByLogsBlock, Word.Zero) == Word.fromBytes(
+          Bytes.fromIArray(StatedRandomness.toBytes)
+        ),
+      "under EIP-4399 the value a block reports is its header's seal digest, so a constant reported instead is caught " +
+        "here and by no published header, which all state zero; the verdict was " + stored.verdict.toString
+    )
+  }
 
   // ── What the engine decides ───────────────────────────────────────────────
 

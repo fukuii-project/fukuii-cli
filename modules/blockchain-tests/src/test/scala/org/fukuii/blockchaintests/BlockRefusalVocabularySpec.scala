@@ -17,11 +17,19 @@ class BlockRefusalVocabularySpec extends AnyFlatSpec:
   private val Unpublished: String = "BlockException.NOT_A_PUBLISHED_NAME"
 
   "unmapped" should "report exactly the stated names neither half holds" in {
+    // A block name, a transaction name, a decode name and two legacy names are
+    // each held; the unpublished key is not.
     val stated =
-      ExpectedRejection(Set(Unpublished, "BlockException.INVALID_GASLIMIT", "TransactionException.NONCE_IS_MAX"))
+      ExpectedRejection(
+        Set(
+          Unpublished,
+          "BlockException.INVALID_GASLIMIT",
+          "TransactionException.NONCE_IS_MAX",
+          "BlockException.RLP_STRUCTURES_ENCODING",
+          "InvalidStateRoot",
+          "InvalidGasLimit"
+        )
+      )
     val unmapped = BlockRefusalVocabulary.unmapped(stated)
-    assert(
-      unmapped == Set(Unpublished),
-      "a block name and a transaction name are both held, and only the unpublished key is not: " + unmapped.toString
-    )
+    assert(unmapped == Set(Unpublished), unmapped.toString)
   }

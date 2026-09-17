@@ -63,8 +63,8 @@ enum BeaconRootVerdict:
   * than the search.
   *
   * Every published case is therefore a `blockchain_test`, and this build's
-  * runner for that tier, in `modules/blockchain-tests`, does not yet run a label
-  * filled at this fork.
+  * runner for that tier, in `modules/blockchain-tests`, runs this fork's label,
+  * whose whole blocks include these files.
   *
   * ==What makes a narrow reading sound, and it is a property of the contract==
   *

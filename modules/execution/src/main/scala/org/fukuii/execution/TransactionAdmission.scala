@@ -48,8 +48,37 @@ enum Refusal:
   /** The transaction asks for more gas than the block has left to give. */
   case GasAllowanceExceeded
 
-  /** The transaction count is not the one the sender holds. */
-  case NonceMismatch
+  /** The transaction count is below the one the sender holds, so a transaction
+    * carrying it has already been settled or been replaced.
+    *
+    * ==Two reasons for one comparison, because the field reports two==
+    *
+    * `ethereum/execution-specs` @ `0cc100eb1` raises one exception class for
+    * both directions and words it apart --
+    * `src/ethereum/forks/cancun/fork.py:492-495`, *"nonce too low"* and *"nonce
+    * too high"* -- and its published corpus names them as two rules,
+    * `NONCE_MISMATCH_TOO_LOW` and `NONCE_MISMATCH_TOO_HIGH`
+    * (`packages/testing/src/execution_testing/exceptions/exceptions/transaction.py:26-29`).
+    * `ethereum/go-ethereum` @ `02872e9ef` returns `ErrNonceTooLow` or
+    * `ErrNonceTooHigh` (`core/state_transition.go:550-555`), `besu-eth/besu` @
+    * `b330564a94` `NONCE_TOO_LOW` or `NONCE_TOO_HIGH`
+    * (`MainnetTransactionValidator.java:317-330`), and
+    * `NethermindEth/nethermind` @ `3a98e08185` `TransactionNonceTooLow` or
+    * `TransactionNonceTooHigh` (`TransactionProcessor.cs:1201-1210`).
+    *
+    * **One reason for both would satisfy each published name with the other
+    * direction's refusal.** The verdict and the state are the same either way,
+    * so only a comparison of reasons sees the difference -- and that is the
+    * comparison the corpus makes.
+    */
+  case NonceTooLow
+
+  /** The transaction count is above the one the sender holds, so it follows a
+    * transaction that has not been settled.
+    *
+    * [[NonceTooLow]] carries the evidence for keeping the two apart.
+    */
+  case NonceTooHigh
 
   /** The sender cannot cover the whole fee it offers plus the value it sends. */
   case InsufficientAccountFunds
@@ -654,7 +683,8 @@ object TransactionAdmission:
     else if blobsAreEmpty(offered) then Admission.Refused(Refusal.BlobListEmpty)
     else if carriesUnknownBlobVersion(offered) then Admission.Refused(Refusal.BlobHashVersionUnknown)
     else if blobFeeCapUnderCharge(offered, blobGas) then Admission.Refused(Refusal.BlobFeeCapBelowCharge)
-    else if counted != offered.nonce then Admission.Refused(Refusal.NonceMismatch)
+    else if offered.nonce < counted then Admission.Refused(Refusal.NonceTooLow)
+    else if offered.nonce > counted then Admission.Refused(Refusal.NonceTooHigh)
     else if held < maximumFee + blobMaximumFee(offered) + offered.value then
       Admission.Refused(Refusal.InsufficientAccountFunds)
     else if world.codeOf(offered.sender).nonEmpty then Admission.Refused(Refusal.SenderNotEoa)

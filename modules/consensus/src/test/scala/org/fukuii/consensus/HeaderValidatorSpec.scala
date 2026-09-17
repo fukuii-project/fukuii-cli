@@ -35,6 +35,10 @@ import org.scalatest.flatspec.AnyFlatSpec
   *
   * Rather than invented, for the reason the proof-of-work fixtures give: a
   * plausible value in a field nothing reads suggests something stated one.
+  *
+  * `HeaderValidatorPropSpec` holds the property over every rule at once: that
+  * `faults` lists each rule a header breaks, in order, and `validate` refuses
+  * with the first.
   */
 class HeaderValidatorSpec extends AnyFlatSpec:
 
@@ -94,6 +98,9 @@ class HeaderValidatorSpec extends AnyFlatSpec:
 
   private val FixtureParentLimit: BigInt = BigInt(3141592)
   private val FixtureScaled: BigInt = FixtureParentLimit * 2
+
+  /** The most gas a block may allow itself, which one published case's parent states. */
+  private val AtMaximum: BigInt = HeaderValidator.MaxGasLimit
 
   private def atTransition(childLimit: BigInt): Either[HeaderFault, Unit] =
     HeaderValidator.validate(
@@ -477,6 +484,51 @@ class HeaderValidatorSpec extends AnyFlatSpec:
     assert(
       atTransition(BigInt(3144650)).isLeft,
       "the one published sibling whose verdict differs between the two readings"
+    )
+
+  // ── The maximum any gas limit may state ───────────────────────────────────
+
+  "the maximum a gas limit may state" should "be 2^63 - 1, as the power of two and as the literal clients write" in
+    assert(
+      AtMaximum == (BigInt(1) << 63) - 1 && AtMaximum == BigInt("7fffffffffffffff", 16),
+      "the figure is taken from the JVM's own constant, and both statements of it must agree with that"
+    )
+
+  "a block over a parent at the maximum" should "be refused for a limit above it that the parent's bound admits" in
+    // The published case's own figures: `GasLimitHigherThan2p63m1` states 2^63
+    // over a parent at 2^63 - 1, a step far inside the bound, so only the
+    // maximum can refuse it.
+    assert(
+      HeaderValidator.validate(
+        Resolved(headerOf(2, AtMaximum + 1, 0, None), below),
+        Resolved(headerOf(1, AtMaximum, 0, None), below)
+      ) == Left(HeaderFault.GasLimitAboveMaximum(AtMaximum + 1, AtMaximum)),
+      "a limit one above the maximum is refused whatever the parent's bound allows"
+    )
+
+  it should "be accepted stating exactly the maximum" in
+    assert(
+      HeaderValidator.validate(
+        Resolved(headerOf(2, AtMaximum, 0, None), below),
+        Resolved(headerOf(1, AtMaximum, 0, None), below)
+      ) == Right(()),
+      "every source read refuses only a limit above the maximum, never one equal to it"
+    )
+
+  // ── Every shared rule a header breaks ─────────────────────────────────────
+
+  "the rules a header breaks" should "all be listed, in validate's order, on the published zero-limit block's figures" in
+    // `GasLimitIsZero` states a limit of zero, a gas figure of 22,027 and a
+    // parent at 3,141,592, so it breaks the gas figure and the bound at once.
+    assert(
+      HeaderValidator.faults(
+        Resolved(headerOf(2, BigInt(0), BigInt(22027), None), below),
+        Resolved(headerOf(1, FixtureParentLimit, 0, None), below)
+      ) == Vector(
+        HeaderFault.GasUsedAboveLimit(BigInt(22027), BigInt(0)),
+        HeaderFault.GasLimitOutOfBounds(BigInt(0), FixtureParentLimit)
+      ),
+      "a stated reason may name either rule, and both are the header's"
     )
 
   // ── Succession, which needs neither a fork's rules nor an executed block ──

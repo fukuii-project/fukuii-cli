@@ -32,10 +32,10 @@ import org.fukuii.execution.SystemCall
   * ignored. A published case that would fail for any of those reasons passes
   * here, because none of it is read.
   *
-  * **So EIP-4788 is certified for what its system call writes, and not for a
-  * block that contains one.** Closing the second needs the published block
-  * tier -- `modules/blockchain-tests`, which runs whole blocks through the block
-  * validator -- to run a label filled at this fork.
+  * **So EIP-4788 is certified here for what its system call writes, and not
+  * for a block that contains one.** The block that contains one is certified
+  * by the published block tier, `modules/blockchain-tests`, which runs this
+  * fork's label through the block validator.
   */
 class CancunBeaconRootCertificationSpec extends AnyFlatSpec:
 

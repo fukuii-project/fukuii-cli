@@ -208,7 +208,7 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
 
   it should "refuse a transaction whose nonce is not the sender's next" in
     assert(
-      verdict(admissible(nonce = 5)) == Admission.Refused(Refusal.NonceMismatch),
+      verdict(admissible(nonce = 5)) == Admission.Refused(Refusal.NonceTooHigh),
       verdict(admissible(nonce = 5)).toString
     )
 
@@ -236,25 +236,31 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
     // surcharge below would have nothing to be a delta over.
     assert(
       charged(admissible(to = None), ethereum.Upgrades.genesisPrices) ==
-        charged(admissible(), ethereum.Upgrades.genesisPrices)
+        charged(admissible(), ethereum.Upgrades.genesisPrices),
+      "below the proposal a deployment and a call carrying the same data are charged the same"
     )
 
   it should "ask a deployment thirty-two thousand more once the proposal is applied" in
     assert(
       charged(admissible(to = None), charging) - charged(admissible(to = None), ethereum.Upgrades.genesisPrices) ==
-        BigInt(32000)
+        BigInt(32000),
+      "the proposal adds exactly 32,000 to what a deployment is charged"
     )
 
   it should "leave a call charged exactly what it was" in
     // The control. A surcharge applied to every transaction rather than only to
     // a deployment would satisfy both cases above and be wrong for every call on
     // the network.
-    assert(charged(admissible(), charging) == charged(admissible(), ethereum.Upgrades.genesisPrices))
+    assert(
+      charged(admissible(), charging) == charged(admissible(), ethereum.Upgrades.genesisPrices),
+      "a call is charged under the proposal exactly what it was charged before it"
+    )
 
   it should "still charge a deployment for the data it carries" in
     // The surcharge is added to the data charge rather than replacing it, so a
     // deployment with a payload pays for both.
     assert(
       charged(admissible(to = None, data = EvmFixtures.bytesOf("0xff")), charging) -
-        charged(admissible(to = None), charging) == BigInt(68)
+        charged(admissible(to = None), charging) == BigInt(68),
+      "a deployment still pays for its one non-zero data byte on top of the surcharge"
     )

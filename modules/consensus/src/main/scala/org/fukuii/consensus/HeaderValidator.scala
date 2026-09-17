@@ -39,6 +39,14 @@ enum HeaderFault:
     */
   case GasLimitOutOfBounds(stated: BigInt, comparedAgainst: BigInt)
 
+  /** A block allowing itself more gas than any block may.
+    *
+    * The maximum is carried beside the figure so the reason reads whole, as
+    * [[ExtraDataAboveLimit]]'s does; it is [[HeaderValidator.MaxGasLimit]] on
+    * every fork.
+    */
+  case GasLimitAboveMaximum(stated: BigInt, maximum: BigInt)
+
   /** A block claiming to have used more gas than it allowed itself. */
   case GasUsedAboveLimit(used: BigInt, limit: BigInt)
 
@@ -224,9 +232,10 @@ final case class Resolved(header: BlockHeader, rules: UpgradeRules)
   * block where a market begins, and which therefore could not be left unbuilt.
   *
   * **What is checked: succession, the gas figure against its own limit, the
-  * gas-limit bound, the charge, the fields a fork fixes to constants, whether a
-  * commitment over the block's withdrawals is present where its fork requires
-  * one, and the blob-gas excess against the one its parent requires.**
+  * gas limit's maximum and its bound, the charge, the fields a fork fixes to
+  * constants, whether a commitment over the block's withdrawals is present
+  * where its fork requires one, and the blob-gas excess against the one its
+  * parent requires.**
   * Against `ethereum/execution-specs` @ `20f7f6271a` `forks/london/fork.py`'s
   * `validate_header`, what remains there is the extra-data cap, the difficulty,
   * the seal, the commitments -- and the PARENT HASH, at `:364-366`, which is the
@@ -315,7 +324,7 @@ final case class Resolved(header: BlockHeader, rules: UpgradeRules)
   * than agreement on one would be. It belongs to whichever layer decides what
   * this node is willing to accept rather than what the network declares valid.
   *
-  * ==Two values are held here rather than resolved per fork, and the reason is
+  * ==Three values are held here rather than resolved per fork, and the reason is
   * that they do not vary==
   *
   * The bound divisor and the floor under a gas limit are the same on every fork
@@ -326,7 +335,8 @@ final case class Resolved(header: BlockHeader, rules: UpgradeRules)
   * `GasLimitBoundDivisor` and `MinGasLimit`. One client of five puts them on a
   * fork-resolved record and does not vary them there either, which is the same
   * evidence [[org.fukuii.chainspec.UpgradeRules]] already refused the extra-data
-  * cap on.
+  * cap on. The maximum is the third: [[MaxGasLimit]] records that none of the
+  * sources read holds it on a fork's record or a network's.
   *
   * ==This is not a block validator, and [[BlockValidator]] is==
   *
@@ -353,6 +363,26 @@ object HeaderValidator:
     * `params/protocol_params.go:23`.
     */
   val MinGasLimit: BigInt = BigInt(5000)
+
+  /** The most gas any block may allow itself: `2^63 - 1`.
+    *
+    * Stated as `0x7fffffffffffffff` by `ethereum/go-ethereum` @ `02872e9ef`
+    * (`params/protocol_params.go:28`), `ethereum/go-ethereum-pow` @ `v1.10.26`
+    * (`params/protocol_params.go:24`), `ethereumclassic/core-geth` @
+    * `4185df450` (`params/vars/protocol_params.go:66`) and `erigontech/erigon` @
+    * `ab8e9fde7` (`execution/protocol/params/protocol.go:32`); as
+    * `0x7FFFFFFFFFFFFFFF` by `NethermindEth/nethermind` @ `3a98e0818`
+    * (`Nethermind.Consensus/Validators/HeaderValidator.cs:176`); and checked
+    * against `0x7fffffffffffffff` by `ethereum/retesteth` @ `949f9b21`, the tool
+    * that filled the published case
+    * (`retesteth/session/ToolBackend/Verification.cpp:315-316`). None of them
+    * sits on a fork's record or a network's.
+    *
+    * `Long.MaxValue` is that figure by the JVM's own definition, and
+    * `HeaderValidatorSpec` asserts it against both the power of two and the
+    * literal those sources write.
+    */
+  val MaxGasLimit: BigInt = BigInt(Long.MaxValue)
 
   /** The blob gas one blob costs, which no fork varies.
     *
@@ -386,6 +416,24 @@ object HeaderValidator:
     */
   val EmptyOmmersHash: Hash = Keccak256.hash(IArray[Byte](0xc0.toByte))
 
+  /** The rules every mechanism shares, in the order they run.
+    *
+    * The one list [[validate]] and [[faults]] both read, so a rule added here
+    * reaches both, and no rule can be enforced by one and reported by the other.
+    */
+  private val rules: Vector[(Resolved, Resolved) => Either[HeaderFault, Unit]] =
+    Vector(
+      (block, parent) => checkSuccession(block.header, parent.header),
+      (block, _) => checkGasUsed(block.header),
+      (block, _) => checkGasLimitMaximum(block.header),
+      checkGasLimit,
+      checkBaseFee,
+      (block, _) => checkConstants(block),
+      (block, _) => checkWithdrawalsRoot(block),
+      checkBlobGas,
+      (block, _) => checkParentBeaconBlockRoot(block)
+    )
+
   /** Checks `header` against `parent`, under the rules each resolves to.
     *
     * ==Both rule sets, because the transition is where they differ==
@@ -414,16 +462,40 @@ object HeaderValidator:
     * refuses such a parent itself.
     */
   def validate(block: Resolved, parent: Resolved): Either[HeaderFault, Unit] =
-    for
-      _ <- checkSuccession(block.header, parent.header)
-      _ <- checkGasUsed(block.header)
-      _ <- checkGasLimit(block, parent)
-      _ <- checkBaseFee(block, parent)
-      _ <- checkConstants(block)
-      _ <- checkWithdrawalsRoot(block)
-      _ <- checkBlobGas(block, parent)
-      _ <- checkParentBeaconBlockRoot(block)
-    yield ()
+    rules.iterator.map(rule => rule(block, parent)).collectFirst { case Left(fault) => fault }.toLeft(())
+
+  /** Every shared rule `block` breaks against `parent`, in [[validate]]'s order.
+    *
+    * ==[[validate]] refuses with the first of these==
+    *
+    * Both read one list of rules: [[validate]] stops at the first that refuses,
+    * and this reads every one. `HeaderValidatorPropSpec` holds the two answers
+    * together over headers breaking each suffix of the rules and each rule alone.
+    *
+    * ==For a caller holding a reason from elsewhere==
+    *
+    * A header breaking two rules is refused by whichever runs first, so a reason
+    * stated by another implementation can name the other one while agreeing
+    * that the header is invalid. This answers whether the header breaks the rule
+    * a stated reason names, without re-deriving any rule outside this object.
+    *
+    * Each rule answers on its own: none reads another's outcome, which
+    * [[validate]]'s order note states. **Three rules are made of several
+    * comparisons a header can break together, and each answers with the first it
+    * breaks**: succession (the timestamp, then the number), the constants (the
+    * difficulty, the ommers commitment, then the seal) and the blob-gas account
+    * (whole blobs, the maximum, then the excess). So a header breaking two
+    * comparisons of one rule is listed under the first alone, and a caller
+    * holding a reason for the second finds no fault carrying it -- a divergence
+    * that caller counts, never an agreement it should not reach.
+    *
+    * **The mechanism's own rules are not here**, and a caller cannot add them:
+    * [[ConsensusEngine.validateHeader]] is reached only once every rule here has
+    * accepted the header, and an override may rely on that, so it has no answer
+    * over a header this lists a fault for.
+    */
+  def faults(block: Resolved, parent: Resolved): Vector[HeaderFault] =
+    rules.map(rule => rule(block, parent)).collect { case Left(fault) => fault }
 
   /** A header states a commitment over its block's withdrawals exactly where
     * its fork requires one.
@@ -733,6 +805,93 @@ object HeaderValidator:
     val used = header.gasUsed.toBigInt
     val limit = header.gasLimit.toBigInt
     if used > limit then Left(HeaderFault.GasUsedAboveLimit(used, limit)) else Right(())
+
+  /** A block allows itself no more gas than [[MaxGasLimit]].
+    *
+    * ==The specification is divided on it==
+    *
+    * `ethereum/execution-specs` @ `0cc100eb1` names the rule in its test
+    * vocabulary -- `GASLIMIT_TOO_BIG`, *"Block header's gas limit >
+    * 0x7fffffffffffffff."*
+    * (`packages/testing/src/execution_testing/exceptions/exceptions/block.py:45-46`)
+    * -- and its state transition does not check it: `check_gas_limit` bounds a
+    * limit only against its parent's and a floor
+    * (`src/ethereum/forks/cancun/fork.py:820-857`). Its blockchain-test loader
+    * expects the one published case above the maximum to fail
+    * (`tests/json_loader/helpers/exceptional_test_patterns.py:86`), in a list
+    * headed *"These are tests that are considered to be incorrect, Please provide
+    * an explanation when adding entries"* (`:75-76`). The heading is the list's,
+    * not a reading of this case: the same list holds `bcMultiChainTest`,
+    * `bcTotalDifficultyTest`, `bcForkStressTest` and `bcForgedTest`, this entry
+    * carries none of the explanation the heading asks for, and it was first
+    * added beside the comment *"Unclear where this failed requirement comes
+    * from"* (commit `52aedfe60`).
+    *
+    * ==Who checks it, and how==
+    *
+    * **By value**, three production lineages and the tool that filled the case,
+    * one lineage's value read at the last ref whose own tree defined it:
+    *
+    *   - `ethereum/go-ethereum` @ `02872e9ef`, in each of its three engines
+    *     (`consensus/beacon/consensus.go:232`, `consensus/ethash/consensus.go:243`,
+    *     `consensus/clique/clique.go:291`); from the same lineage
+    *     `ethereumclassic/core-geth` @ `4185df450`, `lyra2` among its engines
+    *     (`consensus/lyra2/consensus.go:234-237`), and `erigontech/erigon` @
+    *     `ab8e9fde7`, in the header checks its ethash, authority-round and merge
+    *     rules share (`execution/protocol/rules/ethash/rules.go:219`, reached from
+    *     `rules/aura/aura.go:387`, and `rules/merge/merge.go:339`);
+    *   - `NethermindEth/nethermind` @ `3a98e0818`, in its header validator
+    *     (`Nethermind.Consensus/Validators/HeaderValidator.cs:174-184`);
+    *   - `paradigmxyz/reth` @ `e63ec720ac`, against a named constant,
+    *     `MAXIMUM_GAS_LIMIT_BLOCK`, imported from the `reth-primitives-traits`
+    *     0.7.0 crate that tree takes from outside itself (`Cargo.toml:397`,
+    *     `crates/consensus/common/src/validation.rs:8-10,30-32`); that crate was
+    *     not read. The same check at `e91a900dd7` reads it from its own tree, as
+    *     `2u64.pow(63) - 1` (`crates/primitives-traits/src/constants/mod.rs:15`);
+    *     the next commit, `6183361f83`, moved the constants out;
+    *   - `ethereum/retesteth` @ `949f9b21`
+    *     (`retesteth/session/ToolBackend/Verification.cpp:315-316`).
+    *
+    * **Not by value**, one lineage that still refuses the published block.
+    * `besu-eth/besu` @ `b330564a94` states the figure
+    * (`MainnetBlockHeaderValidator.java:47`) and cannot reach it: a header's
+    * limit is a signed `long`, the reader assembles a limit of `2^63` into
+    * `Long.MIN_VALUE` (`ethereum/rlp/.../BytesValueRLPInput.java:322-337`), and
+    * no comparison against the figure can then fire. Its merge rules refuse such
+    * a block at the gas-used rule instead (`MergeValidationRulesetFactory.java:63`,
+    * `GasUsageValidationRule.java:35`). `besu-eth/besu-etc` @ `eb4248c997` has the
+    * same figure, rule and reader (`MainnetBlockHeaderValidator.java:49,106`).
+    *
+    * **Not at all:** `lambdaclass/ethrex` @ `3954106507`
+    * (`crates/common/types/block.rs:509-515`).
+    *
+    * ==Checked here, so this build differs from ethrex and from the
+    * specification's state transition rather than from the lineages above==
+    *
+    * A limit above the maximum is observable wherever a chain can reach one: a
+    * chain launched with its limit at the maximum admits a child above it under
+    * the parent's bound. `ethereum/legacytests` @ `1f581b8cc` states exactly that
+    * block, `GasLimitHigherThan2p63m1`: a limit of `2^63` over a parent at
+    * `2^63 - 1`, refused as `InvalidGasLimit`.
+    *
+    * **Revisit if** the specification's state transition adopts the maximum,
+    * which would settle it, or rejects it, or a production client family drops
+    * it -- either of the last two argues for reversing this.
+    *
+    * ==Shared, because no source read places it on a fork or an engine==
+    *
+    * None of the lineages that check it gates it on a fork, and each that carries
+    * more than one mechanism checks it in every one read. So it sits with the
+    * rules every mechanism shares rather than on the engine seam.
+    *
+    * ==Its own rule rather than a part of the bound==
+    *
+    * [[checkGasLimit]] reads the parent and this reads the header alone, and a
+    * block can break both. Kept apart, [[faults]] can report either.
+    */
+  private def checkGasLimitMaximum(header: BlockHeader): Either[HeaderFault, Unit] =
+    val stated = header.gasLimit.toBigInt
+    if stated > MaxGasLimit then Left(HeaderFault.GasLimitAboveMaximum(stated, MaxGasLimit)) else Right(())
 
   /** The bound on how far a block moves the gas limit, with the parent's limit
     * scaled where this block is the first under a fee market.

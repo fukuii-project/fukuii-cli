@@ -38,6 +38,17 @@ final case class FixtureNetwork(schedule: UpgradeSchedule, engine: ConsensusEngi
   * here. So the rules for a block are asked of the schedule at that block's own
   * height and timestamp, exactly as a node asks its own network's schedule.
   *
+  * ==A transition is two forks and a second, and both sources state the second==
+  *
+  * `ParisToShanghaiAtTime15k` and `ShanghaiToCancunAtTime15k` run the earlier
+  * fork's rules from the genesis and the later fork's from timestamp 15,000.
+  * `ethereum/execution-specs` @ `0cc100eb1` declares each with
+  * `@transition_fork(..., at_timestamp=15_000)`
+  * (`packages/testing/src/execution_testing/forks/forks/transition.py:28,35`),
+  * and `ethereum/go-ethereum` @ `02872e9ef` configures the same two as
+  * `ShanghaiTime: u64(15_000)` and as `ShanghaiTime: u64(0)` beside
+  * `CancunTime: u64(15_000)` (`tests/init.go:317,357-358`).
+  *
   * ==Every entry is this family's, and a name alone does not say which family==
   *
   * The corpus is the Ethereum family's, filled at Ethereum's forks, so every
@@ -66,6 +77,16 @@ object FixtureNetworks:
     * `CHAIN_ID = BigInteger.ONE` (`ReferenceTestProtocolSchedules.java:54`). A
     * case that states an identifier of its own is compared against this rather
     * than trusted over it.
+    *
+    * ==A case stating none runs as this one too==
+    *
+    * `ethereum/legacytests`' snapshots carry no `config`, so their cases state
+    * no identifier at all. The specification's own loader runs such a case as
+    * the identifier its genesis header states and as one where it states none
+    * -- `U64(json_data["genesisBlockHeader"].get("chainId", 1))`
+    * (`ethereum/execution-specs` @ `0cc100eb1`,
+    * `tests/json_loader/helpers/load_blockchain_tests.py:165`) -- which agrees
+    * with go-ethereum's table above.
     */
   val ChainId: UInt64 = UInt64.fromBits(1L)
 
@@ -75,32 +96,65 @@ object FixtureNetworks:
       case None           => Left("no rules for the network " + network)
       case Some(resolved) => resolved.left.map(error => "the network " + network + " is not a schedule: " + error)
 
-  /** A network running one fork's rules from its genesis onward. */
-  private def fromGenesis(
-      name: String,
-      rules: UpgradeRules,
-      engine: ConsensusEngine
-  ): Either[String, FixtureNetwork] =
-    val network = Network(ChainId, "published blockchain tests " + name)
+  /** The rules of a fork the corpus names, as this build resolves them.
+    *
+    * What a case's blob schedule is compared against: an entry states one
+    * fork's parameters, whichever network the case runs, so it is read against
+    * that fork's rules rather than against the network's.
+    */
+  def forkRules(fork: String): Option[UpgradeRules] = forks.get(fork)
+
+  private val forks: Map[String, UpgradeRules] =
+    Map(
+      "Paris" -> ethereum.Upgrades.paris,
+      "Shanghai" -> ethereum.Upgrades.shanghai,
+      "Cancun" -> ethereum.Upgrades.cancun
+    )
+
+  /** The timestamp a transition network's later fork activates at. */
+  private val TransitionTimestamp: UInt64 = UInt64.fromBits(15_000L)
+
+  private def networkFor(name: String): Network = Network(ChainId, "published blockchain tests " + name)
+
+  private def entry(network: Network, activation: Activation, fork: String): UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(activation, UpgradeId.named(network, fork), Upgrade.RuleChange(forks(fork)))
+
+  private def scheduled(entries: Vector[UpgradeSchedule.Entry]): Either[String, FixtureNetwork] =
     UpgradeSchedule
-      .of(
-        Vector(
-          UpgradeSchedule
-            .Entry(Activation.AtBlock(UInt64.Zero), UpgradeId.named(network, name), Upgrade.RuleChange(rules))
-        )
-      )
+      .of(entries)
       .left
       .map(_.toString)
-      .map(schedule => FixtureNetwork(schedule, engine))
+      .map(schedule => FixtureNetwork(schedule, ConsensusEngine.Unmodifying))
 
-  /** The merge's rules, run by the mechanism-neutral engine.
+  /** A network running one fork's rules from its genesis onward. */
+  private def fromGenesis(fork: String): Either[String, FixtureNetwork] =
+    scheduled(Vector(entry(networkFor(fork), Activation.AtBlock(UInt64.Zero), fork)))
+
+  /** A network running `before` from its genesis and `after` from the
+    * transition timestamp.
+    */
+  private def transition(name: String, before: String, after: String): Either[String, FixtureNetwork] =
+    val network = networkFor(name)
+    scheduled(
+      Vector(
+        entry(network, Activation.AtBlock(UInt64.Zero), before),
+        entry(network, Activation.AtTimestamp(TransitionTimestamp), after)
+      )
+    )
+
+  /** The merge's rules and those after it, each run by the mechanism-neutral
+    * engine.
     *
     * No mechanism leaf is involved: under EIP-3675's rules the seal and the
     * difficulty are constants the shared header rules compare, and the
     * settlement writes nothing, so [[org.fukuii.consensus.ConsensusEngine.Unmodifying]]
-    * leaves no rule of this network unrun.
+    * leaves no rule of these networks unrun.
     */
   private val known: Map[String, Either[String, FixtureNetwork]] =
     Map(
-      "Paris" -> fromGenesis("Paris", ethereum.Upgrades.paris, ConsensusEngine.Unmodifying)
+      "Paris" -> fromGenesis("Paris"),
+      "Shanghai" -> fromGenesis("Shanghai"),
+      "Cancun" -> fromGenesis("Cancun"),
+      "ParisToShanghaiAtTime15k" -> transition("ParisToShanghaiAtTime15k", "Paris", "Shanghai"),
+      "ShanghaiToCancunAtTime15k" -> transition("ShanghaiToCancunAtTime15k", "Shanghai", "Cancun")
     )

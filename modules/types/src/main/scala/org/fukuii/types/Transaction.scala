@@ -233,15 +233,15 @@ object Transaction:
 
   /** The payload's elements, signature included.
     *
-    * Two callers need exactly this, which is why it is visible rather than
-    * folded into the codec. The signing projection drops the signature from it,
-    * rather than restating five field lists that would then have to be kept in
-    * step with the ones above. And the blob network wrapper carries the signed
+    * The signing projection drops the signature from it, rather than restating
+    * five field lists that would then have to be kept in step with the ones
+    * above. The blob network wrapper needs the same list: it carries the signed
     * body as its first element — `[tx_payload_body, …]` — where the body is the
     * full element list and not the signing projection.
     *
-    * That second caller sits outside this package, and reaching it any other
-    * way means re-parsing [[canonicalBytes]] on a hot path, through the one
+    * It is visible rather than folded into the codec for a reader of that
+    * wrapper, which would sit outside this package. Reaching the list any other
+    * way would mean re-parsing [[canonicalBytes]] on a hot path, through the one
     * function documented as *not* being the codec form, for a decode that
     * cannot fail but still returns as though it could.
     */

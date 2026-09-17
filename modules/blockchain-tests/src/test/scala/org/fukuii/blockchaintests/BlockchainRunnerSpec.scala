@@ -2,13 +2,10 @@ package org.fukuii.blockchaintests
 
 import org.scalatest.flatspec.AnyFlatSpec
 
-import org.fukuii.bytes.{Address, Bytes, Hash, UInt64}
-import org.fukuii.chainspec.ConsensusRules
-import org.fukuii.consensus.{ConsensusEngine, EngineRule, HeaderFault, Resolved, RuleNotRun}
-import org.fukuii.evm.{EvmFixtures, WorldState}
-import org.fukuii.evm.fixtures.{ExpectedRejection, FixtureAccount, SkipReason}
-import org.fukuii.rlp.RlpCodec
-import org.fukuii.types.{Block, BlockHeader}
+import org.fukuii.bytes.{Bytes, UInt64}
+import org.fukuii.consensus.{EngineRule, RuleNotRun}
+import org.fukuii.evm.EvmFixtures
+import org.fukuii.evm.fixtures.{ExpectedRejection, FixtureAccount}
 
 /** The runner over three published cases, and each way a case must fail to
   * agree.
@@ -30,104 +27,26 @@ import org.fukuii.types.{Block, BlockHeader}
   * is a comparison the runner makes, shown to refuse**: a head that is not the
   * case's, a world holding some other state, a refusal under a name no
   * vocabulary holds, a refusal under a known name for another rule, a block
-  * accepted where the case refuses it, and a refused block with another block
-  * after it.
+  * accepted where the case refuses it, a block stating a chain other than the
+  * one the runner follows, a refusal with blocks after it that only running its
+  * block reaches, a header named for a rule it does not break beside two it
+  * does, and a refusal the rules the runner asks cannot reproduce. Two more are
+  * rows of `BlockchainRunnerPropSpec`'s tables: a block that does not decode
+  * under a name whose rule is not that, and a blob schedule some fork's rules
+  * do not resolve.
   *
   * ==And the outcomes no published label reaches yet==
   *
-  * A block left undecided, a refused block that does not decode, and a block
-  * this build raises on all first appear in labels this runner has not run, and
-  * the counts pinned there will be written from its own output. So each is
-  * reached here first, through an engine standing in for a mechanism, and its
-  * outcome is asserted before any label depends on it.
+  * A block left undecided and a block this build raises on appear in no label
+  * this runner certifies, and the counts pinned there were written from its own
+  * output. So each is reached here first, through an engine standing in for a
+  * mechanism, and its outcome is asserted before any label depends on it.
+  *
+  * `BlockchainRunnerPropSpec` holds the comparisons whose variants differ only
+  * by the value they state; [[BlockchainRunnerCases]] holds the cases and
+  * variants both specs run.
   */
-class BlockchainRunnerSpec extends AnyFlatSpec:
-
-  private def published(name: String): BlockchainFixture =
-    PublishedParisCases.fixture(name).fold(error => fail(error), identity)
-
-  private def blockHash: BlockchainFixture = published(PublishedParisCases.BlockHashCase)
-
-  private def gasLimit: BlockchainFixture = published(PublishedParisCases.GasLimitCase)
-
-  private def signature: BlockchainFixture = published(PublishedParisCases.SignatureCase)
-
-  /** A hash no published value below takes. */
-  private val Wrong: Hash = EvmFixtures.hash(0x5a)
-
-  /** Bytes that decode to no block: a one-byte string where a block is a list. */
-  private val Undecodable: Bytes = Bytes.fromIArray(IArray(0x01.toByte))
-
-  private val GasLimitName: ExpectedRejection = ExpectedRejection(Set("BlockException.INVALID_GASLIMIT"))
-
-  /** An engine whose mechanism states a seal rule it does not run. */
-  private val leavesTheSealUnrun: ConsensusEngine = new ConsensusEngine:
-    override def validateHeader(block: Resolved, parent: Resolved): Either[HeaderFault, Set[EngineRule]] =
-      super.validateHeader(block, parent).map(_ + EngineRule.Seal)
-
-  /** An engine whose settlement raises on the second block and on no other. */
-  private val raisesAtTheSecondBlock: ConsensusEngine = new ConsensusEngine:
-    override def settlement(
-        rules: ConsensusRules,
-        beneficiary: Address,
-        number: BigInt,
-        ommers: Seq[BlockHeader]
-    ): WorldState => Unit =
-      if number == BigInt(2) then throw new IllegalStateException("a settlement that raises at block 2")
-      else super.settlement(rules, beneficiary, number, ommers)
-
-  /** The published networks, with `engine` running every one of them. */
-  private def runningUnder(engine: ConsensusEngine): String => Either[String, FixtureNetwork] =
-    name => FixtureNetworks.named(name).map(_.copy(engine = engine))
-
-  private def reasonsOf(result: BlockchainResult): Vector[String] = result.verdict match
-    case BlockchainVerdict.Diverged(reasons) => reasons
-    case _                                   => Vector.empty
-
-  /** Whether `result` diverged, and for a reason containing `fragment`. */
-  private def divergedFor(result: BlockchainResult, fragment: String): Boolean =
-    reasonsOf(result).exists(_.contains(fragment))
-
-  private def agreed(result: BlockchainResult): Boolean = result.verdict == BlockchainVerdict.Agreed
-
-  private def skippedNaming(result: BlockchainResult, fragment: String): Boolean = result.verdict match
-    case BlockchainVerdict.Skipped(SkipReason.RuleNotBuilt(detail)) => detail.contains(fragment)
-    case _                                                          => false
-
-  private def hashOf(rlp: Bytes): Hash =
-    RlpCodec.decodeFrom[Block](rlp.toIArray).fold(error => fail(error.toString), _.hash)
-
-  /** The encoding of the refused block the gas-limit case states. */
-  private def refusedEncoding: Bytes =
-    gasLimit.blocks.collectFirst { case StatedBlock.Invalid(rlp, _, _) => rlp }.getOrElse(fail("no refused block"))
-
-  /** The encoding of the first block the BLOCKHASH case accepts, and the hash
-    * the case states for it.
-    */
-  private def firstAccepted: (Bytes, Hash) =
-    blockHash.blocks.collectFirst { case StatedBlock.Valid(rlp, hash) => (rlp, hash) }.getOrElse(fail("no block"))
-
-  /** The BLOCKHASH case's first block stated as refused over the untouched
-    * genesis, which the case then ends at.
-    */
-  private def firstBlockRefused: BlockchainFixture =
-    val (rlp, hash) = firstAccepted
-    blockHash.copy(
-      blocks = Vector(StatedBlock.Invalid(rlp, GasLimitName, Some(hash))),
-      lastBlockHash = blockHash.genesisHash,
-      postState = blockHash.pre
-    )
-
-  /** The gas-limit case with its one refused block restated. */
-  private def withRefusal(rlp: Bytes, names: ExpectedRejection, decodedHash: Option[Hash]): BlockchainFixture =
-    gasLimit.copy(blocks = Vector(StatedBlock.Invalid(rlp, names, decodedHash)))
-
-  private def config: StatedConfig = blockHash.config.getOrElse(fail("the published case states no config"))
-
-  /** The first account the case says the chain ends holding, one wei richer. */
-  private def withRicherAccount(fixture: BlockchainFixture): BlockchainFixture =
-    val (address, account) = fixture.postState.toVector.minBy(_._1.toHex)
-    fixture.copy(postState = fixture.postState.updated(address, account.copy(balance = account.balance + 1)))
+class BlockchainRunnerSpec extends AnyFlatSpec with BlockchainRunnerCases:
 
   "run" should "agree with a published chain whose last block reads the chain's hashes through BLOCKHASH" in {
     val result = BlockchainRunner.run(blockHash)
@@ -200,19 +119,20 @@ class BlockchainRunnerSpec extends AnyFlatSpec:
     assert(result.verdict == expected && result.blocksAccepted == 0, result.toString)
   }
 
-  "a block the case refuses" should "diverge where its encoding does not decode" in {
-    val result = BlockchainRunner.run(withRefusal(Undecodable, GasLimitName, None))
-    assert(divergedFor(result, "block 0 does not decode") && result.refusalsAgreed == 0, result.toString)
-  }
-
-  it should "diverge where its encoding hashes to some other hash than the decoded form the case publishes" in {
+  "a block the case refuses" should "diverge where its encoding hashes to some other hash than the decoded form the case publishes" in {
     val result = BlockchainRunner.run(withRefusal(refusedEncoding, GasLimitName, Some(Wrong)))
     assert(divergedFor(result, "block 0 hashes to") && result.refusalsAgreed == 0, result.toString)
   }
 
-  it should "diverge where this build decodes it and the case publishes no decoded form" in {
+  it should "agree by name alone where the case publishes no decoded form and this build decodes the block" in {
     val result = BlockchainRunner.run(withRefusal(refusedEncoding, GasLimitName, None))
-    assert(divergedFor(result, "publishes no decoded form of block 0"), result.toString)
+    assert(agreed(result) && result.refusalsAgreed == 1, result.toString)
+  }
+
+  it should "diverge where the case publishes no decoded form and this build refuses the block under another name" in {
+    val baseFee = ExpectedRejection(Set("BlockException.INVALID_BASEFEE_PER_GAS"))
+    val result = BlockchainRunner.run(withRefusal(refusedEncoding, baseFee, None))
+    assert(divergedFor(result, "was refused as Header(GasLimitOutOfBounds"), result.toString)
   }
 
   it should "be undecided, naming the block and the rule, where it reaches a rule its engine does not run" in {
@@ -221,9 +141,69 @@ class BlockchainRunnerSpec extends AnyFlatSpec:
     assert(result.verdict == expected && result.refusalsAgreed == 0, result.toString)
   }
 
+  it should "diverge, naming both reasons, where the header rules it runs do not reproduce the validator's" in {
+    val result = BlockchainRunner.run(firstBlockRefused, runningUnder(refusingDifferentlyEachTime))
+    assert(
+      divergedFor(
+        result,
+        "was refused as ExtraDataAboveLimit(1,0), which the header rules it runs reproduce as " +
+          "ExtraDataAboveLimit(2,0)"
+      ) && result.refusalsAgreed == 0,
+      result.toString
+    )
+  }
+
+  "a block the case refuses with blocks after it" should "be refused in place where its refusal comes before it runs" in {
+    val sameTime = secondBlockWith(_.copy(timestamp = firstBlockHeader.timestamp))
+    val result = BlockchainRunner.run(refusingBetween(sameTime, ExpectedRejection(Set("InvalidTimestampOlderParent"))))
+    assert(agreed(result) && result.blocksAccepted == 2 && result.refusalsAgreed == 1, result.toString)
+  }
+
+  it should "diverge, naming the order, where only running its block refuses it" in {
+    val wrongRoot = secondBlockWith(_.copy(stateRoot = Wrong))
+    val result = BlockchainRunner.run(refusingBetween(wrongRoot, ExpectedRejection(Set("InvalidStateRoot"))))
+    assert(divergedFor(result, "after it ran"), result.toString)
+  }
+
+  it should "diverge, naming both roots, where refusing it moved the world" in {
+    val wrongRoot = secondBlockWith(_.copy(stateRoot = Wrong))
+    val result = BlockchainRunner.run(refusingBetween(wrongRoot, ExpectedRejection(Set("InvalidStateRoot"))))
+    assert(divergedFor(result, "moved the world from root"), result.toString)
+  }
+
+  it should "diverge where its refusal is under a name the case does not state" in {
+    val sameTime = secondBlockWith(_.copy(timestamp = firstBlockHeader.timestamp))
+    val result = BlockchainRunner.run(refusingBetween(sameTime, ExpectedRejection(Set("InvalidNumber"))))
+    assert(divergedFor(result, "was refused as Header(TimestampNotAfterParent"), result.toString)
+  }
+
+  it should "agree where it also breaks the rule the case names, after another rule refused it first" in {
+    val result = BlockchainRunner.run(refusingBetween(breakingTwoRules, GasLimitName))
+    assert(agreed(result) && result.refusalsAgreed == 1 && result.blocksAccepted == 2, result.toString)
+  }
+
+  it should "diverge where the case names a rule it does not break, whichever rules it does break" in {
+    val baseFee = ExpectedRejection(Set("BlockException.INVALID_BASEFEE_PER_GAS"))
+    val result = BlockchainRunner.run(refusingBetween(breakingTwoRules, baseFee))
+    assert(divergedFor(result, "was refused as Header(TimestampNotAfterParent"), result.toString)
+  }
+
   "a case" should "be skipped, by name, where it names a network no rules are resolved for" in {
     val result = BlockchainRunner.run(blockHash.copy(network = "NotAPublishedNetwork"))
     assert(skippedNaming(result, "NotAPublishedNetwork"), result.toString)
+  }
+
+  it should "diverge, naming the block and the chain, where a block states a chain other than the default" in {
+    val result = BlockchainRunner.run(blockHash.copy(otherChains = Vector(1 -> "B")))
+    assert(
+      divergedFor(result, "block 1 states the chain B") && result.blocksAccepted == 0,
+      "a case following two chains is not run as one: " + result.toString
+    )
+  }
+
+  it should "run as its network's chain id where it states no config" in {
+    val result = BlockchainRunner.run(blockHash.copy(config = None))
+    assert(agreed(result) && result.blocksAccepted == 2, result.toString)
   }
 
   it should "diverge where it states another chain id than its network runs as" in {
@@ -232,8 +212,9 @@ class BlockchainRunnerSpec extends AnyFlatSpec:
   }
 
   it should "diverge, naming the key, where its config states a key this runner does not compare" in {
-    val result = BlockchainRunner.run(blockHash.copy(config = Some(config.copy(otherKeys = Vector("blobSchedule")))))
-    assert(divergedFor(result, "config states blobSchedule"), result.toString)
+    val result =
+      BlockchainRunner.run(blockHash.copy(config = Some(config.copy(otherKeys = Vector("NOT_A_PUBLISHED_KEY")))))
+    assert(divergedFor(result, "config states NOT_A_PUBLISHED_KEY"), result.toString)
   }
 
   it should "diverge where its config names another network than the case does" in {
@@ -294,10 +275,4 @@ class BlockchainRunnerSpec extends AnyFlatSpec:
   it should "diverge where a block the case refuses is accepted" in {
     val result = BlockchainRunner.run(firstBlockRefused)
     assert(divergedFor(result, "was accepted"), result.toString)
-  }
-
-  it should "diverge, loudly, where a block the case refuses is not its last" in {
-    val refused = StatedBlock.Invalid(refusedEncoding, GasLimitName, Some(hashOf(refusedEncoding)))
-    val result = BlockchainRunner.run(gasLimit.copy(blocks = Vector(refused, refused)))
-    assert(divergedFor(result, "invalid with blocks after it"), result.toString)
   }

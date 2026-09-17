@@ -404,7 +404,7 @@ class BlockProcessorSpec extends AnyFlatSpec:
     // satisfy them.
     assert(
       run(Seq(transfer(nonce = 1), transfer(nonce = 0))).result ==
-        Left(BlockRejection(0, Refusal.NonceMismatch, None)),
+        Left(BlockRejection(0, Refusal.NonceTooHigh, None)),
       "a block stating a transaction before the one whose count it follows is not a block this network accepts"
     )
 
@@ -597,7 +597,7 @@ class BlockProcessorSpec extends AnyFlatSpec:
   "a block that was rejected" should "report where the offending transaction sits" in
     assert(
       run(Seq(transfer(nonce = 0), transfer(nonce = 0))).result ==
-        Left(BlockRejection(1, Refusal.NonceMismatch, None)),
+        Left(BlockRejection(1, Refusal.NonceTooLow, None)),
       "a refusal alone does not identify a transaction, so the index is carried with it"
     )
 
@@ -611,7 +611,7 @@ class BlockProcessorSpec extends AnyFlatSpec:
         Seq(transfer(nonce = 0), transfer(nonce = 0)),
         code = Map(recipient -> adds),
         evm = cannotRunAddOrMul
-      ).result == Left(BlockRejection(1, Refusal.NonceMismatch, Some(Unsupported(Opcode.Add)))),
+      ).result == Left(BlockRejection(1, Refusal.NonceTooLow, Some(Unsupported(Opcode.Add)))),
       "a refusal reached after an unbuilt operation says so"
     )
 

@@ -5,10 +5,18 @@ import scala.util.control.NonFatal
 
 import org.fukuii.bytes.{Address, Bytes, Hash}
 import org.fukuii.chainspec.UpgradeRules
-import org.fukuii.consensus.{BlockValidator, BlockVerdict, Resolved, RuleNotRun}
+import org.fukuii.consensus.{
+  BlockFault,
+  BlockValidator,
+  BlockVerdict,
+  HeaderFault,
+  HeaderValidator,
+  Resolved,
+  RuleNotRun
+}
 import org.fukuii.evm.StateTrieWorldState
 import org.fukuii.evm.fixtures.{ExpectedRejection, FixtureAccount, FixtureValues, SkipReason, VmFixtureRunner}
-import org.fukuii.rlp.RlpCodec
+import org.fukuii.rlp.{RlpCodec, RlpError}
 import org.fukuii.trie.StateTrie
 import org.fukuii.types.Block
 
@@ -16,7 +24,7 @@ import org.fukuii.types.Block
 enum BlockchainVerdict:
 
   /** Every block the case states valid was accepted, the chain ended where the
-    * case says, and a block it states invalid was refused under a name it
+    * case says, and every block it states invalid was refused under a name it
     * states.
     */
   case Agreed
@@ -43,10 +51,10 @@ enum BlockchainVerdict:
   * @param blocksAccepted
   *   blocks the validator accepted.
   * @param refusalsAgreed
-  *   blocks the validator refused under a name the case states -- counted where
-  *   the refusal happens rather than read off the verdict, because a runner that
-  *   never ran the refused block would reach the same verdict and must not reach
-  *   the same count.
+  *   blocks refused under a name the case states -- counted where the refusal
+  *   happens rather than read off the verdict, because a runner that never ran
+  *   the refused block would reach the same verdict and must not reach the same
+  *   count.
   */
 final case class BlockchainResult(verdict: BlockchainVerdict, blocksAccepted: Int, refusalsAgreed: Int)
 
@@ -67,25 +75,24 @@ final case class BlockchainResult(verdict: BlockchainVerdict, blocksAccepted: In
   * (`BlockchainReferenceTestTools.java:194-202`), and `paradigmxyz/reth` @
   * `e63ec720ac` block by block over a linear parent (`blockchain_test.rs:229-277`).
   *
-  * ==Compared before a refusal is run, and why that needs a precondition==
+  * ==A refused block runs against the world its parent left, and this keeps one==
   *
   * The validator writes a block into the world as it runs it, so a block it
-  * refuses has already moved state. The runner therefore compares the head and
-  * the post-state after the last block the case accepts and before the block it
-  * refuses, which needs no way to undo a write -- and is sound only where the
-  * refused block is the case's last. A case where one is not fails here, loudly,
-  * rather than being run against a world the refused block may have changed.
+  * refuses after running has already moved state, and this runner keeps no copy
+  * to put back. Two positions make that sound.
   *
-  * **The precondition holds in every label this runner is built for, and not in
-  * the whole release.** At `tests-v20.0.1` every refused block is its case's
-  * last in each label from `for_frontier` to `for_cancun` and in both transition
-  * labels between them; `for_praguetoosakaattime15k` is the exception, where
-  * `osaka/eip7594_peerdas/max_blob_per_tx/max_blobs_per_tx_fork_transition.json`
-  * refuses consecutive blocks -- two cases shaped refused, refused, refused and
-  * accepted, refused, refused. **A label with sibling refusals needs each
-  * refused block run against the state its accepted parent left**, which this
-  * runner does not do: a copy of the world taken before each refusal, or a
-  * replay of the accepted prefix, is what that label brings.
+  *   - **A refused block that is the case's last** is refused after the head
+  *     and the post-state have been compared, so what it writes is never read.
+  *   - **A refused block with blocks after it** is refused in place, and the
+  *     case goes on from the block before it. That is sound only where nothing
+  *     was written, so the refusal must be one decided before the block runs
+  *     and the world's root must be where it was -- both are checked, per
+  *     refusal, and a refusal failing either diverges and names which.
+  *
+  * **A refusal after the run with blocks after it needs the state before it**,
+  * which this runner does not keep: a copy of the world taken before each such
+  * block, or a replay of the accepted prefix, is what a case of that shape
+  * brings.
   *
   * ==Whether the reason is compared is where the field splits==
   *
@@ -95,12 +102,30 @@ final case class BlockchainResult(verdict: BlockchainVerdict, blocksAccepted: In
   * (`Ethereum.Test.Base/BlockchainTestBase.cs:361-393`). This compares it, by
   * name, through [[BlockRefusalVocabulary]].
   *
-  * ==Which of those clients this one follows past a refused block==
+  * **A name is satisfied by any shared header rule the block breaks, not only
+  * by the one reported first.** A header breaking two rules is refused by
+  * whichever runs first, and the order another implementation used can name
+  * the other. The one runner read that compares names cannot tell header rules
+  * apart at all: `besu-eth/besu` @ `b330564a94` maps each generated header name
+  * to one message, `Header validation failed`
+  * (`ethereum/referencetests/src/main/resources/block-exception-mapping.json:16`).
+  * So where the validator's first fault does not carry the stated name,
+  * [[org.fukuii.consensus.HeaderValidator.faults]] is asked for every shared
+  * rule the header breaks, and the first it lists must be the validator's own.
+  * The mechanism's own rules are not asked past a shared fault, because
+  * [[org.fukuii.consensus.ConsensusEngine.validateHeader]] is reached only once
+  * every shared rule has accepted the header.
   *
-  * Continuing past one or stopping at it cannot be told apart here, because the
-  * refused block is last. This stops, which is what the specification's own
-  * loader does (`ethereum/execution-specs` @ `0cc100eb1`,
-  * `tests/json_loader/helpers/load_blockchain_tests.py:183-190`).
+  * ==Past a refused block, this follows the clients and not the specification's
+  * loader==
+  *
+  * `ethereum/go-ethereum` @ `02872e9ef` goes on to the next block after one it
+  * refuses (`tests/block_test_util.go:250-269`), and `besu-eth/besu` @
+  * `b330564a94` runs every candidate block in turn and appends only those it
+  * imports (`BlockchainReferenceTestTools.java:158-220`).
+  * `ethereum/execution-specs` @ `0cc100eb1` returns at the first refused block
+  * (`tests/json_loader/helpers/load_blockchain_tests.py:187-190`), which leaves
+  * every block a case accepts after it unchecked.
   */
 object BlockchainRunner:
 
@@ -151,44 +176,35 @@ object BlockchainRunner:
   ): Step[Unit] =
     for
       network <- networks(fixture.network).left.map(skippedFor)
-      _ <- refusalIsLast(fixture)
       _ <- configAgrees(fixture, network)
+      _ <- followsOneChain(fixture)
       expectedRoot <- rootOf(fixture.postState)
       chain <- genesisOf(fixture, network)
-      _ <- acceptEveryValidBlock(fixture, network, chain, progress)
+      _ <- runsEveryBlockBeforeALastRefusal(fixture, network, chain, progress)
       _ <- endsWhereStated(fixture, chain, expectedRoot)
-      _ <- refusesTheInvalidBlock(fixture, network, chain, progress)
+      _ <- refusesALastRefusal(fixture, network, chain, progress)
     yield ()
 
   private def skippedFor(reason: String): BlockchainVerdict =
     BlockchainVerdict.Skipped(SkipReason.RuleNotBuilt(reason))
 
-  /** The precondition compare-before-refuse rests on: nothing follows a block
-    * the case states invalid.
-    */
-  private def refusalIsLast(fixture: BlockchainFixture): Step[Unit] =
-    val last = fixture.blocks.length - 1
-    val followed = fixture.blocks.zipWithIndex.collect {
-      case (StatedBlock.Invalid(_, _, _), index) if index != last => index
-    }
-    if followed.isEmpty then Right(())
-    else
-      Left(
-        diverged(
-          "the case states block " + followed.mkString(", ") + " of " + fixture.blocks.length.toString +
-            " invalid with blocks after it, and this runner compares the chain before running a refused block"
-        )
-      )
-
   /** What a case's `config` states, against the network it resolved to.
     *
     * ==Every key is compared, or the case does not agree==
     *
-    * A chain identifier is compared with the network's, and a network name with
-    * the case's own. **A key neither comparison reads diverges by name**, the
-    * rule a published refusal name this build lacks is held to: a configuration
-    * passed over is a rule the case exercises and this runner never looked at,
-    * and agreeing with such a case would claim a comparison nobody made.
+    * A chain identifier is compared with the network's, a network name with the
+    * case's own, and each fork's blob parameters with that fork's rules. **A key
+    * none of those comparisons reads diverges by name** -- beside the others or
+    * inside a blob schedule's entry -- the rule a published refusal name this
+    * build lacks is held to: a configuration passed over is a rule the case
+    * exercises and this runner never looked at, and agreeing with such a case
+    * would claim a comparison nobody made.
+    *
+    * ==A case stating no config at all is a different case==
+    *
+    * It states no identifier and no schedule, so there is nothing to compare,
+    * and the network runs as [[FixtureNetworks.ChainId]] -- which is where that
+    * member records the two sources for running such a case as one.
     */
   private def configAgrees(fixture: BlockchainFixture, network: FixtureNetwork): Step[Unit] =
     fixture.config match
@@ -204,8 +220,75 @@ object BlockchainRunner:
           "the case states chain id " + stated.show + " where the network " + fixture.network + " runs as " +
             network.chainId.show
         }
-        val reasons = unread.toVector ++ named.toVector ++ identified.toVector
+        val scheduled = config.blobSchedule.toVector.flatMap(blobScheduleDivergences)
+        val reasons = unread.toVector ++ named.toVector ++ identified.toVector ++ scheduled
         if reasons.isEmpty then Right(()) else Left(BlockchainVerdict.Diverged(reasons))
+
+  /** A case whose blocks all follow one chain from the genesis.
+    *
+    * ==A block naming another chain diverges, by name, until a chain driver
+    * exists==
+    *
+    * The older snapshot names each block's chain, and a block on a chain other
+    * than `default` builds on that chain's blocks rather than on the one before
+    * it. This runner follows one chain, so running such a block would validate
+    * it against the wrong parent -- and a refusal stated for it under
+    * `UnknownParent` would then agree through a parent-hash comparison the case
+    * does not make. Every block `bcInvalidHeaderTest` states names `default`
+    * (`ethereum/legacytests` @ `1f581b8cc`); the snapshot's multi-chain and
+    * transition tiers name others.
+    */
+  private def followsOneChain(fixture: BlockchainFixture): Step[Unit] =
+    if fixture.otherChains.isEmpty then Right(())
+    else
+      Left(
+        BlockchainVerdict.Diverged(
+          fixture.otherChains.map { (index, chain) =>
+            "block " + index.toString + " states the chain " + chain +
+              ", and this runner follows one chain from the genesis"
+          }
+        )
+      )
+
+  /** Each fork's blob parameters the case states, against the rules this build
+    * resolves at that fork.
+    *
+    * ==Every entry, and not only the network's own==
+    *
+    * A transition case states an entry for each blob-carrying fork it runs, and
+    * a case whose network never reaches a fork may still state one. Each entry is
+    * a claim about its fork's rules, so each is read against that fork's -- and
+    * an entry naming a fork this runner resolves no rules for diverges by name
+    * rather than being passed over.
+    *
+    * `baseFeeUpdateFraction` is the machine's member rather than the header's,
+    * for the reason `org.fukuii.chainspec.BlobSchedule` gives.
+    */
+  private def blobScheduleDivergences(stated: Map[String, StatedBlobEntry]): Vector[String] =
+    stated.toVector.sortBy(_._1).flatMap { (fork, entry) =>
+      val where = "the case's blob schedule for " + fork
+      FixtureNetworks.forkRules(fork) match
+        case None        => Vector(where + " names a fork this runner resolves no rules for")
+        case Some(rules) =>
+          (rules.header.blobSchedule, rules.evm.blobBaseFeeUpdateFraction) match
+            case (Some(schedule), Some(fraction)) =>
+              val compared = Vector(
+                ("target", entry.target, schedule.targetBlobs),
+                ("max", entry.max, schedule.maxBlobs),
+                ("baseFeeUpdateFraction", entry.baseFeeUpdateFraction, fraction)
+              ).flatMap { (key, value, resolved) =>
+                value match
+                  case None => Some(where + " states no " + key + ", where its rules resolve " + resolved)
+                  case Some(v) if v != resolved =>
+                    Some(where + " states " + key + " " + v.toString + ", where its rules resolve " + resolved)
+                  case Some(_) => None
+              }
+              val unread = Option.when(entry.otherKeys.nonEmpty)(
+                where + " states " + entry.otherKeys.mkString(", ") + ", which this runner does not compare"
+              )
+              compared ++ unread.toVector
+            case _ => Vector(where + " names a fork whose rules this build resolves with no blob schedule")
+    }
 
   /** The root of the state the case says the chain ends holding.
     *
@@ -282,20 +365,31 @@ object BlockchainRunner:
       val rules = network.schedule.at(block.header.number, block.header.timestamp)
       new Chain(trie, world, Resolved(block.header, rules))
 
-  private def decoded(rlp: Bytes): Either[String, Block] =
-    RlpCodec.decodeFrom[Block](rlp.toIArray).left.map(_.toString)
+  private def decoded(rlp: Bytes): Either[RlpError, Block] =
+    RlpCodec.decodeFrom[Block](rlp.toIArray)
 
-  private def acceptEveryValidBlock(
+  /** Whether the case's last block is one it refuses, which is refused after
+    * the chain is compared rather than in place.
+    */
+  private def endsInRefusal(fixture: BlockchainFixture): Boolean =
+    fixture.blocks.lastOption.exists {
+      case StatedBlock.Invalid(_, _, _) => true
+      case StatedBlock.Valid(_, _)      => false
+    }
+
+  private def runsEveryBlockBeforeALastRefusal(
       fixture: BlockchainFixture,
       network: FixtureNetwork,
       chain: Chain,
       progress: Progress
   ): Step[Unit] =
-    fixture.blocks.zipWithIndex.foldLeft[Step[Unit]](Right(())) { case (carried, (stated, index)) =>
+    val inPlace = if endsInRefusal(fixture) then fixture.blocks.dropRight(1) else fixture.blocks
+    inPlace.zipWithIndex.foldLeft[Step[Unit]](Right(())) { case (carried, (stated, index)) =>
       carried.flatMap { _ =>
         stated match
-          case StatedBlock.Valid(rlp, hash) => accept(rlp, hash, index, network, chain, progress)
-          case StatedBlock.Invalid(_, _, _) => Right(())
+          case StatedBlock.Valid(rlp, hash)                    => accept(rlp, hash, index, network, chain, progress)
+          case StatedBlock.Invalid(rlp, expected, decodedHash) =>
+            refuseInPlace(rlp, expected, decodedHash, index, network, chain, progress)
       }
     }
 
@@ -399,18 +493,19 @@ object BlockchainRunner:
     val reasons = headReason.toVector ++ accounts ++ gone ++ rootReason.toVector
     if reasons.isEmpty then Right(()) else Left(BlockchainVerdict.Diverged(reasons))
 
-  /** The block the case states invalid, read as the case says it reads and
-    * refused under a name the case states.
-    *
-    * ==Its encoding is held to the case's decoded form before anything runs==
-    *
-    * Where the case publishes the refused block's decoded header, the bytes must
-    * decode to a header hashing to it, exactly as a block the case accepts must;
-    * otherwise a refusal could agree about a block this build read differently.
-    * Where the case publishes none, it is stating the block does not decode, so
-    * this build decoding it is a disagreement before any rule is asked.
+  /** How a block the case refuses was refused. */
+  private enum Refused:
+
+    /** Its bytes are not a block, under a name whose rule that is. */
+    case Undecodable
+
+    /** The validator refused it for `fault`, under a name whose rule that is. */
+    case ByFault(fault: BlockFault)
+
+  /** The block the case refuses as its last, refused after the chain has been
+    * compared.
     */
-  private def refusesTheInvalidBlock(
+  private def refusesALastRefusal(
       fixture: BlockchainFixture,
       network: FixtureNetwork,
       chain: Chain,
@@ -418,43 +513,168 @@ object BlockchainRunner:
   ): Step[Unit] =
     fixture.blocks.lastOption match
       case Some(StatedBlock.Invalid(rlp, expected, decodedHash)) =>
-        val index = fixture.blocks.length - 1
-        val where = "block " + index.toString
-        decoded(rlp) match
-          case Left(error) =>
-            Left(
-              diverged(where + " does not decode (" + error + "), where the case refuses it as " + expected.describe)
-            )
-          case Right(block) =>
-            decodedHash match
-              case None =>
-                Left(diverged("the case publishes no decoded form of " + where + ", which this build decodes"))
-              case Some(stated) if stated != block.hash =>
-                Left(diverged(where + " hashes to " + block.hash.toString + ", the case states " + stated.toString))
-              case Some(_) =>
-                refused(block, index, expected, network, chain, progress)
+        refusal(rlp, expected, decodedHash, fixture.blocks.length - 1, network, chain).map(_ => progress.refuse())
       case _ => Right(())
 
-  private def refused(
-      block: Block,
-      index: Int,
+  /** A block the case refuses with blocks after it, refused where it stands.
+    *
+    * ==Sound only where the refusal wrote nothing, so both halves of that are
+    * checked==
+    *
+    * The next block runs on the world as it is afterwards, which is the state
+    * this block's parent left only if refusing this one wrote nothing. The
+    * validator states that a refusal before the run leaves the world untouched,
+    * and this does not rely on it: the fault must be one decided before the
+    * block runs, and the world's root must be the one it held before. A refusal
+    * failing either diverges, naming which.
+    */
+  private def refuseInPlace(
+      rlp: Bytes,
       expected: ExpectedRejection,
+      decodedHash: Option[Hash],
+      index: Int,
       network: FixtureNetwork,
       chain: Chain,
       progress: Progress
   ): Step[Unit] =
+    val where = "block " + index.toString
+    val before = chain.trie.stateRoot
+    refusal(rlp, expected, decodedHash, index, network, chain).flatMap { refused =>
+      progress.refuse()
+      val after = chain.trie.stateRoot
+      val ranFirst = refused match
+        case Refused.ByFault(fault) if !decidedBeforeRunning(fault) =>
+          Some(
+            where + ", which the case refuses with blocks after it, was refused by " + fault.toString +
+              " after it ran, and the blocks after it need the state before it, which this runner does not keep"
+          )
+        case _ => None
+      val moved = Option.when(after != before)(
+        "refusing " + where + " moved the world from root " + before.toString + " to " + after.toString +
+          ", and the blocks after it run on the state before it"
+      )
+      val reasons = ranFirst.toVector ++ moved.toVector
+      if reasons.isEmpty then Right(()) else Left(BlockchainVerdict.Diverged(reasons))
+    }
+
+  /** Whether `fault` is decided before the block runs, which is the order
+    * [[org.fukuii.consensus.BlockValidator]] states for each.
+    *
+    * Exhaustive, so a fault added there is placed here rather than defaulted
+    * into either answer.
+    */
+  private def decidedBeforeRunning(fault: BlockFault): Boolean = fault match
+    case BlockFault.ParentHashMismatch(_, _)       => true
+    case BlockFault.Header(_)                      => true
+    case BlockFault.OmmersHashMismatch(_, _)       => true
+    case BlockFault.TransactionsRootMismatch(_, _) => true
+    case BlockFault.WithdrawalsMissing             => true
+    case BlockFault.WithdrawalsUnexpected          => true
+    case BlockFault.WithdrawalsRootMismatch(_, _)  => true
+    case BlockFault.BlobGasUsedMismatch(_, _)      => true
+    case BlockFault.TransactionRefused(_)          => false
+    case BlockFault.GasUsedMismatch(_, _)          => false
+    case BlockFault.LogsBloomMismatch(_, _)        => false
+    case BlockFault.ReceiptsRootMismatch(_, _)     => false
+    case BlockFault.StateRootMismatch(_, _)        => false
+
+  /** A block the case refuses, read as the case says it reads and refused under
+    * a name the case states.
+    *
+    * ==Its encoding is held to the case's decoded form before anything runs==
+    *
+    * Where the case publishes the refused block's decoded header, the bytes must
+    * decode to a header hashing to it, exactly as a block the case accepts must;
+    * otherwise a refusal could agree about a block this build read differently.
+    *
+    * ==Where it publishes none, there is no hash to check, and the name decides==
+    *
+    * A block this build decodes is run and refused by name, as any other is. A
+    * block it cannot decode is refused only under a stated name whose rule is
+    * that the structure does not decode --
+    * [[BlockRefusalVocabulary.satisfiedByUndecodable]] states which, and why the
+    * name is compared where the field does not compare one.
+    */
+  private def refusal(
+      rlp: Bytes,
+      expected: ExpectedRejection,
+      decodedHash: Option[Hash],
+      index: Int,
+      network: FixtureNetwork,
+      chain: Chain
+  ): Step[Refused] =
+    val where = "block " + index.toString
+    decoded(rlp) match
+      case Left(error) =>
+        val failure = BlockRefusalVocabulary.failureOf(rlp.toIArray, error)
+        if BlockRefusalVocabulary.satisfiedByUndecodable(expected, failure) then Right(Refused.Undecodable)
+        else
+          Left(
+            diverged(
+              where + " does not decode (" + error.toString + "), where the case refuses it as " + expected.describe
+            )
+          )
+      case Right(block) =>
+        decodedHash match
+          case Some(stated) if stated != block.hash =>
+            Left(diverged(where + " hashes to " + block.hash.toString + ", the case states " + stated.toString))
+          case _ => refusedByValidator(block, index, expected, network, chain)
+
+  private def refusedByValidator(
+      block: Block,
+      index: Int,
+      expected: ExpectedRejection,
+      network: FixtureNetwork,
+      chain: Chain
+  ): Step[Refused] =
     val where = "block " + index.toString
     val rules = network.schedule.at(block.header.number, block.header.timestamp)
     validated(block, rules, network, chain) match
       case BlockVerdict.Valid(_) =>
         Left(diverged(where + " was accepted, where the case refuses it as " + expected.describe))
       case BlockVerdict.Invalid(fault) =>
-        if BlockRefusalVocabulary.satisfies(expected, fault) then
-          progress.refuse()
-          Right(())
-        else Left(diverged(refusedOtherwise(where, fault.toString, expected)))
+        if BlockRefusalVocabulary.satisfies(expected, fault) then Right(Refused.ByFault(fault))
+        else
+          fault match
+            case BlockFault.Header(first) => alsoBroken(block, rules, first, expected, where, network, chain)
+            case _                        => Left(diverged(refusedOtherwise(where, fault.toString, expected)))
       case BlockVerdict.Undecided(rule) =>
         Left(BlockchainVerdict.Undecided(index, rule))
+
+  /** A block refused first under a header rule the case does not name, agreeing
+    * where it also breaks a shared header rule the case does name.
+    *
+    * The rules are resolved through the engine exactly as
+    * [[org.fukuii.consensus.BlockValidator.validate]] resolves them, and the
+    * first fault listed must be the one the validator reported -- or, where no
+    * shared rule is broken, the engine's own answer must be. A block failing
+    * that has been refused for a reason these rules do not reproduce, and it
+    * diverges saying so rather than being compared further.
+    */
+  private def alsoBroken(
+      block: Block,
+      rules: UpgradeRules,
+      first: HeaderFault,
+      expected: ExpectedRejection,
+      where: String,
+      network: FixtureNetwork,
+      chain: Chain
+  ): Step[Refused] =
+    val running = Resolved(block.header, network.engine.rulesFrom(rules))
+    val parent = chain.head.copy(rules = network.engine.rulesFrom(chain.head.rules))
+    val shared = HeaderValidator.faults(running, parent)
+    val reproduced =
+      if shared.nonEmpty then shared.headOption else network.engine.validateHeader(running, parent).left.toOption
+    if !reproduced.contains(first) then
+      Left(
+        diverged(
+          where + " was refused as " + first.toString + ", which the header rules it runs reproduce as " +
+            reproduced.fold("no fault")(_.toString)
+        )
+      )
+    else if shared.drop(1).exists(also => BlockRefusalVocabulary.satisfies(expected, BlockFault.Header(also))) then
+      Right(Refused.ByFault(BlockFault.Header(first)))
+    else Left(diverged(refusedOtherwise(where, BlockFault.Header(first).toString, expected)))
 
   private def refusedOtherwise(where: String, fault: String, expected: ExpectedRejection): String =
     val unmapped = BlockRefusalVocabulary.unmapped(expected)

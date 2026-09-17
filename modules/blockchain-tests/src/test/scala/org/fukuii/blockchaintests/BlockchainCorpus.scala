@@ -2,6 +2,8 @@ package org.fukuii.blockchaintests
 
 import java.nio.file.Path
 
+import io.circe.Json
+
 import org.fukuii.consensus.RuleNotRun
 import org.fukuii.evm.fixtures.{CaseOutcome, CorpusReport, FixtureCorpus, SkipReason, Verdict}
 
@@ -12,8 +14,10 @@ import org.fukuii.evm.fixtures.{CaseOutcome, CorpusReport, FixtureCorpus, SkipRe
   * the count the corpus says there are.
   *
   * @param refusals
-  *   blocks the case states invalid. At most one per case in every label this
-  *   runner is built for; `for_praguetoosakaattime15k` states up to three.
+  *   blocks the case states invalid. At most one per case in every generated
+  *   label this runner is built for; `for_praguetoosakaattime15k` states up to
+  *   three, and `bcInvalidHeaderTest`'s `badTimestamp` three with blocks
+  *   between and after them.
   */
 final case class StatedShape(validBlocks: Int, refusals: Int)
 
@@ -69,6 +73,12 @@ final case class BlockchainReport(corpus: String, filesRead: Int, outcomes: Vect
         case _                             => false
     }
 
+  /** The cases that diverged, by name, which is what a label pinned with its
+    * divergences is held to: a count alone would let one divergence give way to
+    * another and still read unchanged.
+    */
+  def divergedNames: Vector[String] = diverged.map(_.name).sorted
+
   def undecidedByRule: Map[String, Int] =
     tally(outcomes.map(_.result.verdict).collect { case BlockchainVerdict.Undecided(_, rule) => ruleName(rule) })
 
@@ -109,6 +119,33 @@ final case class BlockchainReport(corpus: String, filesRead: Int, outcomes: Vect
     case RuleNotRun.OmmerValidation(_)     => "ommer-validation"
     case RuleNotRun.EngineRules(engineSet) => "engine-rules " + engineSet.toVector.map(_.toString).sorted.mkString("+")
 
+/** One label this tier certifies: where its files are, and which of their cases
+  * it runs.
+  *
+  * @param directory
+  *   the directory of files, under the corpus root.
+  * @param excludedGroups
+  *   the directories directly under [[directory]] whose files this label leaves
+  *   to another. `for_cancun`'s `ported_static` is a re-pinned legacy suite that
+  *   stays out of the ordinary run, so this label is `for_cancun` without it.
+  * @param network
+  *   the one network whose cases this label runs, where its files hold cases for
+  *   several; every case in them where absent.
+  */
+final case class BlockchainLabel(
+    name: String,
+    directory: Path => Path,
+    excludedGroups: Set[String],
+    network: Option[String]
+):
+
+  /** Whether a case, as its file writes it, is this label's. A case whose
+    * network cannot be read is kept, so a broken case is counted rather than
+    * dropped.
+    */
+  def keeps(body: Json): Boolean =
+    network.forall(wanted => body.hcursor.downField("network").as[String].toOption.forall(_ == wanted))
+
 /** The published `blockchain_tests` tier, run a label at a time.
   *
   * ==Folded a file at a time, so nothing accumulates but outcomes==
@@ -116,14 +153,49 @@ final case class BlockchainReport(corpus: String, filesRead: Int, outcomes: Vect
   * A label is tens of megabytes of JSON carrying every block's encoding. A
   * file's cases are decoded, run and reduced to their outcomes before the next
   * file is read, so the cost held at once is one file's.
+  *
+  * ==Two corpora==
+  *
+  * The generated labels are directories of `ethereum/execution-specs-fixtures`'
+  * `tests-v20.0.1` release, one set of rules each. `bcInvalidHeaderTest` is
+  * `ethereum/legacytests`' directory of that name in its `Cancun` snapshot,
+  * whose files each hold one case per network -- so each of its labels reads
+  * every file and runs one network's cases. It is read because no case of the
+  * generated release refuses a block for its state root, receipts root,
+  * transactions root, logs bloom or gas used, and these do.
   */
 object BlockchainCorpus:
 
-  /** The labels certified, as the release names their directories. */
-  val Labels: Vector[String] = Vector("for_paris")
+  private def generated(label: String, excluding: Set[String] = Set.empty): BlockchainLabel =
+    BlockchainLabel(
+      label,
+      root => FixtureCorpus.generated(root).resolve("blockchain_tests").resolve(label),
+      excluding,
+      None
+    )
 
-  def directory(root: Path, label: String): Path =
-    FixtureCorpus.generated(root).resolve("blockchain_tests").resolve(label)
+  private def invalidHeaders(network: String): BlockchainLabel =
+    BlockchainLabel(
+      "bcInvalidHeaderTest at " + network,
+      _.resolve("ethereum/legacytests/Cancun/BlockchainTests/InvalidBlocks/bcInvalidHeaderTest"),
+      Set.empty,
+      Some(network)
+    )
+
+  /** The labels certified, in the order they run. */
+  val Labels: Vector[BlockchainLabel] =
+    Vector(
+      generated("for_paris"),
+      generated("for_shanghai"),
+      generated("for_paristoshanghaiattime15k"),
+      generated("for_shanghaitocancunattime15k"),
+      generated("for_cancun", excluding = Set("ported_static")),
+      invalidHeaders("Paris"),
+      invalidHeaders("Shanghai"),
+      invalidHeaders("Cancun")
+    )
+
+  def label(name: String): Option[BlockchainLabel] = Labels.find(_.name == name)
 
   /** One report per label, or nothing at all when the corpus cannot be located.
     *
@@ -133,21 +205,23 @@ object BlockchainCorpus:
   lazy val reports: Option[Vector[BlockchainReport]] =
     FixtureCorpus.root.map(root => Labels.map(label => report(root, label)))
 
-  def report(root: Path, label: String): BlockchainReport =
-    val base = directory(root, label)
-    val files = FixtureCorpus.jsonFilesUnder(base)
-    BlockchainReport(label, files.length, files.flatMap(file => outcomesIn(base, file)))
+  def report(root: Path, label: BlockchainLabel): BlockchainReport =
+    val base = label.directory(root)
+    val files = FixtureCorpus.jsonFilesUnder(base).filterNot { file =>
+      label.excludedGroups.contains(base.relativize(file).getName(0).toString)
+    }
+    BlockchainReport(label.name, files.length, files.flatMap(file => outcomesIn(base, file, label)))
 
   /** The cases one file under a label decodes to, for a caller that reads a
     * named file rather than a whole label.
     */
-  def casesIn(root: Path, label: String, relative: String): Either[String, BlockchainFile] =
-    val file = directory(root, label).resolve(relative)
-    FixtureCorpus.read(file).flatMap(BlockchainFixture.decodeFile(relative, _))
+  def casesIn(root: Path, label: BlockchainLabel, relative: String): Either[String, BlockchainFile] =
+    val file = label.directory(root).resolve(relative)
+    FixtureCorpus.read(file).flatMap(BlockchainFixture.decodeFile(relative, _, label.keeps))
 
-  private def outcomesIn(base: Path, file: Path): Vector[BlockchainOutcome] =
+  private def outcomesIn(base: Path, file: Path, label: BlockchainLabel): Vector[BlockchainOutcome] =
     val relative = base.relativize(file).toString
-    FixtureCorpus.read(file).flatMap(BlockchainFixture.decodeFile(relative, _)) match
+    FixtureCorpus.read(file).flatMap(BlockchainFixture.decodeFile(relative, _, label.keeps)) match
       case Left(error) =>
         Vector(unread(relative, error))
       case Right(decoded) =>

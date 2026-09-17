@@ -962,7 +962,7 @@ lazy val consensusPos = (project in file("modules/consensus-pos"))
 //
 // ── What is absent ──
 //
-// Neither mechanism leaf is named yet. Nothing here imports one: the only label
+// Neither mechanism leaf is named yet. Nothing here imports one: every label
 // this module runs today is after the merge, where the mechanism-neutral engine
 // runs every block. The proof-of-work leaf arrives with the first label before
 // the merge, whose engine is declared there -- the rule the proof-of-stake
