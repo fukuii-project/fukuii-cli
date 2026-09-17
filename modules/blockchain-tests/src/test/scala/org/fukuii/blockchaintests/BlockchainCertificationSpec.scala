@@ -30,7 +30,8 @@ import org.fukuii.types.{Block, BlockHeader, Withdrawal}
   *
   * The head, the post-state, a refusal's name and its decoded form are reached
   * by `for_paris`'s cases; a blob schedule and a block this build cannot decode
-  * by a `for_cancun` case stating both; a refusal with blocks after it by
+  * by a `for_cancun` case stating both, whose block stops decoding at a blob
+  * transaction's empty recipient; a refusal with blocks after it by
   * `bcInvalidHeaderTest`'s `badTimestamp`, the one published case of that
   * shape; the difficulty rule and a case's seal engine by a `for_frontier` case;
   * and whose names a refusal is stated in by one case each from the two
@@ -299,8 +300,8 @@ class BlockchainCertificationSpec extends AnyFlatSpec:
         ids
       ),
       (
-        "a block that does not decode, stated under a transaction's name alone",
-        restated(creation, names("TransactionException.TYPE_3_TX_CONTRACT_CREATION")),
+        "a block stopping at a blob transaction's empty recipient, stated under another transaction's name alone",
+        restated(creation, names("TransactionException.TYPE_3_TX_ZERO_BLOBS")),
         ids
       ),
       (
@@ -361,6 +362,18 @@ class BlockchainCertificationSpec extends AnyFlatSpec:
     val verdicts =
       unseeded.map((fixture, filledBy) => fixture.name -> BlockchainRunner.run(fixture, filledBy = filledBy).verdict)
     assert(verdicts.forall(_._2 == BlockchainVerdict.Agreed), verdicts.toString)
+  }
+
+  "a published block stopping at a blob transaction's empty recipient, stated under the contract-creation name alone," should "agree, refused where its decode stops" in {
+    // The published case states the structures name beside this one, which
+    // agrees without the contract-creation rule; stated alone, only that rule's
+    // decode position can agree.
+    val result =
+      BlockchainRunner.run(restated(contractCreationCase, names("TransactionException.TYPE_3_TX_CONTRACT_CREATION")))
+    assert(
+      result.verdict == BlockchainVerdict.Agreed && result.refusalsAgreed == 1 && result.blocksAccepted == 0,
+      result.toString
+    )
   }
 
   "a published Byzantium case, run under the reward Spurious Dragon pays," should "diverge on its state root" in {

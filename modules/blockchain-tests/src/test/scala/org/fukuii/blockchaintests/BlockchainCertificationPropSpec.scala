@@ -3,7 +3,7 @@ package org.fukuii.blockchaintests
 import org.scalatest.prop.TableDrivenPropertyChecks
 import org.scalatest.propspec.AnyPropSpec
 
-import org.fukuii.evm.fixtures.FixtureCorpus
+import org.fukuii.evm.fixtures.{FixtureCorpus, Heavy}
 
 /** What one label states and what this build did with it, as pinned counts. */
 final case class LabelCensus(
@@ -18,6 +18,25 @@ final case class LabelCensus(
     undecided: Map[String, Int],
     skipped: Map[String, Int]
 )
+
+object LabelCensus:
+
+  /** Every count a label is pinned to, as `report` gives it, with the cases that
+    * diverged in name order.
+    */
+  def of(report: BlockchainReport): LabelCensus =
+    LabelCensus(
+      report.filesRead,
+      report.cases,
+      report.blocksStatedValid,
+      report.refusalsStated,
+      report.blocksAccepted,
+      report.agreed.length,
+      report.refusalsAgreed,
+      report.divergedNames,
+      report.undecidedByRule,
+      report.skippedByReason
+    )
 
 /** The published block tier, run through this build's block validator and
   * pinned as counts, one row per label.
@@ -44,9 +63,23 @@ final case class LabelCensus(
   * this one, with its own JSON parser and RLP decoder, and it reports the same
   * four figures in each. **For `for_paris` another tier in this build
   * corroborates them from the other side**: the same release's engine form of
-  * that label is pinned by `EnginePayloadCertificationSpec` at 150 files and
-  * 4,997 payloads, one payload per block -- and 4,709 accepted plus 288 refused
-  * is 4,997.
+  * that directory is pinned by `EnginePayloadCertificationSpec` at 150 files and
+  * 4,997 payloads, one payload per block -- and the 148 files, 4,645 blocks
+  * accepted and 288 refused here, with the 2 files and 64 blocks its
+  * `ported_static` group holds, are 150 files and 4,997 blocks.
+  *
+  * ==Each label's `ported_static` group is pinned the same way, under
+  * `org.fukuii.Heavy`==
+  *
+  * `BlockchainCorpus.PortedStaticGroups` states why the groups leave the
+  * ordinary run. They are pinned by one tagged property rather than one per
+  * label, because its rows differ only in the census each holds, which is the
+  * shape this project gives a test matrix; each row compares a group's whole
+  * census, so no count goes unasserted, and every row is checked rather than
+  * the first that fails, so a run moving several groups names each. The same
+  * second reader counted each group's files, cases and stated blocks, and each
+  * group's figures with its label's own row are the figures that reader counts
+  * over the whole directory.
   *
   * **A missing corpus fails rather than cancels**, and the reports are read
   * before `forAll` and never inside it, for the reason
@@ -70,9 +103,9 @@ class BlockchainCertificationPropSpec extends AnyPropSpec with TableDrivenProper
   private val census: Map[String, LabelCensus] =
     Map(
       "for_paris" ->
-        LabelCensus(150, 3510, 4709, 288, 4709, 3510, 288, Vector.empty, Map.empty, Map.empty),
+        LabelCensus(148, 3446, 4645, 288, 4645, 3446, 288, Vector.empty, Map.empty, Map.empty),
       "for_shanghai" ->
-        LabelCensus(182, 3751, 4967, 302, 4967, 3751, 302, Vector.empty, Map.empty, Map.empty),
+        LabelCensus(180, 3687, 4903, 302, 4903, 3687, 302, Vector.empty, Map.empty, Map.empty),
       "for_paristoshanghaiattime15k" ->
         LabelCensus(1, 40, 80, 0, 80, 40, 0, Vector.empty, Map.empty, Map.empty),
       "for_shanghaitocancunattime15k" ->
@@ -86,23 +119,23 @@ class BlockchainCertificationPropSpec extends AnyPropSpec with TableDrivenProper
       "bcInvalidHeaderTest at Cancun" ->
         LabelCensus(22, 22, 9, 23, 9, 22, 23, Vector.empty, Map.empty, Map.empty),
       "for_frontier" ->
-        LabelCensus(35, 572, 1265, 10, 1265, 572, 10, Vector.empty, Map.empty, Map.empty),
+        LabelCensus(33, 508, 1201, 10, 1201, 508, 10, Vector.empty, Map.empty, Map.empty),
       "for_homestead" ->
-        LabelCensus(38, 587, 1514, 14, 1514, 587, 14, Vector.empty, Map.empty, Map.empty),
+        LabelCensus(36, 523, 1450, 14, 1450, 523, 14, Vector.empty, Map.empty, Map.empty),
       "for_tangerinewhistle" ->
-        LabelCensus(44, 782, 1709, 14, 1709, 782, 14, Vector.empty, Map.empty, Map.empty),
+        LabelCensus(42, 718, 1645, 14, 1645, 718, 14, Vector.empty, Map.empty, Map.empty),
       "for_spuriousdragon" ->
-        LabelCensus(44, 782, 1707, 15, 1707, 782, 15, Vector.empty, Map.empty, Map.empty),
+        LabelCensus(42, 718, 1643, 15, 1643, 718, 15, Vector.empty, Map.empty, Map.empty),
       "for_byzantium" ->
-        LabelCensus(80, 2218, 3517, 15, 3517, 2218, 15, Vector.empty, Map.empty, Map.empty),
+        LabelCensus(78, 2154, 3453, 15, 3453, 2154, 15, Vector.empty, Map.empty, Map.empty),
       "for_constantinoplefix" ->
-        LabelCensus(111, 2340, 3812, 15, 3812, 2340, 15, Vector.empty, Map.empty, Map.empty),
+        LabelCensus(109, 2276, 3748, 15, 3748, 2276, 15, Vector.empty, Map.empty, Map.empty),
       "for_istanbul" ->
-        LabelCensus(117, 2484, 3956, 15, 3956, 2484, 15, Vector.empty, Map.empty, Map.empty),
+        LabelCensus(115, 2420, 3892, 15, 3892, 2420, 15, Vector.empty, Map.empty, Map.empty),
       "for_berlin" ->
-        LabelCensus(145, 3215, 4545, 157, 4545, 3215, 157, Vector.empty, Map.empty, Map.empty),
+        LabelCensus(143, 3151, 4481, 157, 4481, 3151, 157, Vector.empty, Map.empty, Map.empty),
       "for_london" ->
-        LabelCensus(144, 3484, 4683, 288, 4683, 3484, 288, Vector.empty, Map.empty, Map.empty),
+        LabelCensus(142, 3420, 4619, 288, 4619, 3420, 288, Vector.empty, Map.empty, Map.empty),
       "bcInvalidHeaderTest (Constantinople snapshot) at Frontier" -> olderInvalidHeaders,
       "bcInvalidHeaderTest (Constantinople snapshot) at Homestead" -> olderInvalidHeaders,
       "bcInvalidHeaderTest (Constantinople snapshot) at EIP150" -> olderInvalidHeaders,
@@ -130,6 +163,34 @@ class BlockchainCertificationPropSpec extends AnyPropSpec with TableDrivenProper
 
   private def found(reports: Vector[BlockchainReport], label: String): BlockchainReport =
     reports.find(_.corpus == label).getOrElse(fail("censused but never assembled: " + label))
+
+  /** A group of 64: the static suite's two stack-overflow files at a label's
+    * fork, each case one block the corpus states valid.
+    */
+  private val stackOverflowGroup: LabelCensus =
+    LabelCensus(2, 64, 64, 0, 64, 64, 0, Vector.empty, Map.empty, Map.empty)
+
+  /** Each generated label's `ported_static` group, in the order
+    * `BlockchainCorpus.PortedStaticGroups` assembles them.
+    */
+  private val portedStaticCensus: Vector[(String, LabelCensus)] =
+    Vector(
+      "for_paris/ported_static" -> stackOverflowGroup,
+      "for_shanghai/ported_static" -> stackOverflowGroup,
+      "for_cancun/ported_static" ->
+        LabelCensus(2135, 7040, 6905, 135, 6905, 7040, 135, Vector.empty, Map.empty, Map.empty),
+      "for_frontier/ported_static" -> stackOverflowGroup,
+      "for_homestead/ported_static" -> stackOverflowGroup,
+      "for_tangerinewhistle/ported_static" -> stackOverflowGroup,
+      "for_spuriousdragon/ported_static" -> stackOverflowGroup,
+      "for_byzantium/ported_static" -> stackOverflowGroup,
+      "for_constantinoplefix/ported_static" -> stackOverflowGroup,
+      "for_istanbul/ported_static" -> stackOverflowGroup,
+      "for_berlin/ported_static" -> stackOverflowGroup,
+      "for_london/ported_static" -> stackOverflowGroup
+    )
+
+  private val portedStaticCensused = Table(("group", "expected"), portedStaticCensus*)
 
   property("every label the tier assembles is censused, and in the order it runs") {
     val names = assembled.map(_.corpus)
@@ -237,5 +298,27 @@ class BlockchainCertificationPropSpec extends AnyPropSpec with TableDrivenProper
         report.agreed.length + report.diverged.length + report.undecidedByRule.values.sum +
           report.skippedByReason.values.sum
       assert(accounted == report.cases, report.describe)
+    }
+  }
+
+  property("every generated label's ported_static group holds the census its row records, all twelve", Heavy) {
+    // The assembled groups and the census are compared inside every row, in
+    // order and counted, because a group dropped from both would leave every
+    // remaining row agreeing.
+    val reports = BlockchainCorpus.portedStaticReports.getOrElse(
+      fail(
+        "the published corpus was not found: set " + FixtureCorpus.RootVariable + " or write " +
+          FixtureCorpus.RootPointer.toString + ". A run that cannot find it has measured nothing."
+      )
+    )
+    val assembledGroups = reports.map(_.corpus)
+    val censusedGroups = portedStaticCensus.map(_._1)
+    forEvery(portedStaticCensused) { (group: String, expected: LabelCensus) =>
+      val report = found(reports, group)
+      assert(
+        assembledGroups == censusedGroups && censusedGroups.length == 12 && LabelCensus.of(report) == expected,
+        "assembled " + assembledGroups.mkString(", ") + " against a census of " + censusedGroups.mkString(", ") +
+          "; " + report.describe
+      )
     }
   }

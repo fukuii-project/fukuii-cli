@@ -1,11 +1,11 @@
 package org.fukuii.blockchaintests
 
-import org.fukuii.bytes.UInt256
+import org.fukuii.bytes.{Address, UInt256}
 import org.fukuii.chainspec.certification.TransactionRefusalVocabulary
 import org.fukuii.consensus.{BlockFault, HeaderFault}
 import org.fukuii.evm.fixtures.ExpectedRejection
 import org.fukuii.rlp.{Rlp, RlpCodec, RlpError, RlpItem}
-import org.fukuii.types.{BlockHeader, BlockNonce, Seal}
+import org.fukuii.types.{BlockHeader, BlockNonce, Seal, Transaction, TransactionType}
 
 /** Where a block this build cannot decode stopped decoding. */
 enum DecodeFailure:
@@ -13,8 +13,16 @@ enum DecodeFailure:
   /** Its header does not decode, read on its own. */
   case Header(error: RlpError)
 
+  /** Its header decodes, and the first transaction its body does not decode is a
+    * blob transaction whose recipient is empty, where decoding stopped.
+    *
+    * @param transaction
+    *   that transaction's position in the body, counting from zero.
+    */
+  case BlobRecipientEmpty(transaction: Int)
+
   /** Its header decodes, or its bytes are no sequence to take one from, and the
-    * block does not.
+    * block does not, stopping anywhere but where [[BlobRecipientEmpty]] stops.
     */
   case Block(error: RlpError)
 
@@ -157,6 +165,33 @@ object BlockRefusalVocabulary:
     *
     * **Neither legacy tool writes a decode name**, so a block its corpus refuses
     * that this build cannot decode satisfies nothing there.
+    *
+    * ==One transaction's name is a decode rule too, for one shape alone==
+    *
+    * `TransactionException.TYPE_3_TX_CONTRACT_CREATION` is defined as
+    * *"Transaction is a type 3 transaction and has an empty `to`."*
+    * (`packages/testing/src/execution_testing/exceptions/exceptions/transaction.py:170-171`),
+    * and EIP-4844 requires that field to *"always represent a 20-byte address"*
+    * (`ethereum/EIPs` @ `d2a64c2d4`, `EIPS/eip-4844.md:107`, Final). The
+    * specification types it so (`src/ethereum/forks/cancun/transactions.py:304`)
+    * and decodes a block's transactions as its body runs (`fork.py:652`), so its
+    * own reading of a published block refuses that transaction at the decode,
+    * before the check raising the name's own error (`fork.py:469-471`) is reached
+    * -- which its transition tool reaches only from a transaction read as JSON
+    * (`src/ethereum_spec_tools/loaders/transaction_loader.py:63-64`).
+    *
+    * **The field decides the rule at two positions, and the specification's own
+    * client mappers hold both under this one name.** go-ethereum, erigon, reth and
+    * ethrex type the recipient as an address, and the mappers give the name their
+    * decode messages (`packages/testing/src/execution_testing/client_clis/clis/geth.py:83-86`,
+    * `erigon.py:76-78`, `reth.py:28`, `ethrex.py:105-109`); besu and nethermind
+    * read the empty field as no recipient and refuse at validation, and the
+    * mappers give the name those messages (`besu.py:335-338`,
+    * `nethermind.py:349-351`). So it is satisfied where a block stops decoding at
+    * exactly that transaction, [[DecodeFailure.BlobRecipientEmpty]], and at no
+    * other decode failure: a recipient of another width, an empty address
+    * elsewhere, another format's recipient or a header that does not decode is
+    * not this name's shape.
     */
   def satisfiedByUndecodable(expected: ExpectedRejection, failure: DecodeFailure, filledBy: FillingTool): Boolean =
     filledBy match
@@ -165,9 +200,13 @@ object BlockRefusalVocabulary:
         failure match
           case DecodeFailure.Header(error) =>
             typed(error) && expected.stated.exists(name => decodeRules.contains(name) || name == IncorrectBlockFormat)
+          case DecodeFailure.BlobRecipientEmpty(_) =>
+            expected.stated.exists(name => decodeRules.contains(name) || name == BlobContractCreation)
           case DecodeFailure.Block(error) => typed(error) && expected.stated.exists(decodeRules.contains)
 
   private val IncorrectBlockFormat: String = "BlockException.INCORRECT_BLOCK_FORMAT"
+
+  private val BlobContractCreation: String = "TransactionException.TYPE_3_TX_CONTRACT_CREATION"
 
   /** The names `expected` states that no half of `filledBy`'s vocabulary holds.
     *
@@ -182,14 +221,64 @@ object BlockRefusalVocabulary:
     )
 
   /** Where `rlp`, which does not decode as a block, stopped: at its header,
-    * where its bytes are a sequence whose first item does not decode as one, and
-    * at the block otherwise.
+    * where its bytes are a sequence whose first item does not decode as one; at a
+    * blob transaction's empty recipient, where [[stoppedAtBlobRecipient]] finds
+    * the block stopped there; and at the block otherwise.
     */
   def failureOf(rlp: IArray[Byte], error: RlpError): DecodeFailure =
     Rlp.decode(rlp) match
       case Right(RlpItem.Sequence(items)) if items.nonEmpty =>
-        RlpCodec[BlockHeader].decode(items(0)).fold(DecodeFailure.Header(_), _ => DecodeFailure.Block(error))
+        RlpCodec[BlockHeader]
+          .decode(items(0))
+          .fold(
+            DecodeFailure.Header(_),
+            _ => stoppedAtBlobRecipient(items, error).getOrElse(DecodeFailure.Block(error))
+          )
       case _ => DecodeFailure.Block(error)
+
+  /** The position of the body's first transaction that does not decode, where it
+    * is a blob transaction whose recipient is empty and the block stopped there.
+    *
+    * **Where the block stopped is read off its error as well as the shape.** A
+    * body carrying such a transaction can stop decoding earlier -- at a field
+    * before the recipient, or at a transaction before this one -- and an empty
+    * address anywhere else reports the same width. The block's header has
+    * decoded, and its body decodes its transactions before anything after them,
+    * so the block's error is the first undecodable transaction's own; and no
+    * field before a blob transaction's recipient is an address, so that error
+    * is the empty recipient's width only where decoding reached the recipient.
+    */
+  private def stoppedAtBlobRecipient(items: Vector[RlpItem], error: RlpError): Option[DecodeFailure] =
+    items.lift(1) match
+      case Some(RlpItem.Sequence(transactions)) =>
+        val first = transactions.indexWhere(RlpCodec[Transaction].decode(_).isLeft)
+        Option.when(
+          first >= 0 && error == EmptyRecipient && blobWithEmptyRecipient(transactions(first))
+        )(DecodeFailure.BlobRecipientEmpty(first))
+      case _ => None
+
+  /** The error an address codec reports for an empty field. */
+  private val EmptyRecipient: RlpError = RlpError.WrongWidth(Address.Width, 0)
+
+  /** The recipient's position in a blob transaction's payload: `to` in EIP-4844's
+    * `[chain_id, nonce, max_priority_fee_per_gas, max_fee_per_gas, gas_limit, to, ...]`
+    * (`ethereum/EIPs` @ `d2a64c2d4`, `EIPS/eip-4844.md:102`).
+    */
+  private val BlobRecipientField: Int = 5
+
+  /** Whether `item` is a blob transaction, as a body element carries one, whose
+    * recipient field is the empty string.
+    */
+  private def blobWithEmptyRecipient(item: RlpItem): Boolean = item match
+    case RlpItem.Bytes(payload) if payload.nonEmpty && (payload(0) & 0xff) == TransactionType.Blob.number =>
+      Rlp.decode(payload.drop(1)) match
+        case Right(RlpItem.Sequence(fields)) =>
+          fields.lift(BlobRecipientField).exists {
+            case RlpItem.Bytes(recipient) => recipient.isEmpty
+            case RlpItem.Sequence(_)      => false
+          }
+        case _ => false
+    case _ => false
 
   private def refusesUnder(name: String, fault: BlockFault, refused: BlockHeader, filledBy: FillingTool): Boolean =
     rulesOf(filledBy).get(name).exists(rule => rule(fault, refused)) ||

@@ -126,8 +126,9 @@ final case class BlockchainReport(corpus: String, filesRead: Int, outcomes: Vect
   *   the directory of files, under the corpus root.
   * @param excludedGroups
   *   the directories directly under [[directory]] whose files this label leaves
-  *   to another. `for_cancun`'s `ported_static` is a re-pinned legacy suite that
-  *   stays out of the ordinary run, so this label is `for_cancun` without it.
+  *   to another. A generated label's `ported_static` is a re-pinned legacy suite
+  *   that stays out of the ordinary run, and [[BlockchainCorpus.PortedStaticGroups]]
+  *   reads it instead.
   * @param network
   *   the one network whose cases this label runs, where its files hold cases for
   *   several; every case in them where absent.
@@ -161,8 +162,8 @@ final case class BlockchainLabel(
   * ==Three corpora==
   *
   * The generated labels are directories of `ethereum/execution-specs-fixtures`'
-  * `tests-v20.0.1` release, one set of rules each, and each is run whole but
-  * `for_cancun`, whose `ported_static` group stays out of the ordinary run.
+  * `tests-v20.0.1` release, one set of rules each, and each is run without the
+  * `ported_static` group it carries, where it carries one.
   * `bcInvalidHeaderTest` is `ethereum/legacytests`' directory of that name,
   * whose files each hold one case per network -- so each of its labels reads
   * every file and runs one network's cases. It is read because no case of the
@@ -176,6 +177,11 @@ final case class BlockchainLabel(
   * snapshot does not, which is how those labels were first named.
   */
 object BlockchainCorpus:
+
+  /** The directory a generated label holds its re-pinned legacy suite in, which
+    * the label leaves to [[PortedStaticGroups]].
+    */
+  val PortedStatic: String = "ported_static"
 
   private def generated(label: String, excluding: Set[String] = Set.empty): BlockchainLabel =
     BlockchainLabel(
@@ -207,23 +213,23 @@ object BlockchainCorpus:
   /** The labels certified, in the order they run. */
   val Labels: Vector[BlockchainLabel] =
     Vector(
-      generated("for_paris"),
-      generated("for_shanghai"),
+      generated("for_paris", excluding = Set(PortedStatic)),
+      generated("for_shanghai", excluding = Set(PortedStatic)),
       generated("for_paristoshanghaiattime15k"),
       generated("for_shanghaitocancunattime15k"),
-      generated("for_cancun", excluding = Set("ported_static")),
+      generated("for_cancun", excluding = Set(PortedStatic)),
       invalidHeaders("Paris"),
       invalidHeaders("Shanghai"),
       invalidHeaders("Cancun"),
-      generated("for_frontier"),
-      generated("for_homestead"),
-      generated("for_tangerinewhistle"),
-      generated("for_spuriousdragon"),
-      generated("for_byzantium"),
-      generated("for_constantinoplefix"),
-      generated("for_istanbul"),
-      generated("for_berlin"),
-      generated("for_london"),
+      generated("for_frontier", excluding = Set(PortedStatic)),
+      generated("for_homestead", excluding = Set(PortedStatic)),
+      generated("for_tangerinewhistle", excluding = Set(PortedStatic)),
+      generated("for_spuriousdragon", excluding = Set(PortedStatic)),
+      generated("for_byzantium", excluding = Set(PortedStatic)),
+      generated("for_constantinoplefix", excluding = Set(PortedStatic)),
+      generated("for_istanbul", excluding = Set(PortedStatic)),
+      generated("for_berlin", excluding = Set(PortedStatic)),
+      generated("for_london", excluding = Set(PortedStatic)),
       olderInvalidHeaders("Frontier"),
       olderInvalidHeaders("Homestead"),
       olderInvalidHeaders("EIP150"),
@@ -245,6 +251,51 @@ object BlockchainCorpus:
     */
   lazy val reports: Option[Vector[BlockchainReport]] =
     FixtureCorpus.root.map(root => Labels.map(label => report(root, label)))
+
+  /** Each generated label's `ported_static` group, as a label of its own, in the
+    * order its label runs.
+    *
+    * ==Out of the ordinary run, by the rule the state tier states==
+    *
+    * `org.fukuii.chainspec.certification.CertificationCorpora.portedStaticBulk`
+    * states which corpora the ordinary run reads: a fork's own new corpus, which
+    * is the feedback loop for the machinery that fork adds, and not a re-pinned
+    * legacy suite, whose cases are breadth over machinery that is not new. Every
+    * group here is that suite re-filled at its label's fork, so every group is
+    * read only by a property carrying `org.fukuii.Heavy` -- the `for_cancun`
+    * group of 7,040 cases and each earlier label's group of 64 alike, since the
+    * rule is about what a corpus is rather than what it costs.
+    *
+    * **Each group of 64 is the suite's two stack-overflow files**, and each of
+    * those labels also carries the generated corpus's own stack-overflow files,
+    * which the ordinary run still reads. So a regression in that rule still fails
+    * a run nobody had to ask for, which is the bar `org.fukuii.evm.fixtures.Heavy`
+    * sets for what may carry the tag.
+    *
+    * ==Derived from the labels, so one declaration moves both==
+    *
+    * A group is here exactly where its label leaves [[PortedStatic]] out. A label
+    * that read its group again would drop the group from this list and move its
+    * own pinned counts in the same change.
+    */
+  val PortedStaticGroups: Vector[BlockchainLabel] =
+    Labels.filter(_.excludedGroups.contains(PortedStatic)).map { label =>
+      BlockchainLabel(
+        label.name + "/" + PortedStatic,
+        root => label.directory(root).resolve(PortedStatic),
+        Set.empty,
+        label.network,
+        label.filledBy
+      )
+    }
+
+  /** One report per group, or nothing where the corpus cannot be located.
+    *
+    * Apart from [[reports]], which every spec here shares, so that a run asking
+    * no question of these groups never assembles them.
+    */
+  lazy val portedStaticReports: Option[Vector[BlockchainReport]] =
+    FixtureCorpus.root.map(root => PortedStaticGroups.map(group => report(root, group)))
 
   def report(root: Path, label: BlockchainLabel): BlockchainReport =
     val base = label.directory(root)

@@ -8,8 +8,8 @@ import org.fukuii.consensus.{BlockFault, HeaderFault}
 import org.fukuii.evm.EvmFixtures
 import org.fukuii.evm.fixtures.ExpectedRejection
 import org.fukuii.execution.{BlockRejection, Refusal}
-import org.fukuii.rlp.RlpError
-import org.fukuii.types.{BaseFeeTail, BlockHeader, BlockNonce, Bloom, Seal}
+import org.fukuii.rlp.{Rlp, RlpCodec, RlpError, RlpItem}
+import org.fukuii.types.{AccessTuple, BaseFeeTail, Block, BlockHeader, BlockNonce, Bloom, Seal, Transaction}
 
 /** Whether a refusal this build produced is one a published name states, in
   * the names of the tool that filled its corpus, as tables of named cases with
@@ -43,6 +43,18 @@ import org.fukuii.types.{BaseFeeTail, BlockHeader, BlockNonce, Bloom, Seal}
   * other tool, so no condition can be dropped without a row refusing. Every
   * other name is decided by the fault alone, and its rows are asked over a
   * header outside the form.
+  *
+  * ==Where a block stopped decoding is asked too, of bytes written for each shape==
+  *
+  * `TransactionException.TYPE_3_TX_CONTRACT_CREATION` is satisfied where a
+  * block stops decoding at a blob transaction's empty recipient, so what places
+  * that stop is a table of its own: one block carrying such a transaction,
+  * changed one way per row -- the transaction placed second, its recipient
+  * restored or one byte short, an empty address elsewhere in it, another
+  * format's empty recipient, a field before the recipient that stops the decode
+  * first, a transaction before it that does, a header that does -- each row
+  * stating where the decode stopped. No transaction here is signed, because
+  * where a decode stops reads no signature.
   *
   * `BlockRefusalVocabularySpec` holds the examples of the other member, the
   * names a stated refusal carries that no half of a tool's vocabulary holds.
@@ -705,6 +717,16 @@ class BlockRefusalVocabularyPropSpec extends AnyPropSpec with TableDrivenPropert
 
   private val NotRlp: DecodeFailure = DecodeFailure.Block(RlpError.Truncated(2, 1))
 
+  private val StoppedAtBlobRecipient: DecodeFailure = DecodeFailure.BlobRecipientEmpty(0)
+
+  /** An empty field where a twenty-byte address is required, which is the error a
+    * blob transaction's empty recipient reports and so does any other empty
+    * address.
+    */
+  private val EmptyAddress: RlpError = RlpError.WrongWidth(20, 0)
+
+  private val ContractCreationName: Set[String] = Set("TransactionException.TYPE_3_TX_CONTRACT_CREATION")
+
   private val Undecodable = Table(
     ("case", "tool", "stated", "failure", "satisfied"),
     (
@@ -769,6 +791,55 @@ class BlockRefusalVocabularyPropSpec extends AnyPropSpec with TableDrivenPropert
       Testeth,
       Set("BlockException.INCORRECT_BLOCK_FORMAT"),
       HeaderShape,
+      false
+    ),
+    (
+      "a block stopped at a blob transaction's empty recipient, for the contract-creation name",
+      Ids,
+      ContractCreationName,
+      StoppedAtBlobRecipient,
+      true
+    ),
+    (
+      "the same stop, for the structures name, which holds every typed failure",
+      Ids,
+      Set("BlockException.RLP_STRUCTURES_ENCODING"),
+      StoppedAtBlobRecipient,
+      true
+    ),
+    (
+      "the same stop, for the name for a blob transaction carrying no blobs",
+      Ids,
+      Set("TransactionException.TYPE_3_TX_ZERO_BLOBS"),
+      StoppedAtBlobRecipient,
+      false
+    ),
+    (
+      "the same stop, for the format name, whose header decodes",
+      Ids,
+      Set("BlockException.INCORRECT_BLOCK_FORMAT"),
+      StoppedAtBlobRecipient,
+      false
+    ),
+    (
+      "the same stop, for the contract-creation name, in retesteth's corpus",
+      Retesteth,
+      ContractCreationName,
+      StoppedAtBlobRecipient,
+      false
+    ),
+    (
+      "an empty address anywhere else in the body, for the contract-creation name",
+      Ids,
+      ContractCreationName,
+      DecodeFailure.Block(EmptyAddress),
+      false
+    ),
+    (
+      "an empty address in a header, for the contract-creation name",
+      Ids,
+      ContractCreationName,
+      DecodeFailure.Header(EmptyAddress),
       false
     )
   )
@@ -867,6 +938,164 @@ class BlockRefusalVocabularyPropSpec extends AnyPropSpec with TableDrivenPropert
     )
   )
 
+  /** A blob transaction as a body carries one, well formed, whose access list
+    * names one address.
+    */
+  private val CarriedBlob: Transaction =
+    Transaction.Blob(
+      chainId = UInt64.fromBits(1L),
+      nonce = UInt64.Zero,
+      maxPriorityFeePerGas = fee(1),
+      maxFeePerGas = fee(7),
+      gasLimit = UInt64.fromBits(21000L),
+      recipient = EvmFixtures.address(0x0d),
+      value = UInt256.Zero,
+      data = Bytes.Empty,
+      accessList = Vector(AccessTuple(EvmFixtures.address(0x0e), Vector(A))),
+      maxFeePerBlobGas = fee(1),
+      blobVersionedHashes = Vector(B),
+      yParity = UInt256.Zero,
+      r = fee(1),
+      s = fee(1)
+    )
+
+  /** The format after the blob transaction's, whose recipient is an address too. */
+  private val CarriedSetCode: Transaction =
+    Transaction.SetCode(
+      chainId = UInt64.fromBits(1L),
+      nonce = UInt64.Zero,
+      maxPriorityFeePerGas = fee(1),
+      maxFeePerGas = fee(7),
+      gasLimit = UInt64.fromBits(21000L),
+      recipient = EvmFixtures.address(0x0d),
+      value = UInt256.Zero,
+      data = Bytes.Empty,
+      accessList = Vector.empty,
+      authorizationList = Vector.empty,
+      yParity = UInt256.Zero,
+      r = fee(1),
+      s = fee(1)
+    )
+
+  private val CarriedLegacy: Transaction =
+    Transaction.Legacy(
+      nonce = UInt64.Zero,
+      gasPrice = fee(7),
+      gasLimit = UInt64.fromBits(21000L),
+      to = Some(EvmFixtures.address(0x0d)),
+      value = UInt256.Zero,
+      data = Bytes.Empty,
+      v = fee(27),
+      r = fee(1),
+      s = fee(1)
+    )
+
+  private val EmptyString: RlpItem = RlpItem.Bytes(IArray.empty[Byte])
+
+  /** A recipient one byte short of an address. */
+  private val ShortRecipient: RlpItem = RlpItem.Bytes(IArray.fill(19)(0x0d.toByte))
+
+  /** `transaction` as a body element, with `change` applied to its typed
+    * payload's fields.
+    */
+  private def withFields(transaction: Transaction)(change: Vector[RlpItem] => Vector[RlpItem]): RlpItem =
+    RlpCodec[Transaction].encode(transaction) match
+      case RlpItem.Bytes(typed) =>
+        Rlp.decode(typed.drop(1)) match
+          case Right(RlpItem.Sequence(fields)) =>
+            RlpItem.Bytes(IArray(typed(0)) ++ Rlp.encode(RlpItem.Sequence(change(fields))))
+          case other => fail("a typed payload that is not a sequence: " + other.toString)
+      case other => fail("a typed transaction encoded as a list: " + other.toString)
+
+  /** The payload position EIP-4844 and EIP-7702 both give the recipient. */
+  private val RecipientField: Int = 5
+
+  private def recipientAs(transaction: Transaction, recipient: RlpItem): RlpItem =
+    withFields(transaction)(_.updated(RecipientField, recipient))
+
+  /** A block of `header` whose body carries `transactions` and no ommers, as the
+    * bytes a case would state.
+    */
+  private def carrying(header: RlpItem, transactions: RlpItem*): IArray[Byte] =
+    Rlp.encode(
+      RlpItem.Sequence(Vector(header, RlpItem.Sequence(transactions.toVector), RlpItem.Sequence(Vector.empty)))
+    )
+
+  private val FormHeader: RlpItem = RlpCodec[BlockHeader].encode(InTheForm)
+
+  /** The blob transaction with its recipient, and an access list naming one
+    * empty address, which reports the width an empty recipient does.
+    */
+  private def emptyAccessListAddress: RlpItem =
+    withFields(CarriedBlob)(
+      _.updated(8, RlpItem.Sequence(Vector(RlpItem.Sequence(Vector(EmptyString, RlpItem.Sequence(Vector.empty))))))
+    )
+
+  /** The same header with its beneficiary emptied, which no header decodes. */
+  private def beneficiaryEmptied: RlpItem = FormHeader match
+    case RlpItem.Sequence(fields) => RlpItem.Sequence(fields.updated(2, EmptyString))
+    case other                    => fail("a header encoded as a string: " + other.toString)
+
+  /** A `def` rather than a `val`, so a row whose bytes cannot be built fails its
+    * property rather than aborting the suite.
+    */
+  private def stops = Table(
+    ("block", "rlp", "stopped"),
+    (
+      "a blob transaction with an empty recipient",
+      carrying(FormHeader, recipientAs(CarriedBlob, EmptyString)),
+      Option(StoppedAtBlobRecipient)
+    ),
+    (
+      "the same transaction, second after one that decodes",
+      carrying(FormHeader, RlpCodec[Transaction].encode(CarriedLegacy), recipientAs(CarriedBlob, EmptyString)),
+      Option(DecodeFailure.BlobRecipientEmpty(1))
+    ),
+    (
+      "the same block with the recipient restored, which does not stop",
+      carrying(FormHeader, RlpCodec[Transaction].encode(CarriedBlob)),
+      Option.empty[DecodeFailure]
+    ),
+    (
+      "a blob transaction whose recipient is one byte short",
+      carrying(FormHeader, recipientAs(CarriedBlob, ShortRecipient)),
+      Option(DecodeFailure.Block(RlpError.WrongWidth(20, 19)))
+    ),
+    (
+      "a blob transaction with its recipient, and an empty address in its access list",
+      carrying(FormHeader, emptyAccessListAddress),
+      Option(DecodeFailure.Block(EmptyAddress))
+    ),
+    (
+      "that transaction, before a blob transaction with an empty recipient",
+      carrying(FormHeader, emptyAccessListAddress, recipientAs(CarriedBlob, EmptyString)),
+      Option(DecodeFailure.Block(EmptyAddress))
+    ),
+    (
+      "a set-code transaction with an empty recipient",
+      carrying(FormHeader, recipientAs(CarriedSetCode, EmptyString)),
+      Option(DecodeFailure.Block(EmptyAddress))
+    ),
+    (
+      "a blob transaction with an empty recipient, behind a nonce written with a leading zero",
+      carrying(
+        FormHeader,
+        withFields(CarriedBlob)(_.updated(RecipientField, EmptyString).updated(1, RlpItem.Bytes(IArray(0.toByte))))
+      ),
+      Option(DecodeFailure.Block(RlpError.NonCanonicalScalar))
+    ),
+    (
+      "a blob transaction with an empty recipient, behind a transaction of no known format",
+      carrying(FormHeader, RlpItem.Bytes(IArray(0x7e.toByte, 0xc0.toByte)), recipientAs(CarriedBlob, EmptyString)),
+      Option(DecodeFailure.Block(RlpError.UnknownDiscriminant(0x7e)))
+    ),
+    (
+      "a blob transaction with an empty recipient, under a header with an empty beneficiary",
+      carrying(beneficiaryEmptied, recipientAs(CarriedBlob, EmptyString)),
+      Option(DecodeFailure.Header(EmptyAddress))
+    )
+  )
+
   property("a refusal satisfies exactly the stated names that map to its rule, in its tool's names") {
     forAll(Rows) { (label, tool, stated, fault, satisfied) =>
       assert(
@@ -891,6 +1120,16 @@ class BlockRefusalVocabularyPropSpec extends AnyPropSpec with TableDrivenPropert
       assert(
         BlockRefusalVocabulary.satisfiedByUndecodable(ExpectedRejection(stated), failure, tool) == satisfied,
         label + ": expected " + (if satisfied then "satisfied" else "refused") + " for " + failure.toString
+      )
+    }
+  }
+
+  property("a block stops at a blob transaction's empty recipient exactly where its decode stops there") {
+    forAll(stops) { (label, rlp, expected) =>
+      val stopped = RlpCodec.decodeFrom[Block](rlp).left.toOption.map(BlockRefusalVocabulary.failureOf(rlp, _))
+      assert(
+        stopped == expected,
+        label + ": stopped " + stopped.toString + " where " + expected.toString + " was stated"
       )
     }
   }
