@@ -2,7 +2,6 @@ package org.fukuii.consensus
 
 import org.fukuii.bytes.{Hash, UInt256, UInt64}
 import org.fukuii.chainspec.{BlobSchedule, FeeMarket, HeaderConstants, UpgradeRules}
-import org.fukuii.crypto.Keccak256
 import org.fukuii.evm.BlobGas
 import org.fukuii.types.{BlockHeader, BlockNonce, Seal}
 
@@ -92,6 +91,21 @@ enum HeaderFault:
     * reason would state a fact the type already fixes.
     */
   case DifficultyNotFixed(stated: UInt256)
+
+  /** A block whose stated difficulty is not the one its parent requires.
+    *
+    * ==A header fault that [[HeaderValidator]] never reports==
+    *
+    * The formula is the block's own mechanism's, so
+    * [[ConsensusEngine.validateHeader]] is what checks it, and this is only the
+    * vocabulary it reports in -- as [[ExtraDataAboveLimit]] is. The required
+    * value is carried beside the stated one because a formula over a parent is
+    * what separates this from [[DifficultyNotFixed]], and the reason is read
+    * from the pair: `ethereum/go-ethereum-pow` @ `v1.10.26` refuses with
+    * *"invalid difficulty: have %v, want %v"*
+    * (`consensus/ethash/consensus.go:283-287`).
+    */
+  case DifficultyMismatch(stated: UInt256, required: UInt256)
 
   /** A block under a fork that fixes the seal's nonce, carrying a different
     * one.
@@ -402,19 +416,18 @@ object HeaderValidator:
 
   /** What a header commits to when it includes no ommers.
     *
-    * ==Derived from the two facts the document states, rather than transcribed==
+    * ==Re-exported rather than defined, for [[BlobGasPerBlob]]'s reason==
     *
-    * `ethereum/EIPs` @ `dbfa6bee8` (2026-08-26), `EIPS/eip-3675.md:83` gives the
-    * commitment as `Keccak256(RLP([]))` and `:87` gives `RLP([]) = 0xc0`, so the
-    * value below is the composition of the document's own two statements and not
-    * a 32-byte literal copied out of it. A transcribed digest is the shape of
-    * error nothing catches -- it compiles, it round-trips, and it is wrong in one
-    * nibble -- and a derivation has no such failure available to it.
-    *
-    * `HeaderValidatorSpec` asserts it against the literal the same line states,
-    * which is what makes the derivation checked rather than merely preferred.
+    * The value and its derivation are
+    * [[org.fukuii.types.BlockHeader.EmptyOmmersHash]]'s, a module below this one,
+    * because this rule is not its only reader: a payload's translation into a
+    * header reads it too, from a module that cannot see this one, and the
+    * proof-of-work engine's header rule reads the same definition.
+    * `ethereum/EIPs` @ `dbfa6bee8` (2026-08-26),
+    * `EIPS/eip-3675.md:83-87` is the statement this rule compares against, and
+    * `HeaderValidatorSpec` holds this name to the literal that table prints.
     */
-  val EmptyOmmersHash: Hash = Keccak256.hash(IArray[Byte](0xc0.toByte))
+  val EmptyOmmersHash: Hash = BlockHeader.EmptyOmmersHash
 
   /** The rules every mechanism shares, in the order they run.
     *

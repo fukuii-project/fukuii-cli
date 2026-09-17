@@ -43,6 +43,14 @@ class BlockchainFixtureSpec extends AnyFlatSpec:
   private def refusal(json: Json, stated: String): Json =
     withBlock(json, 0)(_.mapObject(_.add("expectException", Json.fromString(stated))))
 
+  /** The names each refused block of a decoded case states, in order. */
+  private def refusalsIn(json: Json): Either[String, Vector[Set[String]]] =
+    BlockchainFixture
+      .decodeCase("keyed", json)
+      .map(_.blocks.collect { case StatedBlock.Invalid(_, rejection, _) =>
+        rejection.stated
+      })
+
   /** The BLOCKHASH case with `edit` applied to its `config` object. */
   private def withConfig(edit: JsonObject => JsonObject): Json =
     published(PublishedParisCases.BlockHashCase).mapObject(obj =>
@@ -84,6 +92,29 @@ class BlockchainFixtureSpec extends AnyFlatSpec:
   "decodeCase" should "read the network a case names" in {
     val network = decoded(PublishedParisCases.BlockHashCase, published(PublishedParisCases.BlockHashCase)).network
     assert(network == "Paris", "the published case names Paris: " + network)
+  }
+
+  it should "read the seal engine a case states" in {
+    val sealEngine =
+      decoded(PublishedParisCases.BlockHashCase, published(PublishedParisCases.BlockHashCase)).sealEngine
+    assert(sealEngine == Some("NoProof"), "the published case states NoProof: " + sealEngine.toString)
+  }
+
+  it should "leave the seal engine absent where a case states none" in {
+    val sealEngine =
+      decoded("unsealed", published(PublishedParisCases.BlockHashCase).mapObject(_.remove("sealEngine"))).sealEngine
+    assert(sealEngine.isEmpty, "a case stating no seal engine states nothing for the runner to select from")
+  }
+
+  it should "refuse a seal engine that is not a string" in {
+    val read = BlockchainFixture.decodeCase(
+      "numbered",
+      published(PublishedParisCases.BlockHashCase).mapObject(_.add("sealEngine", Json.fromInt(1)))
+    )
+    assert(
+      read.left.exists(_.contains("sealEngine")),
+      "a seal engine that is no name is a broken file: " + read.toString
+    )
   }
 
   it should "read the network and chain id a case's config states, and name no other key" in {
@@ -237,15 +268,53 @@ class BlockchainFixtureSpec extends AnyFlatSpec:
         "the reader's reason"
     )
 
-  it should "refuse a refusal keyed another way, and name the key" in {
+  it should "read a refusal keyed for every network as the case's refusal" in {
     val keyed = withBlock(published(PublishedParisCases.BlockHashCase), 1)(
+      _.mapObject(_.remove("blockHeader").add("expectExceptionALL", Json.fromString("InvalidStateRoot")))
+    )
+    val refused = refusalsIn(keyed)
+    assert(
+      refused == Right(Vector(Set("InvalidStateRoot"))),
+      "the older snapshot's key for all networks states this case's refusal: " + refused.toString
+    )
+  }
+
+  it should "read a refusal keyed for the case's own network, and pass over another network's" in {
+    // Paris is the published case's network; the Frontier key is a statement
+    // about another case in the same file.
+    val keyed = withBlock(published(PublishedParisCases.BlockHashCase), 1)(
+      _.mapObject(
+        _.remove("blockHeader")
+          .add("expectExceptionParis", Json.fromString("InvalidStateRoot"))
+          .add("expectExceptionFrontier", Json.fromString("InvalidReceiptsStateRoot"))
+      )
+    )
+    val refused = refusalsIn(keyed)
+    assert(
+      refused == Right(Vector(Set("InvalidStateRoot"))),
+      "the case's own network's key applies: " + refused.toString
+    )
+  }
+
+  it should "refuse a block stating refusals for other networks only, and name the keys" in {
+    val keyed = withBlock(published(PublishedParisCases.BlockHashCase), 1)(
+      _.mapObject(_.add("expectExceptionFrontier", Json.fromString("InvalidStateRoot")))
+    )
+    val read = BlockchainFixture.decodeCase("keyed", keyed)
+    assert(
+      read.left.exists(reason => reason.contains("expectExceptionFrontier") && reason.contains("none for Paris")),
+      "a block refused for other networks alone must not be read as a block this case accepts: " + read.toString
+    )
+  }
+
+  it should "refuse a block stating two refusals for its network" in {
+    val keyed = withBlock(published(PublishedParisCases.GasLimitCase), 0)(
       _.mapObject(_.add("expectExceptionALL", Json.fromString("InvalidStateRoot")))
     )
     val read = BlockchainFixture.decodeCase("keyed", keyed)
     assert(
-      read.left.exists(_.contains("expectExceptionALL")),
-      "a block refused under a key this reader does not resolve must not be read as a block the case accepts: " +
-        read.toString
+      read.left.exists(_.contains("more than one refusal for Paris")),
+      "two keys applying to one case leave no single refusal to compare: " + read.toString
     )
   }
 

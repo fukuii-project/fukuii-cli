@@ -405,3 +405,32 @@ object BlockHeader:
           .map: requests =>
             val extra = items.drop(MandatoryFields + 6)
             Some(RequestsTail(requests, extra.headOption.map(UnmodeledTail(_, extra.drop(1)))))
+
+  /** What [[BlockHeader.ommersHash]] states for a block whose body carries no
+    * ommers: the digest of an empty list of headers, encoded.
+    *
+    * ==Held beside the field, because that is the layer the field holds it at==
+    *
+    * Its readers are a header rule, a payload's translation into a header and a
+    * difficulty formula asking whether a parent included any ommers, and the
+    * modules those sit in cannot all see one another. Each client read keeps the
+    * value with its block types or below them rather than in a rule:
+    * `ethereum/go-ethereum` @ `02872e9ef` declares `EmptyUncleHash =
+    * rlpHash([]*Header(nil))` in `core/types` (`core/types/hashes.go:29`),
+    * `besu-eth/besu` @ `b330564a94` declares `EMPTY_LIST_HASH =
+    * Hash.hash(RLP.EMPTY_LIST)` on its hash type in `datatypes`
+    * (`datatypes/src/main/java/org/hyperledger/besu/datatypes/Hash.java:45`),
+    * and `NethermindEth/nethermind` @ `3a98e08185` declares
+    * `OfAnEmptySequenceRlp` in `Nethermind.Core`
+    * (`src/Nethermind/Nethermind.Core/Crypto/Keccak.cs:23`).
+    *
+    * ==Derived rather than written down==
+    *
+    * `ethereum/execution-specs` @ `0cc100eb1` states it as
+    * `keccak256(rlp.encode([]))` in each fork module that reads it
+    * (`src/ethereum/forks/byzantium/fork.py:66`), and go-ethereum derives it the
+    * same way. A 32-byte literal is a value no derivation vouches for, so this
+    * build's own encoder says what an empty list of headers encodes to, and
+    * `BlockHeaderSpec` holds the result against EIP-3675's own statement of it.
+    */
+  val EmptyOmmersHash: Hash = Keccak256.hash(RlpCodec.encodeTo(Seq.empty[BlockHeader]))

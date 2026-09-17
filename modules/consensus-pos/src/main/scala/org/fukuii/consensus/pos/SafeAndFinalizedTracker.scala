@@ -133,7 +133,7 @@ object SafeAndFinalizedTracker:
   /** Thirty-two zero bytes: the protocol's way of naming no block.
     *
     * Derived rather than written out, for the reason
-    * [[PayloadTranslation.EmptyOmmersHash]] is derived.
+    * [[org.fukuii.types.BlockHeader.EmptyOmmersHash]] is derived.
     */
   val NoBlock: Hash = Hash.fromBytesTruncating(IArray.empty)
 

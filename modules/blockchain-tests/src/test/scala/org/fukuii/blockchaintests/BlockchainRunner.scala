@@ -141,14 +141,18 @@ object BlockchainRunner:
     *   published run; a caller exercising an outcome no published label reaches
     *   yet -- a rule an engine does not run, a mechanism that raises -- supplies
     *   a network carrying that engine instead.
+    * @param filledBy
+    *   the tool whose names the case's refusals are stated in, which its label
+    *   knows: [[FillingTool.ExecutionSpecs]]'s ids unless a caller names another.
     */
   def run(
       fixture: BlockchainFixture,
-      networks: String => Either[String, FixtureNetwork] = FixtureNetworks.named
+      networks: String => Either[String, FixtureNetwork] = FixtureNetworks.named,
+      filledBy: FillingTool = FillingTool.ExecutionSpecs
   ): BlockchainResult =
     val progress = new Progress
     val verdict =
-      try runCase(fixture, networks, progress).fold(identity, _ => BlockchainVerdict.Agreed)
+      try runCase(fixture, networks, filledBy, progress).fold(identity, _ => BlockchainVerdict.Agreed)
       catch
         case NonFatal(cause) =>
           BlockchainVerdict.Diverged(Vector("threw " + cause.getClass.getName + ": " + cause.getMessage))
@@ -172,21 +176,46 @@ object BlockchainRunner:
   private def runCase(
       fixture: BlockchainFixture,
       networks: String => Either[String, FixtureNetwork],
+      filledBy: FillingTool,
       progress: Progress
   ): Step[Unit] =
     for
       network <- networks(fixture.network).left.map(skippedFor)
+      _ <- sealedWithoutProof(fixture)
       _ <- configAgrees(fixture, network)
       _ <- followsOneChain(fixture)
       expectedRoot <- rootOf(fixture.postState)
       chain <- genesisOf(fixture, network)
-      _ <- runsEveryBlockBeforeALastRefusal(fixture, network, chain, progress)
+      _ <- runsEveryBlockBeforeALastRefusal(fixture, network, filledBy, chain, progress)
       _ <- endsWhereStated(fixture, chain, expectedRoot)
-      _ <- refusesALastRefusal(fixture, network, chain, progress)
+      _ <- refusesALastRefusal(fixture, network, filledBy, chain, progress)
     yield ()
 
   private def skippedFor(reason: String): BlockchainVerdict =
     BlockchainVerdict.Skipped(SkipReason.RuleNotBuilt(reason))
+
+  /** The seal engine the case states, which must be the one every network here
+    * is configured for.
+    *
+    * ==`NoProof` runs, and any other value diverges before a block does==
+    *
+    * Each network [[FixtureNetworks]] resolves before the merge runs its blocks
+    * under `org.fukuii.consensus.pow.EthashEngine` configured with
+    * `SealEngine.NoProof`, which states no seal rule -- the configuration
+    * `ethereum/go-ethereum-pow` @ `v1.10.26` selects on this same value
+    * (`tests/block_test_util.go:119-124`). A case stating another value states a
+    * seal this build does not verify, and a case stating none states nothing a
+    * configuration can be chosen from. So each diverges by name, the rule a key
+    * no comparison reads is held to, and a label this tier runs stating a value
+    * other than `NoProof` is what brings seal verification to it.
+    */
+  private def sealedWithoutProof(fixture: BlockchainFixture): Step[Unit] =
+    fixture.sealEngine match
+      case Some(FixtureNetworks.NoProof) => Right(())
+      case Some(other)                   =>
+        Left(diverged("the case states the seal engine " + other + ", and this runner runs " + FixtureNetworks.NoProof))
+      case None =>
+        Left(diverged("the case states no seal engine, and this runner runs " + FixtureNetworks.NoProof))
 
   /** What a case's `config` states, against the network it resolved to.
     *
@@ -380,6 +409,7 @@ object BlockchainRunner:
   private def runsEveryBlockBeforeALastRefusal(
       fixture: BlockchainFixture,
       network: FixtureNetwork,
+      filledBy: FillingTool,
       chain: Chain,
       progress: Progress
   ): Step[Unit] =
@@ -389,7 +419,7 @@ object BlockchainRunner:
         stated match
           case StatedBlock.Valid(rlp, hash)                    => accept(rlp, hash, index, network, chain, progress)
           case StatedBlock.Invalid(rlp, expected, decodedHash) =>
-            refuseInPlace(rlp, expected, decodedHash, index, network, chain, progress)
+            refuseInPlace(rlp, expected, decodedHash, index, network, filledBy, chain, progress)
       }
     }
 
@@ -508,12 +538,14 @@ object BlockchainRunner:
   private def refusesALastRefusal(
       fixture: BlockchainFixture,
       network: FixtureNetwork,
+      filledBy: FillingTool,
       chain: Chain,
       progress: Progress
   ): Step[Unit] =
     fixture.blocks.lastOption match
       case Some(StatedBlock.Invalid(rlp, expected, decodedHash)) =>
-        refusal(rlp, expected, decodedHash, fixture.blocks.length - 1, network, chain).map(_ => progress.refuse())
+        refusal(rlp, expected, decodedHash, fixture.blocks.length - 1, network, filledBy, chain)
+          .map(_ => progress.refuse())
       case _ => Right(())
 
   /** A block the case refuses with blocks after it, refused where it stands.
@@ -534,12 +566,13 @@ object BlockchainRunner:
       decodedHash: Option[Hash],
       index: Int,
       network: FixtureNetwork,
+      filledBy: FillingTool,
       chain: Chain,
       progress: Progress
   ): Step[Unit] =
     val where = "block " + index.toString
     val before = chain.trie.stateRoot
-    refusal(rlp, expected, decodedHash, index, network, chain).flatMap { refused =>
+    refusal(rlp, expected, decodedHash, index, network, filledBy, chain).flatMap { refused =>
       progress.refuse()
       val after = chain.trie.stateRoot
       val ranFirst = refused match
@@ -601,13 +634,14 @@ object BlockchainRunner:
       decodedHash: Option[Hash],
       index: Int,
       network: FixtureNetwork,
+      filledBy: FillingTool,
       chain: Chain
   ): Step[Refused] =
     val where = "block " + index.toString
     decoded(rlp) match
       case Left(error) =>
         val failure = BlockRefusalVocabulary.failureOf(rlp.toIArray, error)
-        if BlockRefusalVocabulary.satisfiedByUndecodable(expected, failure) then Right(Refused.Undecodable)
+        if BlockRefusalVocabulary.satisfiedByUndecodable(expected, failure, filledBy) then Right(Refused.Undecodable)
         else
           Left(
             diverged(
@@ -618,13 +652,14 @@ object BlockchainRunner:
         decodedHash match
           case Some(stated) if stated != block.hash =>
             Left(diverged(where + " hashes to " + block.hash.toString + ", the case states " + stated.toString))
-          case _ => refusedByValidator(block, index, expected, network, chain)
+          case _ => refusedByValidator(block, index, expected, network, filledBy, chain)
 
   private def refusedByValidator(
       block: Block,
       index: Int,
       expected: ExpectedRejection,
       network: FixtureNetwork,
+      filledBy: FillingTool,
       chain: Chain
   ): Step[Refused] =
     val where = "block " + index.toString
@@ -633,11 +668,12 @@ object BlockchainRunner:
       case BlockVerdict.Valid(_) =>
         Left(diverged(where + " was accepted, where the case refuses it as " + expected.describe))
       case BlockVerdict.Invalid(fault) =>
-        if BlockRefusalVocabulary.satisfies(expected, fault) then Right(Refused.ByFault(fault))
+        if BlockRefusalVocabulary.satisfies(expected, fault, block.header, filledBy) then Right(Refused.ByFault(fault))
         else
           fault match
-            case BlockFault.Header(first) => alsoBroken(block, rules, first, expected, where, network, chain)
-            case _                        => Left(diverged(refusedOtherwise(where, fault.toString, expected)))
+            case BlockFault.Header(first) =>
+              alsoBroken(block, rules, first, expected, where, network, filledBy, chain)
+            case _ => Left(diverged(refusedOtherwise(where, fault.toString, expected, filledBy)))
       case BlockVerdict.Undecided(rule) =>
         Left(BlockchainVerdict.Undecided(index, rule))
 
@@ -658,6 +694,7 @@ object BlockchainRunner:
       expected: ExpectedRejection,
       where: String,
       network: FixtureNetwork,
+      filledBy: FillingTool,
       chain: Chain
   ): Step[Refused] =
     val running = Resolved(block.header, network.engine.rulesFrom(rules))
@@ -672,12 +709,19 @@ object BlockchainRunner:
             reproduced.fold("no fault")(_.toString)
         )
       )
-    else if shared.drop(1).exists(also => BlockRefusalVocabulary.satisfies(expected, BlockFault.Header(also))) then
-      Right(Refused.ByFault(BlockFault.Header(first)))
-    else Left(diverged(refusedOtherwise(where, BlockFault.Header(first).toString, expected)))
+    else if shared
+        .drop(1)
+        .exists(also => BlockRefusalVocabulary.satisfies(expected, BlockFault.Header(also), block.header, filledBy))
+    then Right(Refused.ByFault(BlockFault.Header(first)))
+    else Left(diverged(refusedOtherwise(where, BlockFault.Header(first).toString, expected, filledBy)))
 
-  private def refusedOtherwise(where: String, fault: String, expected: ExpectedRejection): String =
-    val unmapped = BlockRefusalVocabulary.unmapped(expected)
+  private def refusedOtherwise(
+      where: String,
+      fault: String,
+      expected: ExpectedRejection,
+      filledBy: FillingTool
+  ): String =
+    val unmapped = BlockRefusalVocabulary.unmapped(expected, filledBy)
     val note =
       if unmapped.isEmpty then ""
       else "; this build's vocabulary names none of " + unmapped.toVector.sorted.mkString(", ")

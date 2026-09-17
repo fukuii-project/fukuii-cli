@@ -621,11 +621,11 @@ class HeaderValidatorSpec extends AnyFlatSpec:
   // ── The header fields EIP-3675 holds at a constant ────────────────────────
 
   "the empty-ommers commitment" should "be the digest EIP-3675 states" in
-    // The calibration of the derivation the validator holds. It composes the
-    // document's two statements -- the commitment is Keccak256(RLP([])) and
-    // RLP([]) is 0xc0 -- and this compares the result against the 32-byte
-    // literal the same line prints, which is the one reading that could catch a
-    // derivation built from the wrong empty encoding.
+    // The calibration of the commitment the validator compares against. The
+    // value is derived where the header type is, as the digest of an empty list
+    // of headers encoded, and this holds the name this validator reads to the
+    // 32-byte literal the document prints, which is the one reading that could
+    // catch a derivation built from the wrong empty encoding.
     assert(
       Hash.fromHex(StatedEmptyOmmersHash) == Right(HeaderValidator.EmptyOmmersHash),
       "the derived commitment is not the digest the document tabulates"

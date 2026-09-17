@@ -155,26 +155,53 @@ class BlockchainRunnerSpec extends AnyFlatSpec with BlockchainRunnerCases:
 
   "a block the case refuses with blocks after it" should "be refused in place where its refusal comes before it runs" in {
     val sameTime = secondBlockWith(_.copy(timestamp = firstBlockHeader.timestamp))
-    val result = BlockchainRunner.run(refusingBetween(sameTime, ExpectedRejection(Set("InvalidTimestampOlderParent"))))
+    val result = BlockchainRunner.run(
+      refusingBetween(sameTime, ExpectedRejection(Set("InvalidTimestampOlderParent"))),
+      filledBy = FillingTool.Retesteth
+    )
     assert(agreed(result) && result.blocksAccepted == 2 && result.refusalsAgreed == 1, result.toString)
   }
 
   it should "diverge, naming the order, where only running its block refuses it" in {
     val wrongRoot = secondBlockWith(_.copy(stateRoot = Wrong))
-    val result = BlockchainRunner.run(refusingBetween(wrongRoot, ExpectedRejection(Set("InvalidStateRoot"))))
+    val result = BlockchainRunner.run(
+      refusingBetween(wrongRoot, ExpectedRejection(Set("InvalidStateRoot"))),
+      filledBy = FillingTool.Retesteth
+    )
     assert(divergedFor(result, "after it ran"), result.toString)
   }
 
   it should "diverge, naming both roots, where refusing it moved the world" in {
     val wrongRoot = secondBlockWith(_.copy(stateRoot = Wrong))
-    val result = BlockchainRunner.run(refusingBetween(wrongRoot, ExpectedRejection(Set("InvalidStateRoot"))))
+    val result = BlockchainRunner.run(
+      refusingBetween(wrongRoot, ExpectedRejection(Set("InvalidStateRoot"))),
+      filledBy = FillingTool.Retesteth
+    )
     assert(divergedFor(result, "moved the world from root"), result.toString)
   }
 
   it should "diverge where its refusal is under a name the case does not state" in {
     val sameTime = secondBlockWith(_.copy(timestamp = firstBlockHeader.timestamp))
-    val result = BlockchainRunner.run(refusingBetween(sameTime, ExpectedRejection(Set("InvalidNumber"))))
-    assert(divergedFor(result, "was refused as Header(TimestampNotAfterParent"), result.toString)
+    val result = BlockchainRunner.run(
+      refusingBetween(sameTime, ExpectedRejection(Set("InvalidNumber"))),
+      filledBy = FillingTool.Retesteth
+    )
+    assert(
+      divergedFor(result, "was refused as Header(TimestampNotAfterParent") && !divergedFor(result, "names none of"),
+      result.toString
+    )
+  }
+
+  it should "diverge where its refusal is under a name another tool writes, which the case's corpus does not hold" in {
+    // The refusal the first test in this group agrees with, stated in the names
+    // of a corpus that does not write that name: a runner comparing names
+    // without asking whose they are would agree here.
+    val sameTime = secondBlockWith(_.copy(timestamp = firstBlockHeader.timestamp))
+    val result = BlockchainRunner.run(
+      refusingBetween(sameTime, ExpectedRejection(Set("InvalidTimestampOlderParent"))),
+      filledBy = FillingTool.Testeth
+    )
+    assert(divergedFor(result, "names none of InvalidTimestampOlderParent"), result.toString)
   }
 
   it should "agree where it also breaks the rule the case names, after another rule refused it first" in {
@@ -204,6 +231,19 @@ class BlockchainRunnerSpec extends AnyFlatSpec with BlockchainRunnerCases:
   it should "run as its network's chain id where it states no config" in {
     val result = BlockchainRunner.run(blockHash.copy(config = None))
     assert(agreed(result) && result.blocksAccepted == 2, result.toString)
+  }
+
+  it should "diverge, naming the seal engine, before any block runs, where it states one this runner does not run" in {
+    val result = BlockchainRunner.run(blockHash.copy(sealEngine = Some("Ethash")))
+    assert(
+      divergedFor(result, "states the seal engine Ethash") && result.blocksAccepted == 0,
+      "a case sealed by a proof this build does not verify is not run as one sealed without proof: " + result.toString
+    )
+  }
+
+  it should "diverge where it states no seal engine" in {
+    val result = BlockchainRunner.run(blockHash.copy(sealEngine = None))
+    assert(divergedFor(result, "states no seal engine") && result.blocksAccepted == 0, result.toString)
   }
 
   it should "diverge where it states another chain id than its network runs as" in {

@@ -1,7 +1,6 @@
 package org.fukuii.consensus.pos
 
 import org.fukuii.bytes.{Bytes, Hash, UInt256}
-import org.fukuii.crypto.Keccak256
 import org.fukuii.evm.BlockContext
 import org.fukuii.execution.Withdrawals
 import org.fukuii.rlp.{Rlp, RlpCodec, RlpError, RlpItem}
@@ -184,12 +183,13 @@ object PayloadTranslation:
 
   /** The commitment a block with no ommers makes.
     *
-    * Derived rather than written down. The value is a constant of the protocol
-    * and appears in every post-merge header, but a 32-byte literal is a value
-    * with no derivation attached, and this project's own encoder is what says
-    * what an empty list of headers encodes to.
+    * Re-exported rather than defined. The value appears in every post-merge
+    * header and is [[org.fukuii.types.BlockHeader.EmptyOmmersHash]], which
+    * derives it rather than writing it down and states where the field keeps
+    * it: beside the header type, where this module and the ones that validate a
+    * header can each reach one definition.
     */
-  val EmptyOmmersHash: Hash = Keccak256.hash(RlpCodec.encodeTo(Seq.empty[BlockHeader]))
+  val EmptyOmmersHash: Hash = BlockHeader.EmptyOmmersHash
 
   /** What the machine reads about the block, taken off the payload.
     *

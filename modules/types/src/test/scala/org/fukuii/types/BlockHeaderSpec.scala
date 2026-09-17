@@ -83,6 +83,19 @@ class BlockHeaderSpec extends AnyFlatSpec:
   private val truncatedBlobPair = RlpItem.Sequence(itemsOf(elements(withBlobGas)).dropRight(1))
   private val shortOfMandatory = RlpItem.Sequence(itemsOf(elements(base)).take(14))
 
+  /** The commitment over no ommers as `ethereum/EIPs` @ `dbfa6bee8`
+    * (2026-08-26), `EIPS/eip-3675.md:83-87` tabulates it: the 32-byte literal,
+    * and `RLP([]) = 0xc0` beside it.
+    *
+    * Written out so the derived constant is held against values that were not
+    * derived the same way: an implementation and an assertion sharing one
+    * derivation agree however wrong it is.
+    */
+  private val StatedEmptyOmmersHash: String =
+    "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"
+
+  private val EmptyListEncoding: IArray[Byte] = IArray(0xc0.toByte)
+
   // ── the tail's arithmetic: 0, 1, 2, 4, 5, 6, and never 3 ──
 
   "fieldCount" should "be 15 with no tail" in
@@ -164,4 +177,18 @@ class BlockHeaderSpec extends AnyFlatSpec:
     assert(
       Rlp.encode(RlpCodec[Bloom].encode(Bloom.Empty)).length == 259,
       "three bytes of length prefix and 256 of payload"
+    )
+
+  // ── the commitment a block with no ommers states ──
+
+  "EmptyOmmersHash" should "be keccak256 of the single byte an empty list encodes to" in
+    assert(
+      BlockHeader.EmptyOmmersHash == Keccak256.hash(EmptyListEncoding),
+      "the encoder's empty list of headers is not 0xc0, which EIP-3675 gives as RLP([])"
+    )
+
+  it should "be the digest EIP-3675 tabulates" in
+    assert(
+      Hash.fromHex(StatedEmptyOmmersHash) == Right(BlockHeader.EmptyOmmersHash),
+      "the derived commitment is not the literal the document prints"
     )

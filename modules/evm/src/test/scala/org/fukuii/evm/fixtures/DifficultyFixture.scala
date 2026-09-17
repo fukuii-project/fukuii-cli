@@ -174,8 +174,9 @@ object DifficultyFixture:
     * `openethereum/openethereum` @ `v3.0.1` both answer that spelling by
     * comparing against the hash of the empty list --
     * `parent.UnclesHash != Keccak.OfAnEmptySequenceRlp` and
-    * `parent.uncles_hash() != &KECCAK_EMPTY_LIST_RLP` -- which needs a constant
-    * no part of this build carries.
+    * `parent.uncles_hash() != &KECCAK_EMPTY_LIST_RLP` -- a comparison against
+    * `org.fukuii.types.BlockHeader.EmptyOmmersHash` that this reader does not
+    * make, because no tier certified here reads one of those four files.
     *
     * **Refused rather than defaulted, because the failure would be silent and
     * inverted.** A quantity reader accepts a 32-byte hash, and the hash

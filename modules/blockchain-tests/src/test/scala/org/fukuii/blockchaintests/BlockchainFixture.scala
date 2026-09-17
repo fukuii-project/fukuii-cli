@@ -37,7 +37,8 @@ enum StatedBlock:
     *   its bytes are well-formed RLP whose structure the filling tool's own
     *   types refuse -- so a client that reads the structure and refuses the
     *   block under the other name answers the case as well as one that cannot
-    *   read it.
+    *   read it. `ethereum/legacytests`' `Constantinople` snapshot publishes no
+    *   decoded form for any refused block, whatever it refuses it for.
     */
   case Invalid(rlp: Bytes, rejection: ExpectedRejection, decodedHash: Option[Hash])
 
@@ -77,6 +78,10 @@ final case class StatedConfig(
   * @param network
   *   the name of the rules the case was filled under, which is a key into
   *   [[FixtureNetworks]] rather than anything this reader resolves.
+  * @param sealEngine
+  *   how the case states its blocks are sealed, absent where it states nothing.
+  *   Read as the case writes it and judged by the runner, which runs a case
+  *   stating `NoProof` alone.
   * @param config
   *   what the case's `config` states, absent where the case carries none.
   *   **Absent is not a value**: the older snapshots of the same tier carry no
@@ -102,6 +107,7 @@ final case class StatedConfig(
 final case class BlockchainFixture(
     name: String,
     network: String,
+    sealEngine: Option[String],
     config: Option[StatedConfig],
     genesisRlp: Bytes,
     genesisHash: Hash,
@@ -153,17 +159,19 @@ object BlockchainFixture:
     val cursor = json.hcursor
     for
       network <- FixtureValues.stringAt(json, "network")
+      sealEngine <- FixtureValues.optionally(json, "sealEngine")(Right(_))
       config <- configOf(cursor)
       genesisRlp <- FixtureValues.bytesAt(json, "genesisRLP")
       genesisHash <- hashAt(cursor.downField("genesisBlockHeader"), "genesisBlockHeader.hash", "hash")
       pre <- cursor.downField("pre").focus.toRight("no pre").flatMap(FixtureValues.accounts)
       postState <- postStateOf(cursor)
       lastBlockHash <- hashAt(cursor, "lastblockhash", "lastblockhash")
-      blocks <- blocksOf(cursor)
+      blocks <- blocksOf(cursor, network)
       otherChains <- otherChainsOf(cursor)
     yield BlockchainFixture(
       name,
       network,
+      sealEngine,
       config,
       genesisRlp,
       genesisHash,
@@ -264,42 +272,54 @@ object BlockchainFixture:
       }
     }
 
-  private def blocksOf(cursor: ACursor): Either[String, Vector[StatedBlock]] =
+  private def blocksOf(cursor: ACursor, network: String): Either[String, Vector[StatedBlock]] =
     cursor.downField("blocks").focus.flatMap(_.asArray).toRight("no blocks array").flatMap { entries =>
       entries.toVector.zipWithIndex.foldLeft[Either[String, Vector[StatedBlock]]](Right(Vector.empty)) {
-        case (carried, (entry, index)) => carried.flatMap(sofar => blockOf(entry, index).map(sofar :+ _))
+        case (carried, (entry, index)) => carried.flatMap(sofar => blockOf(entry, index, network).map(sofar :+ _))
       }
     }
 
-  /** One block, as a refusal where the case states one and as an acceptance
-    * otherwise.
+  /** The key a refusal is stated under wherever it applies to every network. */
+  private val RefusalKey: String = "expectException"
+
+  /** One block, as a refusal where the case states one for its network and as an
+    * acceptance otherwise.
     *
-    * ==A refusal keyed some other way is refused here, loudly==
+    * ==Three keys, and exactly one may apply==
     *
-    * `ethereum/legacytests` keys a refusal `expectExceptionALL` or
-    * `expectException<Network>` in its older snapshot, and only one of those
-    * applies to a given case. A reader looking for `expectException` alone would
-    * read such a block as one the case accepts, and the block would then fail
-    * for want of a header rather than for the rule the case states. So any other
-    * key of that family is refused with its name, which keeps the two kinds of
-    * failure apart until a reader that resolves those keys is written.
+    * The generated tier and `ethereum/legacytests`' `Cancun` snapshot key a
+    * refusal `expectException`. The `Constantinople` snapshot keys it
+    * `expectExceptionALL`, or `expectException` followed by a network's name,
+    * one key per network the file's cases run -- which is how the tool that
+    * filled it reads the pair, taking the key for its own network or the one for
+    * all of them (`ethereum/aleth` @ `b120a12c6`,
+    * `test/tools/jsontests/BlockChainTests.cpp:950-959`). So a block states a
+    * refusal for this case where one of those three names it, and the keys for
+    * other networks are statements about other cases in the same file.
+    *
+    * **A block stating refusals for other networks and none for this one is
+    * refused here, loudly**, rather than read as a block the case accepts: such a
+    * block carries no header of its own, so it would fail for want of one rather
+    * than for anything the case states. So is a block where two of the keys
+    * apply, which leaves no single refusal to compare.
     */
-  private def blockOf(json: Json, index: Int): Either[String, StatedBlock] =
+  private def blockOf(json: Json, index: Int, network: String): Either[String, StatedBlock] =
     val cursor = json.hcursor
     val where = "block " + index.toString
-    val otherRefusalKeys =
-      json.asObject.toVector
-        .flatMap(_.keys)
-        .filter(key => key.startsWith("expectException") && key != "expectException")
-    if otherRefusalKeys.nonEmpty then
-      Left(where + " states a refusal keyed " + otherRefusalKeys.mkString(", ") + ", which this reader does not read")
+    val refusalKeys = json.asObject.toVector.flatMap(_.keys).filter(_.startsWith(RefusalKey)).sorted
+    val applying =
+      refusalKeys.filter(key => key == RefusalKey || key == RefusalKey + "ALL" || key == RefusalKey + network)
+    if applying.length > 1 then
+      Left(where + " states more than one refusal for " + network + ": " + applying.mkString(", "))
+    else if refusalKeys.nonEmpty && applying.isEmpty then
+      Left(where + " states refusals keyed " + refusalKeys.mkString(", ") + " and none for " + network)
     else
       for
         rlp <- FixtureValues.bytesAt(json, "rlp").left.map(where + ": " + _)
-        stated <- cursor.downField("expectException").focus match
-          case Some(_) =>
+        stated <- applying.headOption match
+          case Some(key) =>
             for
-              rejection <- rejectionOf(cursor).left.map(where + ": " + _)
+              rejection <- rejectionOf(cursor, key).left.map(where + ": " + _)
               decodedHash <- decodedHashOf(cursor).left.map(where + ": " + _)
             yield StatedBlock.Invalid(rlp, rejection, decodedHash)
           case None =>
@@ -307,20 +327,20 @@ object BlockchainFixture:
               .map(hash => StatedBlock.Valid(rlp, hash))
       yield stated
 
-  /** The names a block may be refused under.
+  /** The names a block may be refused under, as `key` states them.
     *
     * A case may state several, separated by a bar, where a client is free to
     * refuse for any of them -- the convention the published state tier uses on
     * the same key.
     */
-  private def rejectionOf(cursor: ACursor): Either[String, ExpectedRejection] =
+  private def rejectionOf(cursor: ACursor, key: String): Either[String, ExpectedRejection] =
     cursor
-      .downField("expectException")
+      .downField(key)
       .as[String]
       .left
-      .map(_ => "expectException is not a string")
+      .map(_ => key + " is not a string")
       .map(text => text.split('|').map(_.trim).filter(_.nonEmpty).toSet)
-      .filterOrElse(_.nonEmpty, "expectException names nothing")
+      .filterOrElse(_.nonEmpty, key + " names nothing")
       .map(ExpectedRejection(_))
 
   /** The hash of a refused block's decoded header, where the case publishes one.

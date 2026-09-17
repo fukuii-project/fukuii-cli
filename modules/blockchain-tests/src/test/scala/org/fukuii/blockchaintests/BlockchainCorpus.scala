@@ -131,12 +131,16 @@ final case class BlockchainReport(corpus: String, filesRead: Int, outcomes: Vect
   * @param network
   *   the one network whose cases this label runs, where its files hold cases for
   *   several; every case in them where absent.
+  * @param filledBy
+  *   the tool whose names this label's refusals are stated in, which is a fact
+  *   about the corpus the files sit in rather than about any one case.
   */
 final case class BlockchainLabel(
     name: String,
     directory: Path => Path,
     excludedGroups: Set[String],
-    network: Option[String]
+    network: Option[String],
+    filledBy: FillingTool
 ):
 
   /** Whether a case, as its file writes it, is this label's. A case whose
@@ -154,15 +158,22 @@ final case class BlockchainLabel(
   * file's cases are decoded, run and reduced to their outcomes before the next
   * file is read, so the cost held at once is one file's.
   *
-  * ==Two corpora==
+  * ==Three corpora==
   *
   * The generated labels are directories of `ethereum/execution-specs-fixtures`'
-  * `tests-v20.0.1` release, one set of rules each. `bcInvalidHeaderTest` is
-  * `ethereum/legacytests`' directory of that name in its `Cancun` snapshot,
+  * `tests-v20.0.1` release, one set of rules each, and each is run whole but
+  * `for_cancun`, whose `ported_static` group stays out of the ordinary run.
+  * `bcInvalidHeaderTest` is `ethereum/legacytests`' directory of that name,
   * whose files each hold one case per network -- so each of its labels reads
   * every file and runs one network's cases. It is read because no case of the
   * generated release refuses a block for its state root, receipts root,
   * transactions root, logs bloom or gas used, and these do.
+  *
+  * **Two snapshots of it are read, filled by two tools**: the `Cancun` snapshot
+  * runs Istanbul through Cancun and states retesteth's names, and the
+  * `Constantinople` snapshot runs Frontier through ConstantinopleFix and states
+  * testeth's. A label from the older snapshot names it; one from the `Cancun`
+  * snapshot does not, which is how those labels were first named.
   */
 object BlockchainCorpus:
 
@@ -171,7 +182,8 @@ object BlockchainCorpus:
       label,
       root => FixtureCorpus.generated(root).resolve("blockchain_tests").resolve(label),
       excluding,
-      None
+      None,
+      FillingTool.ExecutionSpecs
     )
 
   private def invalidHeaders(network: String): BlockchainLabel =
@@ -179,7 +191,17 @@ object BlockchainCorpus:
       "bcInvalidHeaderTest at " + network,
       _.resolve("ethereum/legacytests/Cancun/BlockchainTests/InvalidBlocks/bcInvalidHeaderTest"),
       Set.empty,
-      Some(network)
+      Some(network),
+      FillingTool.Retesteth
+    )
+
+  private def olderInvalidHeaders(network: String): BlockchainLabel =
+    BlockchainLabel(
+      "bcInvalidHeaderTest (Constantinople snapshot) at " + network,
+      _.resolve("ethereum/legacytests/Constantinople/BlockchainTests/InvalidBlocks/bcInvalidHeaderTest"),
+      Set.empty,
+      Some(network),
+      FillingTool.Testeth
     )
 
   /** The labels certified, in the order they run. */
@@ -192,7 +214,26 @@ object BlockchainCorpus:
       generated("for_cancun", excluding = Set("ported_static")),
       invalidHeaders("Paris"),
       invalidHeaders("Shanghai"),
-      invalidHeaders("Cancun")
+      invalidHeaders("Cancun"),
+      generated("for_frontier"),
+      generated("for_homestead"),
+      generated("for_tangerinewhistle"),
+      generated("for_spuriousdragon"),
+      generated("for_byzantium"),
+      generated("for_constantinoplefix"),
+      generated("for_istanbul"),
+      generated("for_berlin"),
+      generated("for_london"),
+      olderInvalidHeaders("Frontier"),
+      olderInvalidHeaders("Homestead"),
+      olderInvalidHeaders("EIP150"),
+      olderInvalidHeaders("EIP158"),
+      olderInvalidHeaders("Byzantium"),
+      olderInvalidHeaders("Constantinople"),
+      olderInvalidHeaders("ConstantinopleFix"),
+      invalidHeaders("Istanbul"),
+      invalidHeaders("Berlin"),
+      invalidHeaders("London")
     )
 
   def label(name: String): Option[BlockchainLabel] = Labels.find(_.name == name)
@@ -227,7 +268,11 @@ object BlockchainCorpus:
       case Right(decoded) =>
         decoded.undecodable.map((name, reason) => unread(relative + " " + name, reason)) ++
           decoded.fixtures.map { fixture =>
-            BlockchainOutcome(relative + " " + fixture.name, StatedShape.of(fixture), BlockchainRunner.run(fixture))
+            BlockchainOutcome(
+              relative + " " + fixture.name,
+              StatedShape.of(fixture),
+              BlockchainRunner.run(fixture, FixtureNetworks.named, label.filledBy)
+            )
           }
 
   private def unread(name: String, reason: String): BlockchainOutcome =

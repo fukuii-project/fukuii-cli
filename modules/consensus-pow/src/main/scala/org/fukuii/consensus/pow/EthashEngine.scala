@@ -1,15 +1,26 @@
 package org.fukuii.consensus.pow
 
 import org.fukuii.bytes.{Address, Hash, UInt256, UInt64}
-import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment, DifficultyBombPause}
-import org.fukuii.consensus.ConsensusEngine
+import org.fukuii.chainspec.{ConsensusRules, DifficultyAdjustment, DifficultyBombPause, HeaderConstants}
+import org.fukuii.consensus.{ConsensusEngine, EngineRule, HeaderFault, Resolved}
 import org.fukuii.crypto.Keccak256
 import org.fukuii.evm.WorldState
 import org.fukuii.rlp.{Rlp, RlpCodec, RlpItem}
 import org.fukuii.types.{BlockHeader, Seal}
 
 /** The emission a proof-of-work network pays for a block and for the ommers
-  * that block included.
+  * that block included, and the difficulty a header is held to against its
+  * parent.
+  *
+  * ==A header is refused for its difficulty here, and its seal answered as the
+  * network declares==
+  *
+  * [[validateHeader]] refuses a header stating any difficulty but
+  * [[difficulty]]'s for its parent, and names the seal rule as not run, or
+  * states none, as [[sealEngine]] declares. So a block this engine accepts,
+  * under rules that do not fix the difficulty, has had the mechanism's
+  * difficulty rule run on it, and a seal no declaration exempts is never
+  * answered valid.
   *
   * ==One engine and one parameter, which is how two of the three lineages ship
   * it==
@@ -75,9 +86,15 @@ import org.fukuii.types.{BlockHeader, Seal}
   *   OpenEthereum reads `ecip1017EraRounds` from its engine parameters. The
   *   proposal is named in the parameter for the reason all three name it there:
   *   the number means nothing except as that document's era.
+  * @param sealEngine
+  *   how this network's headers are sealed, which decides whether a seal rule
+  *   is stated at all -- see [[SealEngine]]. Proof of work unless a network
+  *   declares otherwise, so a chain that states no proof says so here rather
+  *   than reaching a verdict that skipped one.
   */
 final case class EthashEngine(
-    ecip1017EraLength: Option[BigInt] = None
+    ecip1017EraLength: Option[BigInt] = None,
+    sealEngine: SealEngine = SealEngine.Ethash
 ) extends ConsensusEngine:
 
   // Refused where the network states it rather than where a block divides by it,
@@ -175,6 +192,74 @@ final case class EthashEngine(
       ommers.foreach(ommer =>
         credit(world, rules, ommer.beneficiary, ommerReward(winner, era, number, ommer.number.toBigInt))
       )
+
+  /** The extra-data bound this mechanism inherits, then the difficulty the
+    * header's parent requires, with the seal answered as [[sealEngine]] states.
+    *
+    * ==The difficulty is run, and removed from what the default names==
+    *
+    * The inherited answer is taken first, per the seam's contract, and names
+    * the difficulty and the seal as unrun wherever the header constants fix
+    * neither. This runs the first: a header stating any figure but [[difficulty]]'s
+    * for its parent is refused, and one stating it no longer names the rule.
+    * The specification makes the same comparison inside `validate_header`
+    * (`ethereum/execution-specs` @ `0cc100eb1`,
+    * `src/ethereum/forks/byzantium/fork.py:263-271`), and so does
+    * `ethereum/go-ethereum-pow` @ `v1.10.26` in ethash's header verification
+    * (`consensus/ethash/consensus.go:283-287`).
+    *
+    * **Whether the parent included ommers is read off its commitment**, as the
+    * specification reads it -- `parent_header.ommers_hash != EMPTY_OMMER_HASH`
+    * (`forks/byzantium/fork.py:253`) -- through
+    * [[org.fukuii.types.BlockHeader.EmptyOmmersHash]].
+    *
+    * ==The seal is named, or absent where the network declares no proof==
+    *
+    * Under [[SealEngine.Ethash]] the seal stays named: no cache reaches header
+    * validation here, so the rule is not run and the block answers undecided.
+    * Under [[SealEngine.NoProof]] no seal rule is stated, which is how each
+    * runner read configures a case sealed without proof, keeping the difficulty
+    * rule and dropping the seal: go-ethereum-pow builds `ethash.NewFaker()`
+    * (`tests/block_test_util.go:120-124`), whose own doc says the blocks
+    * *"still have to conform to the Ethereum consensus rules"*
+    * (`consensus/ethash/ethash.go:498-500`); `besu-eth/besu` @ `b330564a94`
+    * selects `HeaderValidationMode.LIGHT`
+    * (`ethereum/referencetests/src/reference-test/java/org/hyperledger/besu/ethereum/vm/BlockchainReferenceTestTools.java:187-190`);
+    * and `NethermindEth/nethermind` @ `3a98e08185` installs a seal validator
+    * that compares the difficulty and accepts every seal
+    * (`src/Nethermind/Ethereum.Test.Base/DifficultyOnlySealValidator.cs:20-31`).
+    *
+    * ==Under EIP-3675's constants this answers as the default does==
+    *
+    * Neither rule has anything to check there, and the shared header rules
+    * compare the constants; see
+    * [[org.fukuii.consensus.ConsensusEngine.validateHeader]].
+    *
+    * ==The parent's timestamp precedes this header's, which the formula needs==
+    *
+    * [[difficulty]] raises on a gap that is not positive, and
+    * [[org.fukuii.consensus.BlockValidator]] reaches this only once the shared
+    * header rules have refused such a pair.
+    */
+  override def validateHeader(block: Resolved, parent: Resolved): Either[HeaderFault, Set[EngineRule]] =
+    super.validateHeader(block, parent).flatMap { named =>
+      block.rules.header.constants match
+        case HeaderConstants.Eip3675       => Right(named)
+        case HeaderConstants.Unconstrained =>
+          val required = difficulty(
+            block.rules.consensus,
+            parent.header,
+            parent.header.ommersHash != BlockHeader.EmptyOmmersHash,
+            block.header.timestamp
+          )
+          if block.header.difficulty != required then
+            Left(HeaderFault.DifficultyMismatch(block.header.difficulty, required))
+          else
+            val ran = named - EngineRule.Difficulty
+            sealEngine match
+              case SealEngine.Ethash  => Right(ran + EngineRule.Seal)
+              case SealEngine.NoProof => Right(ran - EngineRule.Seal)
+    }
 
   /** What the block after `parent` must be mined against.
     *
@@ -275,15 +360,13 @@ final case class EthashEngine(
     * @param parentHasOmmers
     *   whether the parent block itself included any.
     *
-    *   **A parameter rather than a reading of `parent.ommersHash`, which is what
-    *   every client does instead.** They compare against a hash of the empty
-    *   list -- `types.EmptyUncleHash` in the go-ethereum line,
-    *   `Hash.EMPTY_LIST_HASH` in besu -- and this build carries no such constant
-    *   because nothing has needed one. The executable specification takes the
-    *   same parameter for the same reason, declaring `parent_has_ommers: bool`
-    *   on `calculate_block_difficulty` from `forks/byzantium/fork.py` onward.
-    *   Ommer validation is what brings the constant, and this reads it off the
-    *   header once that lands.
+    *   **A parameter, read off the parent's commitment by the caller.**
+    *   [[validateHeader]] supplies it by comparing the parent's ommers hash with
+    *   [[org.fukuii.types.BlockHeader.EmptyOmmersHash]], which is how every client
+    *   reads it -- `types.EmptyUncleHash` in the go-ethereum line,
+    *   `Hash.EMPTY_LIST_HASH` in besu. The executable specification separates
+    *   the two the same way, declaring `parent_has_ommers: bool` on
+    *   `calculate_block_difficulty` from `forks/byzantium/fork.py` onward.
     *
     *   It is read only under [[org.fukuii.chainspec.DifficultyAdjustment.Eip100]]
     *   and is supplied at every call, which is the shape the seam already takes
@@ -857,6 +940,41 @@ object EthashEngine:
     * term at that power cannot be carried whatever it is added to.
     */
   private val WidestExponent: BigInt = BigInt(256)
+
+/** How a network running this mechanism seals its headers, as the network
+  * declares it.
+  *
+  * ==Named for the field that already carries the choice==
+  *
+  * Every case the block tier here runs states it as `sealEngine`, with
+  * `NoProof` for a chain sealed without proof, and two of the runners read key
+  * their configuration on that value (go-ethereum-pow and besu, cited at
+  * [[EthashEngine.validateHeader]]). The value is a seal engine's own name in the
+  * client that filled the older corpora: `ethereum/aleth` @ `b120a12c6` ships a
+  * `NoProof` engine beside its ethash one (`libethcore/SealEngine.h:127-136`),
+  * whose `verify` runs the shared header rules and the difficulty and checks no
+  * seal (`libethcore/SealEngine.cpp:44-56`). `NethermindEth/nethermind` @
+  * `3a98e08185` calls the same slot a seal engine, registering
+  * `NullSealEngine : ISealEngine` until a mechanism replaces it
+  * (`src/Nethermind/Nethermind.Consensus/NullSealEngine.cs:11`,
+  * `src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs:120-121`).
+  *
+  * ==An explicit configuration, never an inferred skip==
+  *
+  * A seal no configuration exempts is a seal rule, which
+  * [[EthashEngine.validateHeader]] names as unrun rather than answering valid
+  * over it. [[org.fukuii.consensus.ConsensusEngine.validateHeader]] states the
+  * field's reasons for putting that choice in configuration.
+  */
+enum SealEngine:
+
+  /** Headers are sealed by ethash, so a seal rule is stated. */
+  case Ethash
+
+  /** Headers carry no proof, so no seal rule is stated -- a development network,
+    * or a published case filled without one.
+    */
+  case NoProof
 
 /** Why a header's seal was refused.
   *

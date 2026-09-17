@@ -60,6 +60,13 @@ final case class LabelCensus(
   */
 class BlockchainCertificationPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
 
+  /** A label from `ethereum/legacytests`' `Constantinople` snapshot of
+    * `bcInvalidHeaderTest`, each of whose seven networks states 21 refusals over
+    * 21 cases and one block accepted before one of them.
+    */
+  private val olderInvalidHeaders: LabelCensus =
+    LabelCensus(21, 21, 1, 21, 1, 21, 21, Vector.empty, Map.empty, Map.empty)
+
   private val census: Map[String, LabelCensus] =
     Map(
       "for_paris" ->
@@ -77,7 +84,38 @@ class BlockchainCertificationPropSpec extends AnyPropSpec with TableDrivenProper
       "bcInvalidHeaderTest at Shanghai" ->
         LabelCensus(22, 22, 9, 23, 9, 22, 23, Vector.empty, Map.empty, Map.empty),
       "bcInvalidHeaderTest at Cancun" ->
-        LabelCensus(22, 22, 9, 23, 9, 22, 23, Vector.empty, Map.empty, Map.empty)
+        LabelCensus(22, 22, 9, 23, 9, 22, 23, Vector.empty, Map.empty, Map.empty),
+      "for_frontier" ->
+        LabelCensus(35, 572, 1265, 10, 1265, 572, 10, Vector.empty, Map.empty, Map.empty),
+      "for_homestead" ->
+        LabelCensus(38, 587, 1514, 14, 1514, 587, 14, Vector.empty, Map.empty, Map.empty),
+      "for_tangerinewhistle" ->
+        LabelCensus(44, 782, 1709, 14, 1709, 782, 14, Vector.empty, Map.empty, Map.empty),
+      "for_spuriousdragon" ->
+        LabelCensus(44, 782, 1707, 15, 1707, 782, 15, Vector.empty, Map.empty, Map.empty),
+      "for_byzantium" ->
+        LabelCensus(80, 2218, 3517, 15, 3517, 2218, 15, Vector.empty, Map.empty, Map.empty),
+      "for_constantinoplefix" ->
+        LabelCensus(111, 2340, 3812, 15, 3812, 2340, 15, Vector.empty, Map.empty, Map.empty),
+      "for_istanbul" ->
+        LabelCensus(117, 2484, 3956, 15, 3956, 2484, 15, Vector.empty, Map.empty, Map.empty),
+      "for_berlin" ->
+        LabelCensus(145, 3215, 4545, 157, 4545, 3215, 157, Vector.empty, Map.empty, Map.empty),
+      "for_london" ->
+        LabelCensus(144, 3484, 4683, 288, 4683, 3484, 288, Vector.empty, Map.empty, Map.empty),
+      "bcInvalidHeaderTest (Constantinople snapshot) at Frontier" -> olderInvalidHeaders,
+      "bcInvalidHeaderTest (Constantinople snapshot) at Homestead" -> olderInvalidHeaders,
+      "bcInvalidHeaderTest (Constantinople snapshot) at EIP150" -> olderInvalidHeaders,
+      "bcInvalidHeaderTest (Constantinople snapshot) at EIP158" -> olderInvalidHeaders,
+      "bcInvalidHeaderTest (Constantinople snapshot) at Byzantium" -> olderInvalidHeaders,
+      "bcInvalidHeaderTest (Constantinople snapshot) at Constantinople" -> olderInvalidHeaders,
+      "bcInvalidHeaderTest (Constantinople snapshot) at ConstantinopleFix" -> olderInvalidHeaders,
+      "bcInvalidHeaderTest at Istanbul" ->
+        LabelCensus(22, 21, 1, 21, 1, 21, 21, Vector.empty, Map.empty, Map.empty),
+      "bcInvalidHeaderTest at Berlin" ->
+        LabelCensus(22, 21, 1, 21, 1, 21, 21, Vector.empty, Map.empty, Map.empty),
+      "bcInvalidHeaderTest at London" ->
+        LabelCensus(22, 22, 8, 24, 8, 22, 24, Vector.empty, Map.empty, Map.empty)
     )
 
   private val censused = Table(("label", "expected"), census.toSeq.sortBy(_._1)*)
@@ -101,12 +139,12 @@ class BlockchainCertificationPropSpec extends AnyPropSpec with TableDrivenProper
     )
   }
 
-  property("the census covers eight labels, counted") {
+  property("the census covers twenty-seven labels, counted") {
     // Dropping a label from the census and from what the tier assembles leaves
     // the two agreeing with each other and every other property passing, so the
     // number of labels is pinned on its own. Raising it is adding a label;
     // lowering it drops certified cases, and that is a decision.
-    assert(census.size == 8, "the census covers " + census.size.toString + " labels rather than eight")
+    assert(census.size == 27, "the census covers " + census.size.toString + " labels rather than twenty-seven")
   }
 
   property("every label reads the files the census records") {

@@ -782,7 +782,9 @@ class CertificationCorporaSpec extends AnyPropSpec with TableDrivenPropertyCheck
     * structural rather than a shortfall in either corpus: no state tier at any
     * fork can move them. What pins the two is elsewhere -- the difficulty rule
     * against the published difficulty vectors the mechanism's own module
-    * certifies at this fork, and the reward against its own unit coverage.
+    * certifies at this fork, and the reward against its own unit coverage and
+    * against the published blocks `org.fukuii.blockchaintests` runs at this
+    * fork, whose state roots differ under either neighboring fork's amount.
     *
     * ==Every row is another row's control==
     *

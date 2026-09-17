@@ -4,6 +4,7 @@ import org.fukuii.bytes.UInt64
 import org.fukuii.chainspec.{Activation, Network, Upgrade, UpgradeId, UpgradeRules, UpgradeSchedule}
 import org.fukuii.chainspec.networks.ethereum
 import org.fukuii.consensus.ConsensusEngine
+import org.fukuii.consensus.pow.{EthashEngine, SealEngine}
 
 /** The rules a published case's `network` names, and the mechanism that runs a
   * block under them.
@@ -49,6 +50,16 @@ final case class FixtureNetwork(schedule: UpgradeSchedule, engine: ConsensusEngi
   * `ShanghaiTime: u64(15_000)` and as `ShanghaiTime: u64(0)` beside
   * `CancunTime: u64(15_000)` (`tests/init.go:317,357-358`).
   *
+  * ==Two spellings for two forks, because two corpora wrote them==
+  *
+  * The generated tier writes `TangerineWhistle` and `SpuriousDragon`;
+  * `ethereum/legacytests`' `Constantinople` snapshot writes `EIP150` and
+  * `EIP158` for the same forks, as the tool that filled it named them. Both
+  * spellings resolve to one rule set each. That snapshot also names
+  * `Constantinople`, the fork EIP-1013 specifies with EIP-1283's metering, which
+  * resolves to [[org.fukuii.chainspec.networks.ethereum.Upgrades.constantinople]]
+  * and not to the rules `ConstantinopleFix` names.
+  *
   * ==Every entry is this family's, and a name alone does not say which family==
   *
   * The corpus is the Ethereum family's, filled at Ethereum's forks, so every
@@ -64,8 +75,12 @@ final case class FixtureNetwork(schedule: UpgradeSchedule, engine: ConsensusEngi
   * ==An entry arrives with the first corpus that runs it==
   *
   * Every entry below is exercised by a published label this build certifies,
-  * so a wrong rule set or engine for a name is a divergence somewhere rather
-  * than a mapping nothing reads.
+  * so none is a mapping nothing reads. **Exercised is not decided for every
+  * entry**: a label moves under a wrong rule set only where its cases tell the
+  * two rule sets apart. `EIP150` resolved to Homestead's rules and
+  * `Constantinople` to ConstantinopleFix's each leave every label agreeing, and
+  * `FixtureNetworksPropSpec` is what refuses either; which entries a label
+  * decides was measured for those two alone.
   */
 object FixtureNetworks:
 
@@ -90,6 +105,11 @@ object FixtureNetworks:
     */
   val ChainId: UInt64 = UInt64.fromBits(1L)
 
+  /** The seal engine a case states for blocks sealed without proof, which is the
+    * one configuration every engine here runs.
+    */
+  val NoProof: String = "NoProof"
+
   /** The network a case names, or why it names none this runner resolves. */
   def named(network: String): Either[String, FixtureNetwork] =
     known.get(network) match
@@ -106,6 +126,18 @@ object FixtureNetworks:
 
   private val forks: Map[String, UpgradeRules] =
     Map(
+      "Frontier" -> ethereum.Upgrades.frontier,
+      "Homestead" -> ethereum.Upgrades.homestead,
+      "TangerineWhistle" -> ethereum.Upgrades.tangerineWhistle,
+      "EIP150" -> ethereum.Upgrades.tangerineWhistle,
+      "SpuriousDragon" -> ethereum.Upgrades.spuriousDragon,
+      "EIP158" -> ethereum.Upgrades.spuriousDragon,
+      "Byzantium" -> ethereum.Upgrades.byzantium,
+      "Constantinople" -> ethereum.Upgrades.constantinople,
+      "ConstantinopleFix" -> ethereum.Upgrades.petersburg,
+      "Istanbul" -> ethereum.Upgrades.istanbul,
+      "Berlin" -> ethereum.Upgrades.berlin,
+      "London" -> ethereum.Upgrades.london,
       "Paris" -> ethereum.Upgrades.paris,
       "Shanghai" -> ethereum.Upgrades.shanghai,
       "Cancun" -> ethereum.Upgrades.cancun
@@ -114,21 +146,32 @@ object FixtureNetworks:
   /** The timestamp a transition network's later fork activates at. */
   private val TransitionTimestamp: UInt64 = UInt64.fromBits(15_000L)
 
+  /** The engine a network before the merge runs its blocks under.
+    *
+    * Ethash with no ECIP-1017 era, which is Ethereum's emission, and configured
+    * for blocks sealed without proof: it runs the difficulty rule and states no
+    * seal rule, the configuration a case stating [[NoProof]] selects.
+    */
+  private val proofOfWork: ConsensusEngine = EthashEngine(ecip1017EraLength = None, sealEngine = SealEngine.NoProof)
+
   private def networkFor(name: String): Network = Network(ChainId, "published blockchain tests " + name)
 
   private def entry(network: Network, activation: Activation, fork: String): UpgradeSchedule.Entry =
     UpgradeSchedule.Entry(activation, UpgradeId.named(network, fork), Upgrade.RuleChange(forks(fork)))
 
-  private def scheduled(entries: Vector[UpgradeSchedule.Entry]): Either[String, FixtureNetwork] =
+  private def scheduled(
+      entries: Vector[UpgradeSchedule.Entry],
+      engine: ConsensusEngine
+  ): Either[String, FixtureNetwork] =
     UpgradeSchedule
       .of(entries)
       .left
       .map(_.toString)
-      .map(schedule => FixtureNetwork(schedule, ConsensusEngine.Unmodifying))
+      .map(schedule => FixtureNetwork(schedule, engine))
 
   /** A network running one fork's rules from its genesis onward. */
-  private def fromGenesis(fork: String): Either[String, FixtureNetwork] =
-    scheduled(Vector(entry(networkFor(fork), Activation.AtBlock(UInt64.Zero), fork)))
+  private def fromGenesis(fork: String, engine: ConsensusEngine): Either[String, FixtureNetwork] =
+    scheduled(Vector(entry(networkFor(fork), Activation.AtBlock(UInt64.Zero), fork)), engine)
 
   /** A network running `before` from its genesis and `after` from the
     * transition timestamp.
@@ -139,22 +182,39 @@ object FixtureNetworks:
       Vector(
         entry(network, Activation.AtBlock(UInt64.Zero), before),
         entry(network, Activation.AtTimestamp(TransitionTimestamp), after)
-      )
+      ),
+      ConsensusEngine.Unmodifying
     )
 
-  /** The merge's rules and those after it, each run by the mechanism-neutral
-    * engine.
+  /** Every network a published label runs, each with the engine its blocks run
+    * under.
     *
-    * No mechanism leaf is involved: under EIP-3675's rules the seal and the
-    * difficulty are constants the shared header rules compare, and the
-    * settlement writes nothing, so [[org.fukuii.consensus.ConsensusEngine.Unmodifying]]
-    * leaves no rule of these networks unrun.
+    * **Before the merge, [[proofOfWork]]**: the difficulty is a formula over the
+    * parent, and the reward is the mechanism's settlement.
+    *
+    * **From the merge on, the mechanism-neutral engine**, and no mechanism leaf
+    * is involved: under EIP-3675's rules the seal and the difficulty are
+    * constants the shared header rules compare, and the settlement writes
+    * nothing, so [[org.fukuii.consensus.ConsensusEngine.Unmodifying]] leaves no
+    * rule of these networks unrun.
     */
   private val known: Map[String, Either[String, FixtureNetwork]] =
     Map(
-      "Paris" -> fromGenesis("Paris"),
-      "Shanghai" -> fromGenesis("Shanghai"),
-      "Cancun" -> fromGenesis("Cancun"),
+      "Frontier" -> fromGenesis("Frontier", proofOfWork),
+      "Homestead" -> fromGenesis("Homestead", proofOfWork),
+      "TangerineWhistle" -> fromGenesis("TangerineWhistle", proofOfWork),
+      "EIP150" -> fromGenesis("EIP150", proofOfWork),
+      "SpuriousDragon" -> fromGenesis("SpuriousDragon", proofOfWork),
+      "EIP158" -> fromGenesis("EIP158", proofOfWork),
+      "Byzantium" -> fromGenesis("Byzantium", proofOfWork),
+      "Constantinople" -> fromGenesis("Constantinople", proofOfWork),
+      "ConstantinopleFix" -> fromGenesis("ConstantinopleFix", proofOfWork),
+      "Istanbul" -> fromGenesis("Istanbul", proofOfWork),
+      "Berlin" -> fromGenesis("Berlin", proofOfWork),
+      "London" -> fromGenesis("London", proofOfWork),
+      "Paris" -> fromGenesis("Paris", ConsensusEngine.Unmodifying),
+      "Shanghai" -> fromGenesis("Shanghai", ConsensusEngine.Unmodifying),
+      "Cancun" -> fromGenesis("Cancun", ConsensusEngine.Unmodifying),
       "ParisToShanghaiAtTime15k" -> transition("ParisToShanghaiAtTime15k", "Paris", "Shanghai"),
       "ShanghaiToCancunAtTime15k" -> transition("ShanghaiToCancunAtTime15k", "Shanghai", "Cancun")
     )

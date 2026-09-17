@@ -720,8 +720,8 @@ lazy val chainspec = (project in file("modules/chainspec"))
 //   chainspec
 //           the resolved rule set the transformation is over, and the facet
 //           the reward application reads
-//   crypto  the empty-ommers commitment is a Keccak-256 digest, and a body's
-//           ommers are compared with their header's commitment the same way
+//   crypto  a body's ommers are compared with their header's commitment, which
+//           is a Keccak-256 digest of the list's encoding
 //   evm     a change to state is written through `WorldState`, and the balance
 //           it writes is the machine's word at that boundary
 //   execution
@@ -831,8 +831,8 @@ lazy val consensusPow = (project in file("modules/consensus-pow"))
 //           reads the ACTIVATION rather than the flat point, because both axes
 //           are unsigned 64-bit and a block height compared against a timestamp
 //           would answer confidently and never fire
-//   crypto  the commitment a block with no ommers makes is DERIVED here rather
-//           than written down as 32 bytes, so this names Keccak-256 to take it
+//   crypto  a payload identifier is taken from SHA-256 over what a build
+//           request states, so this names the digest that takes it
 //   evm     the machine's view of the block is what a payload is translated
 //           INTO, and this module holds the first production site that builds
 //           one -- every earlier one is a test fixture
@@ -842,8 +842,8 @@ lazy val consensusPow = (project in file("modules/consensus-pow"))
 //           commitment "is constructed identically to the transactions root",
 //           so what differs is the encoding and that is the half that lives
 //           there
-//   rlp     the empty-ommers commitment is taken over the encoding of an empty
-//           sequence of headers, so this names the codec and runs it
+//   rlp     a payload carries each transaction as its encoding, and a decode
+//           that fails is a refusal the translation names by its codec error
 //   trie    the transactions root is the indexed-trie commitment, and the
 //           payload's own transaction bytes are already the form it keys on --
 //           so this reaches the trie and never the transaction decoder
@@ -929,6 +929,10 @@ lazy val consensusPos = (project in file("modules/consensus-pos"))
 //   consensus
 //           the block validator every block is run through, and the faults and
 //           undecided answers it reports
+//   consensusPow
+//           the engine every label before the merge runs its blocks under: its
+//           difficulty rule, its settlement of the block reward, and the seal
+//           configuration a case's `sealEngine` selects
 //   evm     the world a case's accounts are seeded into, and the world a
 //           mechanism's settlement writes through, which a spec's stand-in
 //           engine names
@@ -962,12 +966,11 @@ lazy val consensusPos = (project in file("modules/consensus-pos"))
 //
 // ── What is absent ──
 //
-// Neither mechanism leaf is named yet. Nothing here imports one: every label
-// this module runs today is after the merge, where the mechanism-neutral engine
-// runs every block. The proof-of-work leaf arrives with the first label before
-// the merge, whose engine is declared there -- the rule the proof-of-stake
-// leaf's own list states, that an edge ahead of the source needing it describes
-// an intention rather than the code.
+// The proof-of-stake leaf is not named. Nothing here imports it: every label
+// after the merge runs its blocks under the mechanism-neutral engine, and the
+// published payload tier that leaf certifies is its own module's -- the rule
+// that leaf's own list states, that an edge ahead of the source needing it
+// describes an intention rather than the code.
 lazy val blockchainTests = (project in file("modules/blockchain-tests"))
   .dependsOn(
     bytes,
@@ -976,6 +979,7 @@ lazy val blockchainTests = (project in file("modules/blockchain-tests"))
     trie,
     execution,
     consensus,
+    consensusPow,
     chainspec % "compile->compile;test->test",
     evm % "compile->compile;test->test"
   )
