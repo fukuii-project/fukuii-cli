@@ -17,9 +17,28 @@ import org.fukuii.types.Withdrawal
   * specified recipients"*, and *"This operation has no associated gas costs"*
   * (`ethereum/EIPs` @ `dbfa6bee8` (2026-08-26), `EIPS/eip-4895.md`, Final). So
   * there is no sender, no signature, no nonce, no charge, no receipt and no
-  * refusal -- which is why nothing here returns an [[Either]] and why a
-  * withdrawal cannot make a block invalid by failing. It can only make one
-  * invalid by disagreeing with the commitment, and that is [[root]].
+  * refusal -- which is why nothing here returns an [[Either]] and why an
+  * EIP-4895 withdrawal cannot make a block invalid by failing. It can only
+  * make one invalid by disagreeing with the commitment, and that is [[root]].
+  *
+  * ==That last sentence is EIP-4895's, not every network's==
+  *
+  * **A withdrawal step CAN refuse a block, on a network this project already
+  * names.** Gnosis credits withdrawals through a system call rather than an
+  * unconditional balance increase, and that call is checked: *"If the
+  * transaction reverts, or runs out of the gas, the entire block **MUST** be
+  * considered invalid"* (`gnosischain/specs` @ `045d46d6d`,
+  * `execution/withdrawals.md:61`). Its empty-target case goes the other way --
+  * *"If no contract is deployed at `WITHDRAWAL_CONTRACT`, ignore this system
+  * call and allow the block to be considered valid"* (`:62`) -- so the two
+  * refusal conditions are decided separately, as
+  * `.claude/protocols/consensus-change.md` records for system calls generally.
+  *
+  * **Scoped here rather than left general because the claim above is falsified
+  * by Gnosis and not by Prague**, so no Prague-era change would have revisited
+  * it. **The TYPE is unchanged**: this step still returns a change to state
+  * with nowhere to put a refusal, which is correct for every engine this build
+  * runs and is what the first proof-of-authority engine has to change.
   *
   * ==The amount is in Gwei, and this is the whole of the hazard==
   *

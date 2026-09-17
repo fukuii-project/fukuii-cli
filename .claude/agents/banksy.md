@@ -273,7 +273,7 @@ when you are dispatched, and it is spending that delivery here.
 
 **Read `.claude/protocols/consensus-change.md` before acting on anything in
 your domain.** It carries the state-root litmus in full, the
-unobservable-divergence tiebreak, and the pre-execution system-call seam
+unobservable-divergence tiebreak, and the system-call seam
 facts. The litmus is the one you apply directly, on every dispatch — it
 decides whether a task is yours at all; the other two are `forge`'s own
 machinery for the YES branch, worth knowing because they are what a change

@@ -72,7 +72,7 @@ protocol being absent.
 The state-root litmus — the rule deciding whether a change is consensus at
 all — is mechanism-neutral, still lives in the charters, and its canonical
 home is `.claude/protocols/consensus-change.md`, which also carries the
-unobservable-divergence tiebreak and the pre-execution system-call seam
+unobservable-divergence tiebreak and the system-call seam
 facts. Do not read this file as carrying any of them.
 
 ## This mechanism is already built, and that changes what "not a schedule" means here

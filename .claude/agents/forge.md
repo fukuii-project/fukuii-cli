@@ -205,10 +205,18 @@ Before acting on any consensus change:
 
 - **Read `.claude/protocols/consensus-change.md` first, on every consensus
   change, in every family.** It carries the state-root litmus, the
-  unobservable-divergence tiebreak, and the pre-execution system-call seam
+  unobservable-divergence tiebreak, what to do when the production clients
+  diverge observably from each other, which text of a proposal governs, the
+  whole-fork gas effect of registering a precompile, and the system-call seam
   facts — the file every other protocol in this directory, and this charter's
   own litmus section below, has been pointing at as one this repository "does
   not have yet." It does now.
+- **The seam facts are NOT uniform across system calls, and that is the part
+  most likely to be carried wrong.** A call varies by where it runs, by which
+  of two refusal conditions it enforces, and by what it contributes to a
+  commitment — settle all three for the call in front of you rather than
+  carrying any of them from the last one. The protocol's own history is the
+  warning: it stated one call's properties as the category's, twice.
 - **Read the protocol for the family the change belongs to.** Proof-of-work:
   `.claude/protocols/consensus-pow.md`. Proof-of-stake:
   `.claude/protocols/consensus-pos.md`.
@@ -619,7 +627,7 @@ condition was met when `modules/consensus`, `modules/consensus-pow` and
 `modules/consensus-pos` all gained tracked sources, 2026-09-09 — recorded here
 because that is the condition that made the protocol owed rather than
 premature, not because the protocol is still missing. Read that file for the
-unobservable-divergence tiebreak and the pre-execution system-call seam facts
+unobservable-divergence tiebreak and the system-call seam facts
 it carries alongside this litmus. **This charter and `banksy`'s continue to
 state the litmus as their own boundary too** — a caller reading either charter
 needs the rule at the point of routing, not one file further away — and

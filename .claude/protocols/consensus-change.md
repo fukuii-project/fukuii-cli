@@ -1,16 +1,45 @@
-# Consensus change — the litmus, the tiebreak, and the system-call seam
+# Consensus change — the litmus, the tiebreak, precompile registration, and the system-call seam
 
 **provenance:** the state-root litmus is this project's own routing policy —
 decided by the operator, stated in `.claude/agents/forge.md` and
 `.claude/agents/banksy.md`, and not an external fact that needs verifying
 against a specification. **The unobservable-divergence tiebreak and the
-system-call seam facts are drawn from this build's own implementation** —
-`org.fukuii.execution.SystemCall` and `org.fukuii.evm.JournaledWorldState` —
-which itself cites the executable specification and the production clients at
-refs that cannot move. This file consolidates what those two already state and
-cite; it is not a fresh survey, and a citation repeated here is only as current
-as the source it was drawn from. Every ref below was independently resolved
-against this project's reference corpus, 2026-09-11 — not merely copied.
+system-call seam facts were originally drawn from this build's own
+implementation** — `org.fukuii.execution.SystemCall` and
+`org.fukuii.evm.JournaledWorldState` — which itself cites the executable
+specification and the production clients at refs that cannot move. Every ref
+was independently resolved against this project's reference corpus,
+2026-09-11 — not merely copied.
+
+**Corrected 2026-09-17, and the correction is why this header now says
+different things about different parts of the file.** The system-call seam's
+facts 2 and 3 were stated of system calls in general and were properties of
+the one system call this build had built. **Prague falsifies fact 2
+outright**; **fact 3's literal claim survives and was merely unscoped** — see
+each fact for which.
+
+**The corrections were reviewed, and the review found the correction
+committing the same error against the same source.** The three-axis
+subsection, the empty-target column and the applicability table below exist
+because of that second pass. **Treat the reviewed state as the current one and
+this note as why the file argues its own thesis against itself.**
+
+**Evidence standing now varies by section, which the "Evidence weight" section
+at the foot states per part.** In short: the seam corrections, the axes, the
+clients-diverge rule and the which-text-governs rule were **verified directly
+against primary sources** at that date — `ethereum/execution-specs` at
+`0cc100eb1`, the published fixture release at `tests-v20.0.1`,
+`ethereum/EIPs` at the named commits, `ethereum/go-ethereum`
+`params/config.go`, and `gnosischain/specs` at `045d46d6d`. **The
+precompile-registration section is the exception and is mostly a
+consolidation** of this build's own code, with only the Osaka address read
+from a specification.
+
+**The durable lesson, which outlives the specific correction:** a fact stated
+of a category, derived from the single member of that category which existed
+at the time, reads exactly like a fact about the category. **Nothing in the
+wording marks it as a sample of one.** Where this file states something as
+general, it now says which members were read.
 
 **No frontmatter, and none is possible.** A file under `.claude/protocols/`
 does not auto-load — Claude Code discovers `.claude/rules/`, not this
@@ -149,6 +178,51 @@ client is a chain split — a defect to fix, never a tie to break. What follows
 governs only the case where the sources disagree and no block on any network
 in scope can tell.
 
+### When the production clients diverge observably FROM EACH OTHER
+
+**The paragraph above assumes the clients agree and this build might not. They
+do not always agree.** Where a rule is observable and the production clients
+themselves split on it, "match the clients" names no action, and neither the
+litmus nor the tiebreak above reaches the case.
+
+**The rule this build applies: follow the weight of independent lineages,
+implement the rule, and record in the source both who does not and what would
+reverse it.** State the divergence as being from a named subset, never from
+"the field" — a build that says it differs from *the clients* when it differs
+from one of five has misdescribed its own position.
+
+**"Lineage" and "implementation" are different units and this file uses both.
+Where a headcount carries an argument, the unit is LINEAGE.** Measured by root
+commit: `ethereum/go-ethereum` and `erigontech/erigon` share
+`5db3335dce766bd679c54ea44f6df08a7ff74762`, so they are **one** lineage;
+`NethermindEth/nethermind` (`3cd1daaa…`) and `besu-eth/besu` (`7dfc2e40…`) are
+two more. **A reading that counts those four as four independent witnesses
+over-counts by one**, and the older instances below do exactly that — they say
+"four implementations", which is true as a statement about code read and
+misleading as a statement about independent agreement. **Their verdicts are
+unchanged** (three lineages against one specification still favors the
+clients); what is wrong is the arithmetic the argument leans on, so read those
+instances' counts as implementations and re-derive the lineage count before
+resting anything new on them.
+
+**Worked instance, section 31: the header gas-limit maximum of `2^63 - 1`.**
+The go-ethereum lineage, `besu-eth/besu-etc`, `NethermindEth/nethermind` and
+`ethereum/retesteth` enforce it; `lambdaclass/ethrex` @ `3954106507` does not
+(`crates/common/types/block.rs:509-515`); and **the executable specification
+is itself divided** — its test vocabulary names the rule while its loader
+skips the case. `besu-eth/besu` is a fourth position again: it states the
+figure and **cannot reach it**, because a header's limit is a signed `long`
+and the reader assembles `2^63` into `Long.MIN_VALUE`, so its comparison never
+fires and its merge rules refuse such a block at the gas-used rule instead.
+This build checks it, and `HeaderValidator.scala:866-900` records the whole
+split plus the reversal trigger — the specification adopting the maximum,
+rejecting it, or a production client family dropping it.
+
+**Note what makes this decidable at all: `ethereum/legacytests` @ `1f581b8cc`
+states the block** — a limit of `2^63` over a parent at `2^63 - 1`. **A
+divergence the clients disagree about is often one some corpus already
+decides**, so look for the case before reaching for this rule.
+
 **A tempting third answer was considered and REJECTED, and the rejection is
 recorded because it will be proposed again:** *"the published fixtures are
 generated from the executable specification, so matching the specification is
@@ -159,6 +233,65 @@ hashes, and a value that moves neither is a value it cannot see. That is
 definition: in each case the one contract this build has seen deployed, and
 every published case's contract, are read directly and found unable to
 exercise the disagreement at all.
+
+### Which text of a proposal governs — "Final" and "activated" are independent
+
+**A proposal's text keeps moving after the network implements it, and its
+`status` field does not bound that.** So *"the specification says X"* is
+incomplete until it says *which* text, at which ref — and the tiebreak above
+cannot be applied to a quotation whose date nobody established.
+
+**Worked instance, EIP-7702's refund rule, every date resolved against the
+corpus rather than recalled:**
+
+| | |
+|---|---|
+| Sepolia activates Prague | 2025-03-05 |
+| Holesky activates Prague | 2025-03-26 |
+| **A normative step edited AND a normative sub-bullet deleted** (`ethereum/EIPs` `00cc881b`, *"Remove trie concept from the vm specification"*) | **2025-04-30** |
+| **Mainnet activates Prague** (`ethereum/go-ethereum` `params/config.go:62`, `PragueTime` 1746612311) | **2025-05-07** |
+| **EIP moved to Final** (`e17d216b`) | **2025-06-03** |
+
+**What `00cc881b` actually did, since calling it a rewording understates it:**
+
+```diff
+ 6. Verify the nonce of `authority` is equal to `nonce`.
+-   * If `authority` does not exist in the trie, verify `nonce` is equal to `0`.
+ 7. Add `PER_EMPTY_ACCOUNT_COST - PER_AUTH_BASE_COST` gas to the global refund
+-   counter if `authority` exists in the trie.
++   counter if `authority` is not empty.
+```
+
+**A normative sub-bullet was deleted from step 6**, and *"exists in the
+trie"* → *"is not empty"* is a semantic clarification rather than a
+synonym — the two coincide only because EIP-161 makes empty accounts
+non-persistent.
+
+**Read the order: the text changed substantively after two public testnets
+were already running it, and the proposal went Final a month AFTER mainnet
+activation.** Neither "Final" nor "activated" is a freeze.
+
+> **One row was removed from this table on review.** It cited a 2025-10-08
+> commit as "edited again after Final". That commit is `[EIP-2929](eip-2929.md)`
+> → `[EIP-2929](./eip-2929.md)` — link formatting, carrying no normative
+> weight. **It read as evidence that substance keeps moving after Final, and
+> it is not that.** The two rows above carry the argument on their own; padding
+> it with a cosmetic commit weakens it.
+
+**The rule.** Cite a proposal at an immutable ref, and where a claim rests on
+wording that changed, say which wording and when. **Where the two readings are
+observably different, the network's behavior governs and the proposal's
+current text does not** — the clients implemented some text, and which one is
+a question about the chain rather than about the document.
+
+> **This corrects the finding that asked for this section, not only the
+> protocol.** The finding described the instance as *"a Final proposal's prose
+> edited after activation"*. Measured, `00cc881b` lands **before** mainnet
+> activation and **before** Final — it is after *testnet* activation. The
+> general gap is real and is in fact wider than the finding stated, since the
+> Final transition itself postdates mainnet; the specific characterization was
+> an inference one step past the verified commit, which is the failure mode
+> `.claude/rules/evidence-and-citation.md` §5 names.
 
 ### Instance 1 — the account-creation marker, EIP-6780's `SELFDESTRUCT` scope
 
@@ -330,16 +463,195 @@ many clients land on which side.
 
 ---
 
-## The pre-execution system-call seam
+## Registering a precompile changes gas for transactions that never call it
 
-**A system call — the invocation a block makes on its own account before any
-transaction it carries has run, EIP-4788's beacon-root write being the first
-instance this build has built — is architecturally distinct from a
+**Two effects, and they have different reaches. Do not carry the second one
+to a fork that predates warm/cold accounting.**
+
+**Effect A — the whole-fork gas effect, and it exists only from Berlin.**
+Where a fork meters state access as warm/cold, a precompile's address is warm
+from the start of every transaction, so the set of registered addresses is an
+input to gas accounting for the whole fork — not only for the transactions
+that call one. In this build the seed is taken inside the `WarmCold` arm:
+
+```scala
+environment.rules.stateAccessMetering match
+  case StateAccessMetering.Settled  => Set.empty
+  case StateAccessMetering.WarmCold =>
+    val seeded = environment.rules.precompiles.addresses + ...
+```
+
+(`TransactionProcessor.scala:384-388`.) **Under `Settled` the warm set is
+empty and the registered addresses are not an input to gas accounting at
+all.** `Settled` is the base and `WarmCold` arrives at EIP-2929, Berlin.
+
+**So this effect does NOT recur at every fork that adds a precompile, and in
+this build most precompile-registering forks predate it** — EIP-196, EIP-197
+and EIP-198 at Byzantium and EIP-152 at Istanbul are all `Settled`; EIP-4844
+at Cancun, Prague's seven and Osaka's one are `WarmCold`. **This matters
+family-neutrally rather than as a historical note: Ethereum Classic's schedule
+is largely pre-Berlin.**
+
+**Effect B — the unregistered-address behavior, at every fork.** `PrecompileSet.at`
+returns an `Option`, so a `CALL` to an unregistered address does not fail — it
+behaves as an ordinary empty account and **succeeds returning empty**. This is
+fork-independent and is the half that holds everywhere.
+
+**Two consequences of Effect A, and neither is visible from the proposal's
+own text.**
+
+- **A partial set is wrong twice, and the second way is the quiet one.** A
+  `CALL` to an unregistered precompile does not fail — this build's
+  `PrecompileSet.at` returns an `Option` and an unregistered address behaves as
+  an ordinary empty account, so the call **succeeds returning empty**. That is
+  the loud half. The quiet half is that every *other* transaction in the fork
+  is now charged a different amount, because the warm seed is smaller. **So a
+  fork's precompiles register together or not at all.**
+- **Certifying a fork's whole corpus depends on the complete set**, including
+  cases that touch no precompile. A corpus run with a partial set produces
+  gas divergences whose cause is nowhere near the failing case.
+
+**This is a standing check at every warm/cold fork that adds one, not a
+Prague note — and one address is as disruptive as seven.** Prague adds seven
+(`0x0b`–`0x11`, EIP-2537's BLS12-381 set) and **Osaka adds `0x100`**
+(`P256VERIFY_ADDRESS`, `ethereum/execution-specs` @ `0cc100eb1`,
+`src/ethereum/forks/osaka/vm/precompiled_contracts/__init__.py:55`), with the
+same whole-fork effect. **At a `Settled` fork only Effect B applies**, so a
+pre-Berlin precompile addition is a genuinely smaller change and must not be
+sized as if Effect A were in play.
+
+---
+
+## The system-call seam
+
+**A system call — an invocation a block makes on its own account, rather than
+one a transaction it carries makes — is architecturally distinct from a
 transaction in four ways. None of the four is optional for a future system
 call to get right, because each was reached by a defect this build would
 otherwise have shipped.** `org.fukuii.execution.SystemCall` is where all four
 are implemented; this section states them as durable facts a reviewer checks
 any new system call against, independent of that one file's own text.
+
+### Three independent axes — and this section got the same thing wrong twice
+
+**This section was titled "the pre-execution system-call seam" and stated
+facts 2 and 3 as properties of system calls in general. Both were properties
+of ONE system call — EIP-4788's — because it was the only one this build had
+built.**
+
+**Then the correction repeated the error.** The first version of this
+subsection replaced "unchecked" with a single **checked** bit, read off
+Prague, where the two refusal conditions happen to be coupled — and cited
+Gnosis as the case that settled it, quoting `withdrawals.md:61` **and stopping
+one line short of `:62`, which refutes the generalization.** Caught in review,
+against the same file the citation came from.
+
+**That is the durable lesson and it is worth more than either fact.** A
+property read off the members you have looks identical to a property of the
+category, and **correcting one such generalization is a moment of maximum
+exposure to making another** — you are writing confidently, from fresh
+evidence, about the exact kind of claim you just found to be over-general.
+**Read the lines after the one that proves your point.**
+
+A system call varies along three axes that do not move together:
+
+- **WHERE it runs.** Before the transactions (EIP-4788's beacon root, and
+  EIP-2935's history storage), or after them (Prague's withdrawal-request and
+  consolidation calls, which run after withdrawals). The pre-execution
+  position is the one this build built first; it is not the definition.
+- **WHAT its outcome can refuse — and this is TWO conditions, not one bit.**
+  A call may be refused because the **target holds no code**, and it may be
+  refused because the **call itself failed**. They are separately decidable
+  and the networks decide them separately.
+- **WHAT it contributes to a commitment.** Nothing (EIP-4788 and EIP-2935
+  write storage only, and Gnosis's withdrawal call), or a record derived from
+  its return data (Prague's two, which feed `requests_hash`). Independent of
+  the other axes: a checked call need not contribute, and a contributing call
+  need not be checked.
+
+**The refusal conditions are two, and reading them as one is how this section
+was wrong a SECOND time.** Prague couples them — `process_checked_system_
+transaction` raises on both — so Prague alone makes them look like a single
+"checked" bit. **Gnosis decides them oppositely**, and the line that says so
+is the line *after* the one this section first quoted:
+
+| Call | Empty target | Execution failure |
+|---|---|---|
+| EIP-4788, EIP-2935 (unchecked) | tolerated | tolerated |
+| Prague EIP-7002, EIP-7251 | **block invalid** | **block invalid** |
+| Gnosis `WITHDRAWAL_CONTRACT` | **tolerated** | **block invalid** |
+
+`gnosischain/specs` @ `045d46d6d`, `execution/withdrawals.md`: `:61` *"If the
+transaction reverts, or runs out of the gas, the entire block **MUST** be
+considered invalid."* — and `:62` *"If no contract is deployed at
+`WITHDRAWAL_CONTRACT`, ignore this system call and allow the block to be
+considered valid."* That second line was added deliberately, `047883e39`
+(2024-12-10), *"Specify no contract case in withdraw contract"*.
+
+**So an implementer who reads "checked ⇒ the block is invalid" and applies it
+to Gnosis's call refuses a block Gnosis's own specification declares valid.**
+Settle both conditions for the call in front of you; do not carry either from
+another network.
+
+**Position and refusal are still independent, which is what Gnosis shows
+best**: it is a *withdrawal-time* call and it refuses on failure, so "refuses"
+is not a property of the post-execution position.
+
+**The executable specification names both kinds as separate functions**, which
+is the clearest statement of the axis available: `ethereum/execution-specs` @
+`0cc100eb1` `forks/prague/fork.py` defines
+`process_unchecked_system_transaction` (`:641`) and
+`process_checked_system_transaction` (`:582`), and `apply_body` (`:743-765`)
+calls the unchecked form twice before the transactions and the checked form
+twice inside `process_general_purpose_requests`, after withdrawals.
+
+**A checked call's pre-check reads through a throwaway transaction state, so
+it can see a system contract deployed earlier in the SAME block** — the
+specification says so in its own comment at `:606-613`, naming EIP-7002 and
+EIP-7251 as the edge case. A pre-check written against the pre-state instead
+answers a different question and would refuse a valid block.
+
+**That is measured, not reasoned, and the corpus that discriminates it is not
+the one you would reach for.** The published deployment cases state it
+directly: `deploy_after_fork-{zero,nonzero}_balance` expect
+`SYSTEM_CONTRACT_EMPTY`, while **`deploy_on_fork_block-{zero,nonzero}_balance`
+deploy the contract in the fork block itself and expect the block to be
+VALID**. A pre-state pre-check refuses those. **No `for_prague` case can catch
+it**, because the contracts are already at genesis there — the cases live only
+under `for_cancuntopragueattime15k`
+(`.../prague/eip7002/contract_deployment/system_contract_deployment.json`, and
+the EIP-7251 equivalent). **So a transition label is load-bearing for a rule
+that is not about the transition.**
+
+**An empty return appends nothing, and absent is not empty.** Both checked
+calls append a request only `if len(...return_data) > 0`
+(`src/ethereum/forks/prague/fork.py:789-810`), so a call returning nothing
+contributes no record — distinct from contributing an empty one, which would
+change the commitment. `compute_requests_hash`
+(`src/ethereum/forks/prague/requests.py:289-308`) hashes only the entries
+present, which is *why* the distinction moves the header.
+
+**And the requests list has THREE contributors, not two. The third is not a
+system call at all, so checking "every new system call" never prompts it.**
+`process_general_purpose_requests` appends, in this order
+(`src/ethereum/forks/prague/fork.py:783-810`):
+
+1. **Deposits, parsed from the block's own receipts** — `parse_deposit_requests`
+   scans logs emitted by the deposit contract. No call is made. It carries its
+   own block-invalidating refusals on malformed log geometry
+   (`src/ethereum/forks/prague/requests.py:210`, `:225`, `:235`, `:247`, each
+   `raise InvalidBlock`).
+2. The withdrawal-request checked call's return data.
+3. The consolidation checked call's return data.
+
+**Order is normative** — the specification states *"Requests are to be in
+ascending order of request type"* (`fork.py:783`) — so the list is not a set
+and a correct-but-reordered list states a different commitment.
+
+**This is the seam framing's own blind spot, recorded because it caused a real
+miss:** a rule expressed as "check each new system call" cannot see a
+contributor that is not a call. **Ask what feeds the commitment, then ask
+which of those are system calls** — not the reverse.
 
 **1. It is a named seam handed the EVM, not a state view.** A system call
 invokes code at an address, so it has to run through the actual interpreter
@@ -352,28 +664,58 @@ state-view interface could not have run the deployed EIP-4788 contract's own
 `CALLER`/push/`EQ` branch at all.
 
 **2. It must be able to report an unbuilt operation as a value, not discard
-it.** The specification's own words are that *"the call must execute to
-completion"* and *"the call does not count against the block's gas limit"*
-(`ethereum/EIPs @ d2a64c2d4`, `EIPS/eip-4788.md`, Final) — a system call has
-no refusal and cannot invalidate a block. The one thing it CAN report is an
-operation the fork's table admits and this build does not yet run, which is
-not a chain result at all. **A `Unit`-returning call site discards that
-channel silently**, and a caller that discarded it would be recording an
-unbuilt operation as a state this network reached — which is exactly the
-"honest domain answer" a `Some(Unsupported)`/`None` return exists to prevent.
-This is also why a system call is never modeled as `BlockProcessor`'s
+it.** An unbuilt operation is one the fork's table admits and this build does
+not yet run, which is **not a chain result at all** — so it can never be
+collapsed into either "the call succeeded" or "the block is invalid".
+**A `Unit`-returning call site discards that channel silently**, and a caller
+that discarded it would be recording an unbuilt operation as a state this
+network reached — which is exactly the "honest domain answer" a
+`Some(Unsupported)`/`None` return exists to prevent. This is also why a system
+call is never modeled as `BlockProcessor`'s
 `irregularStateChange: WorldState => Unit`: that shape has nowhere to put the
 signal, and its own contract is a change a schedule knows about for one
 block, where a system call runs on every block from its fork onward.
 
-**3. Its writes commit on every outcome, and that is a property of the
-OUTCOME check, not of what an individual invocation keeps.** Point 2's
-specification is the proposal; here it is the **executable** specification,
-`ethereum/execution-specs`, and it runs the call *"without checking if the
-contract contains code or if the transaction fails"* (@ `0cc100eb1`
-`forks/cancun/fork.py:552-553`), and `ethereum/go-ethereum @ 02872e9ef`
-`core/state_processor.go:336` discards all three results of its call —
-`_, _, _ = evm.Call(...)` — and finalizes immediately after, in sharp
+**This fact holds for both kinds, and the reason differs between them.** For
+an **unchecked** call the return channel is the *only* thing it can report:
+EIP-4788's own words are that *"the call must execute to completion"* and
+*"the call does not count against the block's gas limit"* (`ethereum/EIPs @
+d2a64c2d4`, `EIPS/eip-4788.md`, Final), so nothing it does makes a block
+invalid. For a **checked** call the channel must stay distinct from the
+refusal — an unbuilt operation is not a failed call, and answering the domain
+refusal for it would invalidate a block this build simply cannot judge.
+
+> **CORRECTED. This fact previously ended its first sentence with *"— a system
+> call has no refusal and cannot invalidate a block"*, stated of system calls
+> in general.** That is true of EIP-4788 and **false of Prague's checked
+> calls**: `process_checked_system_transaction` raises `InvalidBlock` both when
+> the target holds no code and when the call returns any error
+> (`ethereum/execution-specs` @ `0cc100eb1`,
+> `src/ethereum/forks/prague/fork.py:582-638`), and the published corpus states
+> both refusals by name — `SYSTEM_CONTRACT_EMPTY` and
+> `SYSTEM_CONTRACT_CALL_FAILED` (`ethereum/execution-specs-fixtures` @
+> `tests-v20.0.1`). **A reviewer who applied the old wording to EIP-7002 or
+> EIP-7251 would have built a call that accepts a block every other client
+> rejects**, which is a chain split rather than a missing feature.
+>
+> **The retracted sentence is kept verbatim above because it is the search key
+> for the source that still carries it.** One file does:
+> `org.fukuii.execution.SystemCall`'s scaladoc, where it justifies an absent
+> type — *"which is why nothing here returns a `BlockRejection`"*. **That is
+> the design the post-execution seam changes, so the sentence and the refusal
+> channel move together** rather than the comment being corrected ahead of the
+> code. `org.fukuii.execution.Withdrawals` carried a sibling claim and **was
+> scoped at this correction instead**, because its falsifier is Gnosis rather
+> than Prague and no Prague-era change would have reached it.
+
+**3. An UNCHECKED call's writes commit on every outcome, and that is a
+property of the OUTCOME check, not of what an individual invocation keeps.**
+Point 2's specification is the proposal; here it is the **executable**
+specification, `ethereum/execution-specs`, and it runs the call *"without
+checking if the contract contains code or if the transaction fails"* (@
+`0cc100eb1` `forks/cancun/fork.py:552-553`), and `ethereum/go-ethereum @
+02872e9ef` `core/state_processor.go:336` discards all three results of its
+call — `_, _, _ = evm.Call(...)` — and finalizes immediately after, in sharp
 contrast with the ordinary system-contract call thirty lines below it, which
 panics on error. **This does NOT mean a reverted invocation's own writes
 survive.** The interpreter still undoes those inside itself, exactly as for a
@@ -381,6 +723,27 @@ transaction. What is unchecked is whether the caller branches on success or
 failure before committing whatever the journal holds — which, after a
 revert, is nothing new. Reading "committed on every outcome" as "reverted
 writes are kept" is the misreading this fact exists to prevent.
+
+**A refusing call does NOT change this, and the mechanism is the part worth
+knowing.** The executable specification implements the checked form as a
+**wrapper over the unchecked one**: `process_unchecked_system_transaction`
+commits **unconditionally** — `incorporate_tx_into_block(system_tx_state)` at
+`fork.py:706`, no branch — and `process_checked_system_transaction` inspects
+`.error` **afterwards**, at `:632`, raising then. **So the writes commit and
+the block is discarded after**, rather than the commit being skipped.
+
+**Observationally identical, structurally not, and the difference is a trap
+for the natural implementation.** A build that adopts the same
+wrapper-over-primitive shape and "helpfully" makes the commit conditional in
+the shared primitive silently breaks the **unchecked** case, where the
+unconditional commit is load-bearing. Fact 3 is a property of the primitive;
+a refusal is a check layered above it.
+
+**So this fact's literal claim survives Prague** — writes still commit on
+every outcome — and what Prague adds is a check that runs after. The
+correction is that the fact was stated of system calls in general while
+describing the primitive; a reader must not conclude from it that a refusing
+call has no commit to reason about.
 
 **4. Reusing the ordinary call path leaves an empty account at the target,
 and nothing downstream removes it.** The interpreter brings the account it
@@ -413,6 +776,41 @@ own proposal's text.** A system call that skips fact 4 because "the mainnet
 contract is always deployed" is correct on mainnet and wrong on the first
 network this project stands up itself.
 
+**Before applying any of the four, settle the three axes above for the call in
+front of you.** Which fact applies is not uniform:
+
+| Fact | Applies to |
+|---|---|
+| **1** — a named seam handed the EVM | every system call |
+| **2** — an unbuilt operation is a value, not a refusal | every system call, for different reasons per kind |
+| **3** — writes commit whatever the outcome | stated of the unchecked kind; see below for what a refusal adds |
+| **4** — no empty account left at the target | **only where an empty target is tolerated** |
+
+**Fact 4's applicability is decided by the empty-target column, and that is
+the opposite of what "checked" suggests.** Fact 4 exists because a call whose
+target holds no code must leave no account behind — a state root carrying one
+is a chain split. So it applies exactly where an undeployed target is
+*tolerated*:
+
+- **EIP-4788, EIP-2935 (tolerated):** fact 4 applies in full.
+- **Prague's EIP-7002, EIP-7251 (refused):** fact 4 is **pre-empted, not
+  satisfied**. The pre-check raises at `fork.py:620-624` **before**
+  `process_unchecked_system_transaction` is entered at `:626`, so the
+  interpreter never runs and no account is created. There is no empty account
+  to avoid.
+- **Gnosis's withdrawal call (tolerated):** fact 4 applies again, in full.
+
+**A protocol that said "facts 1 and 4 hold for both kinds" would be wrong in
+the middle row**, and the earlier draft of this section said exactly that, one
+paragraph above a paragraph saying the opposite.
+
+**What survives across all three rows is the genesis obligation, reached from
+two directions.** Where an empty target is tolerated, an undeployed contract
+is a silent state-root defect. Where it is refused, an undeployed contract is
+a network that **cannot produce a valid block at all**. **So a network this
+project stands up itself must deploy the contracts its schedule activates, or
+not activate them** — and that holds whichever way the refusal went.
+
 ---
 
 ## Evidence weight
@@ -422,20 +820,42 @@ operator, not superseded by a reading of an external source.** The tiebreak
 rule and both worked instances are grounded in this build's own reviewed,
 citation-backed implementation, and every citation in this file was
 independently re-resolved against the reference corpus rather than trusted
-on the strength of appearing in already-merged code. **What is not re-derived
-here, with one exception, is the underlying specification and client
-readings themselves** — this file did not re-open `ethereum/execution-specs`,
-`ethereum/go-ethereum`, `besu-eth/besu`, `NethermindEth/nethermind` or
-`erigontech/erigon` line by line; it verified that the refs cited resolve to
-the commits claimed and transcribed what the citing code already established.
-**The exception is Instance 1's `NethermindEth/nethermind` and
-`erigontech/erigon` readings**, added during a review pass that widened the
-survey past the two clients `JournaledWorldState.scala`'s own scaladoc
-already cited. Neither client's marker behavior was cited anywhere in this
-build before that pass, so both were read directly against the reference
-corpus rather than transcribed — a stronger form of evidence than the rest of
-this file carries, not a weaker one, and worth distinguishing rather than
-folding into the general disclaimer. Treat the tiebreak's two worked
+on the strength of appearing in already-merged code. **This file's sections no
+longer share one evidence standing, and the differences are material enough to
+state per section rather than as one disclaimer.**
+
+**Transcribed** — the refs were confirmed to resolve to the commits claimed,
+and what the citing code already established was carried across, without
+re-opening the source line by line: **the tiebreak rule itself and its two
+worked instances**, drawn from `JournaledWorldState.scala` and
+`SystemCall.scala`.
+
+**Read directly against the reference corpus, and therefore stronger than the
+rest of this file:**
+
+- **Instance 1's `NethermindEth/nethermind` and `erigontech/erigon`
+  readings**, added during a review pass that widened the survey past the two
+  clients `JournaledWorldState.scala`'s scaladoc already cited. Neither
+  client's marker behavior was cited anywhere in this build before that pass.
+- **The whole system-call seam correction of 2026-09-17** — the three axes,
+  the empty-target column, the fact-4 applicability table, fact 3's
+  commit-then-raise mechanism, the requests-list contributors and the
+  pre-check's published discriminator — read from
+  `ethereum/execution-specs` @ `0cc100eb1`, the fixture release at
+  `tests-v20.0.1` and `gnosischain/specs` @ `045d46d6d`.
+- **The which-text-governs section**, read from `ethereum/EIPs` at the named
+  commits and `ethereum/go-ethereum` `params/config.go`.
+- **The lineage root-commit measurement** in the clients-diverge section.
+
+**Mostly a consolidation of this build's own code, and the one section the
+header's "verified against primary sources" does NOT describe: the
+precompile-registration section.** Its load-bearing evidence is
+`TransactionProcessor.scala:384-388` and `PrecompileSet.at`; only Osaka's
+`0x100` is a specification read.
+
+**Restated once because it was wrong here before**: "four implementations" in
+the instances below is a count of code read, not of independent lineages —
+go-ethereum and erigon share a root commit. Treat the tiebreak's two worked
 instances with the same standing their source code carries, no stronger:
 `markAccountCreated`'s reading is corroborated by 259 published cases and a
 stated derivation; `SystemCall.GasPrice` is UNSETTLED by design and carries

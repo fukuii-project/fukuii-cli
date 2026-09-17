@@ -55,7 +55,7 @@ and the charter treats that as the same finding as the protocol being absent.
 The state-root litmus — the rule deciding whether a change is consensus at
 all — is mechanism-neutral, still lives in the charters, and its canonical
 home is `.claude/protocols/consensus-change.md`, which also carries the
-unobservable-divergence tiebreak and the pre-execution system-call seam
+unobservable-divergence tiebreak and the system-call seam
 facts. Do not read this file as carrying any of them.
 
 **It is also not a schedule.** `.claude/agents/forge.md` § "You own consensus,
