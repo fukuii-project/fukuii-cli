@@ -842,6 +842,8 @@ by opening `EIPS/eip-55.md` for its test vectors and getting a one-line pointer.
 | `ethereum/execution-specs-fixtures` | the same repository's **release assets** | the `tests@vN` tag itself | **The vectors.** Not a clone — see "The fixture release" below, which is the only entry here that `git fetch` does not refresh |
 | `ethereum/tests` | [ethereum/tests](https://github.com/ethereum/tests) | `develop` | The primary Ethereum conformance corpus **for forks up to Prague**, and **dormant** — see the currency note below |
 | `ethereum/legacytests` | [ethereum/legacytests](https://github.com/ethereum/legacytests) | `master` | **The historical corpus `ethereum/tests` points at and does not carry** — it is an uninitialized submodule there, so a clone of `ethereum/tests` alone silently lacks all of this. Two things live here and nowhere else. **`Constantinople/VMTests/` is the state-free interpreter tier the modern release dropped**, organized by opcode family (`vmArithmeticTest`, `vmBitwiseLogicOperation`, `vmPushDupSwapTest`, `vmIOandFlowOperations`, `vmSha3Test`, `vmSystemOperations`, and more) — a fixture is an `exec` block against a `pre` state with no transaction, so it certifies the machine without a state transition. **And its `GeneralStateTests` carry per-fork `post` sections reaching back to Frontier**, which the modern release's thin old-fork slices do not. Both are frozen at Constantinople pricing — read the note below before pricing anything from them |
+| `ethereum/retesteth` | [ethereum/retesteth](https://github.com/ethereum/retesteth) | `master`; cite a commit | **The tool that filled `ethereum/legacytests`' `Cancun` snapshot** — each case's `_info` names `retesteth-0.3.3-discontinued+commit.f30e58c2`, over evmone's transition tool — **and so the authority for what that snapshot's refusal names mean.** `retesteth/configs/clientconfigs/*.cpp` maps each name to each client's message, and `retesteth/session/ToolBackend/Verification.cpp` holds the checks the tool makes itself before a client sees a block; a name can mean one of those, as `3675PoSBlockRejected` does |
+| `ethereum/aleth` | [ethereum/aleth](https://github.com/ethereum/aleth) | `master`; cite a commit | **The client testeth ran over to fill `ethereum/legacytests`' `Constantinople` snapshot** — each case's `_info` names `testeth 1.8.0-alpha.0-12+commit.b120a12c` — **so that snapshot's refusal names are aleth's exception names**, which testeth matches as substrings of the thrown exception's description (`test/tools/jsontests/BlockChainTests.cpp:947-961` @ `b120a12c6`). retesteth first defined any of them at `4959163f`, after that commit |
 | `etclabscore/tests` | [etclabscore/tests](https://github.com/etclabscore/tests) | `develop` | The Ethereum corpus as core-geth consumes it |
 | `etclabscore/tests-etc` | [etclabscore/tests](https://github.com/etclabscore/tests) | `main` | **A THIRD-PARTY corpus this project republishes for durability, and it is citable as ordinary third-party evidence.** Its `main` adds the ETC translation to `develop`, and its content carries **no fukuii-authored commits** — so citing it is not circular, and this row said the opposite until section 20 found a published `ETC_Agharta` tier that had gone unconsidered for four sections because of it. **What is prospective is the CUSTODY, not the authority**: as fukuii-authored vectors land beside mirrored ones, the two must stay distinguishable, and the circularity rule below bites at that point rather than now. **The corpus fukuii AUTHORS is `fukuii-project/fukuii-tests`**, which has its own section further down; a fukuii vector becomes authority when it is derived from the spec and cleared by a reviewer who did not author it. **Its custodial role is deliberate — see below** |
 | `ethereum/consensus-specs` | [ethereum/consensus-specs](https://github.com/ethereum/consensus-specs) | `master` | The consensus-layer specification and its own test vectors |
@@ -858,8 +860,8 @@ a claim about the corpus. Each time the material was present and the instrument 
 The rows above say which repositories exist and what each is authoritative for. **They do not say
 that each contains several independent test tiers, and that is the gap this closes.**
 
-**fukuii currently reads three tiers. There are roughly thirty-six.** Counted 2026-08-19, and stated
-as a dated reading rather than a maintained figure — re-derive with, from the corpus root:
+**fukuii reads a minority of them. There are roughly thirty-six.** The tier count was taken 2026-08-19,
+as a dated reading rather than a maintained figure — re-derive it with, from the corpus root:
 
 ```bash
 for d in ethereum/execution-specs-fixtures/tests-v20.0.1/fixtures/*/ \
@@ -869,21 +871,32 @@ for d in ethereum/execution-specs-fixtures/tests-v20.0.1/fixtures/*/ \
 done
 ```
 
-| Corpus | Tiers it carries | What fukuii reads |
+| Corpus | Tiers it carries | What fukuii's tests read |
 |---|---|---|
-| `ethereum/execution-specs-fixtures` | `state_tests`, `blockchain_tests`, `blockchain_tests_engine`, `blockchain_tests_engine_x`, `blockchain_tests_sync`, `transaction_tests` | **`state_tests/for_frontier` only** |
-| `ethereum/legacytests` (`Constantinople`) | `GeneralStateTests`, `VMTests`, `BlockchainTests` | **`GeneralStateTests` and `VMTests`; not `BlockchainTests`** |
-| `ethereum/tests` | `TransactionTests`, `BlockchainTests`, `DifficultyTests`, `RLPTests`, `TrieTests`, `PoWTests`, `EOFTests`, `GenesisTests`, `KeyStoreTests`, `BasicTests`, `ABITests`, `JSONSchema`, `src` | **nothing** |
-| `etclabscore/tests-etc` | the same tier set, plus `src-etc` | **nothing** |
+| `ethereum/execution-specs-fixtures` | `state_tests`, `blockchain_tests`, `blockchain_tests_engine`, `blockchain_tests_engine_x`, `blockchain_tests_sync`, `transaction_tests` | **`state_tests`** at every fork label from `for_frontier` through `for_cancun`, **`blockchain_tests`** and **`blockchain_tests_engine`** |
+| `ethereum/legacytests` (`Constantinople`) | `GeneralStateTests`, `VMTests`, `BlockchainTests` | **`GeneralStateTests`, `VMTests`, and `BlockchainTests/InvalidBlocks/bcInvalidHeaderTest`** |
+| `ethereum/legacytests` (`Cancun`) | `GeneralStateTests`, `BlockchainTests` | **`BlockchainTests/InvalidBlocks/bcInvalidHeaderTest` and `BlockchainTests/ValidBlocks/bcEIP1559`** |
+| `ethereum/tests` | `TransactionTests`, `BlockchainTests`, `DifficultyTests`, `RLPTests`, `TrieTests`, `PoWTests`, `EOFTests`, `GenesisTests`, `KeyStoreTests`, `BasicTests`, `ABITests`, `JSONSchema`, `src` | **`DifficultyTests`, `BasicTests` and `PoWTests`** |
+| `etclabscore/tests-etc` | the same tier set, plus `src-etc` | **`GeneralStateTests`** |
 
-**Four of the unread tiers answer questions this project already has**, which is the point of writing
+**The third column is a reading, and it has gone stale before** — it once said `state_tests/for_frontier`
+only, long after every fork's state tier was read. Re-derive it from the repository root, and believe the
+sweep only if `state_tests/for_frontier` appears in it:
+
+```bash
+git grep -hoE 'FixtureCorpus\.(generated|legacy|classicPublished)\([a-z]+\)\.resolve\("[^"]+"|"(ethereum|etclabscore)/[A-Za-z0-9_./-]+"' \
+  -- 'modules/*/src/test/*.scala' | sort | uniq -c
+```
+
+`FixtureCorpus.generated` resolves under `ethereum/execution-specs-fixtures/tests-v20.0.1/fixtures` and
+`FixtureCorpus.legacy` under `ethereum/legacytests/Constantinople`. **The sweep sees what the tests read**,
+not what a vector generator under `scripts/` reads when it is run.
+
+**Of the unread tiers, these answer questions this project already has**, which is the point of writing
 the map down rather than the totals:
 
 - **`transaction_tests` and `TransactionTests`** carry transaction *validity* — the tier a question
   about admission belongs in. A sweep of `state_tests` alone reports nothing and looks conclusive.
-- **`DifficultyTests`** is where a difficulty-adjustment change is certified, and one is armed
-  against the proof-of-work layer.
-- **`PoWTests`**, likewise, for that layer.
 - **`RLPTests` and `TrieTests`** certify layers this repository has already built and certified by
   other means.
 
@@ -905,6 +918,31 @@ Worked instance: a sender holding code is refused from Frontier onward — the s
 **3. A tier fukuii does not read still answers "does a published case exist".** Those are different
 questions and the second is the one an absence claim makes. Not reading a tier is a fact about this
 harness; it is not evidence about the corpus.
+
+### The published block tier: what it cannot decide, and whose names its refusals are in
+
+**No generated `blockchain_tests` case refuses a block for its state root, receipts root, transactions
+root, logs bloom or gas used.** A validator that silently skipped any of those comparisons would agree with
+the whole generated tier. So those published negatives come from `legacytests`'
+`BlockchainTests/InvalidBlocks/bcInvalidHeaderTest`, and a seeded mutation per comparison is what shows each
+one runs.
+
+**The generated pre-merge labels cannot decide three things, measured rather than assumed:** no published
+block height reaches a difficulty bomb delay, no parent block carries ommers, and every case states
+`sealEngine` as `NoProof`, so no seal rule is exercised.
+
+**A legacy refusal name belongs to the tool that filled its snapshot, and the two snapshots were filled by
+different tools** — `Constantinople` by testeth over aleth, `Cancun` by retesteth over evmone, each named in
+the case's own `_info`. One string can therefore name different rules: aleth's `InvalidGasLimit` covers
+its floor, its maximum and the parent's bound together, and retesteth split the bound out as
+`InvalidGasLimit2`. **Read `_info` before grounding a name in a tool.**
+
+**Runners compare a refused block's reason differently, which bounds what their agreement shows.**
+`ethereum/execution-specs`' own loader raises on a block that does not decode and compares no name
+(`tests/json_loader/helpers/load_blockchain_tests.py:187-190` @ `0cc100eb1`). `besu-eth/besu` @ `b330564a94`
+matches names through a mapping file, where a missing key matches nothing
+(`ethereum/referencetests/.../BlockExceptionMatcher.java:127-137`), and that file maps most header names onto
+one message. A runner comparing no name agrees with a validator that refuses a block for the wrong reason.
 
 ### And the client trees are test material too
 
