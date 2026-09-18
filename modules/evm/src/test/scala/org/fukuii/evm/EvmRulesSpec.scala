@@ -144,7 +144,8 @@ class EvmRulesSpec extends AnyFlatSpec:
       reservedCodePrefix = None,
       blockRandomness = BlockRandomness.Unavailable,
       selfDestructScope = SelfDestructScope.AnyAccount,
-      blobBaseFeeUpdateFraction = None
+      blobBaseFeeUpdateFraction = None,
+      followsDelegations = false
     )
     assert(rebuilt == base, "two identical configurations built separately compared as different rules")
   }

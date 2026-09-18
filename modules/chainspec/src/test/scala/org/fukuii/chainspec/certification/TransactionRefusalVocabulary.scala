@@ -50,6 +50,14 @@ object TransactionRefusalVocabulary:
       // The blob format's refusals, each under the corpus's name for it, so that a
       // refusal is compared by rule and not only by name.
       "TransactionException.TYPE_3_TX_CONTRACT_CREATION" -> Refusal.FormatMayNotDeploy,
+      // The set-code format's own name for the same rule, and unreachable from a
+      // decoded transaction for the same reason: that format types its recipient
+      // as an address rather than an address-or-empty, here and in the
+      // specification alike, so neither tree can decode one that deploys.
+      "TransactionException.TYPE_4_TX_CONTRACT_CREATION" -> Refusal.FormatMayNotDeploy,
+      // A set-code transaction stating no authorization, which asks for nothing
+      // the format exists to express.
+      "TransactionException.TYPE_4_EMPTY_AUTHORIZATION_LIST" -> Refusal.AuthorizationListEmpty,
       "TransactionException.TYPE_3_TX_ZERO_BLOBS" -> Refusal.BlobListEmpty,
       "TransactionException.TYPE_3_TX_INVALID_BLOB_VERSIONED_HASH" -> Refusal.BlobHashVersionUnknown,
       "TransactionException.INSUFFICIENT_MAX_FEE_PER_BLOB_GAS" -> Refusal.BlobFeeCapBelowCharge,

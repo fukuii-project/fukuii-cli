@@ -2,7 +2,7 @@ package org.fukuii.evm
 
 import org.fukuii.bytes.{Address, Bytes, Hash, UInt64}
 import org.fukuii.crypto.Keccak256
-import org.fukuii.types.Log
+import org.fukuii.types.{Delegation, Log}
 
 /** Runs one invocation, and the operations it is made of.
   *
@@ -1197,6 +1197,25 @@ object Interpreter:
           exceptional(frame.stack.push(Word.Zero).map(_ => advance(frame)))
         else
           val invoker = if inherits then frame.message.caller else frame.message.currentTarget
+          // A designation on the account being called is followed here, once.
+          // The account whose storage and balance the invocation acts on is
+          // unchanged -- only the code and the address it came from move.
+          //
+          // **The target is charged for as a reach of its own**, which is what
+          // makes following one cost gas: `ethereum/execution-specs` @
+          // `0cc100eb1` `src/ethereum/forks/prague/vm/eoa_delegation.py:143-150`
+          // charges the warm price where the target has been reached and the
+          // cold price otherwise, and adds it to the reached set either way. The
+          // charge is taken from the caller's own gas before the invocation, so
+          // a build adding the target to the set without charging for it
+          // undercharges every delegated call.
+          val designated =
+            if environment.rules.followsDelegations then Delegation.targetOf(world.codeOf(codeAddress)) else None
+          val runsCode = designated.getOrElse(codeAddress)
+          val followCharge = designated.fold(BigInt(0)) { target =>
+            if frame.accessedAddresses.contains(target) then schedule.warmAccess else schedule.coldAccountAccess
+          }
+          frame.gasLeft -= followCharge
           val nested = new Frame(
             Message(
               caller = invoker,
@@ -1213,10 +1232,10 @@ object Interpreter:
               isStatic = frame.message.isStatic || forbidsChangingState,
               depth = frame.message.depth + 1
             ),
-            Code(world.codeOf(codeAddress)),
+            Code(world.codeOf(runsCode)),
             forwarded,
             frame.registeredSoFar,
-            frame.accessedAddresses,
+            frame.accessedAddresses ++ designated,
             frame.accessedStorageKeys
           )
           run(nested, environment) match

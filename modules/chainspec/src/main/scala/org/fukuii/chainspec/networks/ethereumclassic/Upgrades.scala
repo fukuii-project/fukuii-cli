@@ -196,6 +196,8 @@ object Upgrades:
     transactionDataPerZeroByte = BigInt(4),
     transactionDataPerNonZeroByte = BigInt(68),
     transactionCalldataTokenFloor = BigInt(0),
+    transactionPerAuthorization = BigInt(0),
+    refundPerExistingAuthority = BigInt(0),
     transactionCreate = BigInt(0),
     transactionAccessListAddress = BigInt(0),
     transactionAccessListStorageKey = BigInt(0),
@@ -321,7 +323,8 @@ object Upgrades:
         // inheritance, which is why the value is written here rather than
         // defaulted.
         selfDestructScope = SelfDestructScope.AnyAccount,
-        blobBaseFeeUpdateFraction = None
+        blobBaseFeeUpdateFraction = None,
+        followsDelegations = false
       ),
       execution = ExecutionRules(
         touchedEmptyAccountsAreDeleted = false,
@@ -331,7 +334,8 @@ object Upgrades:
       admission = AdmissionRules(
         admittedTypes = Set(TransactionType.Legacy),
         signatureMayCarryChainId = false,
-        signatureSMustBeLow = false
+        signatureSMustBeLow = false,
+        admitsDelegations = false
       ),
       consensus = ConsensusRules(
         blockReward = launchReward,

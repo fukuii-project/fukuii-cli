@@ -36,7 +36,8 @@ class NonceAdmissionPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
     AdmissionRules(
       admittedTypes = Set(TransactionType.Legacy),
       signatureMayCarryChainId = false,
-      signatureSMustBeLow = false
+      signatureSMustBeLow = false,
+      admitsDelegations = false
     )
 
   private def world(): EvmFixtures.MapWorldState =
@@ -57,7 +58,8 @@ class NonceAdmissionPropSpec extends AnyPropSpec with TableDrivenPropertyChecks:
         value = 0,
         data = Bytes.Empty,
         accessList = Seq.empty,
-        blobs = None
+        blobs = None,
+        authorizations = None
       ),
       world(),
       BigInt(30000000),

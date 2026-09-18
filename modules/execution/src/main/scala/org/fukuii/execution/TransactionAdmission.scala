@@ -3,7 +3,7 @@ package org.fukuii.execution
 import org.fukuii.bytes.{Address, Bytes, Hash, UInt64}
 import org.fukuii.crypto.Secp256k1
 import org.fukuii.evm.{BlobGas, GasSchedule, WorldState}
-import org.fukuii.types.{AccessTuple, Sender, SignatureScheme, Transaction, TransactionType}
+import org.fukuii.types.{AccessTuple, Authorization, Delegation, Sender, SignatureScheme, Transaction, TransactionType}
 
 /** Why a fork refuses a transaction.
   *
@@ -106,8 +106,27 @@ enum Refusal:
   /** The sender cannot cover the whole fee it offers plus the value it sends. */
   case InsufficientAccountFunds
 
-  /** The sender holds code, so it is not an externally owned account. */
+  /** The sender holds code, so it is not an externally owned account.
+    *
+    * **A delegation designation is not code for this rule**, at a fork carrying
+    * one. `ethereum/execution-specs` @ `0cc100eb1`,
+    * `src/ethereum/forks/prague/fork.py:532-534` refuses a sender whose code
+    * hash is not the empty one AND whose code is not a valid designation -- so
+    * an account that has delegated still sends its own transactions, which is
+    * the whole point of delegating. `org.fukuii.types.Delegation` is what reads
+    * the exception.
+    */
   case SenderNotEoa
+
+  /** A set-code transaction carries no authorization, so it asks for nothing
+    * that format exists to express.
+    *
+    * `ethereum/EIPs`'s own wording is that the list *"must be of non-zero
+    * length"*, and the corpus states it as `TYPE_4_EMPTY_AUTHORIZATION_LIST`.
+    * **It is a refusal rather than a no-op** because the format would otherwise
+    * be an ordinary call wearing a type it does not use.
+    */
+  case AuthorizationListEmpty
 
   /** The signature names a chain identifier that is not this network's. */
   case WrongChainId
@@ -287,7 +306,12 @@ final case class OfferedTransaction(
     value: BigInt,
     data: Bytes,
     accessList: Seq[AccessTuple],
-    blobs: Option[BlobOffer]
+    blobs: Option[BlobOffer],
+    // An OPTION around a sequence, for the same reason `blobs` is one: a format
+    // that carries no authorization at all and a set-code transaction carrying
+    // an empty list are different facts, and only the second is a refusal.
+    // Collapsing them to an empty sequence would make the refusal unreachable.
+    authorizations: Option[Seq[Authorization]]
 )
 
 /** What a blob-carrying transaction states about its blobs.
@@ -643,7 +667,14 @@ object TransactionAdmission:
       schedule: GasSchedule,
       maxInitcodeSize: Option[Int]
   ): Admission =
-    lazy val intrinsic = IntrinsicGas.of(schedule, offered.data, offered.to.isEmpty, offered.accessList)
+    lazy val intrinsic =
+      IntrinsicGas.of(
+        schedule,
+        offered.data,
+        offered.to.isEmpty,
+        offered.accessList,
+        offered.authorizations.map(_.length).getOrElse(0)
+      )
     lazy val calldataFloor = IntrinsicGas.calldataFloorOf(schedule, offered.data)
     lazy val counted = world.nonceOf(offered.sender).toBigInt
     lazy val held = world.balanceOf(offered.sender).toBigInt
@@ -718,7 +749,8 @@ object TransactionAdmission:
     else if offered.nonce > counted then Admission.Refused(Refusal.NonceTooHigh)
     else if held < maximumFee + blobMaximumFee(offered) + offered.value then
       Admission.Refused(Refusal.InsufficientAccountFunds)
-    else if world.codeOf(offered.sender).nonEmpty then Admission.Refused(Refusal.SenderNotEoa)
+    else if offered.authorizations.exists(_.isEmpty) then Admission.Refused(Refusal.AuthorizationListEmpty)
+    else if senderHoldsForeignCode(world, offered.sender, rules) then Admission.Refused(Refusal.SenderNotEoa)
     else
       Admission.Admitted(
         settling(offered, intrinsic, calldataFloor, charge.getOrElse(BigInt(0)), blobGasWanted, blobGas.map(_.charge))
@@ -879,6 +911,25 @@ object TransactionAdmission:
     * record carries is the one the branch above compared against the limit. A
     * second call would be a second definition of it.
     */
+  /** Whether the sender holds code that is not a delegation designation.
+    *
+    * **The carve-out is what makes delegating usable at all.** An account that
+    * has delegated holds twenty-three bytes of code, and a rule refusing every
+    * sender with code would refuse every transaction such an account ever sends
+    * afterwards -- including the one that undoes the delegation.
+    *
+    * Below a fork carrying the document the carve-out cannot fire, because
+    * nothing can have written a designation: `admitsDelegations` is what says
+    * so, and reading the designation unconditionally would admit a sender whose
+    * deployed code merely began with the marker bytes at a fork where that is
+    * ordinary code.
+    */
+  private def senderHoldsForeignCode(world: WorldState, sender: Address, rules: AdmissionRules): Boolean =
+    val code = world.codeOf(sender)
+    if code.isEmpty then false
+    else if rules.admitsDelegations then !Delegation.isDesignation(code)
+    else true
+
   private def settling(
       offered: OfferedTransaction,
       intrinsicGas: BigInt,
@@ -903,6 +954,10 @@ object TransactionAdmission:
       // the calldata and the fork alone, so the value admission settled is the
       // value settlement needs, and computing it twice would let the two drift.
       calldataFloor = calldataFloor,
+      // Carried for the reason the charge above is: settlement applies them, and
+      // the list admission counted the charge from must be the list settlement
+      // applies, or the transaction pays for one set and acts on another.
+      authorizations = offered.authorizations,
       blobGasUsed = blobGasUsed,
       // Zero where the block sets no charge, which is every fork below the
       // first that prices blob gas. It multiplies a blob count that is itself

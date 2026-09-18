@@ -2,7 +2,7 @@ package org.fukuii.execution
 
 import org.fukuii.bytes.{Address, Bytes, Hash, UInt64}
 import org.fukuii.evm.*
-import org.fukuii.types.{AccessTuple, Log}
+import org.fukuii.types.{AccessTuple, Authorization, Delegation, Log}
 
 /** One transaction, as the values settling it spends.
   *
@@ -100,6 +100,7 @@ final case class AdmittedTransaction(
     accessList: Seq[AccessTuple],
     intrinsicGas: BigInt,
     calldataFloor: Option[BigInt],
+    authorizations: Option[Seq[Authorization]],
     blobGasUsed: BigInt,
     blobGasPrice: BigInt,
     blobVersionedHashes: Seq[Hash]
@@ -265,7 +266,29 @@ object TransactionProcessor:
       rules = rules
     )
     val available = transaction.gasLimit - transaction.intrinsicGas
-    val (frame, outcome) = invoke(transaction, world, environment, signedAt, available)
+    // BEFORE the invocation and after the sender's own nonce has moved, which
+    // is where the specification puts it: the authorizations are applied at the
+    // top of the outermost message, so the code the invocation then loads is
+    // the code they wrote. `ethereum/execution-specs` @ `0cc100eb1`
+    // `src/ethereum/forks/prague/vm/interpreter.py:123-124` applies them and
+    // then re-reads the target's code on the next line.
+    //
+    // An authority is the SENDER'S OWN account in the common case, so the order
+    // against the sender's nonce is observable: moving it after would let a
+    // self-authorization see a nonce one higher than it signed for and reject
+    // itself.
+    val delegated =
+      transaction.authorizations.fold(Delegations.Applied(BigInt(0), Set.empty))(list =>
+        Delegations.set(
+          list,
+          world,
+          chainId,
+          rules.schedule.transactionPerAuthorization,
+          rules.schedule.refundPerExistingAuthority
+        )
+      )
+    val (frame, outcome) = invoke(transaction, world, environment, signedAt, available, delegated.reached)
+    frame.refundCounter += delegated.refund
     account(transaction, world, destroyAccount, block, frame, outcome, rules, execution)
 
   /** Runs the transaction's one outermost invocation, whichever shape it has.
@@ -290,23 +313,36 @@ object TransactionProcessor:
       world: JournaledWorldState,
       environment: Environment,
       signedAt: UInt64,
-      available: BigInt
+      available: BigInt,
+      authorities: Set[Address]
   ): (Frame, Either[Unsupported, Outcome]) =
     transaction.to match
       case Some(recipient) =>
+        // The recipient's own designation, followed once. A designation names an
+        // account whose code runs AS the recipient, so what changes is the code
+        // and the address it came from -- never the account being called, whose
+        // storage and balance are still the recipient's.
+        //
+        // **Following it a second time is not a rule and must not be added.** A
+        // designation naming an account that is itself delegated runs that
+        // account's designation bytes as code, which halt immediately; the
+        // specification resolves exactly one level here and at every call site.
+        val designated =
+          if environment.rules.followsDelegations then Delegation.targetOf(world.codeOf(recipient)) else None
+        val runs = designated.getOrElse(recipient)
         val called = new Frame(
           Message(
             caller = transaction.sender,
             currentTarget = recipient,
-            codeAddress = Some(recipient),
+            codeAddress = Some(runs),
             value = Word(transaction.value),
             data = transaction.data,
             transfersValue = true,
             isStatic = false
           ),
-          Code(world.codeOf(recipient)),
+          Code(world.codeOf(runs)),
           available,
-          reachedBeforeEntry = warmAtEntry(transaction, environment, recipient),
+          reachedBeforeEntry = warmAtEntry(transaction, environment, recipient) ++ authorities ++ designated,
           slotsReachedBeforeEntry = warmSlotsAtEntry(transaction, environment)
         )
         (called, Interpreter.run(called, environment))

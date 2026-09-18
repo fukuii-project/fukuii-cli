@@ -265,7 +265,8 @@ object StateFixtureRunner:
       value = transaction.value,
       data = transaction.data,
       accessList = transaction.accessList,
-      blobs = blobsOf(transaction)
+      blobs = blobsOf(transaction),
+      authorizations = None
     )
 
   /** The blob half of what the fixture stated, as admission reads it.

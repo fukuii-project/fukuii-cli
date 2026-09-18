@@ -123,7 +123,8 @@ class TransactionAdmissionSpec extends AnyFlatSpec:
   ): AdmissionRules = AdmissionRules(
     admittedTypes = admittedTypes,
     signatureMayCarryChainId = signatureMayCarryChainId,
-    signatureSMustBeLow = signatureSMustBeLow
+    signatureSMustBeLow = signatureSMustBeLow,
+    admitsDelegations = false
   )
 
   /** Rules that let a signature name a chain, which is what makes comparing the

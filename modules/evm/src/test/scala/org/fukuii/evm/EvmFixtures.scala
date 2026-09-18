@@ -221,6 +221,8 @@ object EvmFixtures:
     transactionDataPerZeroByte = BigInt(19),
     transactionDataPerNonZeroByte = BigInt(70),
     transactionCalldataTokenFloor = BigInt(0),
+    transactionPerAuthorization = BigInt(0),
+    refundPerExistingAuthority = BigInt(0),
     transactionCreate = BigInt(21),
     transactionAccessListAddress = BigInt(2402),
     transactionAccessListStorageKey = BigInt(1902),
@@ -270,7 +272,8 @@ object EvmFixtures:
     reservedCodePrefix = None,
     blockRandomness = BlockRandomness.Unavailable,
     selfDestructScope = SelfDestructScope.AnyAccount,
-    blobBaseFeeUpdateFraction = None
+    blobBaseFeeUpdateFraction = None,
+    followsDelegations = false
   )
 
   val block: BlockContext = BlockContext(

@@ -37,7 +37,8 @@ class FeeOfferSpec extends AnyFlatSpec:
     AdmissionRules(
       admittedTypes = Set(TransactionType.Legacy, TransactionType.AccessList, TransactionType.DynamicFee),
       signatureMayCarryChainId = true,
-      signatureSMustBeLow = true
+      signatureSMustBeLow = true,
+      admitsDelegations = false
     )
 
   private def world(balance: BigInt): EvmFixtures.MapWorldState =
@@ -64,7 +65,8 @@ class FeeOfferSpec extends AnyFlatSpec:
       value = value,
       data = Bytes.Empty,
       accessList = Seq.empty,
-      blobs = None
+      blobs = None,
+      authorizations = None
     )
 
   private def verdict(

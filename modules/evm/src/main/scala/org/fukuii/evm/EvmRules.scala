@@ -868,7 +868,17 @@ final case class EvmRules(
     reservedCodePrefix: Option[Int],
     blockRandomness: BlockRandomness,
     selfDestructScope: SelfDestructScope,
-    blobBaseFeeUpdateFraction: Option[BigInt]
+    blobBaseFeeUpdateFraction: Option[BigInt],
+    // Whether an account's code that is a delegation designation is FOLLOWED
+    // when that account is called.
+    //
+    // **Separate from whether a set-code transaction is admitted**, which is an
+    // admission rule. The two come apart in both directions: a fork keeps
+    // following designations written before it, and the bytes are ordinary code
+    // at every fork below the document -- where following them would run some
+    // other account's code for an account that merely deployed something
+    // beginning with the marker.
+    followsDelegations: Boolean
 ):
 
   /** These rules with each proposal applied, in the order given.

@@ -65,6 +65,7 @@ class WarmBeneficiarySpec extends AnyFlatSpec:
       accessList = Seq.empty,
       intrinsicGas = IntrinsicGas.of(schedule, Bytes.Empty, deploys = false, Seq.empty),
       calldataFloor = None,
+      authorizations = None,
       blobGasUsed = BigInt(0),
       blobGasPrice = BigInt(0),
       blobVersionedHashes = Seq.empty

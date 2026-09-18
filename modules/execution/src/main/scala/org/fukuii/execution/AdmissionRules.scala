@@ -80,5 +80,18 @@ import org.fukuii.types.TransactionType
 final case class AdmissionRules(
     admittedTypes: Set[TransactionType],
     signatureMayCarryChainId: Boolean,
-    signatureSMustBeLow: Boolean
+    signatureSMustBeLow: Boolean,
+    // Whether an account's code may be a delegation designation at this fork.
+    //
+    // **It gates a READING of code, not a format.** Whether a set-code
+    // transaction is carried is `admittedTypes`'s answer; this is about what
+    // the bytes in an account mean, and the two come apart -- a fork keeps
+    // reading designations long after any were written, and a designation is
+    // written by a transaction whose own format may be refused by then.
+    //
+    // **Below the document these bytes are ordinary code**, so a sender holding
+    // code that happens to begin with the marker is not an externally owned
+    // account and must stay refused. That is why this is a rule rather than an
+    // unconditional reading.
+    admitsDelegations: Boolean
 )

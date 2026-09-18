@@ -63,7 +63,8 @@ class CalldataFloorAdmissionSpec extends AnyFlatSpec:
     AdmissionRules(
       admittedTypes = Set(TransactionType.Legacy),
       signatureMayCarryChainId = false,
-      signatureSMustBeLow = false
+      signatureSMustBeLow = false,
+      admitsDelegations = false
     )
 
   private def world(): EvmFixtures.MapWorldState =
@@ -82,7 +83,8 @@ class CalldataFloorAdmissionSpec extends AnyFlatSpec:
       value = 0,
       data = data,
       accessList = Seq.empty,
-      blobs = None
+      blobs = None,
+      authorizations = None
     )
 
   private def refusal(schedule: GasSchedule, data: Bytes, gasLimit: BigInt): Option[Refusal] =

@@ -270,6 +270,19 @@ final case class GasSchedule(
     // distinction is made, and it is the reason the floor is reported as an
     // absence rather than as a number.
     transactionCalldataTokenFloor: BigInt,
+    // What a set-code transaction pays per authorization it carries, whether or
+    // not that authorization turns out to apply. An intrinsic price like the
+    // ones above: it is charged before anything runs, from a count the
+    // transaction states rather than from anything the machine decides.
+    //
+    // **The charge does not depend on the outcome, and the refund is where that
+    // is settled.** An authorization naming an account that already exists gets
+    // part of this back, because the document prices the common case at the
+    // higher figure and rebates the cheaper one.
+    transactionPerAuthorization: BigInt,
+    // What an authorization naming an account that already exists earns back.
+    // Held at zero below the document, where nothing earns it.
+    refundPerExistingAuthority: BigInt,
     // A surcharge a transaction pays for deploying rather than calling. The
     // original specification charges nothing, which is the whole of what it
     // does at that fork: it names no such constant and its intrinsic cost is a

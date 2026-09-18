@@ -83,7 +83,13 @@ object IntrinsicGas:
     * overcharges every ordinary call, which no state fixture of a deploying
     * transaction can see.
     */
-  def of(schedule: GasSchedule, data: Bytes, deploys: Boolean, accessList: Seq[AccessTuple]): BigInt =
+  def of(
+      schedule: GasSchedule,
+      data: Bytes,
+      deploys: Boolean,
+      accessList: Seq[AccessTuple],
+      authorizations: Int = 0
+  ): BigInt =
     val raw = data.toIArray
     var zeros = 0
     var index = 0
@@ -100,7 +106,13 @@ object IntrinsicGas:
       schedule.transactionDataPerZeroByte * zeros +
       schedule.transactionDataPerNonZeroByte * (raw.length - zeros) +
       creating +
-      declared
+      declared +
+      // Charged per authorization the transaction STATES, not per authorization
+      // that turns out to apply -- an authorization is validated against state
+      // the machine has not touched yet, so nothing here could know. The
+      // document prices the common case high and rebates the cheaper one at
+      // settlement, which is where `refundPerExistingAuthority` is read.
+      schedule.transactionPerAuthorization * authorizations
 
   /** The least gas a transaction may be charged for, where its fork states a
     * floor over calldata -- and nothing where its fork states none.

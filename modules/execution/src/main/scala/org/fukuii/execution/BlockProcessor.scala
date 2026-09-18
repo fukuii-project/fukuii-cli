@@ -641,7 +641,13 @@ object BlockProcessor:
       value = transaction.value.toBigInt,
       data = transaction.data,
       accessList = declared,
-      blobs = blobs
+      blobs = blobs,
+      // Present only for the one format that carries a list, so that an empty
+      // list is distinguishable from a format that has none -- the first is a
+      // refusal and the second is every other transaction there is.
+      authorizations = transaction match
+        case t: Transaction.SetCode => Some(t.authorizationList)
+        case _                      => None
     )
 
   private def unpriced(transaction: Transaction): Nothing =

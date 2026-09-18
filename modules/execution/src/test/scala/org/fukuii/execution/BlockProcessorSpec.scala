@@ -140,7 +140,8 @@ class BlockProcessorSpec extends AnyFlatSpec:
     AdmissionRules(
       admittedTypes = Set(TransactionType.Legacy),
       signatureMayCarryChainId = false,
-      signatureSMustBeLow = false
+      signatureSMustBeLow = false,
+      admitsDelegations = false
     )
 
   /** Rules carrying a second format, so that what a receipt says about the

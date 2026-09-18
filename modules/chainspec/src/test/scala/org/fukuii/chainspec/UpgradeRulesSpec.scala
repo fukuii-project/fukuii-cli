@@ -59,7 +59,8 @@ class UpgradeRulesSpec extends AnyFlatSpec:
     admission = AdmissionRules(
       admittedTypes = Set(TransactionType.Legacy),
       signatureMayCarryChainId = false,
-      signatureSMustBeLow = false
+      signatureSMustBeLow = false,
+      admitsDelegations = false
     ),
     consensus = firstRules.consensus,
     header = firstRules.header
