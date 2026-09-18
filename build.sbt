@@ -580,7 +580,57 @@ lazy val evm = (project in file("modules/evm"))
     // jc-kzg-4844, compile scope -- see the entry above for the full
     // reasoning. A plain Java artifact (`%`, not `%%`), matching the
     // BouncyCastle line in `crypto`.
-    libraryDependencies += "io.consensys.protocols" % "jc-kzg-4844" % kzgVersion
+    libraryDependencies += "io.consensys.protocols" % "jc-kzg-4844" % kzgVersion,
+    // THE BLS12-381 BACKEND, and the three lines below are one decision.
+    //
+    // gnark through besu's JVM binding, for EIP-2537's seven natives. Chosen
+    // over writing them against BouncyCastle, which ships a BLS12-381 stack but
+    // no multi-scalar multiplication for the second group and no parser for the
+    // proposal's encoding -- so every decoder, every validation and the whole
+    // second-group multi-exponentiation would be written here, on the consensus
+    // path, over a module with no audit history. Priced per gas against this
+    // build's own curve baseline, its slowest operation costs six times the
+    // baseline and its operations span twenty-nine times between cheapest and
+    // dearest, which under a fixed schedule makes the slow ones the attack
+    // surface.
+    //
+    // **`besu-native-common` is not optional and its absence does not fail
+    // loudly.** The binding's static initializer registers the native library
+    // through a loader that lives in that artifact; without it the registration
+    // throws, is caught, sets the binding's `ENABLED` to false, and every call
+    // then raises `UnsatisfiedLinkError` at first use rather than at startup.
+    //
+    // **JNA is declared explicitly rather than taken transitively.** The
+    // binding's own metadata names a 2022 release; this states the version
+    // actually wanted, so the resolved one is a decision here rather than a
+    // consequence of someone else's.
+    //
+    // ==Sourced by the fallback, and that is INTERIM==
+    //
+    // These are not on Maven Central. `from(uri)` is appended after every
+    // declared repository, so it can never shadow a Central-served coordinate,
+    // and it adds no resolver that would sit ahead of Central for everything
+    // else -- which is why it is preferred to declaring one.
+    //
+    // **What it cannot do is travel.** A `from(uri)` is not carried in published
+    // metadata, so a published module depending on gnark this way is
+    // unresolvable downstream. That is a cost this build does not pay yet, and
+    // it is what makes replacing these coordinates with a published artifact the
+    // work it is rather than a tidy-up.
+    //
+    // **The artifact is unsigned**, which is the reason the two controls exist:
+    // `org.fukuii.evm.Bls12Spec` pins the jar's SHA-256, and the differential
+    // vector run checks the answers themselves. Keep both together -- a hash
+    // alone says the bytes are the ones reviewed and nothing about whether they
+    // are right, and a vector run alone passes over any build that computes
+    // correctly.
+    libraryDependencies += ("org.hyperledger.besu" % "gnark" % "2.0.0")
+      .from("https://hyperledger.jfrog.io/artifactory/besu-maven/org/hyperledger/besu/gnark/2.0.0/gnark-2.0.0.jar"),
+    libraryDependencies += ("org.hyperledger.besu" % "besu-native-common" % "2.0.0")
+      .from(
+        "https://hyperledger.jfrog.io/artifactory/besu-maven/org/hyperledger/besu/besu-native-common/2.0.0/besu-native-common-2.0.0.jar"
+      ),
+    libraryDependencies += "net.java.dev.jna" % "jna" % "5.19.1"
   )
 
 // L4 -- what settling a transaction does around the machine, and what makes a

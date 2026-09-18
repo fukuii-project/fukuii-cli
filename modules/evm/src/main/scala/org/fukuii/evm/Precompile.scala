@@ -683,6 +683,119 @@ object Precompile:
       index += 1
     out
 
+  // ── EIP-2537's seven, over the first and second groups of BLS12-381 ───────
+  //
+  // Every one of them refuses on a width the proposal does not admit, BEFORE the
+  // backend is reached. That is not defensive duplication: the width decides the
+  // PRICE for the three that are priced per pair, so a width the price could not
+  // have been computed from must not reach a call that might answer anyway.
+
+  /** The sum of two points of the first group.
+    *
+    * Flat-priced and fixed-width, unlike the curve additions a fork below this
+    * one carries -- those pad a short input with zeroes, and this refuses one.
+    */
+  final case class Bls12G1Add(gas: BigInt) extends Precompile:
+    def gasFor(input: Bytes): BigInt = gas
+
+    def run(input: Bytes): Either[Halt, Bytes] =
+      if input.length != 2 * Bls12.G1Width then Left(Halt.InvalidParameter) else Bls12.g1Add(input)
+
+  /** A sum of scaled points of the first group, priced per pair and discounted.
+    *
+    * ==The discount is why the price cannot be flat==
+    *
+    * The proposal prices `k` pairs at `k` times the single-multiplication price
+    * scaled by a discount that falls as `k` rises, so the price is a function of
+    * the input's WIDTH. An input whose width is not a whole number of pairs has
+    * no `k` and therefore no price, which is why it is refused here rather than
+    * priced at something and then refused by the backend.
+    */
+  final case class Bls12G1Msm(perPair: BigInt) extends Precompile:
+    def gasFor(input: Bytes): BigInt =
+      val k = pairsIn(input, Bls12G1Msm.PairWidth)
+      if k <= 0 then BigInt(0)
+      else BigInt(k) * perPair * Bls12Discounts.g1For(k) / Bls12Discounts.Multiplier
+
+    def run(input: Bytes): Either[Halt, Bytes] =
+      if pairsIn(input, Bls12G1Msm.PairWidth) <= 0 then Left(Halt.InvalidParameter) else Bls12.g1Msm(input)
+
+  object Bls12G1Msm:
+    /** A point of the first group and a scalar. */
+    val PairWidth: Int = Bls12.G1Width + Word.Width
+
+  /** The sum of two points of the second group. */
+  final case class Bls12G2Add(gas: BigInt) extends Precompile:
+    def gasFor(input: Bytes): BigInt = gas
+
+    def run(input: Bytes): Either[Halt, Bytes] =
+      if input.length != 2 * Bls12.G2Width then Left(Halt.InvalidParameter) else Bls12.g2Add(input)
+
+  /** A sum of scaled points of the second group, on [[Bls12G1Msm]]'s shape with
+    * the second group's own discount table.
+    */
+  final case class Bls12G2Msm(perPair: BigInt) extends Precompile:
+    def gasFor(input: Bytes): BigInt =
+      val k = pairsIn(input, Bls12G2Msm.PairWidth)
+      if k <= 0 then BigInt(0)
+      else BigInt(k) * perPair * Bls12Discounts.g2For(k) / Bls12Discounts.Multiplier
+
+    def run(input: Bytes): Either[Halt, Bytes] =
+      if pairsIn(input, Bls12G2Msm.PairWidth) <= 0 then Left(Halt.InvalidParameter) else Bls12.g2Msm(input)
+
+  object Bls12G2Msm:
+    /** A point of the second group and a scalar. */
+    val PairWidth: Int = Bls12.G2Width + Word.Width
+
+  /** Whether the product of the stated pairings is the identity.
+    *
+    * **Priced with a base as well as a per-pair figure**, which the two
+    * multi-exponentiations above are not -- so this cannot be expressed as one
+    * of them with a different table.
+    */
+  final case class Bls12Pairing(base: BigInt, perPair: BigInt) extends Precompile:
+    def gasFor(input: Bytes): BigInt =
+      val k = pairsIn(input, Bls12Pairing.PairWidth)
+      if k <= 0 then BigInt(0) else base + perPair * k
+
+    def run(input: Bytes): Either[Halt, Bytes] =
+      if pairsIn(input, Bls12Pairing.PairWidth) <= 0 then Left(Halt.InvalidParameter) else Bls12.pairing(input)
+
+  object Bls12Pairing:
+    /** A point of each group. */
+    val PairWidth: Int = Bls12.G1Width + Bls12.G2Width
+
+  /** A field element carried onto the first group. */
+  final case class Bls12MapFpToG1(gas: BigInt) extends Precompile:
+    def gasFor(input: Bytes): BigInt = gas
+
+    def run(input: Bytes): Either[Halt, Bytes] =
+      if input.length != Bls12MapFpToG1.Width then Left(Halt.InvalidParameter) else Bls12.mapFpToG1(input)
+
+  object Bls12MapFpToG1:
+    /** One field element. */
+    val Width: Int = 64
+
+  /** An extension-field element carried onto the second group. */
+  final case class Bls12MapFp2ToG2(gas: BigInt) extends Precompile:
+    def gasFor(input: Bytes): BigInt = gas
+
+    def run(input: Bytes): Either[Halt, Bytes] =
+      if input.length != Bls12MapFp2ToG2.Width then Left(Halt.InvalidParameter) else Bls12.mapFp2ToG2(input)
+
+  object Bls12MapFp2ToG2:
+    /** Two field elements. */
+    val Width: Int = 128
+
+  /** How many whole pairs `input` holds, or zero where it holds none.
+    *
+    * **Zero for an EMPTY input as well as for a ragged one**, and the proposal
+    * refuses both -- an empty multi-exponentiation is not an identity, it is an
+    * error. Answering zero for both is what lets one comparison cover them.
+    */
+  private def pairsIn(input: Bytes, pairWidth: Int): Int =
+    if input.length == 0 || input.length % pairWidth != 0 then 0 else input.length / pairWidth
+
   /** A digest narrower than a word, in the low-order end of one. */
   private def leftPadded(digest: IArray[Byte]): Bytes =
     val out = new Array[Byte](Word.Width)

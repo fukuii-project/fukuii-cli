@@ -146,6 +146,28 @@ object PrecompileSet:
     */
   val PointEvaluation: Address = addressOf(0x0a)
 
+  /** EIP-2537's seven, at `0x0b` through `0x11`.
+    *
+    * **Contiguous and in the document's own order**, which is why they are
+    * stated as a run rather than as seven unrelated constants: the proposal
+    * assigns them together and a fork adopting it places all seven or none. A
+    * gap in the run would be an address whose call succeeds returning empty
+    * while every other address in the run answers.
+    */
+  val Bls12G1Add: Address = addressOf(0x0b)
+
+  val Bls12G1Msm: Address = addressOf(0x0c)
+
+  val Bls12G2Add: Address = addressOf(0x0d)
+
+  val Bls12G2Msm: Address = addressOf(0x0e)
+
+  val Bls12Pairing: Address = addressOf(0x0f)
+
+  val Bls12MapFpToG1: Address = addressOf(0x10)
+
+  val Bls12MapFp2ToG2: Address = addressOf(0x11)
+
   /** The address a low number names, which is how the field writes these: a
     * precompile sits at the low end of the space and everything above it is
     * zero.

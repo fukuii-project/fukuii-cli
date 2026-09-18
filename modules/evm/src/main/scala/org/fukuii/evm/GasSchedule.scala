@@ -245,6 +245,20 @@ final case class GasSchedule(
     // proposal places the native that reads it -- the shape
     // `precompileModExpDivisor` above is held at its pre-proposal value for.
     precompilePointEvaluation: BigInt,
+    // EIP-2537's eight figures. Six are flat prices; the last two are the
+    // pairing's, which is priced per pairing plus a base rather than at one
+    // figure. The two multiplication prices are ALSO what the discounted
+    // multi-exponentiations are priced from, which is why there is no separate
+    // figure for those -- `Bls12Discounts` holds the per-size scaling and this
+    // record holds what it scales.
+    precompileBls12G1Add: BigInt,
+    precompileBls12G1Mul: BigInt,
+    precompileBls12G1Map: BigInt,
+    precompileBls12G2Add: BigInt,
+    precompileBls12G2Mul: BigInt,
+    precompileBls12G2Map: BigInt,
+    precompileBls12PairingBase: BigInt,
+    precompileBls12PairingPerPair: BigInt,
     // THE TRANSACTION-INTRINSIC PRICES. They belong here and not beside the
     // caller that charges them, because both authorities keep them in the same
     // repriceable record as everything above -- and because EIP-2028 is exactly
