@@ -211,6 +211,16 @@ enum HeaderFault:
   /** A block below any beacon-root proposal, stating one. */
   case ParentBeaconBlockRootUnexpected(stated: Hash)
 
+  /** A block at a fork that commits to the execution-layer requests it
+    * produced, stating no commitment.
+    */
+  case RequestsHashMissing
+
+  /** A block below any execution-layer-requests proposal, stating a
+    * commitment.
+    */
+  case RequestsHashUnexpected(stated: Hash)
+
 /** A header together with the rules its own height resolves to.
   *
   * ==One parameter where four invited a transposition==
@@ -444,7 +454,8 @@ object HeaderValidator:
       (block, _) => checkConstants(block),
       (block, _) => checkWithdrawalsRoot(block),
       checkBlobGas,
-      (block, _) => checkParentBeaconBlockRoot(block)
+      (block, _) => checkParentBeaconBlockRoot(block),
+      (block, _) => checkRequestsHash(block)
     )
 
   /** Checks `header` against `parent`, under the rules each resolves to.
@@ -747,6 +758,52 @@ object HeaderValidator:
       case (false, None)         => Right(())
       case (false, Some(stated)) => Left(HeaderFault.ParentBeaconBlockRootUnexpected(stated))
       case (true, None)          => Left(HeaderFault.ParentBeaconBlockRootMissing)
+      case (true, Some(_))       => Right(())
+
+  /** A header commits to its block's execution-layer requests exactly where its
+    * fork defines the commitment.
+    *
+    * ==Presence and absence, and deliberately not the value==
+    *
+    * [[checkWithdrawalsRoot]]'s split exactly, and for the same reason: the
+    * commitment is a function of the block, so what it must BE needs an
+    * executed body and belongs to [[BlockValidator]]. A header alone settles
+    * only whether the field should be there.
+    *
+    * ==This is the strictest reading available, and the clients are three ways
+    * apart on it==
+    *
+    * The executable specification settles it structurally -- Prague's header
+    * dataclass requires the field -- and compares the value in
+    * `state_transition` rather than in `validate_header`
+    * (`ethereum/execution-specs` @ `0cc100eb1`,
+    * `src/ethereum/forks/prague/fork.py:263`), so it states no presence rule
+    * for a header read alone.
+    *
+    *   - `NethermindEth/nethermind` @ `3a98e0818` checks **both** directions
+    *     (`Nethermind.Consensus/Validators/HeaderValidator.cs:105-122`).
+    *   - `besu-eth/besu` @ `b330564a94` checks **presence only**, in a detached
+    *     header rule (`RequestsHashPresentValidationRule.java`, installed at
+    *     `MainnetBlockHeaderValidator.java:150`).
+    *   - `ethereum/go-ethereum` @ `02872e9ef` checks **neither** -- it compares
+    *     the value only when the field is present
+    *     (`core/block_validator.go:177-181`).
+    *
+    * **This build checks both**, following nethermind and its own
+    * [[checkWithdrawalsRoot]] precedent. The absence half is where it diverges
+    * from two of the three: a header carrying a commitment its fork does not
+    * define is one no producer should emit, and accepting it would let a
+    * pre-Prague header state a value nothing on that chain can derive.
+    *
+    * **Revisit if** a published case states such a header valid, which would
+    * settle it against this build -- that is the reversing trigger, and no case
+    * read for this states one.
+    */
+  private def checkRequestsHash(block: Resolved): Either[HeaderFault, Unit] =
+    (block.rules.header.carriesRequestsHash, block.header.requestsHash) match
+      case (false, None)         => Right(())
+      case (false, Some(stated)) => Left(HeaderFault.RequestsHashUnexpected(stated))
+      case (true, None)          => Left(HeaderFault.RequestsHashMissing)
       case (true, Some(_))       => Right(())
 
   /** The header fields a fork holds at a constant, against those constants.

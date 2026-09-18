@@ -11,6 +11,7 @@ import org.fukuii.types.{
   BlockHeader,
   BlockNonce,
   Bloom,
+  RequestsTail,
   Seal,
   WithdrawalsTail
 }
@@ -63,7 +64,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
           HeaderConstants.Unconstrained,
           carriesWithdrawalsRoot = false,
           blobSchedule = None,
-          carriesParentBeaconBlockRoot = false
+          carriesParentBeaconBlockRoot = false,
+          carriesRequestsHash = false
         )
       )
 
@@ -125,7 +127,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
           HeaderConstants.Unconstrained,
           true,
           blobSchedule = None,
-          carriesParentBeaconBlockRoot = false
+          carriesParentBeaconBlockRoot = false,
+          carriesRequestsHash = false
         )
       )
 
@@ -167,7 +170,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
           HeaderConstants.Eip3675,
           carriesWithdrawalsRoot = false,
           blobSchedule = None,
-          carriesParentBeaconBlockRoot = false
+          carriesParentBeaconBlockRoot = false,
+          carriesRequestsHash = false
         )
       )
 
@@ -208,7 +212,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
         HeaderConstants.Unconstrained,
         true,
         Some(BlobSchedule(targetBlobs = BigInt(3), maxBlobs = BigInt(6))),
-        carriesParentBeaconBlockRoot = false
+        carriesParentBeaconBlockRoot = false,
+        carriesRequestsHash = false
       )
     )
 
@@ -285,7 +290,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
         HeaderConstants.Unconstrained,
         true,
         Some(BlobSchedule(targetBlobs = BigInt(3), maxBlobs = BigInt(6))),
-        carriesParentBeaconBlockRoot = true
+        carriesParentBeaconBlockRoot = true,
+        carriesRequestsHash = false
       )
     )
 
@@ -321,6 +327,65 @@ class HeaderValidatorSpec extends AnyFlatSpec:
 
   /** Six blobs' worth of gas, which is this fork's maximum as the bound reads it. */
   private val MaxBlobGas: BigInt = BigInt(6) * HeaderValidator.BlobGasPerBlob
+
+  // ── The commitment to a block's own execution-layer requests ──────────────
+
+  /** [[withBeaconRoot]] with the requests commitment required as well.
+    *
+    * Built over that rather than beside it for the reason every rule set above
+    * is built over the one below: the commitment is a header element behind the
+    * beacon root, so a header cannot carry one without the other and a fork
+    * requiring the commitment necessarily requires everything before it.
+    */
+  private val withRequests: UpgradeRules =
+    ethereum.Upgrades.berlin.copy(
+      header = HeaderRules(
+        Some(market),
+        HeaderConstants.Unconstrained,
+        true,
+        Some(BlobSchedule(targetBlobs = BigInt(6), maxBlobs = BigInt(9))),
+        carriesParentBeaconBlockRoot = true,
+        carriesRequestsHash = true
+      )
+    )
+
+  /** A commitment over some request list, whose value this layer cannot derive. */
+  private val SomeRequestsHash: Hash = EvmFixtures.hash(0x55)
+
+  /** [[attesting]] with a requests commitment attached behind the beacon root. */
+  private def committing(header: BlockHeader, hash: Hash): BlockHeader =
+    header.copy(tail =
+      header.tail.map(fee =>
+        fee.copy(next =
+          fee.next.map(withdrawals =>
+            withdrawals.copy(next =
+              withdrawals.next.map(blobGas =>
+                blobGas.copy(next = blobGas.next.map(_.copy(next = Some(RequestsTail(hash)))))
+              )
+            )
+          )
+        )
+      )
+    )
+
+  /** A child stating `hash`, over a parent that spent exactly the target.
+    *
+    * The parent sits at the same rules and carries the same commitment, so
+    * every other rule in this object is satisfied and the only thing varying is
+    * the field under test.
+    */
+  private def childWithRequests(rules: UpgradeRules, hash: Option[Hash]): Either[HeaderFault, Unit] =
+    val attested =
+      attesting(accounting(carrying(headerOf(2, Limit, 0, Some(ParentFee)), SomeWithdrawalsRoot), 0, 0), SomeBeaconRoot)
+    val parent =
+      attesting(
+        accounting(carrying(headerOf(1, Limit, Target, Some(ParentFee)), SomeWithdrawalsRoot), TargetBlobGas, 0),
+        SomeBeaconRoot
+      )
+    HeaderValidator.validate(
+      Resolved(hash.fold(attested)(committing(attested, _)), rules),
+      Resolved(hash.fold(parent)(committing(parent, _)), rules)
+    )
 
   /** A header satisfying every other rule this object checks, with the three
     * constrained fields open.
@@ -876,7 +941,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
           HeaderConstants.Unconstrained,
           true,
           Some(BlobSchedule(targetBlobs = BigInt(3), maxBlobs = BigInt(9))),
-          carriesParentBeaconBlockRoot = false
+          carriesParentBeaconBlockRoot = false,
+          carriesRequestsHash = false
         )
       )
     val parent =
@@ -906,7 +972,8 @@ class HeaderValidatorSpec extends AnyFlatSpec:
           HeaderConstants.Unconstrained,
           true,
           Some(BlobSchedule(targetBlobs = BigInt(6), maxBlobs = BigInt(9))),
-          carriesParentBeaconBlockRoot = false
+          carriesParentBeaconBlockRoot = false,
+          carriesRequestsHash = false
         )
       )
     val parent =
@@ -987,4 +1054,47 @@ class HeaderValidatorSpec extends AnyFlatSpec:
       childAttesting(withBeaconRoot, Some(EvmFixtures.hash(0x11))) ==
         childAttesting(withBeaconRoot, Some(EvmFixtures.hash(0x22))),
       "no layer here holds anything to compare a beacon root against"
+    )
+
+  "a header at a fork that commits to its requests" should "be accepted when it states one" in
+    assert(
+      childWithRequests(withRequests, Some(SomeRequestsHash)) == Right(()),
+      "the field is required and this header has one"
+    )
+
+  it should "be refused when it states none" in
+    // `besu-eth/besu` @ `b330564a94` refuses the same header for the same
+    // reason, in a detached header rule whose message is "requestsHash field is
+    // required from Prague onwards but is missing".
+    assert(
+      childWithRequests(withRequests, None) == Left(HeaderFault.RequestsHashMissing),
+      "a block at this fork whose header omits the field is invalid, not merely lossy"
+    )
+
+  "a header below any execution-layer-requests proposal" should "be accepted when it states none" in
+    assert(
+      childWithRequests(withBeaconRoot, None) == Right(()),
+      "every block this network produced between the two forks is one of these"
+    )
+
+  it should "be refused when it states one" in
+    // The direction go-ethereum and besu both leave unchecked, and where this
+    // build is deliberately stricter than either: `NethermindEth/nethermind` @
+    // `3a98e0818` states the same absence rule at
+    // `Nethermind.Consensus/Validators/HeaderValidator.cs:118-120`.
+    assert(
+      childWithRequests(withBeaconRoot, Some(SomeRequestsHash)) ==
+        Left(HeaderFault.RequestsHashUnexpected(SomeRequestsHash)),
+      "a header carrying a commitment its fork does not define is one no producer should emit"
+    )
+
+  "the commitment a header states" should "not be compared against a derivation at this layer" in
+    // The boundary this object already draws for a withdrawals root, met again:
+    // the value is a function of the block's own requests, so settling it needs
+    // an executed body and belongs to `BlockValidator`. Two headers differing
+    // only in these 32 bytes are indistinguishable here.
+    assert(
+      childWithRequests(withRequests, Some(EvmFixtures.hash(0x11))) ==
+        childWithRequests(withRequests, Some(EvmFixtures.hash(0x22))),
+      "presence is a header question; the value needs a body"
     )

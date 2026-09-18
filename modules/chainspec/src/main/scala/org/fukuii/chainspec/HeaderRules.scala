@@ -317,13 +317,52 @@ enum HeaderConstants:
   *   because nothing anywhere can check the VALUE, this member's reader is the
   *   only enforcement the field ever gets rather than the earliest of
   *   several.
+  * @param carriesRequestsHash
+  *   whether a header at this fork commits to the execution-layer requests its
+  *   block produced. EIP-7685 introduces the field and
+  *   [[org.fukuii.chainspec.proposals.eip.Eip7685]] carries the evidence.
+  *
+  *   **A flag rather than a record, for [[carriesParentBeaconBlockRoot]]'s
+  *   reason**: the proposal settles no per-fork quantity, so there is nothing a
+  *   rule set could resolve differently.
+  *
+  *   **Unlike that member, what the hash must BE is derivable here** -- it is a
+  *   function of the block's own requests -- so this flag is the earliest of
+  *   two enforcements rather than the only one. Presence is a header-alone
+  *   question and lives in `org.fukuii.consensus.HeaderValidator`; the value is
+  *   compared by a caller holding an executed body, which is
+  *   [[carriesWithdrawalsRoot]]'s split exactly.
+  *
+  *   **Both directions are checked, and the field is where the production
+  *   clients disagree most.** The executable specification settles it
+  *   structurally -- Prague's header dataclass requires the field, so a header
+  *   without it does not decode. Among the clients:
+  *   `NethermindEth/nethermind` @ `3a98e0818` checks BOTH directions
+  *   (`Nethermind.Consensus/Validators/HeaderValidator.cs:105-122`, *"RequestsHash
+  *   field is not set"* and *"RequestsHash field should not have value"*);
+  *   `besu-eth/besu` @ `b330564a94` checks presence ONLY, in a dedicated
+  *   detached rule (`RequestsHashPresentValidationRule.java`, *"required from
+  *   Prague onwards but is missing"*, installed at
+  *   `MainnetBlockHeaderValidator.java:150`); and `ethereum/go-ethereum` @
+  *   `02872e9ef` checks NEITHER -- it compares the value only when the field is
+  *   present (`core/block_validator.go:177-181`) and has no presence rule at
+  *   all.
+  *
+  *   **This build checks both, following nethermind and its own
+  *   [[carriesWithdrawalsRoot]] precedent rather than the majority.** The
+  *   divergence is from go-ethereum's lineage on absence and from besu as well
+  *   on the pre-fork direction; it is the stricter reading, and a header
+  *   carrying a commitment its fork does not define is one no producer should
+  *   emit. **Revisit if** a published case states such a header valid, which
+  *   would settle it against this build.
   */
 final case class HeaderRules(
     feeMarket: Option[FeeMarket],
     constants: HeaderConstants,
     carriesWithdrawalsRoot: Boolean,
     blobSchedule: Option[BlobSchedule],
-    carriesParentBeaconBlockRoot: Boolean
+    carriesParentBeaconBlockRoot: Boolean,
+    carriesRequestsHash: Boolean
 )
 
 object HeaderRules:
@@ -337,5 +376,6 @@ object HeaderRules:
       constants = HeaderConstants.Unconstrained,
       carriesWithdrawalsRoot = false,
       blobSchedule = None,
-      carriesParentBeaconBlockRoot = false
+      carriesParentBeaconBlockRoot = false,
+      carriesRequestsHash = false
     )
