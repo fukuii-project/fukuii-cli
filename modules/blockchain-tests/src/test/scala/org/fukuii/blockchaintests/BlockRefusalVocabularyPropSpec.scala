@@ -91,7 +91,7 @@ class BlockRefusalVocabularyPropSpec extends AnyPropSpec with TableDrivenPropert
     BlockNonce.fromHex("0x0102030405060708").fold(error => fail(error.toString), identity)
 
   private def transaction(reason: Refusal): BlockFault =
-    BlockFault.TransactionRefused(BlockRejection(index = 0, reason = reason, unbuilt = None))
+    BlockFault.TransactionRefused(BlockRejection.RefusedTransaction(index = 0, reason = reason, unbuilt = None))
 
   /** A key no published corpus states, so it can never be added and stop being
     * the name a vocabulary lacks.

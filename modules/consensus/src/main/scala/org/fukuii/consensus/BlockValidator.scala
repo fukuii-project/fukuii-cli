@@ -408,9 +408,15 @@ object BlockValidator:
       systemCalls = systemCallsOf(header, rules)
     ) match
       case Left(rejection) =>
-        rejection.unbuilt match
-          case Some(gap) => Left(BlockVerdict.Undecided(RuleNotRun.Operation(gap)))
-          case None      => Left(BlockVerdict.Invalid(BlockFault.TransactionRefused(rejection)))
+        rejection match
+          // An unbuilt operation is not a chain result, so it is reported as a
+          // rule this build did not run rather than as a block anyone refused.
+          case BlockRejection.RefusedTransaction(_, _, Some(gap)) =>
+            Left(BlockVerdict.Undecided(RuleNotRun.Operation(gap)))
+          // A system call that failed refused no transaction, so it cannot
+          // carry an unbuilt operation and cannot be undecided for one: the
+          // call either ran and failed, or its target held no code.
+          case other => Left(BlockVerdict.Invalid(BlockFault.TransactionRefused(other)))
       case Right(output) =>
         output.unbuilt match
           case Some(gap) => Left(BlockVerdict.Undecided(RuleNotRun.Operation(gap)))

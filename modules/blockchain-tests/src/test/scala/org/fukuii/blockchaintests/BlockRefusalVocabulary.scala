@@ -4,6 +4,7 @@ import org.fukuii.bytes.{Address, UInt256}
 import org.fukuii.chainspec.certification.TransactionRefusalVocabulary
 import org.fukuii.consensus.{BlockFault, HeaderFault}
 import org.fukuii.evm.fixtures.ExpectedRejection
+import org.fukuii.execution.BlockRejection
 import org.fukuii.rlp.{Rlp, RlpCodec, RlpError, RlpItem}
 import org.fukuii.types.{BlockHeader, BlockNonce, Seal, Transaction, TransactionType}
 
@@ -289,8 +290,13 @@ object BlockRefusalVocabulary:
     rulesOf(filledBy).get(name).exists(rule => rule(fault, refused)) ||
       transactionNamesOf(filledBy).get(name).exists { reason =>
         fault match
-          case BlockFault.TransactionRefused(rejection) => rejection.reason == reason
-          case _                                        => false
+          // A transaction name is satisfied only by a REFUSED TRANSACTION. A
+          // block refused for a failed system call carries no transaction
+          // reason, so it must not be matched by one -- the corpus names those
+          // separately, and folding them would let a system-call failure satisfy
+          // a case stating a transaction rule.
+          case BlockFault.TransactionRefused(BlockRejection.RefusedTransaction(_, refusedBy, _)) => refusedBy == reason
+          case _                                                                                 => false
       }
 
   private def rulesOf(filledBy: FillingTool): Map[String, Rule] = filledBy match

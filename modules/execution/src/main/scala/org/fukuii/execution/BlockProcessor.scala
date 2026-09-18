@@ -1,6 +1,6 @@
 package org.fukuii.execution
 
-import org.fukuii.bytes.{Address, Hash, UInt64}
+import org.fukuii.bytes.{Address, Bytes, Hash, UInt64}
 import org.fukuii.evm.{BlockContext, EvmRules, JournaledWorldState, Unsupported, WorldState}
 import org.fukuii.types.{Log, PostStateOrStatus, Receipt, Transaction, TransactionType}
 
@@ -67,7 +67,23 @@ final case class BlockOutput(
     receipts: Vector[Receipt],
     gasUsed: BigInt,
     unbuilt: Option[Unsupported],
-    blobGasUsed: Option[BigInt] = None
+    blobGasUsed: Option[BigInt] = None,
+    // The execution-layer requests the block produced, in the order their types
+    // require, and NOTHING at a fork that defines no such list.
+    //
+    // ==Absent and empty are different commitments, which is why this is an
+    // option over a sequence rather than a sequence==
+    //
+    // A fork without the container states no commitment at all; a fork with it
+    // states a hash over the records present, which for a block that produced
+    // none is a hash over nothing. Those are different header values, so
+    // collapsing the two would make a block at the fork indistinguishable from
+    // one below it.
+    //
+    // **Within the list, a source that produced nothing contributes NO RECORD**
+    // rather than an empty one -- the specification appends only where return
+    // data is non-empty, and an empty record would change the hash.
+    requests: Option[Vector[Bytes]] = None
 ):
 
   /** Every log the block emitted, oldest first.
@@ -113,7 +129,51 @@ final case class BlockOutput(
   *   network's own run never reaches. It has no default, so no refusal is built
   *   without saying whether it follows one.
   */
-final case class BlockRejection(index: Int, reason: Refusal, unbuilt: Option[Unsupported])
+enum BlockRejection:
+
+  /** A transaction the block carries that its own fork refuses.
+    *
+    * Every rejection this build could produce before Prague, and the reason the
+    * type was once this case alone.
+    */
+  case RefusedTransaction(index: Int, reason: Refusal, unbuilt: Option[Unsupported])
+
+  /** A system call the block makes on its own account that did not succeed.
+    *
+    * ==The first block rejection here that is not keyed to a transaction==
+    *
+    * A system call belongs to the block rather than to anything in it, so there
+    * is no index to report and no [[Refusal]] that fits -- that enum names why a
+    * fork refuses a TRANSACTION, and a block whose system call failed refused no
+    * transaction at all.
+    *
+    * **Forcing it into the case above would have to invent an index**, and any
+    * index it invented would name a transaction that was fine.
+    */
+  case FailedSystemCall(target: SystemCall.Target, fault: SystemCallFault)
+
+/** Why a checked system call did not succeed.
+  *
+  * ==Two conditions, because the networks decide them separately==
+  *
+  * Prague refuses a block on both; `gnosischain/specs` @ `045d46d6d`
+  * `execution/withdrawals.md:61-62` refuses on a failed call and explicitly
+  * TOLERATES an undeployed target. So a single "the call was checked" answer
+  * could not express a network this project already names, and the two are kept
+  * apart for that reason rather than for reporting detail.
+  *
+  * **The published corpus names them separately too** --
+  * `SYSTEM_CONTRACT_EMPTY` and `SYSTEM_CONTRACT_CALL_FAILED` -- so a build
+  * producing one answer for both would satisfy each published name with the
+  * other condition's failure.
+  */
+enum SystemCallFault:
+
+  /** The account the call names holds no code. */
+  case TargetHoldsNoCode
+
+  /** The call ran and did not end normally. */
+  case CallFailed
 
 /** What a block accounts for in blob gas: what it charges per unit, and the
   * most it may spend.
@@ -471,7 +531,7 @@ object BlockProcessor:
           case Admission.Admitted(settling) => Right(settling)
       yield settling
     admitted.left
-      .map(reason => BlockRejection(index, reason, output.unbuilt))
+      .map(reason => BlockRejection.RefusedTransaction(index, reason, output.unbuilt))
       .map { settling =>
         val settlement =
           TransactionProcessor.settle(settling, journal, destroyAccount, block, blockHashAt, chainId, evm, execution)

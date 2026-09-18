@@ -10,14 +10,20 @@ import org.fukuii.evm.{
   Interpreter,
   JournaledWorldState,
   Message,
+  Outcome,
   TransactionContext,
   Unsupported,
   Word,
   WorldState
 }
 
-/** An invocation a block makes on its own account, before any transaction the
-  * block carries has run.
+/** An invocation a block makes on its own account, rather than one a
+  * transaction it carries makes.
+  *
+  * **Not necessarily before the transactions.** This object's first instance ran
+  * before them and the wording here said so; Prague adds calls that run after
+  * withdrawals, and `.claude/protocols/consensus-change.md` states position and
+  * refusal as independent axes for that reason.
   *
   * ==Named for what the field calls it, and it is not a transaction==
   *
@@ -44,9 +50,19 @@ import org.fukuii.evm.{
   *
   * *"the call must execute to completion"* and *"the call does not count
   * against the block's gas limit"* (`ethereum/EIPs` @ `d2a64c2d4` (2026-09-09),
-  * `EIPS/eip-4788.md`, Final), so a system call has no refusal and cannot
-  * invalidate a block -- which is why nothing here returns a
-  * [[BlockRejection]]. The one thing it can report is an operation the fork's
+  * `EIPS/eip-4788.md`, Final), so an UNCHECKED system call has no refusal and
+  * cannot invalidate a block -- which is why [[run]] returns no
+  * [[BlockRejection]]. [[runChecked]] is the other kind and does: its target
+  * holding no code, or its call not ending normally, refuses the block.
+  *
+  * **That sentence was written of system calls in general and was a property of
+  * the only one this build had.** Reading it as the category's is what a
+  * reviewer applying it to a checked call would do, and the result accepts a
+  * block every other client rejects. The two kinds, and the two refusal
+  * conditions that are separately decidable within the checked one, are stated
+  * in `.claude/protocols/consensus-change.md`.
+  *
+  * The one thing EITHER can report is an operation the fork's
   * table admits and this build does not run, which is not a chain result at
   * all: [[org.fukuii.evm.Outcome]] states why that travels as its own type
   * rather than as a halt, and a caller that discarded it would be recording an
@@ -400,3 +416,77 @@ object SystemCall:
       outcome match
         case Left(gap) => Some(gap)
         case Right(_)  => None
+
+  /** The same call, with its outcome CHECKED, answering what it returned.
+    *
+    * ==A wrapper over [[run]], because that is the shape the specification
+    * has==
+    *
+    * `ethereum/execution-specs` @ `0cc100eb1`
+    * `src/ethereum/forks/prague/vm/eoa_delegation.py` is not where this lives;
+    * `src/ethereum/forks/prague/fork.py:582-638` is, and
+    * `process_checked_system_transaction` there calls the unchecked form and
+    * inspects its result afterwards. **So the commit still happens and the block
+    * is discarded after it**, rather than the commit being skipped -- which is
+    * observationally identical and structurally not. A build that "helpfully"
+    * made the commit conditional inside the shared primitive would break the
+    * unchecked case, where the unconditional commit is load-bearing.
+    *
+    * ==The empty-target check reads state the block has already changed==
+    *
+    * The specification pre-checks the target's code through a throwaway
+    * transaction state, explicitly so it can see a contract deployed EARLIER IN
+    * THE SAME BLOCK (`fork.py:606-613`, naming EIP-7002 and EIP-7251 as the
+    * edge case). Reading the pre-state instead answers a different question and
+    * refuses a block the corpus states valid -- and only a transition label's
+    * deployment cases can catch it, because at a fork where the contracts are
+    * already at genesis the two readings agree.
+    *
+    * ==Return data, which the unchecked form has no reason to report==
+    *
+    * A checked call's answer feeds a header commitment, so the bytes are the
+    * point rather than a side effect. **Empty return data is not an empty
+    * record**: the caller appends nothing at all in that case, and appending an
+    * empty record instead would change the commitment.
+    */
+  def runChecked(
+      call: SystemCall,
+      world: WorldState,
+      block: BlockContext,
+      blockHashAt: BigInt => Hash,
+      chainId: UInt64,
+      rules: EvmRules
+  ): Either[SystemCallFault, Either[Unsupported, Bytes]] =
+    if world.codeOf(call.target.address).isEmpty then Left(SystemCallFault.TargetHoldsNoCode)
+    else
+      val journal = new JournaledWorldState(world)
+      val environment = new Environment(
+        journal,
+        blockHashAt = blockHashAt,
+        block = block,
+        transaction = TransactionContext(Caller, GasPrice, Seq.empty),
+        chainId = chainId,
+        rules = rules
+      )
+      val frame = new Frame(
+        Message(
+          caller = Caller,
+          currentTarget = call.target.address,
+          codeAddress = Some(call.target.address),
+          value = Word.Zero,
+          data = call.input,
+          transfersValue = false,
+          isStatic = false
+        ),
+        Code(world.codeOf(call.target.address)),
+        GasLimit
+      )
+      val outcome = Interpreter.run(frame, environment)
+      // Committed before the outcome is read, exactly as the unchecked form
+      // does -- see the note above for why this is not made conditional.
+      journal.commit()
+      outcome match
+        case Left(gap)                           => Right(Left(gap))
+        case Right(Outcome.Stopped(_, returned)) => Right(Right(returned))
+        case Right(Outcome.Reverted(_, _))       => Left(SystemCallFault.CallFailed)
+        case Right(Outcome.Halted(_))            => Left(SystemCallFault.CallFailed)

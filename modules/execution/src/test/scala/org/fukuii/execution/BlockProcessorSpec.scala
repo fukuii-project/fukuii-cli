@@ -405,7 +405,7 @@ class BlockProcessorSpec extends AnyFlatSpec:
     // satisfy them.
     assert(
       run(Seq(transfer(nonce = 1), transfer(nonce = 0))).result ==
-        Left(BlockRejection(0, Refusal.NonceTooHigh, None)),
+        Left(BlockRejection.RefusedTransaction(0, Refusal.NonceTooHigh, None)),
       "a block stating a transaction before the one whose count it follows is not a block this network accepts"
     )
 
@@ -420,7 +420,7 @@ class BlockProcessorSpec extends AnyFlatSpec:
       run(
         Seq(transfer(nonce = 0), transfer(nonce = 1), transfer(nonce = 2)),
         blockGasLimit = BigInt(65000)
-      ).result == Left(BlockRejection(2, Refusal.GasAllowanceExceeded, None)),
+      ).result == Left(BlockRejection.RefusedTransaction(2, Refusal.GasAllowanceExceeded, None)),
       "what the transactions before it already spent is what a transaction's room is measured against"
     )
 
@@ -557,7 +557,7 @@ class BlockProcessorSpec extends AnyFlatSpec:
     // never ran the change at all and funded the signer some other way.
     assert(
       run(Seq(transfer(nonce = 0)), funded = 0).result ==
-        Left(BlockRejection(0, Refusal.InsufficientAccountFunds, None)),
+        Left(BlockRejection.RefusedTransaction(0, Refusal.InsufficientAccountFunds, None)),
       "the signer must be unable to pay without the change, or the change is not what admitted the transaction"
     )
 
@@ -591,14 +591,14 @@ class BlockProcessorSpec extends AnyFlatSpec:
     // what keeps a format whose charge this build cannot compute from ever
     // reaching the pricing. A processor asking for a price first raises instead.
     assert(
-      run(Seq(typedEnvelope)).result == Left(BlockRejection(0, Refusal.TypeNotAdmitted, None)),
+      run(Seq(typedEnvelope)).result == Left(BlockRejection.RefusedTransaction(0, Refusal.TypeNotAdmitted, None)),
       "a transaction of a format this network does not carry is refused for that and never priced"
     )
 
   "a block that was rejected" should "report where the offending transaction sits" in
     assert(
       run(Seq(transfer(nonce = 0), transfer(nonce = 0))).result ==
-        Left(BlockRejection(1, Refusal.NonceTooLow, None)),
+        Left(BlockRejection.RefusedTransaction(1, Refusal.NonceTooLow, None)),
       "a refusal alone does not identify a transaction, so the index is carried with it"
     )
 
@@ -612,7 +612,7 @@ class BlockProcessorSpec extends AnyFlatSpec:
         Seq(transfer(nonce = 0), transfer(nonce = 0)),
         code = Map(recipient -> adds),
         evm = cannotRunAddOrMul
-      ).result == Left(BlockRejection(1, Refusal.NonceTooLow, Some(Unsupported(Opcode.Add)))),
+      ).result == Left(BlockRejection.RefusedTransaction(1, Refusal.NonceTooLow, Some(Unsupported(Opcode.Add)))),
       "a refusal reached after an unbuilt operation says so"
     )
 
@@ -724,7 +724,7 @@ class BlockProcessorSpec extends AnyFlatSpec:
         admission = alsoBlobs,
         blobGas = Some(blobAccounting()),
         baseFee = Some(BigInt(0))
-      ).result == Left(BlockRejection(1, Refusal.BlobGasAllowanceExceeded, None)),
+      ).result == Left(BlockRejection.RefusedTransaction(1, Refusal.BlobGasAllowanceExceeded, None)),
       "the second transaction wants three blobs where two remain"
     )
 

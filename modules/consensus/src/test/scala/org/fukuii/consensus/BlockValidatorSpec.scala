@@ -548,7 +548,9 @@ class BlockValidatorSpec extends AnyFlatSpec:
   it should "still be refused for a transaction its rules refuse" in
     assert(
       ran(WithdrawalBlock)(engine = leavesTheSealUnrun, chainId = UInt64.fromBits(2L)).verdict ==
-        BlockVerdict.Invalid(BlockFault.TransactionRefused(BlockRejection(0, Refusal.WrongChainId, None))),
+        BlockVerdict.Invalid(
+          BlockFault.TransactionRefused(BlockRejection.RefusedTransaction(0, Refusal.WrongChainId, None))
+        ),
       "a refusal reached over a chain result decides the block before the rule not run is asked"
     )
 
@@ -587,7 +589,9 @@ class BlockValidatorSpec extends AnyFlatSpec:
   "a block carrying a transaction its rules refuse" should "be refused for that transaction" in
     assert(
       ran(WithdrawalBlock)(chainId = UInt64.fromBits(2L)).verdict ==
-        BlockVerdict.Invalid(BlockFault.TransactionRefused(BlockRejection(0, Refusal.WrongChainId, None))),
+        BlockVerdict.Invalid(
+          BlockFault.TransactionRefused(BlockRejection.RefusedTransaction(0, Refusal.WrongChainId, None))
+        ),
       "the transaction is signed for chain 1, so asking as chain 2 refuses it and the block with it"
     )
 
