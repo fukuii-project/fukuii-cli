@@ -155,6 +155,56 @@ object SystemCall:
             .getOrElse(throw new AssertionError("the beacon-roots address is a well-formed address"))
         )
 
+    /** EIP-2935's history-storage account.
+      *
+      * `0x0000F90827F1C53a10cb7A02335B175320002935`, from
+      * `ethereum/execution-specs` @ `0cc100eb1`
+      * `src/ethereum/forks/prague/fork.py:111`.
+      *
+      * **Called UNCHECKED, like the beacon root and unlike the two below**, and
+      * its input is the parent's hash rather than anything the consensus layer
+      * hands in. The contract it runs also reads the block NUMBER, which is the
+      * one thing a reader of its storage has to supply and the beacon-root
+      * reader does not.
+      */
+    case HistoryStorage
+        extends Target(
+          Address
+            .fromHex("0x0000F90827F1C53a10cb7A02335B175320002935")
+            .getOrElse(throw new AssertionError("the history-storage address is a well-formed address"))
+        )
+
+    /** EIP-7002's withdrawal-request account.
+      *
+      * `0x00000961Ef480Eb55e80D19ad83579A64c007002`, from the same file at
+      * `:105`. **Called CHECKED**: an empty target or a failed call refuses the
+      * block, and what it returns becomes a record in the block's request list.
+      *
+      * **Its queue is written by ordinary transactions**, which is why this
+      * proposal has no state tests at all -- the only published evidence for it
+      * is a block that executes those transactions and then makes this call.
+      */
+    case WithdrawalRequests
+        extends Target(
+          Address
+            .fromHex("0x00000961Ef480Eb55e80D19ad83579A64c007002")
+            .getOrElse(throw new AssertionError("the withdrawal-request address is a well-formed address"))
+        )
+
+    /** EIP-7251's consolidation-request account.
+      *
+      * `0x0000BBdDc7CE488642fb579F8B00f3a590007251`, from the same file at
+      * `:108`. Checked, and shaped exactly as [[WithdrawalRequests]] is -- the
+      * two differ in their address and in the record type their return data is
+      * filed under, and in nothing else.
+      */
+    case ConsolidationRequests
+        extends Target(
+          Address
+            .fromHex("0x0000BBdDc7CE488642fb579F8B00f3a590007251")
+            .getOrElse(throw new AssertionError("the consolidation-request address is a well-formed address"))
+        )
+
   /** The account a system call runs as.
     *
     * `0xfffffffffffffffffffffffffffffffffffffffe`, stated identically by the
