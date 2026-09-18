@@ -3,13 +3,14 @@ package org.fukuii.consensus
 import org.fukuii.bytes.{Address, Bytes, Hash, UInt256, UInt64}
 import org.fukuii.chainspec.{ConsensusRules, HeaderConstants, UpgradeRules}
 import org.fukuii.chainspec.networks.ethereum
+import org.fukuii.chainspec.proposals.eip.{Eip2935, Eip7685}
 import org.fukuii.crypto.Keccak256
 import org.fukuii.evm.{Cost, EvmFixtures, Opcode, Operation, StateTrieWorldState, Unsupported, Word, WorldState}
-import org.fukuii.evm.fixtures.{FixtureValues, VmFixtureRunner}
-import org.fukuii.execution.{BlockRejection, Refusal}
+import org.fukuii.evm.fixtures.{FixtureAccount, FixtureValues, VmFixtureRunner}
+import org.fukuii.execution.{BlockRejection, ExecutionRequests, Refusal, RequestRules, SystemCall}
 import org.fukuii.rlp.RlpCodec
 import org.fukuii.trie.StateTrie
-import org.fukuii.types.{BlobGasTail, Block, BlockHeader, Seal, Transaction, Withdrawal}
+import org.fukuii.types.{BlobGasTail, Block, BlockHeader, RequestsTail, Seal, Transaction, Withdrawal}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Whether a block is valid against its parent, decided over published blocks.
@@ -95,7 +96,8 @@ class BlockValidatorSpec extends AnyFlatSpec:
       rules: UpgradeRules = Cancun,
       engine: ConsensusEngine = ConsensusEngine.Unmodifying,
       chainId: UInt64 = Mainnet,
-      parentRules: Option[UpgradeRules] = None
+      parentRules: Option[UpgradeRules] = None,
+      requestRules: Option[RequestRules] = None
   ): Ran =
     val (trie, world) = seeded(published)
     val verdict = BlockValidator.validate(
@@ -107,7 +109,8 @@ class BlockValidatorSpec extends AnyFlatSpec:
       destroyAccount = trie.destroyAccount,
       stateRoot = () => trie.stateRoot,
       blockHashAt = number => if number == BigInt(0) then published.publishedGenesisHash else EvmFixtures.hash(0),
-      chainId = chainId
+      chainId = chainId,
+      requestRules = requestRules
     )
     Ran(verdict, trie.stateRoot, world)
 
@@ -285,6 +288,86 @@ class BlockValidatorSpec extends AnyFlatSpec:
       pre = LogsBlock.pre.updated(called, account.copy(code = StoresRandomness)),
       block = LogsBlock.block.copy(header = header.copy(seal = resealed))
     )
+
+  /** `PUSH0 CALLDATALOAD PUSH0 SSTORE STOP`: whatever the caller passed, under
+    * slot zero. Stands in for the history-storage contract, whose real code is
+    * a ring buffer this case has no reason to reproduce -- what is under test is
+    * whether the call is made at all and with what.
+    */
+  private val RecordsItsInput: Bytes =
+    Bytes.fromIArray(
+      IArray[Byte](
+        Opcode.Push0.code.toByte,
+        Opcode.CallDataLoad.code.toByte,
+        Opcode.Push0.code.toByte,
+        Opcode.SStore.code.toByte,
+        Opcode.Stop.code.toByte
+      )
+    )
+
+  /** The withdrawal block with something deployed at the history-storage
+    * account, so a call to it leaves a trace and its absence leaves none.
+    *
+    * **Deploying it is what makes both halves of the pair mean something.** An
+    * undeployed target is a silent no-op for an unchecked call, so a run under
+    * rules that DO make the call would be indistinguishable from one that does
+    * not.
+    */
+  private def historyStorageDeployed: PublishedBlock =
+    WithdrawalBlock.copy(pre =
+      WithdrawalBlock.pre.updated(
+        SystemCall.Target.HistoryStorage.address,
+        FixtureAccount(nonce = BigInt(0), balance = BigInt(0), code = RecordsItsInput, storage = Map.empty)
+      )
+    )
+
+  private def recordedParentHash(rules: UpgradeRules): Word =
+    ran(historyStorageDeployed)(rules = rules).world
+      .storageAt(SystemCall.Target.HistoryStorage.address, Word.Zero)
+
+  /** Cancun plus the request container, which is the smallest rule set whose
+    * headers commit to a request list.
+    */
+  private val WithRequests: UpgradeRules = Cancun.adopting(Eip7685.component)
+
+  /** A deposit contract nothing was deployed at, so no block below logs one. */
+  private val SomeDepositContract: RequestRules = RequestRules(EvmFixtures.address(0x6d))
+
+  /** The withdrawal block with both request contracts deployed and stopping
+    * immediately, so each call succeeds and returns nothing.
+    *
+    * **Both have to be deployed or the block is refused before any commitment is
+    * compared** -- these two calls are checked, and an undeployed target is one
+    * of the two conditions that refuses.
+    */
+  private def requestContractsDeployed: PublishedBlock =
+    val stops = FixtureAccount(BigInt(0), BigInt(0), Bytes.fromIArray(IArray[Byte](Opcode.Stop.code.toByte)), Map.empty)
+    WithdrawalBlock.copy(pre =
+      WithdrawalBlock.pre
+        .updated(SystemCall.Target.WithdrawalRequests.address, stops)
+        .updated(SystemCall.Target.ConsolidationRequests.address, stops)
+    )
+
+  /** That block's header, stating `hash` as its requests commitment. */
+  private def committingTo(hash: Hash): Block =
+    val header = requestContractsDeployed.block.header
+    header.tail match
+      case Some(fee) =>
+        val stated = fee.copy(next =
+          fee.next.map(w => w.copy(next = w.next.map(b => b.copy(next = b.next.map(r => r.copy(next = None))))))
+        )
+        val withRequests = stated.copy(next =
+          stated.next.map(w =>
+            w.copy(next =
+              w.next.map(b => b.copy(next = b.next.map(beacon => beacon.copy(next = Some(RequestsTail(hash))))))
+            )
+          )
+        )
+        requestContractsDeployed.block.copy(header = header.copy(tail = Some(withRequests)))
+      case None => fail("the withdrawal block's header carries no tail to extend")
+
+  /** The commitment a block producing no records states. */
+  private def overNoRecords: Hash = ExecutionRequests.hashOf(Vector.empty)
 
   /** `published`'s block with each commitment its own run produces written
     * into its header, one at a time, in the order the validator compares them.
@@ -680,4 +763,84 @@ class BlockValidatorSpec extends AnyFlatSpec:
       ran(WithdrawalBlock)(block = withHeader(_.copy(timestamp = UInt64.Zero)), engine = needsSuccession).verdict ==
         BlockVerdict.Invalid(BlockFault.Header(HeaderFault.TimestampNotAfterParent(BigInt(0), BigInt(0)))),
       "an override may take succession as settled, so reaching it first would raise rather than refuse"
+    )
+
+  // ── The pre-execution call a fork gates on no header field ────────────────
+
+  "a block at rules recording its parent's hash" should "call the history-storage account with that hash" in
+    assert(
+      recordedParentHash(Cancun.adopting(Eip2935.component)) ==
+        Word.fromBytes(Bytes.fromIArray(WithdrawalBlock.block.header.parentHash.toBytes)),
+      "the call is made, and what it carries is the parent's hash rather than any other of the block's hashes"
+    )
+
+  it should "make no such call at the fork below" in
+    // The other half, and the one that pins the gate rather than the call. The
+    // same world and the same deployed contract, differing only in the rule set
+    // -- so a build that made this call unconditionally would pass the case
+    // above and fail here.
+    assert(
+      recordedParentHash(Cancun) == Word.Zero,
+      "nothing is recorded where the rules do not ask for it"
+    )
+
+  it should "be gated on no header field, unlike the beacon root's call" in
+    // The placement decision, asserted where it is observable. Cancun's headers
+    // already carry a parent beacon root, so if this call were gated on a header
+    // facet it would fire under Cancun too -- and the case above would fail.
+    assert(
+      Cancun.header.carriesParentBeaconBlockRoot &&
+        !Cancun.execution.recordsParentBlockHash &&
+        Cancun.adopting(Eip2935.component).header == Cancun.header,
+      "the fork below already states the header field the sibling call is gated on, and still makes no such call"
+    )
+
+  // ── The commitment over a block's request list ────────────────────────────
+
+  "a fork committing to a request list" should "refuse to run where the network names no deposit contract" in
+    // A configuration error rather than a block fault. Answering an empty list
+    // here would state a header value the network disagrees with, and a block
+    // accepted on that basis is a split -- so this refuses to run at all.
+    assert(
+      intercept[IllegalArgumentException](
+        ran(requestContractsDeployed)(block = committingTo(overNoRecords), rules = WithRequests)
+      ).getMessage.contains("deposit contract"),
+      "the missing value is named, and nothing is decided about the block"
+    )
+
+  "a block stating another requests commitment" should "be refused for the requests hash" in
+    assert(
+      ran(requestContractsDeployed)(
+        block = committingTo(Wrong),
+        rules = WithRequests,
+        requestRules = Some(SomeDepositContract)
+      ).verdict == BlockVerdict.Invalid(BlockFault.RequestsHashMismatch(Wrong, overNoRecords)),
+      "the header's value is compared against the list the block's own run produced"
+    )
+
+  it should "reach a later comparison once the commitment is the one its run produces" in
+    // The calibration for the case above. Planting the two contracts changes the
+    // state root, so this block cannot be valid -- what it shows is that the
+    // requests comparison PASSES rather than being skipped, by the refusal
+    // moving to the check that comes after it.
+    assert(
+      ran(requestContractsDeployed)(
+        block = committingTo(overNoRecords),
+        rules = WithRequests,
+        requestRules = Some(SomeDepositContract)
+      ).verdict match
+        case BlockVerdict.Invalid(BlockFault.StateRootMismatch(_, _)) => true
+        case _                                                        => false,
+      "the right commitment is accepted, and the next comparison is what refuses"
+    )
+
+  it should "state no commitment at a fork below the container" in
+    // The other side of absent-versus-empty, at the validator. The same block
+    // under Cancun produces no list at all, so the header must state no hash --
+    // which is the published block's own shape.
+    assert(
+      ran(WithdrawalBlock)().verdict match
+        case BlockVerdict.Valid(output) => output.requests.isEmpty && WithdrawalBlock.block.header.requestsHash.isEmpty
+        case _                          => false,
+      "no container, so neither the block nor its header commits to anything"
     )

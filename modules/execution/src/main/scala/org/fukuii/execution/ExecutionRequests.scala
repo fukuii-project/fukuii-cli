@@ -1,7 +1,7 @@
 package org.fukuii.execution
 
 import org.fukuii.bytes.{Address, Bytes, Hash}
-import org.fukuii.crypto.Sha256
+import org.fukuii.crypto.{Keccak256, Sha256}
 import org.fukuii.types.Log
 
 /** What the execution layer asks of the consensus layer, and the commitment a
@@ -41,6 +41,26 @@ import org.fukuii.types.Log
   * 32-byte value that is wrong, with nothing about the shape to signal it.
   */
 object ExecutionRequests:
+
+  /** The first topic a deposit event carries.
+    *
+    * **Derived rather than transcribed.** It is the keccak of the contract's
+    * Solidity event signature, so it is computed here from that signature and
+    * `ExecutionRequestsSpec` checks the result against the value two independent
+    * sources state -- `ethereum/execution-specs` @ `0cc100eb1`
+    * `forks/prague/requests.py:56-58` and `besu-eth/besu` @ `b330564a94`
+    * `DepositRequestProcessor.java:34-37`. A thirty-two byte literal copied by
+    * hand has nothing about its shape to signal a slip, and this section has
+    * already corrupted one published record that way.
+    *
+    * **A constant rather than a parameter, unlike the contract's address.** No
+    * network varies it: it follows from the event's own ABI, and besu -- which
+    * does make the address configurable -- still holds this one `static final`.
+    * A caller that could supply it could supply a wrong one, and every deposit
+    * in the block would then be silently ignored rather than refused.
+    */
+  val DepositEventSignature: Hash =
+    Keccak256.hash(IArray.from("DepositEvent(bytes,bytes,bytes,bytes,bytes)".getBytes("US-ASCII")))
 
   /** The type byte a deposit record carries. */
   val DepositType: Byte = 0x00

@@ -79,7 +79,12 @@ class WarmBeneficiarySpec extends AnyFlatSpec:
         EvmFixtures.blockHashAt,
         EvmFixtures.chainId,
         rules,
-        ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = false, maxRefundQuotient = 2)
+        ExecutionRules(
+          recordsParentBlockHash = false,
+          touchedEmptyAccountsAreDeleted = false,
+          receiptCarriesStatus = false,
+          maxRefundQuotient = 2
+        )
       )
       .gasUsed
 

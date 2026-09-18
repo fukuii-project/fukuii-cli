@@ -131,10 +131,20 @@ class BlockProcessorSpec extends AnyFlatSpec:
     )
 
   private val statusReceipts: ExecutionRules =
-    ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = true, maxRefundQuotient = BigInt(2))
+    ExecutionRules(
+      recordsParentBlockHash = false,
+      touchedEmptyAccountsAreDeleted = false,
+      receiptCarriesStatus = true,
+      maxRefundQuotient = BigInt(2)
+    )
 
   private val rootReceipts: ExecutionRules =
-    ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = false, maxRefundQuotient = BigInt(2))
+    ExecutionRules(
+      recordsParentBlockHash = false,
+      touchedEmptyAccountsAreDeleted = false,
+      receiptCarriesStatus = false,
+      maxRefundQuotient = BigInt(2)
+    )
 
   private val legacyOnly: AdmissionRules =
     AdmissionRules(
@@ -298,7 +308,8 @@ class BlockProcessorSpec extends AnyFlatSpec:
       admission: AdmissionRules = legacyOnly,
       blobGas: Option[BlobGasAccounting] = None,
       baseFee: Option[BigInt] = None,
-      systemCalls: Seq[SystemCall] = Seq.empty
+      systemCalls: Seq[SystemCall] = Seq.empty,
+      requestRules: Option[RequestRules] = None
   ): Ran =
     val world = new EvmFixtures.MapWorldState
     world.setBalance(signer, Word(funded))
@@ -322,11 +333,43 @@ class BlockProcessorSpec extends AnyFlatSpec:
       irregularStateChange = irregularStateChange,
       consensusStateChange = closing => coinbaseAtClose = closing.balanceOf(coinbase).toBigInt,
       blobGas = blobGas,
-      systemCalls = systemCalls
+      systemCalls = systemCalls,
+      requestRules = requestRules
     )
     Ran(result, world, rootsAsked, coinbaseAtClose)
 
   private val beaconRoots: SystemCall.Target = SystemCall.Target.BeaconRoots
+
+  /** Code emitting one deposit event of the width the contract produces.
+    *
+    * The layout is written out by the ten stores rather than as a hex literal,
+    * because a 576-byte payload transcribed by hand is the shape that has
+    * already been corrupted once in this section. The five word slots carry
+    * each field's offset and each of those offsets carries that field's width;
+    * the fields themselves are zero, which the parse does not read.
+    */
+  private val emitsADeposit: Bytes = emitsAnEventOf(576)
+
+  /** The same event at a width the contract never emits, which refuses. */
+  private val emitsAMisshapenDeposit: Bytes = emitsAnEventOf(256)
+
+  private def emitsAnEventOf(width: Int): Bytes =
+    val stores =
+      Seq(0 -> 160, 32 -> 256, 64 -> 320, 96 -> 384, 128 -> 512) ++
+        Seq(160 -> 48, 256 -> 32, 320 -> 8, 384 -> 96, 512 -> 8)
+    val written = stores.map((at, value) => f"61$value%04x61$at%04x52").mkString
+    val topic = ExecutionRequests.DepositEventSignature.toBytes.map(byte => f"$byte%02x").mkString
+    EvmFixtures.bytesOf(f"0x${written}%s7f${topic}%s61$width%04x6000a1")
+
+  /** Code returning one word, so a checked call has return data to contribute. */
+  private val returnsAWord: Bytes = EvmFixtures.bytesOf("0x602a60005260206000f3")
+
+  /** The deposit contract's address for the parse to look for.
+    *
+    * A per-network value rather than a constant, which is why it is supplied at
+    * all -- the topic beside it is not, and comes from [[ExecutionRequests]].
+    */
+  private val requestRules: RequestRules = RequestRules(EvmFixtures.address(0x42))
 
   // ── A transaction runs against what the one before it left ────────────────
 
@@ -742,3 +785,165 @@ class BlockProcessorSpec extends AnyFlatSpec:
       ).output.blobGasUsed.contains(BigInt(6) * BlobGas.PerBlob),
       "exactly the maximum is spent, not exceeded"
     )
+
+  // ── The block's request list ──────────────────────────────────────────────
+
+  "a block at a fork with no request container" should "state no request list" in
+    // Absent, not empty. A fork below the container commits to nothing; a fork
+    // with it commits to a hash even over no records, and the two are different
+    // header values.
+    assert(
+      run(Seq.empty).result.map(_.requests) == Right(None),
+      "no container, so there is nothing to state"
+    )
+
+  "a block at a fork with the container" should "state a list even when it produced nothing" in
+    // The other side of that pair. Both system contracts hold no code here, so
+    // an unchecked reading would produce nothing at all -- but these calls are
+    // CHECKED, so an undeployed target refuses the block rather than yielding an
+    // empty list. That is what the next case pins.
+    assert(
+      run(Seq.empty, requestRules = Some(requestRules)).result.isLeft,
+      "the checked calls refuse a block whose system contracts are not deployed"
+    )
+
+  it should "refuse under the empty-target condition, naming the call" in
+    // The refusal is attributed rather than generic: the first checked call is
+    // the withdrawal one, and it is its target that holds no code.
+    assert(
+      run(Seq.empty, requestRules = Some(requestRules)).result ==
+        Left(
+          BlockRejection.FailedSystemCall(SystemCall.Target.WithdrawalRequests, SystemCallFault.TargetHoldsNoCode)
+        ),
+      "which call failed and under which of the two conditions"
+    )
+
+  it should "state an empty list once both contracts are deployed and return nothing" in
+    // Deployed contracts that stop immediately: the calls succeed and return no
+    // bytes, so each contributes NO RECORD and the list is empty -- which is
+    // still a commitment, and a different one from stating none.
+    assert(
+      run(
+        Seq.empty,
+        code = Map(
+          SystemCall.Target.WithdrawalRequests.address -> EvmFixtures.bytesOf("0x00"),
+          SystemCall.Target.ConsolidationRequests.address -> EvmFixtures.bytesOf("0x00")
+        ),
+        requestRules = Some(requestRules)
+      ).result.map(_.requests) == Right(Some(Vector.empty)),
+      "a call returning nothing contributes no record, rather than an empty one"
+    )
+
+  it should "carry a deposit its own receipts recorded, under the deposit type" in
+    // The source that is not a system call. Nothing is invoked for it: the
+    // record is read out of a log an ordinary transaction emitted, which is why
+    // a rule expressed as "check every new system call" cannot see it.
+    assert(
+      run(
+        Seq(transfer(nonce = 0, to = Some(requestRules.depositContract))),
+        code = Map(
+          requestRules.depositContract -> emitsADeposit,
+          SystemCall.Target.WithdrawalRequests.address -> EvmFixtures.bytesOf("0x00"),
+          SystemCall.Target.ConsolidationRequests.address -> EvmFixtures.bytesOf("0x00")
+        ),
+        requestRules = Some(requestRules)
+      ).output.requests.map(_.map(_.toIArray.head)) == Some(Vector(ExecutionRequests.DepositType)),
+      "one record, and its first byte says which source produced it"
+    )
+
+  it should "list the three sources in ascending type order" in
+    // Order is normative rather than incidental: the commitment is taken over
+    // the sequence, so a correct list assembled the other way round states a
+    // different header value. A build appending the calls before the deposits
+    // would pass every case above and fail here.
+    assert(
+      run(
+        Seq(transfer(nonce = 0, to = Some(requestRules.depositContract))),
+        code = Map(
+          requestRules.depositContract -> emitsADeposit,
+          SystemCall.Target.WithdrawalRequests.address -> returnsAWord,
+          SystemCall.Target.ConsolidationRequests.address -> returnsAWord
+        ),
+        requestRules = Some(requestRules)
+      ).output.requests.map(_.map(_.toIArray.head)) ==
+        Some(
+          Vector(
+            ExecutionRequests.DepositType,
+            ExecutionRequests.WithdrawalType,
+            ExecutionRequests.ConsolidationType
+          )
+        ),
+      "deposits, then withdrawals, then consolidations"
+    )
+
+  "a deposit event the contract could not have emitted" should "refuse the block as a malformed request" in
+    // Attributed to the parse rather than to a call or a transaction. Every
+    // transaction here succeeded and no system call failed, so reporting either
+    // would name a component that did nothing wrong -- which is what this build
+    // did before the case was separated out.
+    assert(
+      run(
+        Seq(transfer(nonce = 0, to = Some(requestRules.depositContract))),
+        code = Map(
+          requestRules.depositContract -> emitsAMisshapenDeposit,
+          SystemCall.Target.WithdrawalRequests.address -> EvmFixtures.bytesOf("0x00"),
+          SystemCall.Target.ConsolidationRequests.address -> EvmFixtures.bytesOf("0x00")
+        ),
+        requestRules = Some(requestRules)
+      ).result == Left(BlockRejection.MalformedRequest(RequestFault.DepositLayout)),
+      "the contract is misbehaving, so the block is refused rather than the record skipped"
+    )
+
+  "a block naming a container target in its own call sequence too" should "be refused as a precondition" in
+    // The two directions onto one seam. The sequence and the container each
+    // invoke by target, and a caller naming the same one in both would run it
+    // twice -- uncharged, and invisible to everything downstream.
+    assert(
+      intercept[IllegalArgumentException](
+        run(
+          Seq.empty,
+          systemCalls = Seq(SystemCall(SystemCall.Target.WithdrawalRequests, Bytes.Empty)),
+          requestRules = Some(requestRules)
+        )
+      ).getMessage.contains("WithdrawalRequests"),
+      "the repeated target is named, and it is named whichever side asked for it"
+    )
+
+  it should "report an operation it could not run inside a checked call, and contribute no record" in {
+    // An unbuilt operation is not a refusal -- no chain rule was broken -- but
+    // the output is then not a chain result either, and that is what `unbuilt`
+    // says. Dropping the gap would leave a list short by one record beside an
+    // output still claiming to be authoritative, which is the worse of the two.
+    val ran = run(
+      Seq.empty,
+      code = Map(
+        SystemCall.Target.WithdrawalRequests.address -> adds,
+        SystemCall.Target.ConsolidationRequests.address -> EvmFixtures.bytesOf("0x00")
+      ),
+      evm = cannotRunAddOrMul,
+      requestRules = Some(requestRules)
+    )
+    assert(
+      ran.output.unbuilt.map(_.opcode) == Some(Opcode.Add) && ran.output.requests == Some(Vector.empty),
+      "the gap the call reached is carried out, and the call contributed nothing"
+    )
+  }
+
+  it should "keep running the calls after one of them reached a gap" in {
+    // The gap is not a stop. A build that short-circuited would leave the
+    // consolidation call unmade, and the case above could not tell the
+    // difference because that call contributes nothing there either.
+    val ran = run(
+      Seq.empty,
+      code = Map(
+        SystemCall.Target.WithdrawalRequests.address -> adds,
+        SystemCall.Target.ConsolidationRequests.address -> returnsAWord
+      ),
+      evm = cannotRunAddOrMul,
+      requestRules = Some(requestRules)
+    )
+    assert(
+      ran.output.requests.map(_.map(_.toIArray.head)) == Some(Vector(ExecutionRequests.ConsolidationType)),
+      "the second call ran and its record is there, with the first contributing none"
+    )
+  }

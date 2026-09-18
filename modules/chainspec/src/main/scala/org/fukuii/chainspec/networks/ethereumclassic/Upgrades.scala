@@ -335,6 +335,7 @@ object Upgrades:
         followsDelegations = false
       ),
       execution = ExecutionRules(
+        recordsParentBlockHash = false,
         touchedEmptyAccountsAreDeleted = false,
         receiptCarriesStatus = false,
         maxRefundQuotient = BigInt(2)

@@ -1,7 +1,13 @@
 package org.fukuii.execution
 
-/** What settling a transaction does around the machine, as a value a fork
-  * produces rather than a branch the settlement takes.
+/** What running a block does around the machine, as a value a fork produces
+  * rather than a branch the execution takes.
+  *
+  * **The scope was "settling a transaction" until a fork put a rule here that is
+  * not a transaction's**: EIP-2935's call is made once per block, before any
+  * transaction. The axis the record is chosen on is unchanged -- what varies by
+  * fork, consulted by the processor -- and only the reach of "around the
+  * machine" widened.
   *
   * ==Rules, and deliberately not processors==
   *
@@ -35,7 +41,7 @@ package org.fukuii.execution
   * boolean that only the settlement path reads would be a layer the field does
   * not draw.
   *
-  * ==Both members are named for the rule, never for the proposal or the fork==
+  * ==Every member is named for the rule, never for the proposal or the fork==
   *
   * EIP-161 is why that distinction is not cosmetic here: it is four lettered
   * clauses, and only the last of them is this layer's -- the rest settle inside
@@ -63,6 +69,34 @@ package org.fukuii.execution
   * nothing at all, and must not be typed as a function returning a number** --
   * and this record is deliberately not that slot.
   *
+  * @param recordsParentBlockHash
+  *   whether the block writes its parent's hash into the history-storage
+  *   account before running any transaction, so that a later block can read a
+  *   hash older than the machine's own window reaches.
+  *
+  *   **A fork-resolved value because that is what the whole field gates it on,
+  *   and no client gates it on anything else.** Six implementations across three
+  *   lineages: `ethereum/execution-specs` @ `0cc100eb1` by which fork module
+  *   runs (`forks/prague/fork.py:749-752` calls it, and Cancun's has no such
+  *   call); `ethereum/go-ethereum` @ `02872e9ef` and `erigontech/erigon` @
+  *   `ab8e9fde7` on a fork-activation predicate; `besu-eth/besu` @ `b330564a9`
+  *   on a per-fork strategy object; `NethermindEth/nethermind` @ `3a98e0818` on
+  *   a boolean of its own fork-resolved record, which is this shape exactly.
+  *
+  *   **It is here rather than on the header facet because the proposal adds no
+  *   header element**, which is the question that record's members answer. The
+  *   beacon root's call is gated on a header field precisely because that
+  *   proposal has one; this one cannot borrow that gate, and reading the
+  *   adopted-component list instead is ruled out by [[UpgradeRules]]' own
+  *   statement that the record of what was adopted does not determine the rules.
+  *
+  *   **Not a set of calls, which is the shape besu carries.** One member serves
+  *   the one proposal that needs it, and the beacon root's gate stays where it
+  *   is -- that call is conditional on the header field being PRESENT and not
+  *   merely on the fork, so a bare list of a fork's calls would lose the
+  *   conjunction. **The trigger to revisit** is a second pre-execution call
+  *   gated on something other than a header field; at two, the list is cheaper
+  *   than the flags.
   * @param touchedEmptyAccountsAreDeleted
   *   whether an account touched while the transaction ran and left with no
   *   code, no balance and a zero nonce ceases to exist when the transaction
@@ -103,6 +137,7 @@ package org.fukuii.execution
   *   to notice because no earlier fork moved it.
   */
 final case class ExecutionRules(
+    recordsParentBlockHash: Boolean,
     touchedEmptyAccountsAreDeleted: Boolean,
     receiptCarriesStatus: Boolean,
     maxRefundQuotient: BigInt

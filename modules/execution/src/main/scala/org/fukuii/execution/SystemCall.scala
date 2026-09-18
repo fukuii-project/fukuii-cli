@@ -119,13 +119,34 @@ object SystemCall:
     * already said the address belongs to the proposal, so an open parameter was
     * a documented intention the type did not hold anyone to.
     *
-    * **The set has one member because this build has implemented one proposal
-    * that makes a system call**, not because one is all there will be.
-    * `.claude/rules/reference-first.md` is the test applied: a second case is
-    * added by the commit that implements the proposal naming it, and a target
-    * absent from this enum is a proposal this build has not built rather than
-    * an address it declines to serve. **Adding a case is a consensus-value
-    * adoption** -- see the address below for what that costs.
+    * **The set holds a case per proposal this build has implemented that makes a
+    * system call**, and no more than that. `.claude/rules/reference-first.md` is
+    * the test applied: a case is added by the commit that implements the
+    * proposal naming it, and a target absent from this enum is a proposal this
+    * build has not built rather than an address it declines to serve. **Adding a
+    * case is a consensus-value adoption** -- see the addresses below for what
+    * that costs.
+    *
+    * ==Every address here is fixed, and the measurement says so rather than the
+    * proposals==
+    *
+    * Two clients let a network override one: `besu-eth/besu` @ `b330564a9`
+    * reads all three request addresses from genesis
+    * (`RequestContractAddresses.java:50-62`), and `NethermindEth/nethermind` @
+    * `3a98e0818` exposes the history-storage address as a chain-spec parameter
+    * (`ChainSpecParamsJson.cs:162`). **So the closure is a claim about the
+    * networks, not about what a client can express** -- and the networks settle
+    * it: across the 21 chain specifications nethermind ships, **zero** state a
+    * history-storage, withdrawal-request or consolidation-request address, while
+    * **11 state a deposit contract** and do so with six distinct values. The same
+    * instrument over the same directory returns both figures, so the zero
+    * discriminates rather than reporting a sweep that could not fire.
+    *
+    * **That is also why the deposit contract is not in this enum at all.** It is
+    * the one address a network chooses, so it travels as a per-network value --
+    * `org.fukuii.chainspec.networks.ethereum.Mainnet.requestRules`. **The trigger
+    * to reopen this set** is a network that overrides one of the three above; the
+    * clients would already serve it, and nothing shipped asks them to.
     */
   enum Target(val address: Address):
 
@@ -404,6 +425,45 @@ object SystemCall:
     * direction, warning that omitting the call in favour of writing the storage
     * *"could be problematic on non-mainnet situations in case a different
     * contract is used"*.
+    *
+    * ==A call that FAILS here is UNSETTLED, and the sources give three answers==
+    *
+    * This kind reports nothing when its invocation reverts or halts: the journal
+    * is discarded and the block stands. That follows the normative source, and
+    * it is recorded as unsettled rather than as settled because the source
+    * states the value without reasoning about it -- which is the condition
+    * `.claude/protocols/consensus-change.md`'s tiebreak makes the specification's
+    * authority conditional on.
+    *
+    * **Five sources were read and only three of them make the call at all**,
+    * which is what makes "the clients" the wrong unit here:
+    *
+    *   - `ethereum/execution-specs` @ `0cc100eb1` names the shape and says so in
+    *     its own docstring -- *"without checking if the contract contains code
+    *     or if the transaction fails"* (`forks/prague/fork.py:647-648`).
+    *   - `ethereum/go-ethereum` @ `02872e9ef` does not treat its own two
+    *     unchecked calls alike. `ProcessBeaconBlockRoot` discards the error
+    *     (`_, _, _ = evm.Call(...)`, `core/state_processor.go:336`) and
+    *     `ProcessParentBlockHash` **panics** on it
+    *     (`core/state_processor.go:366-369`).
+    *   - `besu-eth/besu` @ `b330564a94` throws on any frame state that is not
+    *     `COMPLETED_SUCCESS` (`SystemCallProcessor.java:123-140`), through the
+    *     one processor that also serves the beacon root and the checked calls.
+    *   - `NethermindEth/nethermind` @ `3a98e08185` writes the slot directly
+    *     (`BlockhashStore.cs:23-27`) and `erigontech/erigon` @ `ab8e9fde7a` does
+    *     the same after a code-size test (`protocol/misc/eip2935.go:30-49`).
+    *     **Neither makes a call, so neither has a position on one failing** --
+    *     an absence of evidence rather than evidence of agreement.
+    *
+    * **No case read for this observes the difference**, because it needs a
+    * deployed contract whose call fails, and a conforming deployment has none.
+    * Two of the three answers are not chain rules either: a panic and a throw
+    * stop the client rather than producing a different chain.
+    *
+    * **The trigger that would settle it** is a network carrying a deployed
+    * history-storage contract whose call can fail -- which
+    * `.claude/protocols/consensus-poa.md`'s authored-genesis stage makes
+    * reachable, since a genesis this project writes chooses that code itself.
     *
     * @param world
     *   the state at the head of the block, which this advances. A journal is

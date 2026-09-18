@@ -609,7 +609,13 @@ object BlockchainRunner:
     case BlockFault.GasUsedMismatch(_, _)          => false
     case BlockFault.LogsBloomMismatch(_, _)        => false
     case BlockFault.ReceiptsRootMismatch(_, _)     => false
-    case BlockFault.StateRootMismatch(_, _)        => false
+    // All three need the block's own request list, which only running it
+    // produces -- the deposits come out of its receipts and the rest out of
+    // calls made after its transactions.
+    case BlockFault.RequestsHashMismatch(_, _) => false
+    case BlockFault.RequestsHashUnexpected(_)  => false
+    case BlockFault.RequestsHashMissing        => false
+    case BlockFault.StateRootMismatch(_, _)    => false
 
   /** A block the case refuses, read as the case says it reads and refused under
     * a name the case states.

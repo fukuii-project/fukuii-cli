@@ -52,6 +52,7 @@ class UpgradeRulesSpec extends AnyFlatSpec:
     components = firstRules.components,
     evm = firstRules.evm,
     execution = ExecutionRules(
+      recordsParentBlockHash = false,
       touchedEmptyAccountsAreDeleted = false,
       receiptCarriesStatus = false,
       maxRefundQuotient = BigInt(2)

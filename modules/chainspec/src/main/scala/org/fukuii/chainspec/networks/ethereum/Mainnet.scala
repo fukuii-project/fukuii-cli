@@ -1,7 +1,8 @@
 package org.fukuii.chainspec.networks.ethereum
 
-import org.fukuii.bytes.UInt64
+import org.fukuii.bytes.{Address, UInt64}
 import org.fukuii.chainspec.{Activation, Network, Upgrade, UpgradeId, UpgradeSchedule}
+import org.fukuii.execution.RequestRules
 
 /** Ethereum mainnet: which of [[Upgrades]]'s rule sets it runs, and from when.
   *
@@ -61,6 +62,37 @@ object Mainnet:
     * sourced to the same standard as the id.
     */
   val network: Network = Network(UInt64.fromBits(1L), "Ethereum Mainnet")
+
+  /** Where this network's beacon deposit contract was deployed.
+    *
+    * `0x00000000219ab540356cbb839cbe05303d7705fa`, stated identically by
+    * `ethereum/EIPs` @ `d2a64c2d4` `EIPS/eip-6110.md:46`, `ethereum/go-ethereum`
+    * @ `02872e9ef` `params/config.go:67` and `NethermindEth/nethermind` @
+    * `3a98e0818` `Chains/foundation.json:210`.
+    *
+    * ==It is here and not on a rule set, because it is this network's alone==
+    *
+    * Every other address the request seam names is fixed by its proposal and
+    * identical everywhere. This one is a deployment: the same file records
+    * Sepolia at `0x7f02c3e3c98b133055b8b348b2ac625669ed295d`, and the proposal's
+    * own constants table marks this row **Mainnet** in a Comment column that is
+    * empty for the event signature beside it. So it belongs with the numbers
+    * this file already holds for the reason its own head gives -- a rule set is
+    * something another network can reach and be asserted equal to, and these are
+    * not.
+    *
+    * **The field carries it the way the field carries it**:
+    * `paradigmxyz/reth` @ `e63ec720a` holds `deposit_contract` beside
+    * `hardforks` on one network-level record with the fork record untouched
+    * (`spec.rs:432-435`), and `ethereum/go-ethereum` the same on a flat
+    * `ChainConfig`. Neither puts it on what varies by fork.
+    */
+  val requestRules: RequestRules =
+    RequestRules(
+      Address
+        .fromHex("0x00000000219ab540356cbb839cbe05303d7705fa")
+        .getOrElse(throw new AssertionError("the deposit contract's address is a well-formed address"))
+    )
 
   private def upgrade(label: String): UpgradeId = UpgradeId.named(network, label)
 

@@ -240,6 +240,19 @@ object BeaconRootCorpus:
     * published case cannot tell whether any of them is wrong**, which is the
     * honest limit of this reader and the reason they are stated here rather
     * than carried through from a file as though they were asserted.
+    *
+    * ==The zero number is safe HERE and is not a shape to copy==
+    *
+    * This contract reads `TIMESTAMP`, so a block number of zero changes nothing
+    * it computes. **The history-storage contract reads `NUMBER`**, and a driver
+    * built for that document by copying this one would index every block into
+    * the same ring-buffer slot -- silently, since the storage it wrote would
+    * still be storage it wrote. A driver for a contract that reads the number
+    * has to carry the real one.
+    *
+    * Nothing in the production path shares this: `BlockValidator` builds its
+    * context from the header, so a system call made by a real block already sees
+    * that block's number.
     */
   private val Nothing32: Hash = Hash.fromBytesTruncating(IArray.empty)
 

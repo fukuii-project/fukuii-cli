@@ -96,6 +96,30 @@ final case class BlockOutput(
     */
   def logs: Vector[Log] = receipts.flatMap(_.logs)
 
+/** What a fork needs in order to assemble a block's request list.
+  *
+  * ==The deposit contract's address is a PER-NETWORK value==
+  *
+  * Every other address this seam names is fixed by its proposal and identical on
+  * every network. This one is not: it is the address the beacon chain's deposit
+  * contract was deployed at, which differs per network, so it cannot be a
+  * constant beside the parse that reads it. It arrives as a value for that
+  * reason, and a network that activates the container without stating one has a
+  * configuration error rather than a default.
+  *
+  * **The topic that identifies a deposit event is NOT here**, and the asymmetry
+  * is the point: it follows from the event's own ABI and no network varies it,
+  * so it is [[ExecutionRequests.DepositEventSignature]] rather than a second
+  * field. A caller able to supply it could supply a wrong one, and every deposit
+  * in the block would then be ignored rather than refused.
+  *
+  * One field today. It stays a record because what a fork needs in order to
+  * assemble the list is the thing being named, and a bare address would say
+  * where the deposits come from without saying that asking for them at all is
+  * the fork's decision.
+  */
+final case class RequestRules(depositContract: Address)
+
 /** Why a block is not one this network accepts.
   *
   * A record rather than an enumeration, because at this layer there is one
@@ -151,6 +175,17 @@ enum BlockRejection:
     * index it invented would name a transaction that was fine.
     */
   case FailedSystemCall(target: SystemCall.Target, fault: SystemCallFault)
+
+  /** A record the block's own receipts state, in a shape the contract that
+    * emits it never produces.
+    *
+    * **Neither of the cases above fits, and reporting it as either would
+    * misattribute the refusal.** No transaction was refused -- every one of them
+    * succeeded and emitted the log. And no system call failed: this record is
+    * read out of receipts rather than returned by anything, which is the whole
+    * reason the seam's "check every new system call" framing cannot see it.
+    */
+  case MalformedRequest(fault: RequestFault)
 
 /** Why a checked system call did not succeed.
   *
@@ -416,6 +451,7 @@ object BlockProcessor:
       admission: AdmissionRules,
       irregularStateChange: Option[WorldState => Unit],
       consensusStateChange: WorldState => Unit,
+      requestRules: Option[RequestRules] = None,
       blobGas: Option[BlobGasAccounting] = None,
       systemCalls: Seq[SystemCall] = Seq.empty
   ): Either[BlockRejection, BlockOutput] =
@@ -425,10 +461,15 @@ object BlockProcessor:
     // own call once per block, which makes a repeated target a caller's mistake
     // rather than a block this layer should answer for -- and not a
     // [[BlockRejection]], because no chain rule was broken.
+    // The unchecked sequence and the request container reach the same seam from
+    // two directions, so the targets the container drives are counted here as
+    // well -- a caller naming one in both would otherwise run it twice with
+    // nothing reporting it, which is the very thing this precondition is for.
+    val invoked = systemCalls.map(_.target) ++ requestRules.toSeq.flatMap(_ => RequestTargets)
     require(
-      systemCalls.map(_.target).distinct.length == systemCalls.length,
+      invoked.distinct.length == invoked.length,
       "a block makes each proposal's system call once, so a repeated target is uncharged gas nothing asked for: " +
-        systemCalls.map(_.target.toString).mkString(", ")
+        invoked.map(_.toString).mkString(", ")
     )
     irregularStateChange.foreach(change => change(world))
     // Each is run whatever the one before it reported, because none of them is
@@ -460,10 +501,100 @@ object BlockProcessor:
           )
         }
     }
-    processed.map { output =>
+    processed.flatMap { output =>
       consensusStateChange(world)
-      output
+      // AFTER the withdrawals the consensus change carries, which is where the
+      // specification puts it: `apply_body` runs the transactions, then
+      // `process_withdrawals`, then the requests
+      // (`src/ethereum/forks/prague/fork.py:743-765`).
+      //
+      // **go-ethereum orders the request calls BEFORE withdrawals** and no
+      // published case can tell the two apart, since nothing a withdrawal does
+      // is readable by these contracts. The specification and the majority are
+      // followed here; the reversing trigger is a case that observes the
+      // difference, and none read for this does.
+      requestRules match
+        case None        => Right(output)
+        case Some(rules) => assembleRequests(output, rules, world, block, blockHashAt, chainId, evm)
     }
+
+  /** The block's request list, in the order the specification requires.
+    *
+    * ==Three sources, appended in ascending type order==
+    *
+    * Deposits from the block's own receipts, then the withdrawal-request call's
+    * return data, then the consolidation call's. **Each contributes only where
+    * it produced bytes** -- an empty record is not the same as an absent one,
+    * and the commitment hashes what it holds.
+    */
+  private def assembleRequests(
+      output: BlockOutput,
+      rules: RequestRules,
+      world: WorldState,
+      block: BlockContext,
+      blockHashAt: BigInt => Hash,
+      chainId: UInt64,
+      evm: EvmRules
+  ): Either[BlockRejection, BlockOutput] =
+    // [[BlockOutput.logs]] rather than a second fold over the receipts, so the
+    // deposits and the block's own bloom are taken over one sequence with one
+    // definition -- which is the reason that accessor is derived at all.
+    ExecutionRequests.depositsIn(output.logs, rules.depositContract, ExecutionRequests.DepositEventSignature) match
+      case Left(fault)     => Left(BlockRejection.MalformedRequest(fault))
+      case Right(deposits) =>
+        val depositRecords =
+          if deposits.length == 0 then Vector.empty
+          else Vector(prefixed(ExecutionRequests.DepositType, deposits))
+        for
+          withdrawals <- returned(SystemCall.Target.WithdrawalRequests, world, block, blockHashAt, chainId, evm)
+          consolidations <- returned(SystemCall.Target.ConsolidationRequests, world, block, blockHashAt, chainId, evm)
+        yield output.copy(
+          requests = Some(
+            depositRecords ++
+              withdrawals.answer.filter(_.length > 0).map(prefixed(ExecutionRequests.WithdrawalType, _)).toVector ++
+              consolidations.answer.filter(_.length > 0).map(prefixed(ExecutionRequests.ConsolidationType, _)).toVector
+          ),
+          // The FIRST gap is the one carried, which is the order every other
+          // writer of this field already keeps, and these two calls are the last
+          // thing the block does.
+          unbuilt = output.unbuilt.orElse(withdrawals.unbuilt).orElse(consolidations.unbuilt)
+        )
+
+  private def returned(
+      target: SystemCall.Target,
+      world: WorldState,
+      block: BlockContext,
+      blockHashAt: BigInt => Hash,
+      chainId: UInt64,
+      evm: EvmRules
+  ): Either[BlockRejection, Returned] =
+    SystemCall.runChecked(SystemCall(target, Bytes.Empty), world, block, blockHashAt, chainId, evm) match
+      case Left(fault) => Left(BlockRejection.FailedSystemCall(target, fault))
+      // An unbuilt operation is not a refusal: no chain rule was broken, this
+      // build simply cannot run the block. It contributes no record, and the
+      // gap is carried out so [[BlockOutput.unbuilt]] reports that the whole
+      // output is not a chain result -- which is the field's existing meaning
+      // and is why dropping the gap here would have been worse than refusing.
+      case Right(Left(gap))     => Right(Returned(None, Some(gap)))
+      case Right(Right(answer)) => Right(Returned(Some(answer), None))
+
+  /** What one checked call contributed: the bytes it returned where it produced
+    * any, and the first operation this build could not run where it reached one.
+    *
+    * The two are independent -- a call can return nothing having run fine -- so
+    * they are separate fields rather than one `Either`, which would make
+    * "returned nothing" and "could not run" the same answer.
+    */
+  final private case class Returned(answer: Option[Bytes], unbuilt: Option[Unsupported])
+
+  /** The targets a fork's request container drives, in the order they are
+    * called and therefore in the order their records are listed.
+    */
+  private val RequestTargets: Vector[SystemCall.Target] =
+    Vector(SystemCall.Target.WithdrawalRequests, SystemCall.Target.ConsolidationRequests)
+
+  private def prefixed(kind: Byte, body: Bytes): Bytes =
+    Bytes.fromIArray(IArray(kind) ++ body.toIArray)
 
   /** A block that has run no TRANSACTION yet.
     *

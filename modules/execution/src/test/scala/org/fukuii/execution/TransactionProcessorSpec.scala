@@ -136,7 +136,12 @@ class TransactionProcessorSpec extends AnyFlatSpec:
     * nothing ceases to exist.
     */
   private val notClearing: ExecutionRules =
-    ExecutionRules(touchedEmptyAccountsAreDeleted = false, receiptCarriesStatus = false, maxRefundQuotient = BigInt(2))
+    ExecutionRules(
+      recordsParentBlockHash = false,
+      touchedEmptyAccountsAreDeleted = false,
+      receiptCarriesStatus = false,
+      maxRefundQuotient = BigInt(2)
+    )
 
   /** The same, from the height that deletes one. */
   private val clearing: ExecutionRules = notClearing.copy(touchedEmptyAccountsAreDeleted = true)

@@ -56,8 +56,24 @@ class ExecutionRequestsSpec extends AnyFlatSpec:
 
   private val depositContract: Address = EvmFixtures.address(0x42)
 
-  private val eventSignature: Hash =
+  private val eventSignature: Hash = ExecutionRequests.DepositEventSignature
+
+  /** What two independent sources state the topic is, which the derivation above
+    * has to reproduce.
+    */
+  private val publishedEventSignature: Hash =
     hashOf("649bbc62d0e31342afea4e5cd82d4049e7e1ee912fc0889aa790803be39038c5")
+
+  "the deposit event's topic" should "be the keccak of the event's own signature" in
+    // Derived from the ABI signature rather than copied in as thirty-two bytes,
+    // and checked here against what `ethereum/execution-specs` @ `0cc100eb1`
+    // (`forks/prague/requests.py:56-58`) and `besu-eth/besu` @ `b330564a94`
+    // (`DepositRequestProcessor.java:34-37`) each state. A literal that had been
+    // mistyped would look exactly like one that had not.
+    assert(
+      ExecutionRequests.DepositEventSignature == publishedEventSignature,
+      "the derivation agrees with the value two sources that do not share a lineage publish"
+    )
 
   "the requests commitment" should "reproduce a published withdrawal block's header value" in
     assert(

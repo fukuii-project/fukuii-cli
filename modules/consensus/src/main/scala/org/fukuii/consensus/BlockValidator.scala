@@ -4,7 +4,15 @@ import org.fukuii.bytes.{Address, Bytes, Hash, UInt64}
 import org.fukuii.chainspec.UpgradeRules
 import org.fukuii.crypto.Keccak256
 import org.fukuii.evm.{BlobGas, BlobGasPrice, BlockContext, BlockRandomness, Unsupported, WorldState}
-import org.fukuii.execution.{BlobGasAccounting, BlockOutput, BlockProcessor, BlockRejection, SystemCall}
+import org.fukuii.execution.{
+  BlobGasAccounting,
+  BlockOutput,
+  BlockProcessor,
+  BlockRejection,
+  ExecutionRequests,
+  RequestRules,
+  SystemCall
+}
 import org.fukuii.execution.Withdrawals
 import org.fukuii.rlp.RlpCodec
 import org.fukuii.trie.Trie
@@ -77,6 +85,24 @@ enum BlockFault:
   case ReceiptsRootMismatch(stated: Hash, produced: Hash)
 
   /** A header committing to some other state than the block produced. */
+  /** The header's commitment over the block's request list against the list
+    * the block actually produced.
+    */
+  case RequestsHashMismatch(stated: Hash, produced: Hash)
+
+  /** A header stating a requests commitment where the block assembled no list.
+    *
+    * Distinct from the header rule of the same shape: that one asks whether the
+    * FORK admits the field, and this one whether the block's own run produced
+    * anything to commit to.
+    */
+  case RequestsHashUnexpected(stated: Hash)
+
+  /** A block that assembled a request list under a header stating no commitment
+    * over it.
+    */
+  case RequestsHashMissing
+
   case StateRootMismatch(stated: Hash, produced: Hash)
 
 /** A rule this build does not run, which a block reached.
@@ -224,6 +250,19 @@ object BlockValidator:
     *   header's own.
     * @param blockHashAt
     *   the hash of an earlier block, which `BLOCKHASH` reads.
+    * @param requestRules
+    *   this network's own request parameters, chiefly where its beacon deposit
+    *   contract was deployed. **Per NETWORK and not per fork**, which is why it
+    *   arrives here beside `chainId` rather than on the rule set: the address is
+    *   a deployment, and every other address the seam names is fixed by its
+    *   proposal. `org.fukuii.chainspec.networks.ethereum.Mainnet` states this
+    *   network's and carries the sourcing.
+    *
+    *   **Absent is a configuration error once the fork commits, not an empty
+    *   list.** A fork whose headers state a requests commitment, on a network
+    *   naming no deposit contract, cannot derive that commitment at all --
+    *   answering an empty list there would state a header value the network
+    *   disagrees with, so this refuses to run instead.
     */
   def validate(
       block: Block,
@@ -234,7 +273,8 @@ object BlockValidator:
       destroyAccount: Address => Unit,
       stateRoot: () => Hash,
       blockHashAt: BigInt => Hash,
-      chainId: UInt64
+      chainId: UInt64,
+      requestRules: Option[RequestRules] = None
   ): BlockVerdict =
     val running = Resolved(block.header, engine.rulesFrom(rules))
     val parentRunning = parent.copy(rules = engine.rulesFrom(parent.rules))
@@ -248,10 +288,21 @@ object BlockValidator:
         _ <- withdrawalsAgree(block)
         _ <- blobGasAgrees(block, running.rules)
         _ <- ommersValidated(block)
-        output <- run(block, running.rules, engine, world, destroyAccount, stateRoot, blockHashAt, chainId)
+        output <- run(
+          block,
+          running.rules,
+          engine,
+          world,
+          destroyAccount,
+          stateRoot,
+          blockHashAt,
+          chainId,
+          requestsOf(running.rules, requestRules)
+        )
         _ <- agrees(block.header.gasUsed.toBigInt, output.gasUsed, BlockFault.GasUsedMismatch.apply)
         _ <- agrees(block.header.logsBloom, Bloom.fromLogs(output.logs), BlockFault.LogsBloomMismatch.apply)
         _ <- agrees(block.header.receiptsRoot, receiptsRootOf(output), BlockFault.ReceiptsRootMismatch.apply)
+        _ <- requestsAgree(block, output)
         _ <- agrees(block.header.stateRoot, stateRoot(), BlockFault.StateRootMismatch.apply)
         _ <- engineRulesRan(notRun)
       yield output
@@ -383,7 +434,8 @@ object BlockValidator:
       destroyAccount: Address => Unit,
       stateRoot: () => Hash,
       blockHashAt: BigInt => Hash,
-      chainId: UInt64
+      chainId: UInt64,
+      requestRules: Option[RequestRules]
   ): Either[BlockVerdict, BlockOutput] =
     val header = block.header
     val settlement = engine.settlement(rules.consensus, header.beneficiary, header.number.toBigInt, block.body.ommers)
@@ -405,7 +457,8 @@ object BlockValidator:
       irregularStateChange = None,
       consensusStateChange = closing,
       blobGas = blobGasOf(header, rules),
-      systemCalls = systemCallsOf(header, rules)
+      systemCalls = systemCallsOf(header, rules),
+      requestRules = requestRules
     ) match
       case Left(rejection) =>
         rejection match
@@ -475,6 +528,53 @@ object BlockValidator:
       )
       BlobGasAccounting(BlobGasPrice.at(excess.toBigInt, fraction), schedule.maxBlobs * BlobGas.PerBlob)
 
+  /** Whether this block assembles a request list, and with what.
+    *
+    * ==The fork decides WHETHER; the network decides WITH WHAT==
+    *
+    * Deriving it from the header facet rather than from the address's presence
+    * is what keeps the two apart. A network stating an address at a fork below
+    * the container must still assemble nothing, and a fork above it on a network
+    * stating none is a configuration this build refuses to run rather than
+    * answering an empty list for -- which would be a header value the network
+    * disagrees with, and so a split.
+    *
+    * `besu-eth/besu` @ `b330564a9` has the same two branches and the same
+    * refusal: a no-op coordinator where no list is owed, and `orElseThrow` on a
+    * Prague definition whose genesis names no system contract address.
+    */
+  private def requestsOf(rules: UpgradeRules, stated: Option[RequestRules]): Option[RequestRules] =
+    if !rules.header.carriesRequestsHash then None
+    else
+      Some(
+        stated.getOrElse(
+          throw new IllegalArgumentException(
+            "a fork committing to a request list needs the network's deposit contract, and none was stated"
+          )
+        )
+      )
+
+  /** The header's requests commitment against the list the block produced.
+    *
+    * **Absent and empty are different header values**, and both are compared
+    * here: a fork below the container produces no list and must state no hash,
+    * while a fork above it produces one -- possibly empty -- and must state the
+    * hash over exactly what it produced. `HeaderValidator` has already decided
+    * the presence question in both directions, so what is left here is the value.
+    */
+  private def requestsAgree(block: Block, output: BlockOutput): Either[BlockVerdict, Unit] =
+    (block.header.requestsHash, output.requests) match
+      case (None, None)                   => Right(())
+      case (Some(stated), Some(produced)) =>
+        agrees(stated, ExecutionRequests.hashOf(produced), BlockFault.RequestsHashMismatch.apply)
+      // Neither of these reaches a conforming caller: the header's presence is
+      // the fork's, the list's presence is derived from the same flag, and
+      // `HeaderValidator` refuses a header disagreeing with it. They are stated
+      // rather than left to a match error, because the value they would carry is
+      // a split and a crash names it better than a wrong hash would.
+      case (Some(stated), None) => Left(BlockVerdict.Invalid(BlockFault.RequestsHashUnexpected(stated)))
+      case (None, Some(_))      => Left(BlockVerdict.Invalid(BlockFault.RequestsHashMissing))
+
   /** The calls the block makes on its own account before its transactions.
     *
     * EIP-4788's, where the rules require the header to state a beacon root, over
@@ -482,10 +582,37 @@ object BlockValidator:
     * header facet is what selects it, and the block is never a genesis here,
     * where the proposal makes no call: [[HeaderValidator]] has accepted it as
     * its parent's successor.
+    *
+    * Then EIP-2935's, over the parent's hash.
+    *
+    * ==The two are gated on different facets, and that asymmetry is the rule
+    * rather than an inconsistency==
+    *
+    * The first is conditional on the header FIELD being present, not merely on
+    * the fork -- a fork may require the field while an individual header states
+    * none, and the two are separate questions. The second has no header field to
+    * be conditional on, so it is gated on the fork alone, which is what every
+    * client that implements it does.
+    *
+    * ==The order is the specification's and is agreed by the field==
+    *
+    * Beacon root, then parent hash. `ethereum/execution-specs` @ `0cc100eb1`
+    * `forks/prague/fork.py:743-754` issues them in that order at the head of
+    * `apply_body`, and `ethereum/go-ethereum` @ `02872e9ef`
+    * `core/state_processor.go:165-171` the same. **Nothing read observes the
+    * difference** -- neither contract reads state the other writes -- so this
+    * follows the sources rather than resting on a measurement that could tell
+    * them apart.
     */
   private def systemCallsOf(header: BlockHeader, rules: UpgradeRules): Seq[SystemCall] =
-    if rules.header.carriesParentBeaconBlockRoot then
-      header.parentBeaconBlockRoot.toSeq.map(root =>
-        SystemCall(SystemCall.Target.BeaconRoots, Bytes.fromIArray(root.toBytes))
-      )
-    else Seq.empty
+    val beaconRoot =
+      if rules.header.carriesParentBeaconBlockRoot then
+        header.parentBeaconBlockRoot.toSeq.map(root =>
+          SystemCall(SystemCall.Target.BeaconRoots, Bytes.fromIArray(root.toBytes))
+        )
+      else Seq.empty
+    val parentBlockHash =
+      if rules.execution.recordsParentBlockHash then
+        Seq(SystemCall(SystemCall.Target.HistoryStorage, Bytes.fromIArray(header.parentHash.toBytes)))
+      else Seq.empty
+    beaconRoot ++ parentBlockHash
