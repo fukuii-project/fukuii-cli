@@ -220,6 +220,7 @@ object EvmFixtures:
     transactionBase = BigInt(21002),
     transactionDataPerZeroByte = BigInt(19),
     transactionDataPerNonZeroByte = BigInt(70),
+    transactionCalldataTokenFloor = BigInt(0),
     transactionCreate = BigInt(21),
     transactionAccessListAddress = BigInt(2402),
     transactionAccessListStorageKey = BigInt(1902),

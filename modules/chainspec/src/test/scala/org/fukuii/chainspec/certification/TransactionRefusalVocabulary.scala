@@ -26,6 +26,12 @@ object TransactionRefusalVocabulary:
       "TransactionException.TYPE_3_TX_PRE_FORK" -> Refusal.TypeNotAdmitted,
       "TransactionException.TYPE_4_TX_PRE_FORK" -> Refusal.TypeNotAdmitted,
       "TransactionException.INTRINSIC_GAS_TOO_LOW" -> Refusal.IntrinsicGasTooLow,
+      // The floor's own name, kept apart from the charge above rather than
+      // folded into it. The specification raises ONE error for both, comparing
+      // the limit against the greater of the two; the corpus states the two in
+      // SEPARATE cases, so a build producing one refusal for both would satisfy
+      // each name with the other rule's refusal and the split would go unchecked.
+      "TransactionException.INTRINSIC_GAS_BELOW_FLOOR_GAS_COST" -> Refusal.IntrinsicGasBelowFloor,
       "TransactionException.INITCODE_SIZE_EXCEEDED" -> Refusal.InitcodeTooLarge,
       "TransactionException.NONCE_IS_MAX" -> Refusal.NonceIsMax,
       "TransactionException.GAS_ALLOWANCE_EXCEEDED" -> Refusal.GasAllowanceExceeded,

@@ -143,6 +143,7 @@ class FrontierAdmissionSpec extends AnyFlatSpec:
         data = transaction.data,
         accessList = transaction.accessList,
         intrinsicGas = intrinsic,
+        calldataFloor = None,
         blobGasUsed = BigInt(0),
         blobGasPrice = BigInt(0),
         blobVersionedHashes = Seq.empty

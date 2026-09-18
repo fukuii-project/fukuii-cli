@@ -255,6 +255,21 @@ final case class GasSchedule(
     transactionBase: BigInt,
     transactionDataPerZeroByte: BigInt,
     transactionDataPerNonZeroByte: BigInt,
+    // What one calldata TOKEN costs under the floor EIP-7623 introduces, where a
+    // token is a zero byte and a non-zero byte is four of them. It is a second
+    // price over the same bytes the two fields above price, charged only where
+    // the floor binds -- so it neither replaces them nor is derivable from them.
+    //
+    // **Held at zero below the proposal, and that zero means ABSENT rather than
+    // free.** Every other price here is spent unconditionally and a zero simply
+    // costs nothing; this one is multiplied out and then added to
+    // `transactionBase`, so a zero price still yields a floor of 21,000. That
+    // figure is above what a refunded transaction can legitimately settle at, so
+    // charging it below the proposal would change what pre-proposal blocks
+    // spend. `org.fukuii.execution.IntrinsicGas.calldataFloorOf` is where the
+    // distinction is made, and it is the reason the floor is reported as an
+    // absence rather than as a number.
+    transactionCalldataTokenFloor: BigInt,
     // A surcharge a transaction pays for deploying rather than calling. The
     // original specification charges nothing, which is the whole of what it
     // does at that fork: it names no such constant and its intrinsic cost is a

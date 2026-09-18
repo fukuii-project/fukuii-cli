@@ -99,6 +99,7 @@ final case class AdmittedTransaction(
     data: Bytes,
     accessList: Seq[AccessTuple],
     intrinsicGas: BigInt,
+    calldataFloor: Option[BigInt],
     blobGasUsed: BigInt,
     blobGasPrice: BigInt,
     blobVersionedHashes: Seq[Hash]
@@ -466,7 +467,20 @@ object TransactionProcessor:
     val spent = transaction.gasLimit - gasLeft
     val earned = if succeeded then frame.refundCounter else BigInt(0)
     val refunded = (spent / execution.maxRefundQuotient).min(earned)
-    val used = spent - refunded
+    // AFTER THE REFUND, never before it, and that ordering is the whole of what
+    // EIP-7623 changes here. The specification applies the floor to the figure
+    // the refund has already reduced -- `ethereum/execution-specs` @ `0cc100eb1`
+    // `src/ethereum/forks/prague/fork.py:922-924`, where the comment says so in
+    // terms: "we first calculate the execution_gas_used, which includes the
+    // execution gas refund". Applying it first would let the refund carry the
+    // charge back below the floor, which is the outcome the floor exists to
+    // prevent.
+    //
+    // A fork below the proposal states no floor at all rather than a floor of
+    // zero, which is why this reads an option: 21,000 is a floor a refunded
+    // transaction can legitimately settle below, so a zero price collapsing to
+    // one would overcharge it. `IntrinsicGas.calldataFloorOf` carries that.
+    val used = transaction.calldataFloor.fold(spent - refunded)((spent - refunded).max)
     val returned = transaction.gasLimit - used
     moveBalance(world, transaction.sender, returned * transaction.gasPrice)
     // The producer is credited the TIP alone. What the block charged is not

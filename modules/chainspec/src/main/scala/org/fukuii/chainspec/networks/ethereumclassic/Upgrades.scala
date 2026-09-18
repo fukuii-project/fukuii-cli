@@ -195,6 +195,7 @@ object Upgrades:
     transactionBase = BigInt(21000),
     transactionDataPerZeroByte = BigInt(4),
     transactionDataPerNonZeroByte = BigInt(68),
+    transactionCalldataTokenFloor = BigInt(0),
     transactionCreate = BigInt(0),
     transactionAccessListAddress = BigInt(0),
     transactionAccessListStorageKey = BigInt(0),

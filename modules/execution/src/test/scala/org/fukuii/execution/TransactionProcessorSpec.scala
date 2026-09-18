@@ -125,6 +125,7 @@ class TransactionProcessorSpec extends AnyFlatSpec:
       data = data,
       accessList = Seq.empty,
       intrinsicGas = IntrinsicGas.of(schedule, data, to.isEmpty, Seq.empty),
+      calldataFloor = None,
       blobGasUsed = BigInt(0),
       blobGasPrice = BigInt(0),
       blobVersionedHashes = Seq.empty
@@ -352,6 +353,73 @@ class TransactionProcessorSpec extends AnyFlatSpec:
       settle(transaction(), Map(recipient -> selfDestructs)).settlement.gasUsed ==
         selfDestructSpend - selfDestructSpend / 2,
       "a transaction cannot claim back more than half of what it consumed, however much it earned"
+    )
+
+  // ── The floor a fork may state over calldata ──────────────────────────────
+
+  "a calldata floor" should "raise what the transaction is charged when it settled below it" in
+    assert(
+      settle(transaction().copy(calldataFloor = Some(schedule.transactionBase + 5000))).settlement.gasUsed ==
+        schedule.transactionBase + 5000,
+      "a transaction that spent less than its floor pays the floor"
+    )
+
+  it should "not lower what a transaction that spent more is charged" in
+    // The half that would be missed by an implementation writing `min` for
+    // `max`, which no case asserting the binding direction can see.
+    assert(
+      settle(
+        transaction().copy(intrinsicGas = schedule.transactionBase + 4242, calldataFloor = Some(BigInt(1)))
+      ).settlement.gasUsed == schedule.transactionBase + 4242,
+      "the greater of the two binds, and here that is what the transaction actually spent"
+    )
+
+  it should "be applied after the refund rather than before it" in
+    // THE ORDERING, and it is the whole of what this document changes at
+    // settlement. A refund applied after the floor could carry the charge back
+    // below it, which is the outcome the floor exists to prevent. The fixture
+    // earns a refund large enough to cross the floor, so an implementation that
+    // floored first and refunded second reports the refunded figure.
+    assert(
+      settle(
+        transaction().copy(calldataFloor = Some(selfDestructSpend)),
+        Map(recipient -> selfDestructs)
+      ).settlement.gasUsed == selfDestructSpend,
+      "the refund reduced the charge and the floor put it back, in that order"
+    )
+
+  it should "have earned a refund that crosses the floor above, or that case tests nothing" in
+    // The control for the ordering case. Were the refunded figure already at or
+    // above the floor, the assertion above would hold for an implementation
+    // that applied the floor first.
+    assert(
+      selfDestructSpend - selfDestructSpend / 2 < selfDestructSpend,
+      "the refund must move the figure below the floor, or the ordering is unobservable"
+    )
+
+  it should "settle a fork stating no floor differently from one whose floor is the base" in
+    // THE DISTINCTION THE SHAPE RESTS ON, and the one an existing case cannot
+    // make: no floor and a floor of the transaction base are different facts,
+    // so they must produce different figures. A build reporting a zero token
+    // price as a floor of the base rather than as an absence would collapse
+    // these two, and every fork below the document would settle at the right
+    // hand side.
+    assert(
+      settle(transaction(), Map(recipient -> selfDestructs)).settlement.gasUsed !=
+        settle(
+          transaction().copy(calldataFloor = Some(schedule.transactionBase)),
+          Map(recipient -> selfDestructs)
+        ).settlement.gasUsed,
+      "an absent floor and a floor of the base must not settle alike, or the absence is unrepresented"
+    )
+
+  it should "have refunded below the base in the case above, or that case tests nothing" in
+    // The control. Were the refunded figure at or above the transaction base,
+    // the two settlements would agree and the case above would hold for a build
+    // that treated an absent floor as a floor of the base.
+    assert(
+      selfDestructSpend - selfDestructSpend / 2 < schedule.transactionBase,
+      "the refund must carry the charge below the base, or the two readings are indistinguishable here"
     )
 
   it should "have been larger than the cap in the case above, or that case tests nothing" in

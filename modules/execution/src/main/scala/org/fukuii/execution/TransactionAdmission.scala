@@ -27,6 +27,29 @@ enum Refusal:
   /** The limit cannot pay the charge every transaction pays before it runs. */
   case IntrinsicGasTooLow
 
+  /** The limit covers the charge above and not the floor this fork states over
+    * calldata, so the transaction could not pay what it would be billed.
+    *
+    * ==A refusal of its own, because the corpus draws the same line==
+    *
+    * The executable specification does not: it compares the limit against the
+    * greater of the two and raises one error for either
+    * (`ethereum/execution-specs` @ `0cc100eb1`,
+    * `src/ethereum/forks/prague/transactions.py:576`). The published corpus
+    * does, stating `INTRINSIC_GAS_TOO_LOW` and
+    * `INTRINSIC_GAS_BELOW_FLOOR_GAS_COST` in **separate cases** rather than as
+    * alternatives on one -- 76 of each across the floor's own state tests at
+    * `tests-v20.0.1`. `ethereum/go-ethereum` @ `02872e9ef` draws it too, with
+    * `ErrIntrinsicGas` and `ErrFloorDataGas` (`core/error.go:82`).
+    *
+    * **So the two are separable, and this build separates them**: the charge is
+    * checked first and this second, which reproduces the corpus's own split.
+    * Measured against a case stating this name: one zero calldata byte, a limit
+    * of 21,009, a regular charge of 21,004 that passes and a floor of 21,010
+    * that does not.
+    */
+  case IntrinsicGasBelowFloor
+
   /** The transaction deploys, and the code it offers to initialize with is
     * longer than these rules admit.
     *
@@ -621,6 +644,7 @@ object TransactionAdmission:
       maxInitcodeSize: Option[Int]
   ): Admission =
     lazy val intrinsic = IntrinsicGas.of(schedule, offered.data, offered.to.isEmpty, offered.accessList)
+    lazy val calldataFloor = IntrinsicGas.calldataFloorOf(schedule, offered.data)
     lazy val counted = world.nonceOf(offered.sender).toBigInt
     lazy val held = world.balanceOf(offered.sender).toBigInt
     // The CAP, never the effective price. `FeeOffer` states why at length: the
@@ -643,6 +667,13 @@ object TransactionAdmission:
     lazy val blobGasWanted = offered.blobs.map(held => BlobGas.spentOn(held.versionedHashes)).getOrElse(BigInt(0))
     if !admitsFormat(offered.transactionType, rules) then Admission.Refused(Refusal.TypeNotAdmitted)
     else if intrinsic > offered.gasLimit then Admission.Refused(Refusal.IntrinsicGasTooLow)
+    // The floor immediately after the charge, and in that order, because the
+    // corpus names the two separately and a case stating the floor's name has
+    // a limit that clears the charge. The specification compares against the
+    // greater of the two in one expression and raises one error for either, so
+    // ordering them is what reproduces its refusal set with the corpus's own
+    // distinction rather than a coarser one.
+    else if calldataFloor.exists(_ > offered.gasLimit) then Admission.Refused(Refusal.IntrinsicGasBelowFloor)
     // IMMEDIATELY AFTER THE INTRINSIC CHARGE, which is where the specification
     // puts it: `ethereum/execution-specs` @ `20f7f6271a`
     // `forks/shanghai/transactions.py:339-341` raises
@@ -690,7 +721,7 @@ object TransactionAdmission:
     else if world.codeOf(offered.sender).nonEmpty then Admission.Refused(Refusal.SenderNotEoa)
     else
       Admission.Admitted(
-        settling(offered, intrinsic, charge.getOrElse(BigInt(0)), blobGasWanted, blobGas.map(_.charge))
+        settling(offered, intrinsic, calldataFloor, charge.getOrElse(BigInt(0)), blobGasWanted, blobGas.map(_.charge))
       )
 
   /** Whether a transaction of a format that may not deploy has no recipient.
@@ -851,6 +882,7 @@ object TransactionAdmission:
   private def settling(
       offered: OfferedTransaction,
       intrinsicGas: BigInt,
+      calldataFloor: Option[BigInt],
       baseFeePerGas: BigInt,
       blobGasUsed: BigInt,
       blobGasPrice: Option[BigInt]
@@ -866,6 +898,11 @@ object TransactionAdmission:
       data = offered.data,
       accessList = offered.accessList,
       intrinsicGas = intrinsicGas,
+      // Carried rather than recomputed at settlement, which is where the
+      // other intrinsic figure above already goes. The floor is a function of
+      // the calldata and the fork alone, so the value admission settled is the
+      // value settlement needs, and computing it twice would let the two drift.
+      calldataFloor = calldataFloor,
       blobGasUsed = blobGasUsed,
       // Zero where the block sets no charge, which is every fork below the
       // first that prices blob gas. It multiplies a blob count that is itself

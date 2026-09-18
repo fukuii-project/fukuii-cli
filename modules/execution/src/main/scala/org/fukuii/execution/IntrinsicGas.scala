@@ -102,6 +102,60 @@ object IntrinsicGas:
       creating +
       declared
 
+  /** The least gas a transaction may be charged for, where its fork states a
+    * floor over calldata -- and nothing where its fork states none.
+    *
+    * ==What the floor is, and why it is a second price over the same bytes==
+    *
+    * EIP-7623 counts calldata in TOKENS, a zero byte being one and a non-zero
+    * byte four, and states a minimum of `tokens * price + base`. The transaction
+    * is then charged the greater of what it actually spent and this figure, so a
+    * transaction carrying much data and doing little work pays for the data
+    * regardless. The regular charge [[of]] computes is untouched: both are
+    * computed, and the greater binds.
+    *
+    * ==The absence is a `None` because a zero price does NOT collapse to one==
+    *
+    * Every other price in the schedule is spent unconditionally, so holding one
+    * at zero costs nothing and the arithmetic needs no case. This one is
+    * multiplied out and then added to the base, so a zero price still yields
+    * 21,000 -- and a transaction that earns a refund can legitimately settle
+    * below that, since the refund is capped at a fifth of what was spent rather
+    * than at the base. Applying a 21,000 floor to such a transaction would
+    * overcharge it, changing what a block spent at every fork below the
+    * proposal.
+    *
+    * **So the fork states either a floor or no floor, and this returns either a
+    * figure or nothing.** `ethereum/go-ethereum` @ `02872e9ef` reaches the same
+    * shape from the other side: it computes the floor only under
+    * `if rules.IsPrague` (`core/state_transition.go:696-706`) and leaves the
+    * variable at zero otherwise, so its `max(gasUsed, floorDataGas)` is a no-op
+    * below the fork. A zero there is safe because the whole term is zero; a zero
+    * price here is not, because the base survives it.
+    */
+  def calldataFloorOf(schedule: GasSchedule, data: Bytes): Option[BigInt] =
+    if schedule.transactionCalldataTokenFloor.signum == 0 then None
+    else Some(tokensIn(data) * schedule.transactionCalldataTokenFloor + schedule.transactionBase)
+
+  /** Calldata counted in EIP-7623's tokens: one per zero byte, four per
+    * non-zero byte.
+    *
+    * Kept apart from [[of]]'s own traversal rather than folded into it. The two
+    * count the same bytes and spend them differently -- [[of]] at two prices per
+    * byte class, this at one price per token -- and the document introducing the
+    * floor repriced neither of [[of]]'s two figures. Rewriting that charge in
+    * tokens would arrive at the same number by different arithmetic, which is a
+    * change to settled code for no gain.
+    */
+  private def tokensIn(data: Bytes): BigInt =
+    val raw = data.toIArray
+    var zeros = 0
+    var index = 0
+    while index < raw.length do
+      if raw(index) == 0.toByte then zeros += 1
+      index += 1
+    BigInt(zeros) + BigInt(raw.length - zeros) * 4
+
   /** How many whole words `length` bytes occupy, rounding a partial word up.
     *
     * `ceil(len / 32)`, which is what the document's `initcode_cost` counts. The
