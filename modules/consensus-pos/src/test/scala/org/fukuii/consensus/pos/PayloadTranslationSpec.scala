@@ -3,8 +3,9 @@ package org.fukuii.consensus.pos
 import org.scalatest.flatspec.AnyFlatSpec
 
 import org.fukuii.bytes.{Bytes, Hash, UInt256, UInt64}
+import org.fukuii.execution.ExecutionRequests
 import org.fukuii.rlp.{RlpCodec, RlpItem}
-import org.fukuii.types.{Seal, Transaction}
+import org.fukuii.types.{BlockHeader, Seal, Transaction}
 
 /** The two holes this phase exists to fill, and the refusals around them.
   *
@@ -18,6 +19,17 @@ class PayloadTranslationSpec extends AnyFlatSpec:
   private val paris = PublishedPayloads.paris
   private val shanghai = PublishedPayloads.shanghai
   private val cancunish = PosFixtures.withBlobGas
+
+  /** A Cancun-shaped payload with a beacon root and `requests` as the fourth
+    * argument, translated.
+    */
+  private def withRequests(requests: Seq[Bytes]): Either[TranslationRefusal, BlockHeader] =
+    PayloadTranslation.headerOf(
+      NewPayloadRequest(
+        cancunish,
+        Some(BlobAndBeaconArguments(Seq.empty, beaconRoot, Some(ExecutionRequestsArgument(requests))))
+      )
+    )
   private val beaconRoot = PosFixtures.hash(0xbe)
 
   private def requestWithBeaconRoot(payload: ExecutionPayload): NewPayloadRequest =
@@ -151,21 +163,69 @@ class PayloadTranslationSpec extends AnyFlatSpec:
       "a header's tail is positional and has no encoding for the later field without the earlier one"
     )
 
-  it should "refuse a request carrying execution requests" in
+  it should "derive the requests commitment over a list the call carried" in
     assert(
-      PayloadTranslation.headerOf(
-        NewPayloadRequest(
-          cancunish,
-          Some(
-            BlobAndBeaconArguments(
-              Seq.empty,
-              beaconRoot,
-              Some(ExecutionRequestsArgument(Seq(PosFixtures.requestBytes)))
-            )
-          )
+      withRequests(Seq(PosFixtures.requestBytes)).map(_.requestsHash) ==
+        Right(Some(ExecutionRequests.hashOf(Vector(PosFixtures.requestBytes)))),
+      "the header's seventh derived field is the commitment over the list the consensus layer handed in"
+    )
+
+  it should "state a commitment over an empty list, and none where the call carried no list" in
+    // Absent and empty are different header values. A call below the version
+    // that added the argument states none; a call carrying `[]` states the hash
+    // of nothing, and a build collapsing them would encode a different header.
+    assert(
+      withRequests(Seq.empty).map(_.requestsHash) == Right(Some(ExecutionRequests.hashOf(Vector.empty))) &&
+        PayloadTranslation.headerOf(requestWithBeaconRoot(cancunish)).map(_.requestsHash) == Right(None),
+      "an empty list commits, and an absent one does not"
+    )
+
+  it should "refuse an element carrying a type byte and no data" in
+    // The refusal that has to happen BEFORE the hash. go-ethereum's commitment
+    // skips such an element and the specification's hashes it, so a build that
+    // hashed first would answer one of two values and report a block-hash
+    // mismatch rather than invalid parameters.
+    assert(
+      withRequests(Seq(Bytes.fromIArray(IArray(0x01.toByte)))) ==
+        Left(TranslationRefusal.RequestWithoutData(0)),
+      "an element of one byte or shorter is refused, and the position is named"
+    )
+
+  it should "refuse an empty element" in
+    assert(
+      withRequests(Seq(PosFixtures.requestBytes, Bytes.Empty)) ==
+        Left(TranslationRefusal.RequestWithoutData(1)),
+      "nothing at all is shorter than one byte, and is the same refusal"
+    )
+
+  it should "refuse a list whose type bytes descend" in
+    assert(
+      withRequests(
+        Seq(Bytes.fromIArray(IArray[Byte](0x02, 0x2a)), Bytes.fromIArray(IArray[Byte](0x01, 0x2a)))
+      ) == Left(TranslationRefusal.RequestsOutOfOrder(1)),
+      "the list is ordered by type ascending, so the commitment is over a sequence and not a set"
+    )
+
+  it should "refuse a list repeating a type byte" in
+    assert(
+      withRequests(Seq(PosFixtures.requestBytes, PosFixtures.requestBytes)) ==
+        Left(TranslationRefusal.DuplicateRequestType(0x01)),
+      "each type appears at most once, and the repeated one is named rather than its position"
+    )
+
+  it should "accept a list whose type bytes ascend" in
+    // The control for the three refusals above: the same shape, ordered, with
+    // data, is accepted -- so those are refusing the defect rather than refusing
+    // every list.
+    assert(
+      withRequests(
+        Seq(
+          Bytes.fromIArray(IArray[Byte](0x00, 0x2a)),
+          Bytes.fromIArray(IArray[Byte](0x01, 0x2a)),
+          Bytes.fromIArray(IArray[Byte](0x02, 0x2a))
         )
-      ) == Left(TranslationRefusal.ExecutionRequestsNotDerived),
-      "deriving nothing would surface as a block-hash mismatch, which names the wrong defect"
+      ).isRight,
+      "a well-formed list of the three types Prague defines is not refused"
     )
 
   it should "refuse an empty transaction entry" in

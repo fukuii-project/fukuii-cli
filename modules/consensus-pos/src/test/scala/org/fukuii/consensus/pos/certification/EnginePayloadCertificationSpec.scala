@@ -30,7 +30,8 @@ class EnginePayloadCertificationSpec extends AnyFlatSpec:
     * makes its arrival the change in this tier's reach rather than an addition
     * to it.
     */
-  private val Files: Map[String, Int] = Map("for_paris" -> 150, "for_shanghai" -> 182, "for_cancun" -> 2401)
+  private val Files: Map[String, Int] =
+    Map("for_paris" -> 150, "for_shanghai" -> 182, "for_cancun" -> 2401, "for_prague" -> 2574)
 
   /** Payloads in each label, which is NOT the number of fixture cases.
     *
@@ -40,7 +41,7 @@ class EnginePayloadCertificationSpec extends AnyFlatSpec:
     * inside them, and the second triple is what this tier translates.
     */
   private val Payloads: Map[String, Int] =
-    Map("for_paris" -> 4997, "for_shanghai" -> 5269, "for_cancun" -> 14609)
+    Map("for_paris" -> 4997, "for_shanghai" -> 5269, "for_cancun" -> 14609, "for_prague" -> 18957)
 
   /** Payloads the corpus expects to be rejected for something this layer does
     * not reach, and therefore skips.
@@ -50,7 +51,8 @@ class EnginePayloadCertificationSpec extends AnyFlatSpec:
     * saying anything about this layer for these — and the count is the size of
     * the work that would let them be decided rather than skipped.
     */
-  private val Skips: Map[String, Int] = Map("for_paris" -> 288, "for_shanghai" -> 299, "for_cancun" -> 845)
+  private val Skips: Map[String, Int] =
+    Map("for_paris" -> 288, "for_shanghai" -> 299, "for_cancun" -> 845, "for_prague" -> 1652)
 
   /** Payloads the corpus expects to be rejected FOR THEIR BLOCK HASH.
     *
@@ -61,7 +63,7 @@ class EnginePayloadCertificationSpec extends AnyFlatSpec:
     * anything would certify just as green.
     */
   private val HashRefusals: Map[String, Int] =
-    Map("for_paris" -> 0, "for_shanghai" -> 3, "for_cancun" -> 3)
+    Map("for_paris" -> 0, "for_shanghai" -> 3, "for_cancun" -> 3, "for_prague" -> 12)
 
   /** Skipped payloads refused because a transaction entry does not decode.
     *
@@ -79,6 +81,15 @@ class EnginePayloadCertificationSpec extends AnyFlatSpec:
     * a check -- `org.fukuii.types.Transaction.Blob.recipient` is an `Address`
     * and not an `Option[Address]` -- so the decoder refuses the width.
     *
+    * **`for_prague` carries a sixth, and it is the same rule at a new
+    * transaction type.** `TYPE_4_TX_CONTRACT_CREATION` appears once under that
+    * label and nowhere under Cancun: EIP-7702 states *"No blobs, no contract
+    * creation"* (`ethereum/EIPs` @ `d2a64c2d4` `EIPS/eip-7702.md:447`), so a
+    * set-code transaction has no create form and this build encodes that in the
+    * type exactly as it does for a blob transaction. **Measured rather than
+    * assumed**: the sixth is not a request-list refusal, which a sweep for
+    * malformed lists among the skipped payloads returned zero of.
+    *
     * **All five derived a matching header until the versioned-hash comparison
     * gave this tier a reason to decode a transaction at all**, which is the
     * sharper reading of the number: they are not newly malformed, they were
@@ -86,7 +97,7 @@ class EnginePayloadCertificationSpec extends AnyFlatSpec:
     * states why the comparison cannot proceed past one.
     */
   private val UndecodableRefusals: Map[String, Int] =
-    Map("for_paris" -> 0, "for_shanghai" -> 0, "for_cancun" -> 5)
+    Map("for_paris" -> 0, "for_shanghai" -> 0, "for_cancun" -> 5, "for_prague" -> 6)
 
   /** ==Every accessor here is a `def`, and that is not a style choice==
     *
@@ -122,7 +133,16 @@ class EnginePayloadCertificationSpec extends AnyFlatSpec:
   private def paris: CorpusReport = reportFor("for_paris")
   private def shanghai: CorpusReport = reportFor("for_shanghai")
   private def cancun: CorpusReport = reportFor("for_cancun")
-  private def every: Vector[CorpusReport] = Vector(paris, shanghai, cancun)
+  private def prague: CorpusReport = reportFor("for_prague")
+
+  /** Every label, derived from the corpus rather than listed.
+    *
+    * **This was a hardcoded triple, and a fourth label added to the corpus
+    * reached none of the cases below it** -- they passed over three labels while
+    * reporting as though they spanned the set. Deriving it is what makes adding
+    * a label reach the spanning assertions rather than only the per-label ones.
+    */
+  private def every: Vector[CorpusReport] = EnginePayloadCorpus.Labels.map(reportFor)
 
   /** Payloads the corpus expects to be ACCEPTED, which is neither the payload
     * count nor the agreed count.
@@ -132,7 +152,32 @@ class EnginePayloadCertificationSpec extends AnyFlatSpec:
     * three pinned figures rather than as a fourth literal, so a label that
     * changes size cannot leave two of the four disagreeing.
     */
-  private def accepted(label: String): Int = Payloads(label) - Skips(label) - HashRefusals(label)
+  /** Payloads whose expectation is that they are ACCEPTED.
+    *
+    * Every refusal this tier can answer has to come off, not only the block-hash
+    * one -- `for_prague` is the first label carrying a second kind, and leaving
+    * it out would overstate the accepted set by exactly the 20 payloads whose
+    * request list is malformed.
+    */
+  private def accepted(label: String): Int =
+    Payloads(label) - Skips(label) - HashRefusals(label) - RequestRefusals(label)
+
+  /** Payloads the corpus expects to be rejected FOR THEIR REQUEST LIST.
+    *
+    * Twenty, all under `for_prague`, and they are the only published exercise of
+    * the four conditions `engine_newPayloadV4` states over its fourth argument:
+    * an element of one byte or shorter, a list whose types descend, and a list
+    * repeating a type. **With them removed, a translation that validated nothing
+    * and hashed whatever it was handed would certify just as green** -- which is
+    * the same argument [[HashRefusals]] makes for its own six.
+    *
+    * A further 33 payloads under the same label state the same corpus error and
+    * are SKIPPED rather than decided, because their lists are well formed and
+    * only their contents are wrong. That pair of figures is what keeps this one
+    * honest: a build that stopped refusing would move one of them.
+    */
+  private val RequestRefusals: Map[String, Int] =
+    Map("for_paris" -> 0, "for_shanghai" -> 0, "for_cancun" -> 0, "for_prague" -> 20)
 
   private def under(arm: EnginePayloadCorpus.Arm): Map[String, CorpusReport] =
     EnginePayloadCorpus
@@ -252,10 +297,11 @@ class EnginePayloadCertificationSpec extends AnyFlatSpec:
     * separately — losing them would leave the tier green over a translation
     * with no refusal at all.
     */
-  it should "refuse exactly the payloads the corpus expects to fail their block hash" in
+  it should "refuse exactly the payloads the corpus expects to fail their block hash or their request list" in
     assert(
-      HashRefusals.values.sum == 6 && every.forall(_.diverged.isEmpty),
-      "the corpus states six such payloads and they are this tier's only exercise of the refusal path"
+      HashRefusals.values.sum == 18 && RequestRefusals.values.sum == 20 && every.forall(_.diverged.isEmpty),
+      "the corpus states eighteen block-hash refusals and twenty request-list ones, and between them they are " +
+        "this tier's whole exercise of the refusal path"
     )
 
   "the tier as a whole" should "cover every payload under every label" in
@@ -540,4 +586,31 @@ class EnginePayloadCertificationSpec extends AnyFlatSpec:
     assert(
       divergedUnder(EnginePayloadCorpus.Arm.BlobGasZeroed, "for_cancun") == 1349,
       "diverged " + divergedUnder(EnginePayloadCorpus.Arm.BlobGasZeroed, "for_cancun").toString + " rather than 1349"
+    )
+
+  it should "read every file under Prague" in
+    assert(
+      prague.filesRead == Files("for_prague"),
+      "read " + prague.filesRead.toString + " files rather than " + Files("for_prague").toString
+    )
+
+  it should "find every payload under Prague" in
+    assert(
+      prague.casesFound == Payloads("for_prague"),
+      "found " + prague.casesFound.toString + " payloads rather than " + Payloads("for_prague").toString + ": " +
+        prague.describe
+    )
+
+  it should "skip exactly the payloads whose expected defect is beyond this layer, under Prague" in
+    assert(
+      prague.skipped.length == Skips("for_prague"),
+      "skipped " + prague.skipped.length.toString + " rather than " + Skips("for_prague").toString + ": " +
+        prague.describe
+    )
+
+  it should "reproduce every stated block hash under Prague" in
+    assert(
+      coverage("for_prague").undecidedDerivingHeader == Skips("for_prague") - UndecodableRefusals("for_prague"),
+      "derived " + coverage("for_prague").undecidedDerivingHeader.toString + " matching headers across " +
+        Skips("for_prague").toString + " skipped payloads: " + coverage("for_prague").toString
     )

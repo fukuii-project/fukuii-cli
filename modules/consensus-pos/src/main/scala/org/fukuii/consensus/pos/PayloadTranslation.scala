@@ -2,7 +2,7 @@ package org.fukuii.consensus.pos
 
 import org.fukuii.bytes.{Bytes, Hash, UInt256}
 import org.fukuii.evm.BlockContext
-import org.fukuii.execution.Withdrawals
+import org.fukuii.execution.{ExecutionRequests, Withdrawals}
 import org.fukuii.rlp.{Rlp, RlpCodec, RlpError, RlpItem}
 import org.fukuii.trie.Trie
 import org.fukuii.types.{
@@ -11,6 +11,7 @@ import org.fukuii.types.{
   BlobGasTail,
   BlockHeader,
   BlockNonce,
+  RequestsTail,
   Seal,
   Transaction,
   TransactionType,
@@ -77,32 +78,51 @@ enum TranslationRefusal:
     */
   case BeaconRootWithoutBlobGas
 
-  /** The call carries execution requests, whose commitment this build does not
-    * derive.
+  /** A request element carrying a type byte and no data, or nothing at all.
     *
-    * ==Deferred deliberately, and the trigger is a fork rather than a
-    * primitive==
+    * ==Refused rather than skipped, and the ORDER of the two is load-bearing==
     *
-    * The commitment is a SHA-256 fold rather than a Keccak one — `sha256` over
-    * each element, concatenated and hashed again, skipping any element of one
-    * byte or fewer (`ethereum/go-ethereum` @ `02872e9ef`
-    * `core/types/block.go:480-492`) — and this project already has that
-    * primitive, so what is missing is not the ability to compute it.
+    * *"If any element is out of order, has a length of 1-byte or shorter, or
+    * more than one element has the same type byte, or the param is `null`,
+    * client software MUST return `-32602: Invalid params`"*
+    * (`ethereum/execution-apis` @ `6570b5500` `src/engine/prague.md:38`).
     *
-    * What is missing is a reason to trust the result. EIP-7685 activates at an
-    * upgrade no schedule in this build reaches, so no network here can produce
-    * a payload needing it, and the fixture range this module certifies against
-    * carries none. A consensus commitment written now would be uncertified for
-    * as long as that stayed true.
+    * **Validating before hashing is what keeps this build and the field from
+    * disagreeing silently.** The two commitment functions differ on exactly this
+    * input: `ethereum/go-ethereum` @ `02872e9ef` `core/types/block.go:484` skips
+    * an element of one byte or fewer with the comment *"skip items with only
+    * requestType and no data"*, while `ethereum/execution-specs` @ `0cc100eb1`
+    * `forks/prague/requests.py:304-308` hashes every element it is given. So a
+    * list carrying such an element hashes to two different values depending on
+    * which reading you take -- and a build that hashed first would report a
+    * block-hash mismatch where the answer is that the parameters were invalid.
+    * Refusing first makes the divergence unreachable rather than resolved.
     *
-    * **Refusing beats deriving nothing.** A header built without the field
-    * would fail its block-hash check, and the caller would be told the hash
-    * disagreed rather than that a commitment was missing — which is the failure
-    * go-ethereum's own translation comments about the block access list at
-    * `beacon/engine/types.go:276-280`: decode before the hash check, so that a
-    * real defect is not reported as a hash mismatch.
+    * The specification's own callers never produce one either: each request
+    * source appends only where it yielded bytes, which is why
+    * `org.fukuii.execution.ExecutionRequests.hashOf` follows the specification
+    * and skips nothing.
     */
-  case ExecutionRequestsNotDerived
+  case RequestWithoutData(index: Int)
+
+  /** A request element whose type byte is below the one before it.
+    *
+    * The list is ordered by type ascending, so the commitment is over a
+    * sequence rather than a set: a correct list in the wrong order states a
+    * different value. Checking each element against its predecessor enforces
+    * strict ascent over the whole list, so a duplicate that is not adjacent is
+    * reported here rather than as one.
+    */
+  case RequestsOutOfOrder(index: Int)
+
+  /** Two request elements sharing a type byte.
+    *
+    * Named apart from the ordering refusal because the specification enumerates
+    * it apart, and because the published corpus exercises the two separately --
+    * a list repeating one type and a list carrying three types out of order are
+    * different mistakes by a sender.
+    */
+  case DuplicateRequestType(requestType: Int)
 
   /** The versioned hashes the call said the payload's blob transactions carry
     * are not the ones they carry.
@@ -256,10 +276,12 @@ object PayloadTranslation:
     * Three fields are constants the merge fixed: the ommers hash is
     * [[EmptyOmmersHash]], the difficulty is zero, and the nonce is eight zero
     * bytes. Two are commitments derived here — the transactions root and the
-    * withdrawals root. One arrives as a separate argument to the method rather
-    * than inside the payload, the parent beacon block root. The seventh, the
-    * requests hash, is refused: see
-    * [[TranslationRefusal.ExecutionRequestsNotDerived]].
+    * withdrawals root. Two arrive as separate arguments to the
+    * method rather than inside the payload: the parent beacon block root, and
+    * the request list the requests hash is taken over. **That list is validated
+    * before it is hashed** -- see [[TranslationRefusal.RequestWithoutData]] for
+    * why the order of those two is a correctness property rather than a
+    * preference.
     *
     * ==The transactions root needs no transaction decoded==
     *
@@ -289,7 +311,6 @@ object PayloadTranslation:
     for
       _ <- firstEmptyTransaction(payload.transactions)
       _ <- checkedBlobVersionedHashes(request)
-      _ <- if request.executionRequests.isEmpty then Right(()) else Left(TranslationRefusal.ExecutionRequestsNotDerived)
       tail <- tailOf(request)
     yield BlockHeader(
       parentHash = payload.parentHash,
@@ -433,11 +454,49 @@ object PayloadTranslation:
           BaseFeeTail(payload.baseFeePerGas, Some(WithdrawalsTail(Withdrawals.root(withdrawals), blobGas)))
         }
 
+  /** The header's requests link, over a list checked first.
+    *
+    * **Absent where the call carried no list**, which is every version below
+    * `engine_newPayloadV4`; present over an empty list where the call carried
+    * one and the block produced nothing. Those are different header values, and
+    * the distinction is the container's whole point.
+    */
+  private def requestsTailOf(request: NewPayloadRequest): Either[TranslationRefusal, Option[RequestsTail]] =
+    request.executionRequests match
+      case None           => Right(None)
+      case Some(requests) =>
+        wellFormed(requests).map(_ => Some(RequestsTail(ExecutionRequests.hashOf(requests.toVector))))
+
+  /** Each element long enough to carry data, and the type bytes strictly
+    * ascending.
+    *
+    * Carrying the previous type byte rather than sorting a collected sequence,
+    * so the element that broke the order is the one reported -- a refusal
+    * naming no position is one a caller cannot act on.
+    */
+  private def wellFormed(requests: Seq[Bytes]): Either[TranslationRefusal, Unit] =
+    requests.zipWithIndex
+      .foldLeft[Either[TranslationRefusal, Option[Int]]](Right(None)) { (carried, indexed) =>
+        carried.flatMap { previous =>
+          val (element, index) = indexed
+          if element.length <= 1 then Left(TranslationRefusal.RequestWithoutData(index))
+          else
+            val kind = element.toIArray(0) & 0xff
+            previous match
+              case Some(before) if kind == before => Left(TranslationRefusal.DuplicateRequestType(kind))
+              case Some(before) if kind < before  => Left(TranslationRefusal.RequestsOutOfOrder(index))
+              case _                              => Right(Some(kind))
+        }
+      }
+      .map(_ => ())
+
   private def blobGasTailOf(request: NewPayloadRequest): Either[TranslationRefusal, Option[BlobGasTail]] =
     val payload = request.payload
     (payload.blobGasUsed, payload.excessBlobGas) match
       case (Some(used), Some(excess)) =>
-        Right(Some(BlobGasTail(used, excess, request.parentBeaconBlockRoot.map(BeaconRootTail(_)))))
+        requestsTailOf(request).map { requests =>
+          Some(BlobGasTail(used, excess, request.parentBeaconBlockRoot.map(BeaconRootTail(_, requests))))
+        }
       case _ =>
         if request.parentBeaconBlockRoot.isEmpty then Right(None)
         else Left(TranslationRefusal.BeaconRootWithoutBlobGas)

@@ -20,11 +20,10 @@ import org.fukuii.types.{BlockHeader, Bloom, Withdrawal}
   * derived commitments, the seal's two slots, the tail's depth and every field's
   * position to be right together — and nothing about it can be partly true.
   *
-  * ==Why these three labels and no others==
+  * ==Why these four labels and no others==
   *
-  * They are the built range: this project's Ethereum schedule reaches Cancun
-  * and stops, so a later label would be certifying a fork nothing here
-  * activates.
+  * They are the built range: a later label would be certifying a fork nothing
+  * here activates.
   *
   * ==What the third label closes, which the first two structurally could not==
   *
@@ -52,10 +51,35 @@ import org.fukuii.types.{BlockHeader, Bloom, Withdrawal}
   * because the array under test is derived from transactions this project
   * decodes itself and the expectation is not.
   *
+  * ==What the fourth label closes, and why it had to arrive with a reader
+  * change==
+  *
+  * `for_prague` is the first label whose payloads carry a FOURTH argument, the
+  * execution requests list, and the first whose headers commit to it. Adding
+  * the label without reading `params[3]` would have been worse than not adding
+  * it: every payload would translate with no requests link, the derived header
+  * would hash to something else, and 18,957 payloads would report a block-hash
+  * mismatch -- a number large enough to read as a real defect and specific
+  * enough to send someone looking at the tail encoding. So the label and the
+  * fourth argument land together.
+  *
+  * It closes the requests-hash link of the tail, which nothing below it
+  * reaches, and it carries a negative set the other labels have no equivalent
+  * of: **20 payloads whose request list is malformed** -- an element of one
+  * byte or shorter, a list whose types descend, a list repeating a type -- each
+  * stating `INVALID_REQUESTS`. Those exercise the refusals rather than the
+  * derivation, which is the half a corpus of valid payloads cannot reach.
+  *
   * ==What it still CANNOT certify==
   *
-  * Execution requests, so the requests-hash link of the tail and every
-  * fork-gate window above Cancun are untouched here however many cases agree.
+  * A malformed list that is nonetheless WELL-FORMED as a list -- an undefined
+  * type byte, or correct framing over wrong data -- is refused by comparing the
+  * commitment against what execution produced, and this module executes
+  * nothing. The corpus carries those too (a type `0xa9`, a type `0x03`), and
+  * here they translate cleanly and agree on the block hash, because the header
+  * this module builds commits to the list it was handed rather than to one it
+  * derived. **That is the boundary of the layer, and it is why those cases are
+  * not evidence here.**
   *
 
   * It also certifies nothing about EXECUTION. A payload's `stateRoot`,
@@ -66,8 +90,8 @@ import org.fukuii.types.{BlockHeader, Bloom, Withdrawal}
   */
 object EnginePayloadCorpus:
 
-  /** The three labels, named as the release names them. */
-  val Labels: Vector[String] = Vector("for_paris", "for_shanghai", "for_cancun")
+  /** The four labels, named as the release names them. */
+  val Labels: Vector[String] = Vector("for_paris", "for_shanghai", "for_cancun", "for_prague")
 
   private def directory(root: Path, label: String): Path =
     FixtureCorpus.generated(root).resolve("blockchain_tests_engine").resolve(label)
@@ -312,6 +336,67 @@ object EnginePayloadCorpus:
     * verdict stays `Skipped`; what changes is that [[Coverage]] now counts what
     * the translation answered, and the spec pins the split.
     */
+  /** The exception names a case states, as a set.
+    *
+    * ==Bar-separated alternatives, kept verbatim and unmapped==
+    *
+    * The corpus states several acceptable refusals for one case by separating
+    * them with `|`, and the reader's contract is to split, keep the set as
+    * written, and intersect it with the refusals this build can produce -- a
+    * non-empty intersection matching the actual refusal is a pass.
+    *
+    * **A substring test over the whole string is not that contract**, and the
+    * difference is not academic: this read `error.contains("INVALID_BLOCK_HASH")`
+    * until `for_prague` arrived, so the 19 cases stating
+    * `INVALID_REQUESTS|INVALID_BLOCK_HASH` were held to the second alternative
+    * alone, and the ten this build refuses for the first were reported as
+    * divergences against a build that was answering correctly.
+    */
+  private def alternatives(error: String): Vector[String] =
+    error.split('|').map(_.trim).filter(_.nonEmpty).toVector
+
+  private val BlockHashName: String = "BlockException.INVALID_BLOCK_HASH"
+
+  /** The exception names this layer implements a refusal for.
+    *
+    * A name outside this set is a rule this tier does not reach, and its case is
+    * skipped rather than decided -- which is what keeps a case from passing
+    * because some unrelated refusal happened to fire.
+    *
+    * ==One of the two is only PARTLY this layer's, and the split is measured==
+    *
+    * `INVALID_REQUESTS` covers two different defects the corpus does not name
+    * apart. A list that is malformed AS A LIST -- an element of one byte or
+    * shorter, types out of order, a type repeated -- is refused here, because
+    * well-formedness is a property of the argument. A list that is well formed
+    * and states the wrong RECORDS is not: deciding that needs the list this
+    * block's own execution would produce, and this tier executes nothing.
+    *
+    * **So a case expecting `INVALID_REQUESTS` that this build does not refuse is
+    * SKIPPED rather than diverged**, and the guard against that being a
+    * fails-open reading is the spec's exact counts on both sides: the refusals
+    * and the skips are each pinned, so a build that stopped refusing malformed
+    * lists moves one figure and fails rather than quietly reclassifying.
+    * `INVALID_BLOCK_HASH` needs no such carve-out -- a derived header either
+    * hashes to what the payload states or it does not.
+    */
+  private val Answerable: Set[String] =
+    Set(BlockHashName, "BlockException.INVALID_REQUESTS")
+
+  /** Whether `refusal` is the one `name` asks for.
+    *
+    * The three request refusals answer one corpus name between them, because the
+    * corpus states the rule and this build states which clause of it was broken.
+    * That is deliberately one-way: a finer answer satisfies a coarser
+    * expectation, and no expectation is satisfied by a refusal for another rule.
+    */
+  private def answers(name: String, refusal: TranslationRefusal): Boolean = (name, refusal) match
+    case ("BlockException.INVALID_BLOCK_HASH", TranslationRefusal.BlockHashMismatch(_, _)) => true
+    case ("BlockException.INVALID_REQUESTS", TranslationRefusal.RequestWithoutData(_))     => true
+    case ("BlockException.INVALID_REQUESTS", TranslationRefusal.RequestsOutOfOrder(_))     => true
+    case ("BlockException.INVALID_REQUESTS", TranslationRefusal.DuplicateRequestType(_))   => true
+    case _                                                                                 => false
+
   private def outcomeOf(
       entry: LoadedEntry,
       translate: NewPayloadRequest => Either[TranslationRefusal, BlockHeader]
@@ -322,14 +407,23 @@ object EnginePayloadCorpus:
       case Right(request) =>
         val derived = translate(request)
         entry.expected match
-          case Some(error) if error.contains("INVALID_BLOCK_HASH") =>
-            val verdict = derived match
-              case Left(TranslationRefusal.BlockHashMismatch(_, _)) => Verdict.Agreed
-              case Left(other)                                      =>
-                Verdict.Diverged(Vector("expected a block-hash refusal, refused " + other.toString))
+          case Some(error) if alternatives(error).exists(Answerable.contains) =>
+            val wanted = alternatives(error)
+            derived match
+              case Left(refusal) if wanted.exists(answers(_, refusal)) =>
+                CaseOutcome(entry.name, Verdict.Agreed) -> Reach.Decided(request.payload)
+              case Left(other) =>
+                val why = "expected one of " + wanted.mkString(", ") + ", refused " + other.toString
+                CaseOutcome(entry.name, Verdict.Diverged(Vector(why))) -> Reach.Decided(request.payload)
+              case Right(_) if wanted.contains(BlockHashName) =>
+                val why = "expected one of " + wanted.mkString(", ") + ", derived a matching header"
+                CaseOutcome(entry.name, Verdict.Diverged(Vector(why))) -> Reach.Decided(request.payload)
+              // A well-formed list whose CONTENT the corpus says is wrong. This
+              // layer executes nothing, so it has no list of its own to compare
+              // against and cannot decide it -- see [[Answerable]].
               case Right(_) =>
-                Verdict.Diverged(Vector("expected a block-hash refusal, derived a matching header"))
-            CaseOutcome(entry.name, verdict) -> Reach.Decided(request.payload)
+                CaseOutcome(entry.name, Verdict.Skipped(SkipReason.RuleNotBuilt(shortReason(error)))) ->
+                  Reach.Undecided(UndecidedTranslation.DerivedHeader)
           case Some(error) =>
             val shadow: UndecidedTranslation = derived match
               case Right(_) => UndecidedTranslation.DerivedHeader
@@ -392,8 +486,32 @@ object EnginePayloadCorpus:
             }
           parent <- root.as[String].left.map(_ => "bad parentBeaconBlockRoot")
           beacon <- Hash.fromHex(parent).left.map(_ => "bad parentBeaconBlockRoot")
-        yield Some(BlobAndBeaconArguments(decoded, beacon))
+          requests <- requestsArgumentAt(params)
+        yield Some(BlobAndBeaconArguments(decoded, beacon, requests))
       case _ => Left("one of the two arguments engine_newPayloadV3 adds together")
+
+  /** `engine_newPayloadV4`'s fourth argument, where the call carries one.
+    *
+    * ==Every element is decoded, including the ones that are not well formed==
+    *
+    * An element of `"0x"` decodes to no bytes rather than failing, which is
+    * deliberate: the corpus publishes such elements as payloads a client MUST
+    * refuse, so a reader that rejected them here would report a decode failure
+    * and the refusal they exist to exercise would never run.
+    */
+  private def requestsArgumentAt(params: io.circe.ACursor): Either[String, Option[ExecutionRequestsArgument]] =
+    params.downN(3).focus match
+      case None       => Right(None)
+      case Some(list) =>
+        for
+          texts <- list.as[Vector[String]].left.map(_ => "bad executionRequests")
+          decoded <- texts.foldRight[Either[String, Vector[Bytes]]](Right(Vector.empty)) { (text, acc) =>
+            for
+              rest <- acc
+              bytes <- Bytes.fromHex(text).left.map(_ => "bad execution request")
+            yield bytes +: rest
+          }
+        yield Some(ExecutionRequestsArgument(decoded))
 
   private def decodePayload(payload: Json): Either[String, ExecutionPayload] =
     val cursor = payload.hcursor

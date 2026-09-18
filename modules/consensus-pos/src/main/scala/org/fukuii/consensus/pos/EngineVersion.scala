@@ -13,10 +13,25 @@ package org.fukuii.consensus.pos
   * **Two axes are measurable from the published fixtures and the third is
   * not.** `blockchain_tests_engine` at `tests-v20.0.1` publishes
   * `newPayloadVersion` and `forkchoiceUpdatedVersion` per payload and publishes
-  * no `getPayload` version at all — measured over 52,695 entries, where the two
-  * it does publish run (1,1), (2,2), (3,3) and then (4,3) for Prague, Osaka and
-  * every blob-parameter-only label. So a design derived from that corpus alone
-  * would find two axes and ship a third defect it could not see.
+  * no `getPayload` version at all — **67,025 payloads across 7,862 files**, the
+  * two published keys agreeing exactly on that figure and `getPayloadVersion`
+  * returning zero. The pairs are (1,1) at Paris, (2,2) at Shanghai, (3,3) at
+  * Cancun, and **(4,3) at Prague, Osaka and every blob-parameter-only label** —
+  * so a design derived from that corpus alone would find two axes and ship a
+  * third defect it could not see.
+  *
+  * **The zero is a measurement rather than an absence of one**: the same sweep
+  * returns 121,463 for a key that must be there and zero for one that cannot be,
+  * so it discriminates. **This figure read 52,695 until it was re-measured**,
+  * which reproduced nothing — no directory, key or label under that release
+  * gives it — while `.claude/protocols/consensus-engine-api.md` had 67,025 and
+  * was right.
+  *
+  * ==The versions are published as STRINGS, not as numbers==
+  *
+  * `"newPayloadVersion": "4"`, quoted, in all 67,025. A reader expecting a JSON
+  * number finds nothing and reports a corpus that states no version — which is
+  * the shape of a clean zero that means the instrument was wrong.
   *
   * ==Modeling them as three enums rather than one integer is the guard==
   *
@@ -25,13 +40,27 @@ package org.fukuii.consensus.pos
   * [[org.fukuii.chainspec.Activation]] makes for keeping the block and
   * timestamp axes apart rather than collapsing them into one number.
   */
-enum NewPayloadVersion(val window: ForkWindow):
+/** How many arguments each `engine_newPayload` version takes, beside the window
+  * it serves.
+  *
+  * Read off the parameter lists rather than derived from the version number, and
+  * the two do not track each other: `ethereum/execution-apis` @ `6570b5500`
+  * gives V1 and V2 one argument (`paris.md:148`, `shanghai.md:90`), V3 three
+  * (`cancun.md:92`), V4 four (`prague.md:27`) and **V5 four again**
+  * (`amsterdam.md:103`) -- so a version that adds no argument still exists, and
+  * arity is a fact per version rather than a count of upgrades.
+  *
+  * **A call whose arguments do not match is `-32602: Invalid params`**, which
+  * this module answers as a fact rather than as a number: the wire code belongs
+  * to a transport that does not exist here yet.
+  */
+enum NewPayloadVersion(val window: ForkWindow, val arguments: Int):
 
-  case V1 extends NewPayloadVersion(ForkWindow.fromTheBeginning(EngineUpgrade.Shanghai))
-  case V2 extends NewPayloadVersion(ForkWindow.fromTheBeginning(EngineUpgrade.Cancun))
-  case V3 extends NewPayloadVersion(ForkWindow.from(EngineUpgrade.Cancun, EngineUpgrade.Prague))
-  case V4 extends NewPayloadVersion(ForkWindow.from(EngineUpgrade.Prague, EngineUpgrade.Amsterdam))
-  case V5 extends NewPayloadVersion(ForkWindow.fromOnward(EngineUpgrade.Amsterdam))
+  case V1 extends NewPayloadVersion(ForkWindow.fromTheBeginning(EngineUpgrade.Shanghai), 1)
+  case V2 extends NewPayloadVersion(ForkWindow.fromTheBeginning(EngineUpgrade.Cancun), 1)
+  case V3 extends NewPayloadVersion(ForkWindow.from(EngineUpgrade.Cancun, EngineUpgrade.Prague), 3)
+  case V4 extends NewPayloadVersion(ForkWindow.from(EngineUpgrade.Prague, EngineUpgrade.Amsterdam), 4)
+  case V5 extends NewPayloadVersion(ForkWindow.fromOnward(EngineUpgrade.Amsterdam), 4)
 
 enum ForkchoiceUpdatedVersion(val window: ForkWindow):
 

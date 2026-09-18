@@ -139,3 +139,71 @@ class EngineForkGateSpec extends AnyFlatSpec:
         .isLeft,
       "the activation is read out of the schedule rather than copied here, so it cannot drift from it"
     )
+
+  // ── How many arguments a version takes, against what a call carried ────────
+
+  /** A call carrying `n` of the four arguments the newest version takes. */
+  private def carrying(arguments: Int): NewPayloadRequest =
+    val payload = PosFixtures.withBlobGas
+    arguments match
+      case 1 => NewPayloadRequest(payload)
+      case 3 => NewPayloadRequest(payload, Some(BlobAndBeaconArguments(Seq.empty, PosFixtures.hash(0xbe))))
+      case _ =>
+        NewPayloadRequest(
+          payload,
+          Some(
+            BlobAndBeaconArguments(
+              Seq.empty,
+              PosFixtures.hash(0xbe),
+              Some(ExecutionRequestsArgument(Seq(PosFixtures.requestBytes)))
+            )
+          )
+        )
+
+  "a call whose arguments match its version" should "be admitted at each of the three arities" in
+    assert(
+      gate.admitsArguments(NewPayloadVersion.V1, carrying(1)).isRight &&
+        gate.admitsArguments(NewPayloadVersion.V3, carrying(3)).isRight &&
+        gate.admitsArguments(NewPayloadVersion.V4, carrying(4)).isRight,
+      "the payload alone, the pair added with it, and the request list after that"
+    )
+
+  "a call dropping the request list" should "be refused by the version that takes one" in
+    // The gap the window cannot reach. A version invoked outside its range is
+    // already refused by `admits`; this is a call at the RIGHT version carrying
+    // the wrong arguments, which nothing about a timestamp comparison sees.
+    // Left unchecked, the header would commit to no requests and the answer
+    // would come back as a block-hash mismatch, naming a defect that is not
+    // there.
+    assert(
+      gate.admitsArguments(NewPayloadVersion.V4, carrying(3)) ==
+        Left(ForkGateRefusal.WrongArgumentCount(NewPayloadVersion.V4, 4, 3)),
+      "what the version takes and what the call carried are both reported"
+    )
+
+  "a call carrying a request list" should "be refused by the version that takes none" in
+    assert(
+      gate.admitsArguments(NewPayloadVersion.V3, carrying(4)) ==
+        Left(ForkGateRefusal.WrongArgumentCount(NewPayloadVersion.V3, 3, 4)),
+      "the mismatch is refused in both directions, not only the one that loses an argument"
+    )
+
+  "the arity of a version" should "not be derivable from its number" in
+    // Why this is a value per version rather than a count. V5 adds a version
+    // and no argument, so a gate computing arity from the version number would
+    // demand a fifth argument that no method takes.
+    assert(
+      NewPayloadVersion.V5.arguments == NewPayloadVersion.V4.arguments &&
+        NewPayloadVersion.V1.arguments == NewPayloadVersion.V2.arguments,
+      "two pairs of versions share an arity, at opposite ends of the ladder"
+    )
+
+  it should "be independent of whether the window admits the payload" in
+    // The two gates ask different questions of the same call. This one carries
+    // the right arguments for V1 and a timestamp V1 no longer serves, so it
+    // passes here and fails there -- which is what makes both checks necessary.
+    assert(
+      gate.admitsArguments(NewPayloadVersion.V1, carrying(1)).isRight &&
+        EngineForkGate(S.ethereumMainnet).admits(NewPayloadVersion.V1.window, S.at(S.mainnetShanghai)).isLeft,
+      "arity and window are independent facts about one call"
+    )

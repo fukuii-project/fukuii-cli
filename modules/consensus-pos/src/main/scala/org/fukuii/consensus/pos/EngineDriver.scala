@@ -32,6 +32,20 @@ final case class NewPayloadRequest(payload: ExecutionPayload, appended: Option[B
 
   def executionRequests: Option[Seq[Bytes]] = appended.flatMap(_.next).map(_.requests)
 
+  /** How many arguments this call carries.
+    *
+    * The chain is positional, so the count is a reading of how far it reaches
+    * rather than a field: the payload alone is one, the two EIP-4844 and
+    * EIP-4788 added together take it to three, and the request list to four.
+    * **There is no shape with two**, which is why that number never appears --
+    * the middle pair arrives as one link for the reason
+    * [[BlobAndBeaconArguments]] states.
+    */
+  def arguments: Int =
+    appended match
+      case None       => 1
+      case Some(args) => if args.next.isEmpty then 3 else 4
+
 /** The two arguments EIP-4844 and EIP-4788 added together at
   * `engine_newPayloadV3`.
   *

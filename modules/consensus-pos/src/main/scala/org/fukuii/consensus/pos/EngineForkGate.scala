@@ -78,6 +78,32 @@ enum ForkGateRefusal:
     */
   case StructureNotModeled(beyond: EngineUpgrade, timestamp: UInt64)
 
+  /** The call carries a different number of arguments than its own version
+    * takes.
+    *
+    * ==Answered as a fact, because the number belongs to a transport that does
+    * not exist here==
+    *
+    * The specification's remedy is `-32602: Invalid params`
+    * (`ethereum/execution-apis` @ `6570b5500` `src/engine/prague.md:38`). That
+    * code is the remote-procedure-call surface's to attach, and this build has
+    * no such surface yet -- so what is modeled here is the distinguishable
+    * reason, which is the same split every other case in this enum takes.
+    *
+    * ==What this catches that the window does not==
+    *
+    * [[admits]] already refuses a version invoked outside the range it serves,
+    * so a `V3` call for a payload past Prague is caught there and needs nothing
+    * here. **The gap is a call at the RIGHT version carrying the wrong
+    * arguments** -- a `V4` invocation, correct for its timestamp and admitted by
+    * its window, that supplies three arguments instead of four. Nothing about
+    * the window sees that: it compares a timestamp against a range and never
+    * looks at the call. Left unchecked, the missing list would derive a header
+    * committing to nothing and the answer would come back as a block-hash
+    * mismatch, naming a defect that is not there.
+    */
+  case WrongArgumentCount(version: NewPayloadVersion, takes: Int, carried: Int)
+
 /** Whether an engine method version may serve a payload of a given timestamp,
   * answered against one network's schedule.
   *
@@ -188,6 +214,16 @@ final class EngineForkGate(val schedule: UpgradeSchedule):
     * and a different fact — the version was right and the value was not.
     * Attaching either number is the transport's.
     */
+  /** Whether `request` carries the arguments `version` takes.
+    *
+    * Independent of [[admits]], which asks whether the version may serve the
+    * payload's timestamp at all. A call can pass one and fail the other in
+    * either direction, so both are asked.
+    */
+  def admitsArguments(version: NewPayloadVersion, request: NewPayloadRequest): Either[ForkGateRefusal, Unit] =
+    if request.arguments == version.arguments then Right(())
+    else Left(ForkGateRefusal.WrongArgumentCount(version, version.arguments, request.arguments))
+
   def requiredPayloadStructure(timestamp: UInt64): Either[ForkGateRefusal, Int] =
     structureAt(EngineForkGate.PayloadStructures, timestamp)
 
