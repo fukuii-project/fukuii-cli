@@ -428,4 +428,4 @@ object StateFixtureRunner:
 
   /** Which of the refusals a fixture names this build can actually produce. */
   private def accepted(expectation: ExpectedRejection): Set[Refusal] =
-    expectation.stated.flatMap(TransactionRefusalVocabulary.byName.get)
+    expectation.stated.flatMap(TransactionRefusalVocabulary.byName.getOrElse(_, Set.empty))

@@ -9,7 +9,17 @@ import org.fukuii.evm.EvmFixtures
 import org.fukuii.evm.fixtures.ExpectedRejection
 import org.fukuii.execution.{BlockRejection, Refusal}
 import org.fukuii.rlp.{Rlp, RlpCodec, RlpError, RlpItem}
-import org.fukuii.types.{AccessTuple, BaseFeeTail, Block, BlockHeader, BlockNonce, Bloom, Seal, Transaction}
+import org.fukuii.types.{
+  AccessTuple,
+  BaseFeeTail,
+  Block,
+  BlockHeader,
+  BlockNonce,
+  Bloom,
+  Seal,
+  Transaction,
+  TransactionType
+}
 
 /** Whether a refusal this build produced is one a published name states, in
   * the names of the tool that filled its corpus, as tables of named cases with
@@ -717,7 +727,15 @@ class BlockRefusalVocabularyPropSpec extends AnyPropSpec with TableDrivenPropert
 
   private val NotRlp: DecodeFailure = DecodeFailure.Block(RlpError.Truncated(2, 1))
 
-  private val StoppedAtBlobRecipient: DecodeFailure = DecodeFailure.BlobRecipientEmpty(0)
+  private val StoppedAtBlobRecipient: DecodeFailure = DecodeFailure.RecipientEmpty(0, TransactionType.Blob)
+
+  /** The same stop in the other format that may not deploy, which exists so that
+    * each name's accepting row has a row refusing the OTHER format's stop. One
+    * reader answers both formats, so a reading that ignored the format would
+    * satisfy either name with either stop and no row above would notice.
+    */
+  private val StoppedAtSetCodeRecipient: DecodeFailure =
+    DecodeFailure.RecipientEmpty(0, TransactionType.SetCode)
 
   /** An empty field where a twenty-byte address is required, which is the error a
     * blob transaction's empty recipient reports and so does any other empty
@@ -726,6 +744,8 @@ class BlockRefusalVocabularyPropSpec extends AnyPropSpec with TableDrivenPropert
   private val EmptyAddress: RlpError = RlpError.WrongWidth(20, 0)
 
   private val ContractCreationName: Set[String] = Set("TransactionException.TYPE_3_TX_CONTRACT_CREATION")
+
+  private val SetCodeCreationName: Set[String] = Set("TransactionException.TYPE_4_TX_CONTRACT_CREATION")
 
   private val Undecodable = Table(
     ("case", "tool", "stated", "failure", "satisfied"),
@@ -840,6 +860,41 @@ class BlockRefusalVocabularyPropSpec extends AnyPropSpec with TableDrivenPropert
       Ids,
       ContractCreationName,
       DecodeFailure.Header(EmptyAddress),
+      false
+    ),
+    (
+      "a block stopped at a set-code transaction's empty recipient, for its own contract-creation name",
+      Ids,
+      SetCodeCreationName,
+      StoppedAtSetCodeRecipient,
+      true
+    ),
+    (
+      "the same stop, for the structures name, which holds every typed failure",
+      Ids,
+      Set("BlockException.RLP_STRUCTURES_ENCODING"),
+      StoppedAtSetCodeRecipient,
+      true
+    ),
+    (
+      "the same stop, for the BLOB format's contract-creation name",
+      Ids,
+      ContractCreationName,
+      StoppedAtSetCodeRecipient,
+      false
+    ),
+    (
+      "a blob transaction's stop, for the SET-CODE format's contract-creation name",
+      Ids,
+      SetCodeCreationName,
+      StoppedAtBlobRecipient,
+      false
+    ),
+    (
+      "the set-code stop, for its own contract-creation name, in retesteth's corpus",
+      Retesteth,
+      SetCodeCreationName,
+      StoppedAtSetCodeRecipient,
       false
     )
   )
@@ -1049,7 +1104,7 @@ class BlockRefusalVocabularyPropSpec extends AnyPropSpec with TableDrivenPropert
     (
       "the same transaction, second after one that decodes",
       carrying(FormHeader, RlpCodec[Transaction].encode(CarriedLegacy), recipientAs(CarriedBlob, EmptyString)),
-      Option(DecodeFailure.BlobRecipientEmpty(1))
+      Option(DecodeFailure.RecipientEmpty(1, TransactionType.Blob))
     ),
     (
       "the same block with the recipient restored, which does not stop",
@@ -1072,9 +1127,9 @@ class BlockRefusalVocabularyPropSpec extends AnyPropSpec with TableDrivenPropert
       Option(DecodeFailure.Block(EmptyAddress))
     ),
     (
-      "a set-code transaction with an empty recipient",
+      "a set-code transaction with an empty recipient, which stops in its own format",
       carrying(FormHeader, recipientAs(CarriedSetCode, EmptyString)),
-      Option(DecodeFailure.Block(EmptyAddress))
+      Option(DecodeFailure.RecipientEmpty(0, TransactionType.SetCode))
     ),
     (
       "a blob transaction with an empty recipient, behind a nonce written with a leading zero",

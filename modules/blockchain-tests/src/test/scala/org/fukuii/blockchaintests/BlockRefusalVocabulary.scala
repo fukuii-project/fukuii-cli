@@ -4,7 +4,7 @@ import org.fukuii.bytes.{Address, UInt256}
 import org.fukuii.chainspec.certification.TransactionRefusalVocabulary
 import org.fukuii.consensus.{BlockFault, HeaderFault}
 import org.fukuii.evm.fixtures.ExpectedRejection
-import org.fukuii.execution.{BlockRejection, SystemCallFault}
+import org.fukuii.execution.{BlockRejection, Refusal, SystemCallFault}
 import org.fukuii.rlp.{Rlp, RlpCodec, RlpError, RlpItem}
 import org.fukuii.types.{BlockHeader, BlockNonce, Seal, Transaction, TransactionType}
 
@@ -14,16 +14,27 @@ enum DecodeFailure:
   /** Its header does not decode, read on its own. */
   case Header(error: RlpError)
 
-  /** Its header decodes, and the first transaction its body does not decode is a
-    * blob transaction whose recipient is empty, where decoding stopped.
+  /** Its header decodes, and the first transaction its body does not decode is
+    * one of a format that may not deploy, carrying the empty recipient that
+    * makes it one, where decoding stopped.
+    *
+    * ==The format is carried because the corpus names the rule once per format==
+    *
+    * One rule -- this format states no recipient and must -- is stated by the
+    * corpus under a name per transaction type rather than under a name of its
+    * own. So the position alone cannot say which name a case may state, and a
+    * failure that answered only *an empty recipient stopped this block* would
+    * let a set-code case be satisfied by a blob transaction's refusal.
     *
     * @param transaction
     *   that transaction's position in the body, counting from zero.
+    * @param format
+    *   the type that transaction declared.
     */
-  case BlobRecipientEmpty(transaction: Int)
+  case RecipientEmpty(transaction: Int, format: TransactionType)
 
   /** Its header decodes, or its bytes are no sequence to take one from, and the
-    * block does not, stopping anywhere but where [[BlobRecipientEmpty]] stops.
+    * block does not, stopping anywhere but where [[RecipientEmpty]] stops.
     */
   case Block(error: RlpError)
 
@@ -172,7 +183,14 @@ object BlockRefusalVocabulary:
     * **Neither legacy tool writes a decode name**, so a block its corpus refuses
     * that this build cannot decode satisfies nothing there.
     *
-    * ==One transaction's name is a decode rule too, for one shape alone==
+    * ==Two transaction names are decode rules too, for one shape each==
+    *
+    * Two formats may not deploy, and the corpus states that under a name apiece
+    * rather than one name for the rule, so each is satisfied by its own format
+    * and by no other. [[MayNotDeployNames]] carries the pair and the second's
+    * sourcing; what follows is why a name stated of a transaction is answered
+    * here, among the decode rules, rather than where the other transaction names
+    * are answered.
     *
     * `TransactionException.TYPE_3_TX_CONTRACT_CREATION` is defined as
     * *"Transaction is a type 3 transaction and has an empty `to`."*
@@ -194,10 +212,14 @@ object BlockRefusalVocabulary:
     * read the empty field as no recipient and refuse at validation, and the
     * mappers give the name those messages (`besu.py:335-338`,
     * `nethermind.py:349-351`). So it is satisfied where a block stops decoding at
-    * exactly that transaction, [[DecodeFailure.BlobRecipientEmpty]], and at no
-    * other decode failure: a recipient of another width, an empty address
-    * elsewhere, another format's recipient or a header that does not decode is
-    * not this name's shape.
+    * exactly that transaction, [[DecodeFailure.RecipientEmpty]] carrying that
+    * transaction's own format, and at no other decode failure: a recipient of
+    * another width, an empty address elsewhere, the OTHER format's recipient or
+    * a header that does not decode is not this name's shape.
+    *
+    * **The set-code format reaches this the same way and for the same reason**,
+    * its recipient being typed an address at the same position, so one reader
+    * answers both and the format it found is what picks the name.
     */
   def satisfiedByUndecodable(expected: ExpectedRejection, failure: DecodeFailure, filledBy: FillingTool): Boolean =
     filledBy match
@@ -206,13 +228,31 @@ object BlockRefusalVocabulary:
         failure match
           case DecodeFailure.Header(error) =>
             typed(error) && expected.stated.exists(name => decodeRules.contains(name) || name == IncorrectBlockFormat)
-          case DecodeFailure.BlobRecipientEmpty(_) =>
-            expected.stated.exists(name => decodeRules.contains(name) || name == BlobContractCreation)
+          case DecodeFailure.RecipientEmpty(_, format) =>
+            expected.stated.exists(name => decodeRules.contains(name) || MayNotDeployNames.get(format).contains(name))
           case DecodeFailure.Block(error) => typed(error) && expected.stated.exists(decodeRules.contains)
 
   private val IncorrectBlockFormat: String = "BlockException.INCORRECT_BLOCK_FORMAT"
 
-  private val BlobContractCreation: String = "TransactionException.TYPE_3_TX_CONTRACT_CREATION"
+  /** The name the corpus states for each format that may not deploy, which is
+    * one name per format rather than one for the shared rule.
+    *
+    * `TransactionException.TYPE_4_TX_CONTRACT_CREATION` is defined as
+    * *"Transaction is a type 4 transaction and has an empty `to`."*
+    * (`packages/testing/src/execution_testing/exceptions/exceptions/transaction.py:188-189`),
+    * the same sentence as the blob name with the type changed, and EIP-7702
+    * states the rule as a consequence rather than a clause of its own: its
+    * payload's `destination` follows EIP-4844's semantics, *"Note, this implies
+    * a null destination is not valid."* (`ethereum/EIPs` @ `d2a64c2d4`,
+    * `EIPS/eip-7702.md:72-74`, Final).
+    *
+    * **Both formats put that field at the same position**, so one reader serves
+    * both and [[RecipientField]] is not per format.
+    */
+  private val MayNotDeployNames: Map[TransactionType, String] = Map(
+    TransactionType.Blob -> "TransactionException.TYPE_3_TX_CONTRACT_CREATION",
+    TransactionType.SetCode -> "TransactionException.TYPE_4_TX_CONTRACT_CREATION"
+  )
 
   /** The names `expected` states that no half of `filledBy`'s vocabulary holds.
     *
@@ -227,9 +267,10 @@ object BlockRefusalVocabulary:
     )
 
   /** Where `rlp`, which does not decode as a block, stopped: at its header,
-    * where its bytes are a sequence whose first item does not decode as one; at a
-    * blob transaction's empty recipient, where [[stoppedAtBlobRecipient]] finds
-    * the block stopped there; and at the block otherwise.
+    * where its bytes are a sequence whose first item does not decode as one; at
+    * the empty recipient of a format that may not deploy, where
+    * [[stoppedAtEmptyRecipient]] finds the block stopped there; and at the block
+    * otherwise.
     */
   def failureOf(rlp: IArray[Byte], error: RlpError): DecodeFailure =
     Rlp.decode(rlp) match
@@ -238,12 +279,13 @@ object BlockRefusalVocabulary:
           .decode(items(0))
           .fold(
             DecodeFailure.Header(_),
-            _ => stoppedAtBlobRecipient(items, error).getOrElse(DecodeFailure.Block(error))
+            _ => stoppedAtEmptyRecipient(items, error).getOrElse(DecodeFailure.Block(error))
           )
       case _ => DecodeFailure.Block(error)
 
-  /** The position of the body's first transaction that does not decode, where it
-    * is a blob transaction whose recipient is empty and the block stopped there.
+  /** The position and format of the body's first transaction that does not
+    * decode, where it is one of a format that may not deploy, its recipient is
+    * empty, and the block stopped there.
     *
     * **Where the block stopped is read off its error as well as the shape.** A
     * body carrying such a transaction can stop decoding earlier -- at a field
@@ -251,52 +293,69 @@ object BlockRefusalVocabulary:
     * address anywhere else reports the same width. The block's header has
     * decoded, and its body decodes its transactions before anything after them,
     * so the block's error is the first undecodable transaction's own; and no
-    * field before a blob transaction's recipient is an address, so that error
-    * is the empty recipient's width only where decoding reached the recipient.
+    * field before either format's recipient is an address, so that error is the
+    * empty recipient's width only where decoding reached the recipient.
     */
-  private def stoppedAtBlobRecipient(items: Vector[RlpItem], error: RlpError): Option[DecodeFailure] =
+  private def stoppedAtEmptyRecipient(items: Vector[RlpItem], error: RlpError): Option[DecodeFailure] =
     items.lift(1) match
       case Some(RlpItem.Sequence(transactions)) =>
         val first = transactions.indexWhere(RlpCodec[Transaction].decode(_).isLeft)
-        Option.when(
-          first >= 0 && error == EmptyRecipient && blobWithEmptyRecipient(transactions(first))
-        )(DecodeFailure.BlobRecipientEmpty(first))
+        Option
+          .when(first >= 0 && error == EmptyRecipient)(transactions(first))
+          .flatMap(emptyRecipientFormat)
+          .map(DecodeFailure.RecipientEmpty(first, _))
       case _ => None
 
   /** The error an address codec reports for an empty field. */
   private val EmptyRecipient: RlpError = RlpError.WrongWidth(Address.Width, 0)
 
-  /** The recipient's position in a blob transaction's payload: `to` in EIP-4844's
+  /** The recipient's position in either format's payload, which is the same
+    * index in both: `to` in EIP-4844's
     * `[chain_id, nonce, max_priority_fee_per_gas, max_fee_per_gas, gas_limit, to, ...]`
-    * (`ethereum/EIPs` @ `d2a64c2d4`, `EIPS/eip-4844.md:102`).
+    * (`ethereum/EIPs` @ `d2a64c2d4`, `EIPS/eip-4844.md:102`), and `destination`
+    * in EIP-7702's
+    * `[chain_id, nonce, max_priority_fee_per_gas, max_fee_per_gas, gas_limit, destination, ...]`
+    * (`EIPS/eip-7702.md:64-66`), which that document says follows the first's
+    * semantics rather than restating them.
     */
-  private val BlobRecipientField: Int = 5
+  private val RecipientField: Int = 5
 
-  /** Whether `item` is a blob transaction, as a body element carries one, whose
-    * recipient field is the empty string.
+  /** Which format `item` declares, where it is one that may not deploy, as a
+    * body element carries it, and its recipient field is the empty string.
     */
-  private def blobWithEmptyRecipient(item: RlpItem): Boolean = item match
-    case RlpItem.Bytes(payload) if payload.nonEmpty && (payload(0) & 0xff) == TransactionType.Blob.number =>
-      Rlp.decode(payload.drop(1)) match
-        case Right(RlpItem.Sequence(fields)) =>
-          fields.lift(BlobRecipientField).exists {
-            case RlpItem.Bytes(recipient) => recipient.isEmpty
-            case RlpItem.Sequence(_)      => false
-          }
-        case _ => false
-    case _ => false
+  private def emptyRecipientFormat(item: RlpItem): Option[TransactionType] = item match
+    case RlpItem.Bytes(payload) if payload.nonEmpty =>
+      TransactionType
+        .fromNumber(payload(0) & 0xff)
+        .filter(MayNotDeployNames.contains)
+        .filter { _ =>
+          Rlp.decode(payload.drop(1)) match
+            case Right(RlpItem.Sequence(fields)) =>
+              fields.lift(RecipientField).exists {
+                case RlpItem.Bytes(recipient) => recipient.isEmpty
+                case RlpItem.Sequence(_)      => false
+              }
+            case _ => false
+        }
+    case _ => None
 
   private def refusesUnder(name: String, fault: BlockFault, refused: BlockHeader, filledBy: FillingTool): Boolean =
     rulesOf(filledBy).get(name).exists(rule => rule(fault, refused)) ||
-      transactionNamesOf(filledBy).get(name).exists { reason =>
+      transactionNamesOf(filledBy).get(name).exists { reasons =>
         fault match
           // A transaction name is satisfied only by a REFUSED TRANSACTION. A
           // block refused for a failed system call carries no transaction
           // reason, so it must not be matched by one -- the corpus names those
           // separately, and folding them would let a system-call failure satisfy
           // a case stating a transaction rule.
-          case BlockFault.ExecutionRefused(BlockRejection.RefusedTransaction(_, refusedBy, _)) => refusedBy == reason
-          case _                                                                               => false
+          //
+          // **A name maps to a SET because one corpus name can cover more than
+          // one refusal this build distinguishes**, which the vocabulary's own
+          // entry for the intrinsic charge explains. Membership rather than
+          // equality is the whole of what that costs here.
+          case BlockFault.ExecutionRefused(BlockRejection.RefusedTransaction(_, refusedBy, _)) =>
+            reasons.contains(refusedBy)
+          case _ => false
       }
 
   private def rulesOf(filledBy: FillingTool): Map[String, Rule] = filledBy match
@@ -308,7 +367,7 @@ object BlockRefusalVocabulary:
     case FillingTool.ExecutionSpecs                  => decodeRules
     case FillingTool.Retesteth | FillingTool.Testeth => Set.empty
 
-  private def transactionNamesOf(filledBy: FillingTool) = filledBy match
+  private def transactionNamesOf(filledBy: FillingTool): Map[String, Set[Refusal]] = filledBy match
     case FillingTool.ExecutionSpecs                  => TransactionRefusalVocabulary.byName
     case FillingTool.Retesteth | FillingTool.Testeth => Map.empty
 
