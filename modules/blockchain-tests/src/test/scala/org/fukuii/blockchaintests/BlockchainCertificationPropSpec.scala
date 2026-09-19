@@ -117,6 +117,11 @@ class BlockchainCertificationPropSpec extends AnyPropSpec with TableDrivenProper
       // its six refusals are a system contract undeployed at the transition.
       "for_cancuntopragueattime15k" ->
         LabelCensus(10, 98, 1135, 6, 1135, 98, 6, Vector.empty, Map.empty, Map.empty),
+      // The fork's own label, and the largest generated one this tier reads.
+      // Every block its cases state valid is accepted and every refusal they
+      // state is agreed, so nothing here is pinned as a known divergence.
+      "for_prague" ->
+        LabelCensus(438, 9533, 10368, 1530, 10368, 9533, 1530, Vector.empty, Map.empty, Map.empty),
       "bcInvalidHeaderTest at Paris" ->
         LabelCensus(22, 22, 9, 23, 9, 22, 23, Vector.empty, Map.empty, Map.empty),
       "bcInvalidHeaderTest at Shanghai" ->
@@ -184,6 +189,10 @@ class BlockchainCertificationPropSpec extends AnyPropSpec with TableDrivenProper
       "for_shanghai/ported_static" -> stackOverflowGroup,
       "for_cancun/ported_static" ->
         LabelCensus(2135, 7040, 6905, 135, 6905, 7040, 135, Vector.empty, Map.empty, Map.empty),
+      // The same re-pinned suite filled at the fork after it, which is why the
+      // two rows carry identical counts.
+      "for_prague/ported_static" ->
+        LabelCensus(2135, 7040, 6905, 135, 6905, 7040, 135, Vector.empty, Map.empty, Map.empty),
       "for_frontier/ported_static" -> stackOverflowGroup,
       "for_homestead/ported_static" -> stackOverflowGroup,
       "for_tangerinewhistle/ported_static" -> stackOverflowGroup,
@@ -205,12 +214,12 @@ class BlockchainCertificationPropSpec extends AnyPropSpec with TableDrivenProper
     )
   }
 
-  property("the census covers twenty-eight labels, counted") {
+  property("the census covers twenty-nine labels, counted") {
     // Dropping a label from the census and from what the tier assembles leaves
     // the two agreeing with each other and every other property passing, so the
     // number of labels is pinned on its own. Raising it is adding a label;
     // lowering it drops certified cases, and that is a decision.
-    assert(census.size == 28, "the census covers " + census.size.toString + " labels rather than twenty-eight")
+    assert(census.size == 29, "the census covers " + census.size.toString + " labels rather than twenty-nine")
   }
 
   property("every label reads the files the census records") {
@@ -306,7 +315,7 @@ class BlockchainCertificationPropSpec extends AnyPropSpec with TableDrivenProper
     }
   }
 
-  property("every generated label's ported_static group holds the census its row records, all twelve", Heavy) {
+  property("every generated label's ported_static group holds the census its row records, all thirteen", Heavy) {
     // The assembled groups and the census are compared inside every row, in
     // order and counted, because a group dropped from both would leave every
     // remaining row agreeing.
@@ -321,7 +330,7 @@ class BlockchainCertificationPropSpec extends AnyPropSpec with TableDrivenProper
     forEvery(portedStaticCensused) { (group: String, expected: LabelCensus) =>
       val report = found(reports, group)
       assert(
-        assembledGroups == censusedGroups && censusedGroups.length == 12 && LabelCensus.of(report) == expected,
+        assembledGroups == censusedGroups && censusedGroups.length == 13 && LabelCensus.of(report) == expected,
         "assembled " + assembledGroups.mkString(", ") + " against a census of " + censusedGroups.mkString(", ") +
           "; " + report.describe
       )

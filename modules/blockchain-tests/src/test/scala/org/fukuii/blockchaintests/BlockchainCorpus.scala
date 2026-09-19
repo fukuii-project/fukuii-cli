@@ -219,6 +219,7 @@ object BlockchainCorpus:
       generated("for_shanghaitocancunattime15k"),
       generated("for_cancun", excluding = Set(PortedStatic)),
       generated("for_cancuntopragueattime15k"),
+      generated("for_prague", excluding = Set(PortedStatic)),
       invalidHeaders("Paris"),
       invalidHeaders("Shanghai"),
       invalidHeaders("Cancun"),
