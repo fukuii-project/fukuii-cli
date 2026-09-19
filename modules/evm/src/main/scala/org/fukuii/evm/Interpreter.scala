@@ -1161,7 +1161,26 @@ object Interpreter:
         // `dbfa6bee8`, `EIPS/eip-2929.md`, Final). It is part of `ownPrice`,
         // which `spare` subtracts before the grant is worked out, so a cold call
         // forwards less than a warm one and both differ from the settled scheme.
-        ownPrice = costOfReaching(frame, environment.rules, schedule.callBase, codeAddress) +
+        // FOLLOWED HERE RATHER THAN AFTER THE GRANT, and the position is the
+        // whole of what this term gets right. The specification adds the
+        // delegation's own access cost into the `extra_gas` that
+        // `calculate_message_call_gas` subtracts BEFORE working out the
+        // 63/64ths (`ethereum/execution-specs` @ `0cc100eb1`
+        // `forks/prague/vm/instructions/system.py:386-403`), which is the same
+        // place the settled reach cost already sits one line below.
+        //
+        // **Charging it after the grant forwards too much, by the charge less
+        // its own sixty-fourth**: 2,600 - 40 = 2,560 for a cold target and
+        // 100 - 1 = 99 for a warm one. Those were the two figures 73 published
+        // delegated-call cases disagreed by, every one of them this build
+        // charging more than the network.
+        designated =
+          if environment.rules.followsDelegations then Delegation.targetOf(world.codeOf(codeAddress)) else None
+        followCharge = designated.fold(BigInt(0)) { target =>
+          if frame.accessedAddresses.contains(target) then schedule.warmAccess else schedule.coldAccountAccess
+        }
+        ownPrice = followCharge +
+          costOfReaching(frame, environment.rules, schedule.callBase, codeAddress) +
           (if forbidsChangingState then BigInt(0)
            else newAccountSurcharge(environment.rules, world, runsAs, sends, schedule.newAccount)) +
           (if sends then schedule.callValue else BigInt(0))
@@ -1180,11 +1199,11 @@ object Interpreter:
       yield
         val forwarded = granted + (if sends then schedule.callStipend else BigInt(0))
         val input = regionOf(frame, inputOffset, inputSize)
-        (codeAddress, runsAs, value, forwarded, input, outputOffset, outputSize)
+        (codeAddress, runsAs, value, forwarded, input, outputOffset, outputSize, designated)
 
     taken match
       case Left(halt) => Left(Fault.Exceptional(halt))
-      case Right((codeAddress, runsAs, value, forwarded, input, outputOffset, outputSize)) =>
+      case Right((codeAddress, runsAs, value, forwarded, input, outputOffset, outputSize, designated)) =>
         // Cleared here so that a refusal below hands the caller an empty buffer
         // rather than whatever the invocation before this one left in it. The
         // specification clears it in the same place -- ahead of the depth check
@@ -1209,13 +1228,12 @@ object Interpreter:
           // charge is taken from the caller's own gas before the invocation, so
           // a build adding the target to the set without charging for it
           // undercharges every delegated call.
-          val designated =
-            if environment.rules.followsDelegations then Delegation.targetOf(world.codeOf(codeAddress)) else None
           val runsCode = designated.getOrElse(codeAddress)
-          val followCharge = designated.fold(BigInt(0)) { target =>
-            if frame.accessedAddresses.contains(target) then schedule.warmAccess else schedule.coldAccountAccess
-          }
-          frame.gasLeft -= followCharge
+          // The target joins the CALLER's reached set as well, which is what the
+          // specification's `access_delegation` does -- it adds to the running
+          // frame's own `accessed_addresses` before the call is built, so the
+          // caller still sees the target warm once the call returns.
+          designated.foreach(target => frame.accessedAddresses = frame.accessedAddresses + target)
           val nested = new Frame(
             Message(
               caller = invoker,
