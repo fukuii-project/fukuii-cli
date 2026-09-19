@@ -4,7 +4,7 @@ import org.fukuii.bytes.{Address, UInt256}
 import org.fukuii.chainspec.certification.TransactionRefusalVocabulary
 import org.fukuii.consensus.{BlockFault, HeaderFault}
 import org.fukuii.evm.fixtures.ExpectedRejection
-import org.fukuii.execution.BlockRejection
+import org.fukuii.execution.{BlockRejection, SystemCallFault}
 import org.fukuii.rlp.{Rlp, RlpCodec, RlpError, RlpItem}
 import org.fukuii.types.{BlockHeader, BlockNonce, Seal, Transaction, TransactionType}
 
@@ -295,8 +295,8 @@ object BlockRefusalVocabulary:
           // reason, so it must not be matched by one -- the corpus names those
           // separately, and folding them would let a system-call failure satisfy
           // a case stating a transaction rule.
-          case BlockFault.TransactionRefused(BlockRejection.RefusedTransaction(_, refusedBy, _)) => refusedBy == reason
-          case _                                                                                 => false
+          case BlockFault.ExecutionRefused(BlockRejection.RefusedTransaction(_, refusedBy, _)) => refusedBy == reason
+          case _                                                                               => false
       }
 
   private def rulesOf(filledBy: FillingTool): Map[String, Rule] = filledBy match
@@ -433,6 +433,38 @@ object BlockRefusalVocabulary:
       "BlockException.BLOB_GAS_USED_ABOVE_LIMIT" -> header { case HeaderFault.BlobGasUsedAboveLimit(_, _) => true },
       "TransactionException.TYPE_3_TX_MAX_BLOB_GAS_ALLOWANCE_EXCEEDED" -> header {
         case HeaderFault.BlobGasUsedAboveLimit(_, _) => true
+      },
+      // ── The four Prague adds, each named for a rule rather than a field ──
+      //
+      // `INVALID_REQUESTS` covers the whole container: a header stating a
+      // commitment over a list the block did not produce, and a header stating
+      // one where the block produced no list at all or the reverse. The corpus
+      // states the rule and this build states which clause of it broke, which
+      // is one-way on purpose -- a finer answer satisfies a coarser
+      // expectation, and no expectation is satisfied by a refusal for another
+      // rule.
+      "BlockException.INVALID_REQUESTS" -> block {
+        case BlockFault.RequestsHashMismatch(_, _) => true
+        case BlockFault.RequestsHashUnexpected(_)  => true
+        case BlockFault.RequestsHashMissing        => true
+      },
+      // A deposit event in a shape the contract that emits it never produces.
+      // It is NOT a transaction refusal and its fault says so: every
+      // transaction in such a block succeeded and emitted the log, and what is
+      // wrong is the record read back out of the receipts.
+      "BlockException.INVALID_DEPOSIT_EVENT_LAYOUT" -> block {
+        case BlockFault.ExecutionRefused(BlockRejection.MalformedRequest(_)) => true
+      },
+      // The two conditions a CHECKED system call refuses on, which the corpus
+      // names apart exactly as this build does -- a call that ran and did not
+      // end normally, and a target holding no code. Keeping them apart is what
+      // lets a network tolerating one while refusing the other be expressed.
+      "BlockException.SYSTEM_CONTRACT_CALL_FAILED" -> block {
+        case BlockFault.ExecutionRefused(BlockRejection.FailedSystemCall(_, SystemCallFault.CallFailed)) => true
+      },
+      "BlockException.SYSTEM_CONTRACT_EMPTY" -> block {
+        case BlockFault.ExecutionRefused(BlockRejection.FailedSystemCall(_, SystemCallFault.TargetHoldsNoCode)) =>
+          true
       },
       "BlockException.INCORRECT_BLOCK_FORMAT" -> header {
         case HeaderFault.BaseFeeMissing                     => true

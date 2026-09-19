@@ -471,7 +471,8 @@ object BlockchainRunner:
       destroyAccount = chain.trie.destroyAccount,
       stateRoot = () => chain.trie.stateRoot,
       blockHashAt = chain.hashAt,
-      chainId = network.chainId
+      chainId = network.chainId,
+      requestRules = Some(network.requestRules)
     )
 
   /** The head against the case's last block hash, and the world against the
@@ -605,7 +606,7 @@ object BlockchainRunner:
     case BlockFault.WithdrawalsUnexpected          => true
     case BlockFault.WithdrawalsRootMismatch(_, _)  => true
     case BlockFault.BlobGasUsedMismatch(_, _)      => true
-    case BlockFault.TransactionRefused(_)          => false
+    case BlockFault.ExecutionRefused(_)            => false
     case BlockFault.GasUsedMismatch(_, _)          => false
     case BlockFault.LogsBloomMismatch(_, _)        => false
     case BlockFault.ReceiptsRootMismatch(_, _)     => false

@@ -798,7 +798,13 @@ object BlockProcessor:
         FeeOffer.Capped(t.maxFeePerGas.toBigInt, t.maxPriorityFeePerGas.toBigInt)
       case t: Transaction.Blob =>
         FeeOffer.Capped(t.maxFeePerGas.toBigInt, t.maxPriorityFeePerGas.toBigInt)
-      case t: Transaction.SetCode => unpriced(t)
+      // The set-code format carries the same fee pair the two above it do, and
+      // the charge is computed the same way. It threw here until the block tier
+      // first ran a fork admitting it -- a placeholder that was correct while
+      // nothing could reach it, and that became the reason 822 published cases
+      // could not run at all.
+      case t: Transaction.SetCode =>
+        FeeOffer.Capped(t.maxFeePerGas.toBigInt, t.maxPriorityFeePerGas.toBigInt)
     // A format that carries no declaration offers an empty one, which is
     // charged nothing and warms nothing. Written out per payload rather than as
     // a wildcard, so a format added later cannot silently offer an empty
@@ -839,10 +845,4 @@ object BlockProcessor:
       authorizations = transaction match
         case t: Transaction.SetCode => Some(t.authorizationList)
         case _                      => None
-    )
-
-  private def unpriced(transaction: Transaction): Nothing =
-    throw new IllegalStateException(
-      "these rules admit " + transaction.transactionType.toString +
-        ", whose charge is computed against a base fee this build does not hold"
     )

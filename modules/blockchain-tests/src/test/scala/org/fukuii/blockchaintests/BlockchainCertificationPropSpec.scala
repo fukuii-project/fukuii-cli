@@ -112,6 +112,11 @@ class BlockchainCertificationPropSpec extends AnyPropSpec with TableDrivenProper
         LabelCensus(12, 60, 288, 8, 288, 60, 8, Vector.empty, Map.empty, Map.empty),
       "for_cancun" ->
         LabelCensus(266, 5848, 6856, 713, 6856, 5848, 713, Vector.empty, Map.empty, Map.empty),
+      // The first label whose rules assemble a request list, and the only
+      // published exercise of the checked calls' empty-target refusal: two of
+      // its six refusals are a system contract undeployed at the transition.
+      "for_cancuntopragueattime15k" ->
+        LabelCensus(10, 98, 1135, 6, 1135, 98, 6, Vector.empty, Map.empty, Map.empty),
       "bcInvalidHeaderTest at Paris" ->
         LabelCensus(22, 22, 9, 23, 9, 22, 23, Vector.empty, Map.empty, Map.empty),
       "bcInvalidHeaderTest at Shanghai" ->
@@ -200,12 +205,12 @@ class BlockchainCertificationPropSpec extends AnyPropSpec with TableDrivenProper
     )
   }
 
-  property("the census covers twenty-seven labels, counted") {
+  property("the census covers twenty-eight labels, counted") {
     // Dropping a label from the census and from what the tier assembles leaves
     // the two agreeing with each other and every other property passing, so the
     // number of labels is pinned on its own. Raising it is adding a label;
     // lowering it drops certified cases, and that is a decision.
-    assert(census.size == 27, "the census covers " + census.size.toString + " labels rather than twenty-seven")
+    assert(census.size == 28, "the census covers " + census.size.toString + " labels rather than twenty-eight")
   }
 
   property("every label reads the files the census records") {

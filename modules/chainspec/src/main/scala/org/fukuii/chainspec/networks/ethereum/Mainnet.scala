@@ -856,6 +856,33 @@ object Mainnet:
       Upgrade.RuleChange(Upgrades.cancun)
     )
 
+  /** Prague, at timestamp 1,746,612,311.
+    *
+    * Three sources that do not derive from one another state it identically:
+    * `ethereum/go-ethereum` @ `02872e9ef` `params/config.go:62`
+    * (`PragueTime: newUint64(1746612311)`), `besu-eth/besu` @ `b330564a9`
+    * `config/src/main/resources/mainnet.json:19` (`"pragueTime": 1746612311`),
+    * and `NethermindEth/nethermind` @ `3a98e0818`
+    * `src/Nethermind/Chains/foundation.json:200`, which states the same instant
+    * in hexadecimal as `"0x681b3057"` -- a different notation rather than a
+    * different reading, which is the more useful kind of agreement.
+    *
+    * ==The first entry whose rule set is not sufficient to run the fork==
+    *
+    * Every entry above this one resolves to rules a block can be executed
+    * against and nothing else. This one needs the network's own deposit contract
+    * as well, because EIP-6110 reads a per-network address that is not a rule --
+    * [[requestRules]] states it, and `org.fukuii.consensus.BlockValidator`
+    * refuses to run a fork committing to a request list without it rather than
+    * assembling an empty one.
+    */
+  private val prague: UpgradeSchedule.Entry =
+    UpgradeSchedule.Entry(
+      atTimestamp(1746612311),
+      upgrade("Prague"),
+      Upgrade.RuleChange(Upgrades.prague)
+    )
+
   /** This network's upgrades in order, or the first reason they are not a
     * schedule.
     *
@@ -898,6 +925,7 @@ object Mainnet:
         grayGlacier,
         paris,
         shanghai,
-        cancun
+        cancun,
+        prague
       )
     )

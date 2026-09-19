@@ -1,6 +1,7 @@
 package org.fukuii.blockchaintests
 
 import org.fukuii.bytes.UInt64
+import org.fukuii.execution.RequestRules
 import org.fukuii.chainspec.{Activation, Network, Upgrade, UpgradeId, UpgradeRules, UpgradeSchedule}
 import org.fukuii.chainspec.networks.ethereum
 import org.fukuii.consensus.ConsensusEngine
@@ -17,6 +18,27 @@ import org.fukuii.consensus.pow.{EthashEngine, SealEngine}
 final case class FixtureNetwork(schedule: UpgradeSchedule, engine: ConsensusEngine):
 
   def chainId: UInt64 = schedule.network.chainId
+
+  /** The request parameters a fork committing to a request list needs.
+    *
+    * ==Mainnet's, because the corpus states none and uses mainnet's contract==
+    *
+    * A fixture's `config` carries the network name, the chain id and the blob
+    * schedule, and **no deposit contract address** -- measured across the whole
+    * generated block tier at `tests-v20.0.1`: zero files mention one, against
+    * 2,573 stating a blob schedule under `for_prague` alone, so the zero is an
+    * answer rather than a sweep that could not fire. What the deposit cases
+    * actually emit from is `0x00000000219ab540356cbb839cbe05303d7705fa`, 1,135
+    * occurrences, which is the address
+    * `org.fukuii.chainspec.networks.ethereum.Mainnet.requestRules` states and
+    * sources.
+    *
+    * **So the corpus expects the harness to supply it exactly as a node does**,
+    * which is the whole reason that value is per-network rather than a rule --
+    * and every case under this label states `"chainid": "0x01"`, so mainnet's is
+    * the right one to supply.
+    */
+  def requestRules: RequestRules = ethereum.Mainnet.requestRules
 
 /** The networks the published Ethereum block tier names, keyed as a case names
   * them.
@@ -140,7 +162,8 @@ object FixtureNetworks:
       "London" -> ethereum.Upgrades.london,
       "Paris" -> ethereum.Upgrades.paris,
       "Shanghai" -> ethereum.Upgrades.shanghai,
-      "Cancun" -> ethereum.Upgrades.cancun
+      "Cancun" -> ethereum.Upgrades.cancun,
+      "Prague" -> ethereum.Upgrades.prague
     )
 
   /** The timestamp a transition network's later fork activates at. */
@@ -215,6 +238,8 @@ object FixtureNetworks:
       "Paris" -> fromGenesis("Paris", ConsensusEngine.Unmodifying),
       "Shanghai" -> fromGenesis("Shanghai", ConsensusEngine.Unmodifying),
       "Cancun" -> fromGenesis("Cancun", ConsensusEngine.Unmodifying),
+      "Prague" -> fromGenesis("Prague", ConsensusEngine.Unmodifying),
       "ParisToShanghaiAtTime15k" -> transition("ParisToShanghaiAtTime15k", "Paris", "Shanghai"),
-      "ShanghaiToCancunAtTime15k" -> transition("ShanghaiToCancunAtTime15k", "Shanghai", "Cancun")
+      "ShanghaiToCancunAtTime15k" -> transition("ShanghaiToCancunAtTime15k", "Shanghai", "Cancun"),
+      "CancunToPragueAtTime15k" -> transition("CancunToPragueAtTime15k", "Cancun", "Prague")
     )

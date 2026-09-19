@@ -31,10 +31,12 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip214,
   Eip2200,
   Eip2384,
+  Eip2537,
   Eip2565,
   Eip2718,
   Eip2929,
   Eip2930,
+  Eip2935,
   Eip3198,
   Eip3529,
   Eip3541,
@@ -50,11 +52,18 @@ import org.fukuii.chainspec.proposals.eip.{
   Eip4895,
   Eip5133,
   Eip5656,
+  Eip6110,
   Eip649,
   Eip658,
   Eip6780,
   Eip7,
-  Eip7516
+  Eip7002,
+  Eip7251,
+  Eip7516,
+  Eip7623,
+  Eip7685,
+  Eip7691,
+  Eip7702
 }
 import org.fukuii.evm.{
   BlockRandomness,
@@ -990,4 +999,58 @@ object Upgrades:
       Eip5656.component,
       Eip6780.component,
       Eip7516.component
+    )
+
+  /** Prague, the ninth rule set this network runs.
+    *
+    * ==Nine documents, and the meta-EIP's own list is what bounds them==
+    *
+    * `ethereum/EIPs` @ `d2a64c2d4` `EIPS/eip-7600.md:23-32` lists ten for the
+    * upgrade. **EIP-7549 is not here and its absence is the rule rather than an
+    * omission**: it moves a committee index inside an attestation, which is the
+    * consensus layer's object and not this one's, and the same file's own split
+    * at `:44-48` puts it among the documents needing consensus-layer changes.
+    * Two further entries sit below that list and are deliberately not
+    * components either -- EIP-7840 is informational and states a configuration
+    * file's shape, absorbed into the blob schedule [[Eip7691]] already carries,
+    * and EIP-7642 is the wire protocol's, which no rule set decides.
+    *
+    * ==The order is stated, and every member of this one commutes==
+    *
+    * Three write the machine's gas schedule -- [[Eip2537]]'s eight curve prices,
+    * [[Eip7623]]'s calldata floor, [[Eip7702]]'s two authorization figures --
+    * and all three are literal assignments to members no other names. Three
+    * write a facet apiece and nothing else: [[Eip7685]] a header flag,
+    * [[Eip2935]] an execution flag, [[Eip7691]] the blob schedule. **Three
+    * carry no delta at all** -- [[Eip6110]], [[Eip7002]] and [[Eip7251]] supply
+    * records for [[Eip7685]]'s container rather than a rule a fork switches, and
+    * their components exist to record that they were adopted.
+    *
+    * So no member reads a value another writes, which is what makes the order
+    * immaterial here. It is stated because that is a property of these
+    * documents rather than of composition -- one upgrade below, two members
+    * read the schedule they also write, and an order there would decide a
+    * price.
+    *
+    * ==What adopting the set turns on that no single member does==
+    *
+    * A block at these rules assembles a request list, and its header commits to
+    * a hash over it. That is [[Eip7685]]'s flag, but the list is empty without
+    * the three documents that fill it and the network's own deposit contract
+    * address, which is not a rule and therefore not here --
+    * `Mainnet.requestRules` states it. **A rule set alone is not enough to run
+    * this fork**, which is new at this upgrade and is why that value is
+    * threaded separately.
+    */
+  val prague: UpgradeRules =
+    cancun.adopting(
+      Eip2537.component,
+      Eip2935.component,
+      Eip6110.component,
+      Eip7002.component,
+      Eip7251.component,
+      Eip7623.component,
+      Eip7685.component,
+      Eip7691.component,
+      Eip7702.component
     )

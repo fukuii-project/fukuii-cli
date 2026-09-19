@@ -72,8 +72,22 @@ enum BlockFault:
   /** A header stating some other blob-gas spend than its body's blobs cost. */
   case BlobGasUsedMismatch(stated: BigInt, derived: BigInt)
 
-  /** A transaction the block carries that its rules refuse. */
-  case TransactionRefused(rejection: BlockRejection)
+  /** Running the block's body refused it.
+    *
+    * ==Named for the LAYER, not for a transaction, and that changed==
+    *
+    * This read `TransactionRefused` while a rejection could only ever be a
+    * transaction the rules refused. It cannot now: the rejection it carries is a
+    * sum whose other cases refuse no transaction at all -- a checked system call
+    * that failed, and a request record in a shape the contract that emits it
+    * never produces. **A fault named for a transaction, carrying a rejection
+    * that names none, states the wrong thing in every report that prints it.**
+    *
+    * It is the execution layer's counterpart to [[Header]], which carries the
+    * header layer's fault the same way, and the pair reads as the two halves a
+    * block is refused by.
+    */
+  case ExecutionRefused(rejection: BlockRejection)
 
   /** A header stating some other gas figure than the block used. */
   case GasUsedMismatch(stated: BigInt, produced: BigInt)
@@ -469,7 +483,7 @@ object BlockValidator:
           // A system call that failed refused no transaction, so it cannot
           // carry an unbuilt operation and cannot be undecided for one: the
           // call either ran and failed, or its target held no code.
-          case other => Left(BlockVerdict.Invalid(BlockFault.TransactionRefused(other)))
+          case other => Left(BlockVerdict.Invalid(BlockFault.ExecutionRefused(other)))
       case Right(output) =>
         output.unbuilt match
           case Some(gap) => Left(BlockVerdict.Undecided(RuleNotRun.Operation(gap)))

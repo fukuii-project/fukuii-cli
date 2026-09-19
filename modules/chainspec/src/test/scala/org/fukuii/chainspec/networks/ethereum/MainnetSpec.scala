@@ -67,7 +67,8 @@ class MainnetSpec extends AnyFlatSpec:
           "Gray Glacier",
           "Paris",
           "Shanghai",
-          "Cancun"
+          "Cancun",
+          "Prague"
         ),
       "an enumeration missing an entry misnumbers every entry after it, which is silent rather than absent"
     )
@@ -161,7 +162,13 @@ class MainnetSpec extends AnyFlatSpec:
         // The second timestamp point, and the first whose ordering against the
         // one above it is settled by the numbers rather than by EIP-6122's
         // cross-axis rule. Both remain subject to that rule.
-        Activation.AtTimestamp(UInt64.fromBits(1710338135L))
+        Activation.AtTimestamp(UInt64.fromBits(1710338135L)),
+        // The third, and the first whose rule set alone is not enough to run
+        // the fork: EIP-6110 reads a per-network deposit contract that is not a
+        // rule and therefore not resolved here. That changes nothing about the
+        // identifier -- what a peer hashes is the activation point, and this
+        // one changes what a node validates exactly as the two above it do.
+        Activation.AtTimestamp(UInt64.fromBits(1746612311L))
         // AND NOTHING FOR 15,537,394, which is the one exclusion here that
         // drops an entry that DOES change the rules. EIP-3675 requires it: a
         // fork identifier is exchanged before either peer has the other's
