@@ -1,6 +1,7 @@
 package org.fukuii.evm
 
 import org.fukuii.bytes.{Address, Bytes}
+import org.fukuii.types.Delegation
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** What the machine charges for reaching an account or a slot, under each of the
@@ -131,10 +132,16 @@ class StateAccessMeteringSpec extends AnyFlatSpec:
       warm: Set[Address] = Set.empty,
       warmSlots: Set[(Address, Word)] = Set.empty,
       childCode: Seq[Int] = inert,
-      forwarding: GasForwarding = EvmFixtures.rules.gasForwarded
+      forwarding: GasForwarding = EvmFixtures.rules.gasForwarded,
+      following: Boolean = false
   ): BigInt =
     val rules = EvmFixtures.rules
-      .copy(stateAccessMetering = metering, table = tableUnder(metering), gasForwarded = forwarding)
+      .copy(
+        stateAccessMetering = metering,
+        table = tableUnder(metering),
+        gasForwarded = forwarding,
+        followsDelegations = following
+      )
     val environment = EvmFixtures.environmentUnder(rules, world(childCode))
     val frame = new Frame(
       EvmFixtures.message(currentTarget = target, transfersValue = false),
@@ -174,6 +181,28 @@ class StateAccessMeteringSpec extends AnyFlatSpec:
     * distinction is what holds this figure to both bounds.
     */
   private val forwarded: Int = 20000
+
+  /** The account a designation at [[other]] names, reached only by following
+    * that designation and by nothing else here.
+    */
+  private val designatedTarget: Address = EvmFixtures.address(0x55)
+
+  /** [[other]]'s code where a case wants it to designate [[designatedTarget]],
+    * in the byte values [[world]] takes.
+    */
+  private val designating: Seq[Int] =
+    Delegation.designating(designatedTarget).toIArray.toSeq.map(_ & 0xff)
+
+  /** A call to [[other]] sending more than the account running can pay.
+    *
+    * **Refused after the call has been priced**, which is the whole point of the
+    * pair below: the refusal turns on a balance the pricing never consulted, so
+    * everything the pricing charged for was charged for before anything could
+    * decline. The account running holds a million and this sends sixteen.
+    */
+  private val callingBeyondBalance: Seq[Int] =
+    pushingSmall(0) ++ pushingSmall(0) ++ pushingSmall(0) ++ pushingSmall(0) ++ pushingLarge(0xffffff) ++
+      pushing(other) ++ pushingLarge(forwarded) ++ Seq(Opcode.Call.code, Opcode.Pop.code)
 
   /** A callee that reaches `elsewhere` and stops. */
   private val reachingThenStopping: Seq[Int] = reachingAt(elsewhere, Opcode.Balance)
@@ -396,6 +425,59 @@ class StateAccessMeteringSpec extends AnyFlatSpec:
       spent(StateAccessMetering.WarmCold, calling ++ reaching(Opcode.Balance)) -
         spent(StateAccessMetering.WarmCold, calling) - overhead == schedule.warmAccess,
       "the call did not record the account it charged a first reach for"
+    )
+
+  "a designation a REFUSED call paid to follow" should "leave its target warm for what follows" in
+    // The same recording half, for the account a designation names, on the one
+    // path where charging and recording can come apart: a call priced in full
+    // and then refused.
+    //
+    // **The refusal is decided after the price is settled**, so a build that
+    // charges for the target while recording it only once the call is entered
+    // charges the full figure here and charges it AGAIN at the next operation
+    // naming that account -- 2,500 on this fixture's schedule, on a transaction
+    // the network prices once. The specification cannot separate the two: its
+    // `access_delegation` answers the price and adds the target in one branch
+    // (`ethereum/execution-specs` @ `0cc100eb1`
+    // `forks/prague/vm/eoa_delegation.py:143-150`), called from
+    // `vm/instructions/system.py:391` before `:405` charges and `:412` refuses.
+    //
+    // **No published case reaches this**, which is why it is authored: a refused
+    // call ends the transaction's interest in the target, so a corpus has to
+    // name that account again afterwards to notice, and none does.
+    assert(
+      spent(
+        StateAccessMetering.WarmCold,
+        callingBeyondBalance ++ reachingAt(designatedTarget, Opcode.ExtCodeSize),
+        childCode = designating,
+        following = true
+      ) - spent(
+        StateAccessMetering.WarmCold,
+        callingBeyondBalance,
+        childCode = designating,
+        following = true
+      ) - overhead == schedule.warmAccess,
+      "the refused call charged for the designation's target without recording it"
+    )
+
+  it should "leave an account it never named cold" in
+    // The control the case above needs. A build that warmed every address it
+    // touched, or that seeded the frame too widely, would pass the case above
+    // and fail this one -- so the pair measures recording the TARGET rather
+    // than recording generously.
+    assert(
+      spent(
+        StateAccessMetering.WarmCold,
+        callingBeyondBalance ++ reachingAt(elsewhere, Opcode.ExtCodeSize),
+        childCode = designating,
+        following = true
+      ) - spent(
+        StateAccessMetering.WarmCold,
+        callingBeyondBalance,
+        childCode = designating,
+        following = true
+      ) - overhead == schedule.coldAccountAccess,
+      "an account the refused call never named was left warm"
     )
 
   "an account a CALLEE reached" should "be charged the warm figure by its caller where the callee stopped" in

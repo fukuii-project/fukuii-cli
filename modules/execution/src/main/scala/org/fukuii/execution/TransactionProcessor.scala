@@ -370,12 +370,32 @@ object TransactionProcessor:
             // (`MessageCallProcessor.java:98`) and sets that to the account
             // named (`AbstractCallOperation.java:297`).
             //
-            // **The two are indistinguishable here, and that is measured rather
-            // than assumed**: this field has exactly one reader, the dispatch a
-            // flag would have guarded, so nothing can observe which mechanism
-            // stopped the precompile. What IS observable is taking neither --
-            // naming the target with no flag dispatches a precompile all three
-            // authorities refuse to run.
+            // **The two are indistinguishable on every state a chain can reach,
+            // and that rests on TWO things rather than one.** The measured half:
+            // this field has exactly one reader, the dispatch a flag would have
+            // guarded, so nothing can observe which mechanism stopped the
+            // precompile. The half that is easy to leave unsaid: a designation
+            // can only ever be written at an address a SIGNATURE recovered to,
+            // and every native sits at a low address no key reaches -- so no
+            // chain reaches the state where the lookup would answer differently
+            // under the two routes.
+            //
+            // **A fixture can construct that state, and there the routes part.**
+            // Code shaped like a designation placed directly at a native's own
+            // address makes this field name a native, so the lookup matches and
+            // the native runs; the specification would resolve the designation
+            // first and run the TARGET's code instead. This build answers as
+            // `ethereum/go-ethereum` and `besu-eth/besu` do, both of which key
+            // the lookup on the account named before resolving anything. Read
+            // that as following the two production clients on a state no network
+            // can enter, not as agreement with the specification -- and if a
+            // published case ever assigns designation-shaped code to a native's
+            // address, it decides this and nothing here should be trusted over
+            // it.
+            //
+            // What IS observable, and what this line fixes, is taking neither
+            // route -- naming the target with no flag dispatches a precompile
+            // all three authorities refuse to run.
             //
             // The nested form names the account it was given for the same
             // reason, so one rule covers both ways in.

@@ -1195,9 +1195,26 @@ object Interpreter:
         // the reach, so the two terms of the sum below are not interchangeable
         // and must not be folded back into one expression.
         reachCharge = costOfReaching(frame, environment.rules, schedule.callBase, codeAddress)
-        followCharge = designated.fold(BigInt(0)) { target =>
-          if frame.accessedAddresses.contains(target) then schedule.warmAccess else schedule.coldAccountAccess
-        }
+        // PRICING THE TARGET AND REACHING IT ARE ONE ACT, which is why this is
+        // the same primitive the line above uses rather than a test against the
+        // set. The specification writes them as one too -- `access_delegation`
+        // answers WARM where the target is already in `accessed_addresses` and
+        // otherwise adds it and answers COLD, in one branch
+        // (`ethereum/execution-specs` @ `0cc100eb1`
+        // `forks/prague/vm/eoa_delegation.py:143-150`).
+        //
+        // **Splitting them is observable on the two paths that refuse the call
+        // AFTER pricing it**: a caller that cannot cover the value it is sending,
+        // and one already at the depth limit. Both are refused below, and a
+        // reach recorded only past that point never happens for them -- so the
+        // caller pays the full price for the target and then pays it again at
+        // its next `EXTCODESIZE`, `BALANCE` or `CALL` naming that account, where
+        // the network charges the reduced figure the second time. The
+        // specification is refused at those same two points and has already
+        // recorded the reach: `vm/instructions/system.py:391` resolves before
+        // `:405` charges and `:412` refuses on balance, and the depth refusal is
+        // later still, inside `generic_call`.
+        followCharge = designated.fold(BigInt(0))(warmingAccount(frame, schedule, _))
         ownPrice = followCharge + reachCharge +
           (if forbidsChangingState then BigInt(0)
            else newAccountSurcharge(environment.rules, world, runsAs, sends, schedule.newAccount)) +
@@ -1247,11 +1264,6 @@ object Interpreter:
           // a build adding the target to the set without charging for it
           // undercharges every delegated call.
           val runsCode = designated.getOrElse(codeAddress)
-          // The target joins the CALLER's reached set as well, which is what the
-          // specification's `access_delegation` does -- it adds to the running
-          // frame's own `accessed_addresses` before the call is built, so the
-          // caller still sees the target warm once the call returns.
-          designated.foreach(target => frame.accessedAddresses = frame.accessedAddresses + target)
           val nested = new Frame(
             Message(
               caller = invoker,
@@ -1271,7 +1283,7 @@ object Interpreter:
             Code(world.codeOf(runsCode)),
             forwarded,
             frame.registeredSoFar,
-            frame.accessedAddresses ++ designated,
+            frame.accessedAddresses,
             frame.accessedStorageKeys
           )
           run(nested, environment) match
