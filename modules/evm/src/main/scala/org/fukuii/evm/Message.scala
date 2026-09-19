@@ -23,14 +23,24 @@ import org.fukuii.bytes.{Address, Bytes}
   * failure anything here reports. **Name them.**
   *
   * @param codeAddress
-  *   the account whose code this invocation runs, which is not always the one
-  *   it runs AS: the form that borrows another account's code names one here
-  *   and the other above. **This is what a precompile is looked up by**, so an
-  *   operation setting it to the account being run as would silently stop the
-  *   borrowing form from ever reaching one -- and both sources are explicit
-  *   that it does reach one. Nothing for a creation, whose code belongs to no
-  *   account yet, and that absence is what keeps a creation from running a
-  *   precompile however its address falls out.
+  *   the account this invocation NAMED, which is not always the one it runs AS:
+  *   the form that borrows another account's code names one here and the other
+  *   above. **This is what a precompile is looked up by**, so an operation
+  *   setting it to the account being run as would silently stop the borrowing
+  *   form from ever reaching one -- and both sources are explicit that it does
+  *   reach one. Nothing for a creation, whose code belongs to no account yet,
+  *   and that absence is what keeps a creation from running a precompile however
+  *   its address falls out.
+  *
+  *   **It is the account named and NOT the account whose code runs, and a
+  *   designation is where those two come apart.** An invocation that followed
+  *   one runs the target's code under the authority's name, so this stays the
+  *   authority -- which is what keeps a delegation to a precompile from
+  *   executing that precompile, since the lookup above never matches. Reading
+  *   this field as "whose code runs" and setting it accordingly is the one
+  *   change that breaks that rule, and it breaks it silently, because the two
+  *   agree at every invocation that followed no designation. The sites that
+  *   construct this carry the authorities and why the routes are equivalent.
   * @param data
   *   the input the invocation was called with, which the `CALLDATA` operations
   *   read. Reading past its end is not an error -- the specification pads with

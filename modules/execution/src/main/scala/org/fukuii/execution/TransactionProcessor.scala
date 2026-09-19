@@ -288,8 +288,20 @@ object TransactionProcessor:
         )
       )
     val (frame, outcome) = invoke(transaction, world, environment, signedAt, available, delegated.reached)
-    frame.refundCounter += delegated.refund
-    account(transaction, world, destroyAccount, block, frame, outcome, rules, execution)
+    // CARRIED BESIDE THE INVOCATION'S OWN REFUND RATHER THAN ADDED TO IT, and
+    // the difference is only visible when the invocation fails. What the
+    // authorizations earned was earned before anything ran and by an act that a
+    // failure does not undo -- the code they wrote stays written -- so it
+    // survives where the machine's own refund does not.
+    //
+    // The specification separates the two by construction: `refund_counter`
+    // takes `set_delegation`'s figure before the invocation and is left alone on
+    // the failing branch, which resets only the logs and the accounts to delete,
+    // while `evm.refund_counter` is folded in on the succeeding branch alone
+    // (`ethereum/execution-specs` @ `0cc100eb1`
+    // `forks/prague/vm/interpreter.py:123-144`). Pooling both into one counter
+    // makes the rule that correctly discards the second discard the first too.
+    account(transaction, world, destroyAccount, block, frame, outcome, rules, execution, delegated.refund)
 
   /** Runs the transaction's one outermost invocation, whichever shape it has.
     *
@@ -334,7 +346,40 @@ object TransactionProcessor:
           Message(
             caller = transaction.sender,
             currentTarget = recipient,
-            codeAddress = Some(runs),
+            // THE ACCOUNT NAMED, never the one whose code runs, and the two part
+            // only when a designation was followed. This field is what a
+            // precompile is looked up by, so naming the designation's target
+            // here would run a precompile the network does not: a transaction
+            // sent to an authority that delegates to one must execute empty code
+            // and charge nothing for it.
+            //
+            // **The specification reaches that same outcome from the other
+            // side**, which is why neither route is a divergence. It sets
+            // `code_address` to the target and carries a `disable_precompiles`
+            // flag beside it -- `access_delegation` answers
+            // `Tuple[bool, Address, Bytes, Uint]` (`ethereum/execution-specs` @
+            // `0cc100eb1` `forks/prague/vm/eoa_delegation.py:120-150`), the
+            // outermost invocation is handed both on the same two lines
+            // (`vm/interpreter.py:126-134`), and the dispatch then declines to
+            // run what it found (`vm/interpreter.py:273-276`). Looking a
+            // precompile up by the account NAMED needs no flag, which is the
+            // route `ethereum/go-ethereum` @ `02872e9ef` takes -- it tests
+            // `addr` and resolves the designation only for the code in the other
+            // branch (`core/vm/evm.go:286,320`) -- and `besu-eth/besu` @
+            // `b330564a94`, which dispatches on the frame's contract address
+            // (`MessageCallProcessor.java:98`) and sets that to the account
+            // named (`AbstractCallOperation.java:297`).
+            //
+            // **The two are indistinguishable here, and that is measured rather
+            // than assumed**: this field has exactly one reader, the dispatch a
+            // flag would have guarded, so nothing can observe which mechanism
+            // stopped the precompile. What IS observable is taking neither --
+            // naming the target with no flag dispatches a precompile all three
+            // authorities refuse to run.
+            //
+            // The nested form names the account it was given for the same
+            // reason, so one rule covers both ways in.
+            codeAddress = Some(recipient),
             value = Word(transaction.value),
             data = transaction.data,
             transfersValue = true,
@@ -493,7 +538,8 @@ object TransactionProcessor:
       frame: Frame,
       outcome: Either[Unsupported, Outcome],
       rules: EvmRules,
-      execution: ExecutionRules
+      execution: ExecutionRules,
+      authorized: BigInt
   ): Settlement =
     val (gasLeft, succeeded, unbuilt) = outcome match
       case Left(gap)                             => (BigInt(0), false, Some(gap))
@@ -501,7 +547,19 @@ object TransactionProcessor:
       case Right(Outcome.Reverted(remaining, _)) => (remaining, false, None)
       case Right(Outcome.Halted(_))              => (BigInt(0), false, None)
     val spent = transaction.gasLimit - gasLeft
-    val earned = if succeeded then frame.refundCounter else BigInt(0)
+    // ONE OF THE TWO SUMMANDS IS GATED ON SUCCESS AND THE OTHER IS NOT, which is
+    // the whole of what an authorization's refund changes here. The caller's own
+    // comment carries the reasoning and the citation; what matters at this line
+    // is that the gate reaches the invocation's figure alone.
+    //
+    // **Both are then capped together**, and that is the specification's
+    // arithmetic rather than a choice: the cap is a fraction of what the
+    // transaction spent and is applied to the accumulated counter, so an
+    // authorization refund on a cheap transaction is cut by it. A transaction
+    // that buys exactly its own intrinsic gas and runs nothing settles at
+    // four fifths of that figure for this reason, the 12,500 it earned being
+    // capped to a fifth of what it spent.
+    val earned = (if succeeded then frame.refundCounter else BigInt(0)) + authorized
     val refunded = (spent / execution.maxRefundQuotient).min(earned)
     // AFTER THE REFUND, never before it, and that ordering is the whole of what
     // EIP-7623 changes here. The specification applies the floor to the figure

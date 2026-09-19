@@ -1,6 +1,7 @@
 package org.fukuii.evm
 
 import org.fukuii.bytes.{Address, Bytes}
+import org.fukuii.types.Delegation
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** How an invocation reaches a precompile, which is where a wrong answer is a
@@ -109,6 +110,41 @@ class PrecompileDispatchSpec extends AnyFlatSpec:
 
   private def answer(frame: Frame): Word = frame.stack.peek(0).toOption.get
 
+  // ── Fixtures for a designation, shared by the cases that use one ────────
+
+  /** Rules that follow a designation, which is the only state in which those
+    * cases differ from a call to an ordinary account.
+    *
+    * Warm-and-cold metering comes with it rather than being incidental: a
+    * designation cannot be reached at a fork that prices state access the
+    * settled way, so leaving the fixture's own scheme in place would test a
+    * combination no network runs.
+    */
+  private val followingDesignations: EvmRules =
+    EvmFixtures.rules.copy(followsDelegations = true, stateAccessMetering = StateAccessMetering.WarmCold)
+
+  /** The account a designation points at, kept apart from [[inert]] because that
+    * one is the baseline the charge measurements read and must stay codeless.
+    */
+  private val delegate = EvmFixtures.address(0x55)
+
+  /** An account that designates `target`, beside an account holding `code`. */
+  private def designating(authority: Address, target: Address, holder: Address, code: Seq[Int]): Environment =
+    val world = new EvmFixtures.MapWorldState
+    world.touch(authority)
+    world.touch(holder)
+    world.touch(identity)
+    world.setCode(authority, Delegation.designating(target))
+    world.setCode(holder, Bytes.fromArray(code.map(_.toByte).toArray))
+    EvmFixtures.environmentUnder(followingDesignations, world)
+
+  /** Sends one byte to the copying native and hands back what came out of it,
+    * which is `2a` only where that native actually ran: the answer area is
+    * untouched otherwise, and a byte read out of it reads as zero.
+    */
+  private val askingTheNative: Seq[Int] =
+    storing(0x2a) ++ callingWith(0xf1, identity, 50, 1, 1) ++ push1(1) ++ push1(1) :+ 0xf3
+
   // ── What the dispatch is keyed on ────────────────────────────────────────
 
   "a call to a precompile address" should "run the precompile rather than the account's code" in {
@@ -181,6 +217,61 @@ class PrecompileDispatchSpec extends AnyFlatSpec:
     assert(
       outcome == Right(Outcome.Stopped(BigInt(100000) - spent, EvmFixtures.bytesOf("2a2a"))),
       "a transaction sent straight to a precompile is the ordinary way one is used, and the frame's own code is not run"
+    )
+  }
+
+  // ── What a designation does to the dispatch, and what it does not ───────
+
+  "a frame running under a designation" should "still reach a precompile it calls" in {
+    // AUTHORED SUPPLEMENT. The published set at `tests-v20.0.1` exercises a
+    // designation NAMING a precompile and never a designated frame CALLING one,
+    // so nothing in the corpus separates "this frame may not run a precompile"
+    // from "this frame may not reach one".
+    //
+    // **The two are unrelated, and the specification makes that structural
+    // rather than stating it.** What suppresses the native is a flag carried on
+    // ONE message, set where a designation was followed
+    // (`ethereum/execution-specs` @ `0cc100eb1`
+    // `forks/prague/vm/interpreter.py:126-134`) and read where that message's
+    // own dispatch happens (`:273-276`). A call made from inside that frame
+    // builds a NEW message and asks `access_delegation` again for it
+    // (`vm/instructions/system.py:386-392`), so the answer is the new target's
+    // and never the running frame's. A build that let the condition persist into
+    // nested calls would leave a delegated account unable to hash, recover or
+    // copy -- every native, silently, and only while delegated.
+    val environment = designating(runner, delegate, delegate, askingTheNative)
+    val (frame, _) = runIn(environment, 1000000, callingWith(0xf1, runner, 200000, 1, 1))
+    assert(
+      frame.memory.read(1, 1) == EvmFixtures.bytesOf("2a"),
+      "the copying native echoes what it is sent, so this byte is the native having run inside the designated frame"
+    )
+  }
+
+  /** The companion, and the half a published case reaches only from the
+    * OUTERMOST invocation.
+    *
+    * `set_code_to_precompile_not_enough_gas_for_precompile_execution` sends a
+    * transaction straight to an account designating each native in turn. No
+    * published case CALLS such an account from inside a running frame, so this
+    * path is authored -- and it is the path that decides the rule for both,
+    * since an outermost invocation and a nested one must agree about what a
+    * designation to a native does.
+    */
+  "a call to an account designating a precompile" should "run nothing and hand nothing back" in {
+    val environment = designating(runner, identity, delegate, Seq(0x00))
+    val (frame, _) = runIn(environment, 1000000, storing(0x2a) ++ callingWith(0xf1, runner, 200000, 1, 1))
+    assert(
+      answer(frame) == Word.One && frame.memory.read(1, 1) == EvmFixtures.bytesOf("00"),
+      "the call succeeds because the designated account's code is empty, and the native's echo is what must NOT come back"
+    )
+  }
+
+  it should "be told apart from the same call made to the precompile itself" in {
+    val environment = designating(runner, identity, delegate, Seq(0x00))
+    val (frame, _) = runIn(environment, 1000000, storing(0x2a) ++ callingWith(0xf1, identity, 200000, 1, 1))
+    assert(
+      frame.memory.read(1, 1) == EvmFixtures.bytesOf("2a"),
+      "the control: the same native, the same input and the same answer area, reached by naming it directly"
     )
   }
 

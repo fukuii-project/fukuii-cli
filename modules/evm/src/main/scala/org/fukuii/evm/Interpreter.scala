@@ -1176,11 +1176,29 @@ object Interpreter:
         // charging more than the network.
         designated =
           if environment.rules.followsDelegations then Delegation.targetOf(world.codeOf(codeAddress)) else None
+        // THE ACCOUNT CALLED IS REACHED BEFORE THE DESIGNATION IS PRICED, and the
+        // order is observable on exactly one shape: an account that designates
+        // ITSELF. Reaching it is what puts it in the set, so a follow priced
+        // afterwards finds its own target already there and pays the reduced
+        // figure, where one priced first finds it absent and pays the full one --
+        // 2,600 against 100, a difference of 2,500 on a call that should cost
+        // 2,700 in total.
+        //
+        // The specification fixes that order structurally rather than by
+        // arranging two terms: it adds the account to `accessed_addresses` in the
+        // branch that charges the full figure for it, and only then calls
+        // `access_delegation`, which asks the same question of the set that
+        // addition has already changed (`ethereum/execution-specs` @ `0cc100eb1`
+        // `forks/prague/vm/instructions/system.py:379-392`, and
+        // `vm/eoa_delegation.py:143-150` for the question it asks). Bound
+        // separately here for the same reason -- `costOfReaching` is what records
+        // the reach, so the two terms of the sum below are not interchangeable
+        // and must not be folded back into one expression.
+        reachCharge = costOfReaching(frame, environment.rules, schedule.callBase, codeAddress)
         followCharge = designated.fold(BigInt(0)) { target =>
           if frame.accessedAddresses.contains(target) then schedule.warmAccess else schedule.coldAccountAccess
         }
-        ownPrice = followCharge +
-          costOfReaching(frame, environment.rules, schedule.callBase, codeAddress) +
+        ownPrice = followCharge + reachCharge +
           (if forbidsChangingState then BigInt(0)
            else newAccountSurcharge(environment.rules, world, runsAs, sends, schedule.newAccount)) +
           (if sends then schedule.callValue else BigInt(0))
