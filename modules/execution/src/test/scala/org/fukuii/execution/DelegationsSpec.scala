@@ -187,6 +187,53 @@ class DelegationsSpec extends AnyFlatSpec:
       "the fixture must start delegated, or clearing it is unobservable"
     )
   }
+  it should "leave the authority's storage exactly where it was" in {
+    // AUTHORED SUPPLEMENT. The published set at `tests-v20.0.1` exercises
+    // clearing but not what clearing leaves behind, and what it leaves behind is
+    // the hazard the document itself warns about.
+    //
+    // **Clearing resets the code hash and says nothing about storage.**
+    // `ethereum/EIPs` @ `d2a64c2d4` `EIPS/eip-7702.md:120-123` clears the
+    // account's code "by resetting the account's code hash to the empty code
+    // hash" and stops there, and `ethereum/execution-specs` @ `0cc100eb1`
+    // `forks/prague/vm/eoa_delegation.py:223-227` calls `set_code` and nothing
+    // else. The Security Considerations state the consequence outright: a
+    // migration between delegates can collide in storage, and clearing an
+    // account's storage is "an operation that is not natively offered by the
+    // protocol" (`:543-552`).
+    //
+    // So an account that delegates, has storage written under it, clears, and
+    // delegates again hands the second delegate whatever the first left. **A
+    // build that cleared storage alongside the code would look safer and be a
+    // consensus divergence**, which is why this is pinned rather than assumed
+    // from the code reading.
+    val revoking = authorization.copy(address = address("0000000000000000000000000000000000000000"))
+    val revoker = Authority.of(revoking).getOrElse(fail("the revoking authorization must recover"))
+    val prepared = world()
+    prepared.setNonce(revoker, UInt64.fromBits(1))
+    prepared.setCode(revoker, Delegation.designating(target))
+    prepared.setStorage(revoker, Word(BigInt(7)), Word(BigInt(42)))
+    val (_, w) = applied(auth = revoking, prepared = prepared)
+    assert(
+      w.codeOf(revoker).isEmpty && w.storageAt(revoker, Word(BigInt(7))) == Word(BigInt(42)),
+      "the code goes and the storage stays, which is exactly what the next delegate inherits"
+    )
+  }
+
+  it should "have held that storage before the revocation, or the case tests nothing" in {
+    // The control, in the shape this file already uses for the clearing pair:
+    // were the slot empty to begin with, the case above would hold for a build
+    // that wiped storage and for one that never wrote any.
+    val revoking = authorization.copy(address = address("0000000000000000000000000000000000000000"))
+    val revoker = Authority.of(revoking).getOrElse(fail("the revoking authorization must recover"))
+    val prepared = world()
+    prepared.setStorage(revoker, Word(BigInt(7)), Word(BigInt(42)))
+    assert(
+      prepared.storageAt(revoker, Word(BigInt(7))) == Word(BigInt(42)),
+      "the fixture must start with storage, or its survival is unobservable"
+    )
+  }
+
   "an authority that already exists" should "earn the rebate" in {
     val prepared = world()
     prepared.setBalance(authority, Word(BigInt(1)))

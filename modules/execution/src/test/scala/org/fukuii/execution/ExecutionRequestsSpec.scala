@@ -211,3 +211,67 @@ class ExecutionRequestsSpec extends AnyFlatSpec:
       "a word wider than a machine integer is refused rather than truncated into a valid one"
     )
   }
+
+  // ── An authored supplement: offsets that are plausible and misplaced ──────
+
+  "an event whose offsets are swapped" should "refuse the block" in {
+    // AUTHORED HERE, and the reason is what the published set does not cover.
+    // `tests-v20.0.1` states 22 layout cases under `for_prague`, each setting
+    // one of the ten words to zero or to the maximum a word can hold. Both are
+    // values no encoder produces, so a parse testing only whether an offset
+    // looks plausible passes every one of them. **Swapping two offsets is the
+    // case that separates plausible from correct**: each value is one the
+    // encoder really does emit, and only comparing each slot against the offset
+    // that belongs in it refuses the pair.
+    //
+    // ==The field splits on whether this is checked at all==
+    //
+    // `ethereum/execution-specs` @ `0cc100eb1` `forks/prague/requests.py` checks
+    // all ten words and refuses, and `NethermindEth/nethermind` @ `3a98e0818`
+    // does the same in `ExecutionRequestsProcessor.cs:197-213`, throwing
+    // `InvalidBlockException`. `ethereum/go-ethereum` @ `02872e9ef` checks the
+    // total length alone and then reads at fixed offsets
+    // (`core/types/deposit.go:29-32`), and `besu-eth/besu` @ `b330564a9` does
+    // the same and says so -- *"we are only interested in the data fields and
+    // will skip over the position and length fields"*
+    // (`DepositLogDecoder.java`). **This build follows the specification and
+    // the client that agrees with it**, which is the rule
+    // `.claude/protocols/consensus-change.md` states for an observable split
+    // between production clients: implement it, and record who does not.
+    //
+    // **Reachable only through an authored genesis**, because a conforming
+    // deposit contract cannot emit one -- which is why no live network can tell
+    // the two readings apart and why the case has to be authored to exist.
+    val raw = IArray.genericWrapArray(wellFormedEvent.toIArray).toArray
+    def putWord(at: Int, value: Int): Unit =
+      var v = value
+      var i = at + 31
+      while i >= at + 28 do
+        raw(i) = (v & 0xff).toByte
+        v = v >>> 8
+        i -= 1
+    // The first two offsets exchanged: 256 where 160 belongs and 160 where 256
+    // does. Both are offsets this encoder emits, in the wrong slots.
+    putWord(0, 256)
+    putWord(32, 160)
+    assert(
+      ExecutionRequests
+        .depositsIn(
+          Vector(loggedBy(depositContract, eventSignature, Bytes.fromArray(raw))),
+          depositContract,
+          eventSignature
+        ) == Left(RequestFault.DepositLayout),
+      "each slot is held to the offset that belongs in it, not merely to being an offset"
+    )
+  }
+
+  it should "still accept the same event with the offsets in their own slots" in
+    // The control for the case above. Same widths, same payload, same parse --
+    // only the two offsets restored -- so the refusal is of the swap rather than
+    // of anything else the authored event does.
+    assert(
+      ExecutionRequests
+        .depositsIn(Vector(loggedBy(depositContract, eventSignature, wellFormedEvent)), depositContract, eventSignature)
+        .isRight,
+      "the swap is what is refused, and nothing about the authored event otherwise is"
+    )
